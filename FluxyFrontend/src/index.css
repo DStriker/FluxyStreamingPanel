@@ -1,0 +1,68 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f5f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #202020;
+    color: rgba(255, 255, 255, 0.85);
+  }
+}
+
+.auth-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.lang-switcher {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-form .ant-form-item {
+  margin-bottom: 12px;
+}
+
+.auth-form .auth-form__submit {
+  padding-top: 12px;
+}
+
+.auth-form .ant-input,
+.auth-form .ant-input-affix-wrapper {
+  padding-block: 0;
+}
+
+.auth-form .ant-input {
+  line-height: 30px;
+}
+
+.auth-form .ant-input-affix-wrapper {
+  align-items: center;
+}
+
+.auth-form__footer {
+  margin-top: 8px;
+  text-align: center;
+}

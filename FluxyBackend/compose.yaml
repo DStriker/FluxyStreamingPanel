@@ -1,0 +1,71 @@
+services:
+    postgres:
+        container_name: postgres
+        image: postgres:latest
+        command: "postgres"
+        environment:
+            POSTGRES_DB: "fluxy"
+            POSTGRES_USER: "fluxy"
+            POSTGRES_PASSWORD: "asnsnn34ANBShdj333be"
+            PGDATA: "/var/lib/postgresql/data/pgdata"
+        volumes:
+            - ../2. Init Database:/docker-entrypoint-initdb.d
+            - fluxy-data:/var/lib/postgresql/data
+        ports:
+            - "5432:5432"
+        restart: unless-stopped
+        networks:
+            - postgres
+            
+    pgadmin:
+        container_name: pgadmin
+        image: dpage/pgadmin4:latest
+        environment:
+          PGADMIN_DEFAULT_EMAIL: "mainuser@mail.com"
+          PGADMIN_DEFAULT_PASSWORD: "asnsnn34ANBShdj333be"
+          PGADMIN_CONFIG_SERVER_MODE: "False"
+        volumes:
+          - pgadmin-data:/var/lib/pgadmin
+        ports:
+          - "5050:80"
+        networks:
+          - postgres
+          
+    redis:
+        container_name: redis
+        image: redis:latest
+        environment:
+            REDIS_PASSWORD: "asnsnn34ANBShdj333be"
+            REDIS_USER: "fluxy"
+            REDIS_USER_PASSWORD: "asnsnn34ANBShdj333be"
+            REDIS_PORT: 6379
+            REDIS_DATABASES: 16
+        command: >
+              sh -c '
+                mkdir -p /usr/local/etc/redis/redis.conf && truncate -s 0 /usr/local/etc/redis/redis.conf/redis.conf &&
+                truncate -s 0 /usr/local/etc/redis/users.acl &&
+                echo "bind 0.0.0.0" > /usr/local/etc/redis/redis.conf/redis.conf &&
+                echo "requirepass asnsnn34ANBShdj333be" >> /usr/local/etc/redis/redis.conf/redis.conf &&
+                echo "appendonly yes" >> /usr/local/etc/redis/redis.conf/redis.conf &&
+                echo "appendfsync everysec" >> /usr/local/etc/redis/redis.conf/redis.conf &&
+                echo "user default on >asnsnn34ANBShdj333be ~* +@all" >> /usr/local/etc/redis/users.acl &&
+                redis-server /usr/local/etc/redis/redis.conf/redis.conf --aclfile /usr/local/etc/redis/users.acl
+              '
+        volumes:
+            - redis-data:/data
+        ports:
+            - 6379:6379
+        restart: unless-stopped
+        networks:
+          - redis
+
+volumes:
+  fluxy-data:
+  pgadmin-data:
+  redis-data:
+
+networks:
+  postgres:
+    driver: bridge
+  redis:
+    driver: bridge

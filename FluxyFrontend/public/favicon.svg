@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ReFluxy">
+  <defs>
+    <linearGradient id="refluxyGradient" x1="48" y1="48" x2="464" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B5CF6" />
+      <stop offset="0.55" stop-color="#6366F1" />
+      <stop offset="1" stop-color="#22D3EE" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#refluxyGradient)" />
+  <path
+    d="M170 156 L170 356 L326 256 Z"
+    fill="#ffffff"
+    stroke="#ffffff"
+    stroke-width="44"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+  />
+  <path
+    d="M386 176 A96 96 0 0 1 386 336"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="40"
+    stroke-linecap="round"
+  />
+  <path
+    d="M424 156 A128 128 0 0 1 424 356"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="34"
+    stroke-linecap="round"
+    opacity="0.85"
+  />
+</svg>
