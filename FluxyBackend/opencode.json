@@ -4,6 +4,9 @@
     "edit": "ask",
     "bash": {
       "*": "ask",
+	  "read": "allow",
+	  "grep": "allow",
+	  "glob": "allow",
       "ls": "allow"
     }
   }
