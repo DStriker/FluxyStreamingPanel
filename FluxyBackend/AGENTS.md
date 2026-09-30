@@ -18,11 +18,11 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 - Single branch, commit directly. Don't open branches or PRs.
 - `git` 2.43.0 is on PATH via the **user** PATH entry `C:\Users\user\Tools\Git\cmd` (a copy of the portable git that ships inside `C:\Program Files\BeefLang\bin\Git`; `msys64` has no git). It works on the repo one level up. New shells pick it up; a shell started before the change needs a restart.
 
-## Intended architecture — the 3 layer projects are empty and unreferenced
+## Intended architecture — the 3 layer projects are still almost empty
 
-`FluxyBackend.slnx` contains **4** projects. Only `Fluxy.API` contains source; `Fluxy.Core`, `Fluxy.Application`, `Fluxy.DataAccess` are **empty class libraries with zero `.cs` files and no package references**. `Fluxy.API.csproj` has **no `ProjectReference` to any of them**, so nothing in the layers is visible to the app.
+`FluxyBackend.slnx` contains **4** projects. The `ProjectReference` graph below is already wired, but `Fluxy.Core` and `Fluxy.Application` still have **zero `.cs` files**. `Fluxy.DataAccess` holds the `DbContext` and the `AddDataAccess` DI extension; `Fluxy.API` holds the `Program.cs` wiring and `Configuration/DotEnvConfigurationExtensions.cs`.
 
-The intended dependency graph (confirmed by the owner — this is the contract, not a guess):
+The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
 ```
 Fluxy.API ──┬──> Fluxy.Application ──┐
@@ -33,9 +33,9 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 - **Fluxy.API** — controllers, request/response DTOs (contracts), configuration.
 - **Fluxy.Application** — services and business logic. References Core **and** DataAccess.
 - **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
-- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Configurations/` (table configs), `Entities/`, `Migrations/`, `Repositores/` (data-access logic, spelling is as intended — do not "fix" it), plus the `DbContext`.
+- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), plus the planned `Configurations/` (table configs), `Entities/`, `Migrations/`, `Repositories/` (data-access logic). Folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
-**Trap:** adding a class to a layer project does nothing until you also add the `<ProjectReference>` to the consuming csproj. Wire the graph above when you start filling a project in.
+**The graph above is already wired in the csproj files** — add a class to a layer and it is visible to the consumers immediately, no `ProjectReference` editing needed.
 
 ## The API currently exposes zero endpoints
 
@@ -55,6 +55,27 @@ The old inline `BasicAuthHandler` (hardcoded `admin`/`admin`) has been **deleted
 - Auth is opt-in per controller via `[Authorize]`, but with no scheme registered an `[Authorize]` endpoint will fail at request time instead of returning 401. Add a scheme first, then authorize.
 
 Don't assume any auth, cookies, or sessions exist.
+
+## PostgreSQL is wired up (EF Core 10, Npgsql provider)
+
+The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:
+
+- `Fluxy.DataAccess` references `Npgsql.EntityFrameworkCore.PostgreSQL` **10.0.3**, `Microsoft.EntityFrameworkCore` **10.0.12** (pinned explicitly) and `Microsoft.EntityFrameworkCore.Design` **10.0.12** (`PrivateAssets=all`). The explicit EF reference is not redundant: the provider only requires EF `>= 10.0.4`, so without it NuGet resolved 10.0.4 against the 10.0.12 of Design and the build failed with **MSB3277**. Never use the 11.x line of the provider — it targets EF Core 11.
+- `Fluxy.DataAccess/Context/FluxyDbContext.cs` — plain `DbContext`, only a `DbContextOptions<FluxyDbContext>` constructor, and `OnModelCreating` that applies all `IEntityTypeConfiguration` from its own assembly. **No `DbSet` and no entity types yet** (`Model.GetEntityTypes()` is empty), so there is no schema and `Fluxy.DataAccess/Migrations` is still empty.
+- `Fluxy.DataAccess/ServiceCollectionExtensions.cs` — `services.AddDataAccess(configuration)` reads `ConnectionStrings:Postgres` and calls `UseNpgsql`. It **throws `InvalidOperationException` at startup** when the connection string is missing, with a message naming the three ways to provide it. That is the intended fail-fast, not a bug to silence.
+- `Program.cs` calls `builder.Services.AddDataAccess(builder.Configuration)` — the API layer never names Npgsql or EF Core.
+
+**Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Configuration/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
+
+- The file is searched **upwards from the content root, 3 levels** (content root is `Fluxy.API/`, the file is next to `compose.yaml`), and a missing file is not an error — the app only logs a warning.
+- The source is **inserted at position 0** of `builder.Sources`, not appended. In .NET configuration the **last** provider that knows a key wins, so appending would have made `.env` the *highest* priority source and it would have overridden user-secrets. Verified both ways.
+- Therefore anything in `appsettings.json`, user-secrets or environment variables wins, including a hand-written `ConnectionStrings:Postgres`. `scripts\init-secrets.ps1 -SeedUserSecrets` writes exactly that key, so after running it the stored secret overrides the value derived from `.env` — after a rotation either re-run the script or remove the key with `dotnet user-secrets --project Fluxy.API remove "ConnectionStrings:Postgres"`.
+- An incomplete set of `POSTGRES_*` keys produces **no** connection string at all, on purpose: connecting with an empty password would be worse than the descriptive startup failure.
+- The password is not quoted/escaped. It works because `init-secrets.ps1` generates hex; a secret containing `;` or `=` would need quoting.
+- Deriving from the file also means `POSTGRES_*` supplied as real environment variables are **not** picked up — configure `ConnectionStrings:Postgres` directly in that setup.
+- `dotnet ef` is **not installed** (`dotnet tool install --global dotnet-ef` is required before the first migration), and redis is still not connected from the app — no StackExchange.Redis reference, nothing reads `ConnectionStrings:Redis`.
+
+Verifying the wiring without touching the database: `dotnet build` plus resolving the context (`provider: Npgsql.EntityFrameworkCore.PostgreSQL`, `NpgsqlConnection` in state `Closed`) is enough — a `DbContext` opens no connection on construction. No request currently uses the context, so the running app proves nothing about it on its own.
 
 ## Infrastructure (compose.yaml) and secrets
 
@@ -110,9 +131,9 @@ Two traps that produce false failures:
 
 ### Still true from before
 
-- **The API connects to none of them yet** — no EF Core / Npgsql / StackExchange.Redis package reference, no `ConnectionStrings` section in either appsettings file. Don't assume a database or cache exists when writing code.
+- **Only postgres is connected from the app** (see the section above). Redis still has no StackExchange.Redis reference and nothing reads `ConnectionStrings:Redis`; pgadmin is manual tooling. Don't assume a cache exists when writing code.
 - compose bind-mounts `../2. Init Database` into `/docker-entrypoint-initdb.d`, but **that folder does not exist** in the repo, so Docker silently creates an empty directory in the parent and Postgres gets no bootstrap SQL.
-- `UserSecretsId` is set — use `dotnet user-secrets --project Fluxy.API set "..."` (or the script's `-SeedUserSecrets`) for real connection strings rather than committing them to appsettings.
+- `UserSecretsId` is set — use `dotnet user-secrets --project Fluxy.API set "..."` rather than committing connection strings to appsettings. The app prefers it over the `.env`-derived value.
 - Ports are on `0.0.0.0`, so the LAN can attempt every service. Password strength is the only control; nothing here is hardened for the public internet.
 
 ## Dev-mode behavior (verified by running)
@@ -135,4 +156,5 @@ See `FluxyFrontend/src/lib/api.js` and `csrf.js` for the exact shapes before inv
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
 - `ImplicitUsings` and `Nullable` are enabled in all 4 projects.
-- Comments and commit messages in this repo are mixed Russian/English; match the surrounding file when editing.
+- **Comments in project files are written in English** — code, config files and this rule itself. Russian stays where it belongs: this document, commit messages and anything that is prose for humans, not source. XML doc comments (`///`) are preferred over inline comments.
+- Identifier naming is standard .NET (`FluxyDbContext`, not `FluxyContext`/`DBContext`); folder names are `Configurations/`, `Entities/`, `Context/`, `Migrations/`, `Repositories/`.

@@ -11,6 +11,23 @@
     <Folder Include="Migrations\" />
     <Folder Include="Entities\" />
     <Folder Include="Repositories\" />
+    <Folder Include="Context\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Referenced explicitly to pin one EF Core version for the whole graph: the Npgsql provider
+         only requires >= 10.0.4, so without this NuGet would pick 10.0.4 while
+         Microsoft.EntityFrameworkCore.Design pulls 10.0.12, which ends up as an MSB3277 conflict. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <!-- PostgreSQL provider for Entity Framework Core. Version 10.0.3 targets EF Core 10
+         (it requires Microsoft.EntityFrameworkCore >= 10.0.4 and < 11.0.0). -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- Design-time only: required by "dotnet ef" and the migration scaffolding.
+         PrivateAssets keeps the tooling out of the consumers of this project. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
