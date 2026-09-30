@@ -25,6 +25,19 @@ namespace Fluxy.API.Configuration
         private const string PasswordKey = "POSTGRES_PASSWORD";
 
         /// <summary>
+        /// Keys of the redis secrets inside the <c>.env</c> file. They are the same variables
+        /// <c>compose.yaml</c> interpolates, so the app and compose cannot drift apart.
+        /// </summary>
+        /// <remarks>
+        /// Only <c>REDIS_ACL_HASH</c> reaches the container; the app authenticates with the
+        /// clear text <c>REDIS_PASSWORD</c>, which stays on the host.
+        /// </remarks>
+        private const string RedisHostKey = "REDIS_HOST";
+        private const string RedisPortKey = "REDIS_PORT";
+        private const string RedisUsernameKey = "REDIS_USER";
+        private const string RedisPasswordKey = "REDIS_PASSWORD";
+
+        /// <summary>
         /// Host and port to assume when the <c>.env</c> file does not override them. The postgres port
         /// is published on the host, so <c>localhost</c> is what the app connects to. A containerized
         /// app would need the service name <c>postgres</c> and could add <c>POSTGRES_HOST</c> to
@@ -32,6 +45,11 @@ namespace Fluxy.API.Configuration
         /// </summary>
         private const string DefaultHost = "localhost";
         private const string DefaultPort = "5432";
+
+        /// <summary>
+        /// The same defaults for redis, which publishes 6379 the same way postgres publishes 5432.
+        /// </summary>
+        private const string DefaultRedisPort = "6379";
 
         /// <summary>
         /// How far above the content root the <c>.env</c> file is looked for. The content root of
@@ -76,6 +94,7 @@ namespace Fluxy.API.Configuration
 
             var values = Parse(File.ReadAllLines(path));
             AddDerivedPostgresConnectionString(values);
+            AddDerivedRedisConnectionString(values);
 
             // Inserted at the front on purpose: the last provider that knows a key wins, so the
             // .env file has to come first to stay the lowest priority one. Everything configured in
@@ -190,6 +209,40 @@ namespace Fluxy.API.Configuration
                 $"Database={database}",
                 $"Username={username}",
                 $"Password={password}");
+        }
+
+        /// <summary>
+        /// Composes <c>ConnectionStrings:Redis</c> from the <c>REDIS_*</c> secrets of the
+        /// <c>.env</c> file, in the format StackExchange.Redis parses: comma separated options
+        /// rather than the semicolon separated pairs Npgsql uses.
+        /// </summary>
+        /// <remarks>
+        /// The user name is not optional. The compose redis runs with <c>user default off</c>,
+        /// so an unauthenticated connection is impossible and a string without
+        /// <c>user=</c> would be rejected. <c>abortConnect=false</c> is requested because
+        /// <c>AddRedis</c> forces it anyway, and having it visible in the file makes the
+        /// start-up tolerance of a missing redis obvious to whoever reads it.
+        /// </remarks>
+        private static void AddDerivedRedisConnectionString(Dictionary<string, string?> values)
+        {
+            if (!values.TryGetValue(RedisUsernameKey, out var username) || string.IsNullOrWhiteSpace(username)
+                || !values.TryGetValue(RedisPasswordKey, out var password) || string.IsNullOrWhiteSpace(password))
+            {
+                return;
+            }
+
+            var host = values.TryGetValue(RedisHostKey, out var configuredHost) && !string.IsNullOrWhiteSpace(configuredHost)
+                ? configuredHost
+                : DefaultHost;
+            var port = values.TryGetValue(RedisPortKey, out var configuredPort) && !string.IsNullOrWhiteSpace(configuredPort)
+                ? configuredPort
+                : DefaultRedisPort;
+
+            values[$"ConnectionStrings:{ServiceCollectionExtensions.RedisConnectionName}"] = string.Join(',',
+                $"{host}:{port}",
+                $"user={username}",
+                $"password={password}",
+                "abortConnect=false");
         }
     }
 }

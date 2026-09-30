@@ -1,4 +1,4 @@
-namespace Fluxy.Application.Services
+namespace Fluxy.Core.Abstractions
 {
     /// <summary>
     /// Brings the database up to date and makes sure the installation has an administrator to

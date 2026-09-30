@@ -1,0 +1,35 @@
+@fluxy.FluxyAPI_HostAddress = http://localhost:5159
+@https = https://localhost:7221
+
+### Get CSRF token
+GET {{fluxy.FluxyAPI_HostAddress}}/api/auth/csrf
+Accept: application/json
+
+###
+
+### Register a new account
+POST {{fluxy.FluxyAPI_HostAddress}}/api/auth/register
+Content-Type: application/json
+Accept: application/json
+X-Recaptcha-Token: test-token
+X-CSRF-Token: {{csrf-token}}
+
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "Test1234"
+}
+
+###
+
+### Confirm registration
+POST {{fluxy.FluxyAPI_HostAddress}}/api/auth/register/confirm
+Content-Type: application/json
+Accept: application/json
+X-Recaptcha-Token: test-token
+X-CSRF-Token: {{csrf-token}}
+
+{
+  "email": "test@example.com",
+  "code": "123456"
+}

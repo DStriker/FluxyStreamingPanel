@@ -1,3 +1,4 @@
+using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;

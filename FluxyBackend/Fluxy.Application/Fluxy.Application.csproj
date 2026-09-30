@@ -11,7 +11,10 @@
          requires Relational >= 10.0.4, and the 10.0.12 of Fluxy.DataAccess that would raise it
          does not flow here (Design is PrivateAssets), so NuGet would resolve 10.0.4 in this
          project and the build would fail with MSB3277. Relational brings Core 10.0.12 with it. -->
+    <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageReference Include="StackExchange.Redis" Version="3.3.1" />
   </ItemGroup>
 
   <ItemGroup>

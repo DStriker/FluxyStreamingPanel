@@ -38,14 +38,15 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 
 **The graph above is already wired in the csproj files** — add a class to a layer and it is visible to the consumers immediately, no `ProjectReference` editing needed.
 
-## The API currently exposes zero endpoints
+## Interfaces belong in Core, implementations in Application
 
-`Fluxy.API/Controllers/` is **empty**. `Program.cs` still calls `AddControllers()` and `MapControllers()`, but there are no controllers, so:
+**Every business-logic interface lives in `Fluxy.Core`. Every implementation lives in `Fluxy.Application`.** This is not a new convention being invented — `IUserSeeder` already follows it, and so does everything added since.
 
-- Every path 404s, including `/weatherforecast/` and `/api/Test`. Verified against a running instance.
-- `GET /openapi/v1.json` returns 200 with `"paths": {}` — the Swagger UI at `/swagger` loads but is **empty**. An empty `paths` object is expected, not a bug.
-- `Fluxy.API/Fluxy.API.http` is **stale** — it requests `/weatherforecast/`, which no longer exists. Update it when you add the first endpoint.
-- `Fluxy.API.csproj` still carries `<Folder Include="Controllers\" />`, and `.vs/` holds a stale `RefluxyBackend.slnx` alongside the current one. Both are harmless leftovers.
+The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and the API csproj never names a concrete implementation type. `Program.cs` wires them together and is the only place where an interface and a class meet.
+
+Why it matters here: it keeps the dependency graph honest. Core depends on nothing, Application depends on Core and DataAccess, API depends on Core and Application. If an interface leaked into DataAccess, the API would be able to reach infrastructure abstractions directly and the layering would stop meaning anything.
+
+**Watch out for the MSB3277 trap.** Any new project that references `Fluxy.DataAccess` and touches EF types must explicitly pin `Microsoft.EntityFrameworkCore.Relational` 10.0.12 (see the PostgreSQL section below for the full explanation). The registration service in `Fluxy.Application` does this already.
 
 ## Auth is not set up at all
 
@@ -68,6 +69,15 @@ The app talks to the compose postgres, to the already existing `fluxy` database,
 - `Fluxy.DataAccess/ServiceCollectionExtensions.cs` — `services.AddDataAccess(configuration)` reads `ConnectionStrings:Postgres` and calls `UseNpgsql`. It **throws `InvalidOperationException` at startup** when the connection string is missing, with a message naming the three ways to provide it. That is the intended fail-fast, not a bug to silence.
 - `Program.cs` calls `builder.Services.AddDataAccess(builder.Configuration)` — the API layer never names Npgsql or EF Core.
 
+### Redis is now connected (StackExchange.Redis 3.3.1)
+
+`Fluxy.DataAccess` and `Fluxy.Application` both reference **StackExchange.Redis 3.3.1**.
+
+- `Fluxy.DataAccess/ServiceCollectionExtensions.cs` also has `AddRedis(configuration)`, which reads `ConnectionStrings:Redis` and registers a **singleton** `IConnectionMultiplexer`. It parses the string at startup (`ConfigurationOptions.Parse`) so a malformed value fails loudly, but it forces `AbortOnConnectFail = false` so a redis that is not running does **not** prevent the host from starting. `IConnectionMultiplexer` may be `null` when no connection string was configured at all — that is valid, not an error.
+- `AddDerivedRedisConnectionString` in `DotEnvConfigurationExtensions.cs` mirrors `AddDerivedPostgresConnectionString`: it composes `ConnectionStrings:Redis` from `REDIS_USER` / `REDIS_PASSWORD` / `REDIS_HOST` / `REDIS_PORT` in the `.env` file, defaulting to `localhost:6379`. The `user=` segment is **mandatory** because compose runs redis with `user default off`.
+- `RedisAttemptThrottle` (Application) uses a Lua script (`INCR` + `PEXPIRE` on first) so several instances share the window. It **falls back to a `ConcurrentDictionary` in process memory** when redis is unreachable, so registration keeps working even with redis down.
+- **The `Redis:Required` config key (`true`/`false`) controls whether a missing connection string is fatal.** It defaults to non-fatal.
+
 **Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Configuration/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
 
 - The file is searched **upwards from the content root, 3 levels** (content root is `Fluxy.API/`, the file is next to `compose.yaml`), and a missing file is not an error — the app only logs a warning.
@@ -76,7 +86,7 @@ The app talks to the compose postgres, to the already existing `fluxy` database,
 - An incomplete set of `POSTGRES_*` keys produces **no** connection string at all, on purpose: connecting with an empty password would be worse than the descriptive startup failure.
 - The password is not quoted/escaped. It works because `init-secrets.ps1` generates hex; a secret containing `;` or `=` would need quoting.
 - Deriving from the file also means `POSTGRES_*` supplied as real environment variables are **not** picked up — configure `ConnectionStrings:Postgres` directly in that setup.
-- `dotnet ef` **10.0.12** is installed as a global tool (`dotnet tool install --global dotnet-ef --version 10.0.12`). Scaffolding works with no connection string at all thanks to the design time factory; redis is still not connected from the app — no StackExchange.Redis reference, nothing reads `ConnectionStrings:Redis`.
+- `dotnet ef` **10.0.12** is installed as a global tool (`dotnet tool install --global dotnet-ef --version 10.0.12`). Scaffolding works with no connection string at all thanks to the design time factory.
 
 Verifying the wiring without touching the database: `dotnet build` plus resolving the context (`provider: Npgsql.EntityFrameworkCore.PostgreSQL`, `NpgsqlConnection` in state `Closed`) is enough — a `DbContext` opens no connection on construction. The seeder is the one place that talks to the database at startup.
 
@@ -187,26 +197,147 @@ Two traps that produce false failures:
 
 ### Still true from before
 
-- **Only postgres is connected from the app** (see the section above). Redis still has no StackExchange.Redis reference and nothing reads `ConnectionStrings:Redis`; pgadmin is manual tooling. Don't assume a cache exists when writing code.
+- **Postgres and redis are both connected from the app** (see the sections above). Redis holds only the rate-limit counters and degrades to process memory when unreachable — there is no cache, no session store, and no distributed lock. pgadmin is manual tooling.
 - compose bind-mounts `../2. Init Database` into `/docker-entrypoint-initdb.d`, but **that folder does not exist** in the repo, so Docker silently creates an empty directory in the parent and Postgres gets no bootstrap SQL.
 - `UserSecretsId` is set — use `dotnet user-secrets --project Fluxy.API set "..."` rather than committing connection strings to appsettings. The app prefers it over the `.env`-derived value.
 - Ports are on `0.0.0.0`, so the LAN can attempt every service. Password strength is the only control; nothing here is hardened for the public internet.
+
+## The registration endpoints
+
+Three endpoints exist now. They are the first thing in the API layer, and they fix the empty-Swagger problem described earlier.
+
+| Endpoint | Auth | Rate limit | Purpose |
+| --- | --- | --- | --- |
+| `GET /api/auth/csrf` | none | none | Issue the antiforgery token |
+| `POST /api/auth/register` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code |
+| `POST /api/auth/register/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
+
+### The layering
+
+```
+AuthController (API)
+  └─ IRegistrationService  (Core) ── RegistrationService  (Application)
+  ├─ IRecaptchaValidator   (Core) ── GoogleRecaptchaValidator (Application)
+  ├─ IAttemptThrottle      (Core) ── RedisAttemptThrottle  (Application)
+  └─ IEmailSender          (Core) ── SmtpEmailSender       (Application)
+```
+
+The controller owns transport: which check runs first, what HTTP status each outcome gets, what the error code is. The service owns rules: what is valid, what happens to the row, when the code expires. Neither knows about the other.
+
+### Error codes (snake_case, matching the `captchaAction` precedent)
+
+| Code | HTTP | When |
+| --- | --- | --- |
+| `registration_submitted` | 200 | Account stored, code mailed |
+| `registration_not_configured` | 503 | No SMTP settings on this server |
+| `validation_failed` | 400 | Field-level rejection (body or service) |
+| `user_already_exists` | 409 | Username or email is taken |
+| `registration_confirmed` | 200 | Code was valid and unexpired |
+| `invalid_code` | 400 | Code wrong, or no pending code for that address |
+| `code_expired` | 400 | Code was correct but the 15-minute window closed |
+| `captcha_invalid` | 400 | reCAPTCHA refused the token |
+| `registration_rate_limited` | 429 | Registration window for this IP is full |
+| `confirmation_rate_limited` | 429 | Confirmation attempts for this IP are exhausted |
+| `email_delivery_failed` | 502 | Account stored, but mail did not go out |
+| `csrf_invalid` | 400 | Missing or stale antiforgery token |
+
+Every response carries `{ code, message }`. The frontend reads `data.message`; the `code` is for programmatic branching. **The messages are English fallback text** — the frontend will eventually resolve them from locale files keyed by `code`.
+
+### The decisions worth not re-litigating
+
+- **Email is normalized**: `Trim().ToLowerInvariant()`. Username is only `Trim()`-ed; case is preserved and compared case sensitively (existing decision, see the user domain section).
+- **An existing `Unregistered` account is silently taken over.** The new password replaces the old hash and a fresh code is issued. A `Registered` or `Blocked` account is never touched.
+- **A lost race for a unique value becomes the same 409 the loser would have got from a sequential check.** `DuplicateRegistrationException` carries that race so the controller can map it. This is the one place a database exception is caught and treated as an expected outcome.
+- **The row is written before the mail is sent.** A code that exists only in memory could not survive a crash, and sending first would mail a code for a row that may never commit. The cost: a transient SMTP failure leaves the user `Unregistered` with a pending code, and a new registration request replaces it.
+- **The mail-config check is the first thing `RegisterAsync` does.** A server without SMTP refuses a registration immediately, before any validation or bcrypt, and returns 503 rather than storing a row it cannot follow up on. `register/confirm` does not send mail and is therefore unaffected.
+- **`BCrypt.Verify` costs as much as `BCrypt.HashPassword`.** That is why the confirm endpoint must be rate-limited — it is the only place the server will do expensive key derivation on an unauthenticated request. The throttle records the attempt *before* the code is compared, so the expensive path is unreachable once the window is full.
+
+### CSRF
+
+Built-in `IAntiforgery`. The framework cookie name is **not** changed. A readable `XSRF-TOKEN` cookie is written manually on every `GET /api/auth/csrf` response, containing `tokenSet.RequestToken`. The request header is `X-CSRF-Token` (`options.HeaderName`). The frontend reads the cookie first and falls back to the JSON body — both paths yield the same value.
+
+**The token is checked by calling `IAntiforgery.ValidateRequestAsync` in each POST, not with `[ValidateAntiForgeryToken]`.** The attribute resolves to the MVC filter `ValidateAntiforgeryTokenAuthorizationFilter`, which is registered by **`AddControllersWithViews` only** — this project calls `AddControllers` because it is a JSON API with no views, so the attribute resolves to a type that is not in the container and every protected request fails with **500 `No service for type ... ValidateAntiforgeryTokenAuthorizationFilter has been registered`**. Verified against a running instance. Pulling the Razor view engine in to satisfy an attribute is the wrong trade for an API that has no views.
+
+The explicit call is also strictly better on the response: the attribute answers a bad token with a 400 and **no body at all**, which the frontend renders as "something went wrong". Asking the service directly produces the same verdict with `{ code: "csrf_invalid", message: ... }`. Both POSTs call `RejectsCsrfAsync()` first, before the captcha and before any database work.
+
+Two API changes in this framework version worth remembering, both verified here:
+
+- There is **no `AddApiBehaviorOptions`** extension. Use `services.Configure<ApiBehaviorOptions>(...)`.
+- There is **no `HttpContext.GetAntiforgeryTokenSet()`**. Inject `IAntiforgery` and call `GetAndStoreTokens(HttpContext)`, which is synchronous and also writes the framework cookie.
+
+### reCAPTCHA
+
+Bypassed when `Recaptcha:SecretKey` is empty. This keeps a dev machine usable and is the reason `getCaptchaToken()` can return `null` in DEV. **A startup warning is logged when the key is missing** so a production deployment that forgot it does not silently have no protection.
+
+The action is fixed per endpoint, not chosen by the caller: `register` for `POST /api/auth/register`, `register_confirm` for `POST /api/auth/register/confirm`. The frontend must call `getCaptchaToken('register')` to match.
+
+### Email
+
+`SmtpEmailSender` never throws. A missing server, an unreachable server, or refused credentials all come back as an `EmailSendResult`, never as an exception. `IsConfigured` requires `Email:Host` + `Email:From`; `Email:User` / `Email:Password` are an optional **pair** — one without the other is treated as misconfiguration and logged.
+
+`AddEmail` does **not** fail-fast at startup (unlike `AddDataAccess` and `AddRedis`). This asymmetry is intentional: a machine with no mail server is a valid state for the rest of the application.
+
+### CORS
+
+`CorsExtensions.AddFrontendCors(configuration)` reads `Cors:AllowedOrigins`. `AllowCredentials` is required (the frontend uses cookies). A wildcard `*` is **rejected at startup** — it cannot be combined with credentials and would produce a confusing browser error later. An empty list logs a warning and means no browser can reach the API.
+
+### The custom `InvalidModelStateResponseFactory`
+
+The default `ValidationProblemDetails` has no `message` field, so the frontend would show nothing. `ConfigureApiBehavior` replaces it with `{ code, message, errors }` where `errors` is a field-name → messages map.
+
+Note: there is no `AddApiBehaviorOptions` extension in .NET 10; use `services.Configure<ApiBehaviorOptions>(...)` instead.
+
+### What was verified by running, and what it caught
+
+Every row below was produced against a live instance talking to the compose postgres and the compose redis, with a throwaway SMTP sink standing in for a mail server.
+
+| Scenario | Result |
+| --- | --- |
+| `GET /api/auth/csrf` | 200, both cookies written, `XSRF-TOKEN` readable, body token equals the cookie |
+| POST without `X-CSRF-Token` | 400 `csrf_invalid` **with** a body |
+| POST, no mail configured | 503 `registration_not_configured`, **no row written** |
+| POST valid | 200 `registration_submitted`, row inserted with `status = 0`, mail delivered |
+| POST password too simple | 400 `validation_failed`, `errors.password`, **permit not spent** |
+| POST taken username | 409 `user_already_exists`, **permit not spent** |
+| POST again for the same `Unregistered` account | 200, `UPDATE` of password + code only, `created_at` untouched |
+| `register/confirm` wrong code | 400 `invalid_code` |
+| `register/confirm` unknown address | 400 `invalid_code` — identical, so addresses cannot be probed |
+| `register/confirm` correct but past its window | 400 `code_expired` |
+| `register/confirm` correct, address in a different case | 200 `registration_confirmed`, `status = 1`, code cleared |
+| 11th confirmation in a window | 429 `confirmation_rate_limited`, and the log shows **no SQL at all after the refusal** |
+| 2nd registration in a window | 429 `registration_rate_limited` |
+| Preflight from `localhost:5173` | 204 with `Allow-Origin` + `Allow-Credentials: true` |
+| Preflight from a foreign origin | 204 with **no** `Access-Control-*` header |
+| `Cors:AllowedOrigins` set to `*` | startup aborts with a message naming the section |
+
+The Redis keys were read straight out of the container — `fluxy:throttle:register:::1` and `fluxy:throttle:confirm:::1`, both with a live `PTTL`. They survived three restarts of the application, which the in-memory fallback cannot do, so Redis and not process memory is what was measured. `KEYS` from the `fluxy` user is denied by the ACL exactly as documented above; read a **known** key with `GET` instead.
+
+Running it caught two bugs that reading the code did not:
+
+- **`SmtpEmailSender` authenticated with an empty user name.** The test was `settings.User is not null`, and the shipped `appsettings.json` carries `"User": ""`, which binds to an empty string and *is* not null. MailKit then called `AuthenticateAsync` against a relay that requires no authentication and threw `NotSupportedException: The SMTP server does not support authentication` — a working configuration turned into a delivery failure. `ResolvedSettings` now carries a `Credentials` record or `null`, so the pair is never half present and never empty.
+- **Validation errors answered with `Username`, not `username`.** Model binding reports a failing member under the **C# property name**, not under the JSON path, so the camelCase normalization in `FieldErrorKeys` never ran for a body property. The factory also groups by normalized key instead of calling `ToDictionary`, because a value that failed both while being read and while being validated lands under two keys that normalize to one name and would throw out of a factory that exists to *describe* a problem.
 
 ## Dev-mode behavior (verified by running)
 
 - `MapOpenApi()` + Swagger UI (doc at `/openapi/v1.json`) + developer exception page + HTTP logging are **all inside `if (app.Environment.IsDevelopment())`**. Outside Development there is no API doc and no detailed error page.
 - `app.UseHttpsRedirection()` is unconditional, but the `http` profile configures no HTTPS port, so the middleware logs "Failed to determine the https port for redirect" and passes http requests straight through (200, not a 307).
-- **No CORS is configured**, and the frontend has no Vite dev proxy (it calls relative `/api/*`). Browser requests from `localhost:5173` will be blocked until a CORS policy is added here.
+- **CORS is configured** (`Cors:AllowedOrigins` in `appsettings.json`). The frontend has no Vite dev proxy, so `localhost:5173` must be listed there.
 
-## Frontend contract that does not exist yet
+## The IP address used for rate limiting
 
-`FluxyFrontend` already calls, none of which the backend implements:
+`HttpContext.Connection.RemoteIpAddress` — the socket address as this server sees it. **No reverse proxy is configured yet.** The moment one is put in front of the app, this becomes the proxy's address and every client shares one rate-limit window. `UseForwardedHeaders` must be added at the very top of the pipeline before anything else reads the address.
 
-- `POST /api/auth/{action}` with `{ username, password, captchaAction, captchaToken, email? }`, `credentials: 'include'`, headers `Content-Type: application/json`, `X-Recaptcha-Token`, `X-CSRF-Token`. Errors are read from `data.message`.
-- `GET /api/auth/csrf` — the token is read from the `XSRF-TOKEN` cookie first, falling back to a JSON body `token` / `csrfToken`.
-- The `action` in the path is **kebab-case** (`client-login`) while the page passes **snake_case** (`client_login`) as `captchaAction`. Keep both in mind.
+On a loopback client the address is `::1`, so the Redis keys are `fluxy:throttle:register:::1` and `fluxy:throttle:confirm:::1` — the colons belong to the IPv6 address and are **not** a key nesting separator.
 
-See `FluxyFrontend/src/lib/api.js` and `csrf.js` for the exact shapes before inventing new ones.
+Limits are configured under `RateLimit` (`RegisterLimit` 1 per `RegisterWindow` 15 min, `ConfirmLimit` 10 per `ConfirmWindow` 15 min) and validated at startup with `ValidateOnStart()`.
+
+## Known limits of the current throttling
+
+Deliberate, but worth writing down so nobody re-derives them:
+
+- **Failed registration attempts are free.** The permit is spent only when a row is actually persisted, so `validation_failed` and `user_already_exists` do not consume it. That was the requirement, and it keeps a user who mistypes their password from being locked out — but it means the registration endpoint has **no cap on its own failure rate**. Account enumeration is mitigated by anonymizing both conflicts into one `user_already_exists` answer, not by the limit. If enumeration ever matters more than the convenience, count failures too.
+- **The 6-digit code is only throttled per IP, with no per-account counter.** Ten guesses per window per address is cheap for one attacker with many addresses.
+- **A transient SMTP failure leaves the account `Unregistered`** with a pending code for the remainder of its 15 minutes. A new registration request replaces it, which is the intended recovery, but the window is spent until then.
 
 ## Conventions
 
