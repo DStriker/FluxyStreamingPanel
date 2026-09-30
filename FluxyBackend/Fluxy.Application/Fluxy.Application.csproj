@@ -7,12 +7,24 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Pinned explicitly for the same reason as in Fluxy.DataAccess: the Npgsql provider only
+         requires Relational >= 10.0.4, and the 10.0.12 of Fluxy.DataAccess that would raise it
+         does not flow here (Design is PrivateAssets), so NuGet would resolve 10.0.4 in this
+         project and the build would fail with MSB3277. Relational brings Core 10.0.12 with it. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Services\" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Fluxy.Core\Fluxy.Core.csproj" />
     <ProjectReference Include="..\Fluxy.DataAccess\Fluxy.DataAccess.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
   </ItemGroup>
 
 </Project>

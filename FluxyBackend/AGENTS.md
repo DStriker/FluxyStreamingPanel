@@ -8,6 +8,7 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 dotnet build FluxyBackend.slnx                                 # 4 projects, ~4s, 0 warnings
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
+dotnet ef migrations add <Name> --project Fluxy.DataAccess    # scaffolds into Fluxy.DataAccess/Migrations
 docker_run.bat                                                # generates .env if missing, then == docker compose up -d (run from FluxyBackend)
 powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)generate secrets in .env; -Force regenerates all
 ```
@@ -18,9 +19,9 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 - Single branch, commit directly. Don't open branches or PRs.
 - `git` 2.43.0 is on PATH via the **user** PATH entry `C:\Users\user\Tools\Git\cmd` (a copy of the portable git that ships inside `C:\Program Files\BeefLang\bin\Git`; `msys64` has no git). It works on the repo one level up. New shells pick it up; a shell started before the change needs a restart.
 
-## Intended architecture — the 3 layer projects are still almost empty
+## Intended architecture — the layers are wired, the API layer is still thin
 
-`FluxyBackend.slnx` contains **4** projects. The `ProjectReference` graph below is already wired, but `Fluxy.Core` and `Fluxy.Application` still have **zero `.cs` files**. `Fluxy.DataAccess` holds the `DbContext` and the `AddDataAccess` DI extension; `Fluxy.API` holds the `Program.cs` wiring and `Configuration/DotEnvConfigurationExtensions.cs`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring and `Configuration/DotEnvConfigurationExtensions.cs`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -33,7 +34,7 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 - **Fluxy.API** — controllers, request/response DTOs (contracts), configuration.
 - **Fluxy.Application** — services and business logic. References Core **and** DataAccess.
 - **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
-- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), plus the planned `Configurations/` (table configs), `Entities/`, `Migrations/`, `Repositories/` (data-access logic). Folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
+- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/`, and the planned `Repositories/` (data-access logic). Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
 **The graph above is already wired in the csproj files** — add a class to a layer and it is visible to the consumers immediately, no `ProjectReference` editing needed.
 
@@ -61,7 +62,9 @@ Don't assume any auth, cookies, or sessions exist.
 The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:
 
 - `Fluxy.DataAccess` references `Npgsql.EntityFrameworkCore.PostgreSQL` **10.0.3**, `Microsoft.EntityFrameworkCore` **10.0.12** (pinned explicitly) and `Microsoft.EntityFrameworkCore.Design` **10.0.12** (`PrivateAssets=all`). The explicit EF reference is not redundant: the provider only requires EF `>= 10.0.4`, so without it NuGet resolved 10.0.4 against the 10.0.12 of Design and the build failed with **MSB3277**. Never use the 11.x line of the provider — it targets EF Core 11.
-- `Fluxy.DataAccess/Context/FluxyDbContext.cs` — plain `DbContext`, only a `DbContextOptions<FluxyDbContext>` constructor, and `OnModelCreating` that applies all `IEntityTypeConfiguration` from its own assembly. **No `DbSet` and no entity types yet** (`Model.GetEntityTypes()` is empty), so there is no schema and `Fluxy.DataAccess/Migrations` is still empty.
+- **The same MSB3277 trap now applies to `Fluxy.Application`**, which uses `AnyAsync`/`MigrateAsync`. Because Design is `PrivateAssets=all`, the 10.0.12 it drags in does not flow, so NuGet resolved Relational 10.0.4 there while `Fluxy.DataAccess.dll` wanted 10.0.12. Fixed by pinning `Microsoft.EntityFrameworkCore.Relational` **10.0.12** explicitly in `Fluxy.Application.csproj` (Relational brings Core 10.0.12 with it). **Any new project that references `Fluxy.DataAccess` and touches EF types must do the same**, otherwise it builds with MSB3277 and then throws a confusing `ServiceProvider` failure at runtime.
+- `Fluxy.DataAccess/Context/FluxyDbContext.cs` — plain `DbContext`, one `DbContextOptions<FluxyDbContext>` constructor, `DbSet<UserEntity> Users`, both `SaveChanges` overloads stamping the audit columns, and `OnModelCreating` that applies all `IEntityTypeConfiguration` from its own assembly and then the entity conventions (see "Domain rules" below). The model is no longer empty: it holds the `users` entity.
+- `Fluxy.DataAccess/Context/FluxyDbContextFactory.cs` — `IDesignTimeDbContextFactory`, so `dotnet ef` works without starting the application. The connection string only selects the provider and is never used to connect; it reads `ConnectionStrings__Postgres` and otherwise falls back to a placeholder. Set that variable for `dotnet ef database update`, otherwise the command would try the placeholder credentials.
 - `Fluxy.DataAccess/ServiceCollectionExtensions.cs` — `services.AddDataAccess(configuration)` reads `ConnectionStrings:Postgres` and calls `UseNpgsql`. It **throws `InvalidOperationException` at startup** when the connection string is missing, with a message naming the three ways to provide it. That is the intended fail-fast, not a bug to silence.
 - `Program.cs` calls `builder.Services.AddDataAccess(builder.Configuration)` — the API layer never names Npgsql or EF Core.
 
@@ -73,9 +76,62 @@ The app talks to the compose postgres, to the already existing `fluxy` database,
 - An incomplete set of `POSTGRES_*` keys produces **no** connection string at all, on purpose: connecting with an empty password would be worse than the descriptive startup failure.
 - The password is not quoted/escaped. It works because `init-secrets.ps1` generates hex; a secret containing `;` or `=` would need quoting.
 - Deriving from the file also means `POSTGRES_*` supplied as real environment variables are **not** picked up — configure `ConnectionStrings:Postgres` directly in that setup.
-- `dotnet ef` is **not installed** (`dotnet tool install --global dotnet-ef` is required before the first migration), and redis is still not connected from the app — no StackExchange.Redis reference, nothing reads `ConnectionStrings:Redis`.
+- `dotnet ef` **10.0.12** is installed as a global tool (`dotnet tool install --global dotnet-ef --version 10.0.12`). Scaffolding works with no connection string at all thanks to the design time factory; redis is still not connected from the app — no StackExchange.Redis reference, nothing reads `ConnectionStrings:Redis`.
 
-Verifying the wiring without touching the database: `dotnet build` plus resolving the context (`provider: Npgsql.EntityFrameworkCore.PostgreSQL`, `NpgsqlConnection` in state `Closed`) is enough — a `DbContext` opens no connection on construction. No request currently uses the context, so the running app proves nothing about it on its own.
+Verifying the wiring without touching the database: `dotnet build` plus resolving the context (`provider: Npgsql.EntityFrameworkCore.PostgreSQL`, `NpgsqlConnection` in state `Closed`) is enough — a `DbContext` opens no connection on construction. The seeder is the one place that talks to the database at startup.
+
+## Domain rules — every entity, every row
+
+Two rules apply to **every** persisted entity. They are enforced by code, not by a convention somebody has to remember:
+
+1. The primary key is a **`uuid`**, generated on the client (`Guid.NewGuid()` in the `AuditableEntity` constructor, `ValueGenerated.Never` in the model convention). Never `gen_random_uuid()` and never an `int`.
+2. The row stores **`created_at`** and **`updated_at`** (`timestamp with time zone`, mapped from `DateTimeOffset`). They are stamped by the context, never by the entity.
+
+`Fluxy.Core/Abstractions/AuditableEntity.cs` supplies the three properties — public getters, **private** setters, so EF can write them and nothing else can. It has two constructors: one that generates the key, and one that rehydrates a row (used by `UserEntity.FromModel`).
+
+`FluxyDbContext` does the rest:
+
+- `ApplyAudit()` runs from **both** `SaveChanges` overloads. `Added` gets `CreatedAt = UpdatedAt = DateTimeOffset.UtcNow` (equal, so a fresh row is not born with an `UpdatedAt` a few ticks newer), `Modified` gets a fresh `UpdatedAt`. One `now` per call, so reading `UpdatedAt` twice for one save is safe.
+- `ApplyAuditableEntityConvention()` walks every entity type and **throws** `InvalidOperationException` when a non-owned, non-shared type has no single-column `Guid` primary key, or a nullable `CreatedAt`/`UpdatedAt`. The columns themselves still come from the base class — the convention validates the shape.
+- Column and table names are **explicit** (`.HasColumnName(...)` in each `IEntityTypeConfiguration`) — snake_case, table plural. `UseSnakeCaseNamingConvention` is **not available** in `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3; it lives in the separate `EFCore.NamingConventions` package, which this project does not reference.
+- `HasDefaultValue` is used **nowhere**, on purpose: a value the database invents when the application forgot a column hides the mistake instead of surfacing it.
+
+Verified by running: an insert leaves `created_at = updated_at`; a later update keeps `created_at` and moves `updated_at` forward.
+
+## The user domain
+
+One aggregate, four artifacts, plus the first row.
+
+| Artifact | Where | What it is |
+| --- | --- | --- |
+| Model | `Fluxy.Core/Models/Users/User.cs` | `sealed record` with init-only properties, plus `UserRole` and `UserStatus` in the same folder |
+| Entity | `Fluxy.DataAccess/Entities/UserEntity.cs` | `sealed class UserEntity : AuditableEntity` with `ToModel()` / `FromModel(User)` |
+| Configuration | `Fluxy.DataAccess/Configurations/UserConfiguration.cs` | the `users` table, the limits, the indexes, the CHECK constraint |
+| Migration | `Fluxy.DataAccess/Migrations/20260930145246_InitialCreate.cs` | DDL only, generated by `dotnet ef` |
+
+`users`: `id uuid` PK; `username varchar(20)` **unique**; `email varchar(254)` **unique**; `password_hash varchar(255)`; `role smallint`; `status smallint`; `registration_code_hash varchar(255)`; `registration_code_expires_at timestamptz`; `registered_at timestamptz`; `created_at` / `updated_at timestamptz`.
+
+Decisions worth not re-litigating:
+
+- **Both enums are stored as `smallint`** via `.HasConversion<short>()`. Their numeric values are fixed; do not renumber them.
+- **`UserRole` is ordered** — `Client=1 < Reseller=2 < Admin=3`, every level includes the rights of the one below, so a permission check is `user.Role >= requiredRole`.
+- **`UserStatus` is NOT ordered** — `Unregistered=0, Registered=1, Blocked=2` are states of one user, not levels of access. Comparing statuses with `>=` is a bug; test for the exact member. The XML docs on both enums say so.
+- **`status` is stored, not derived from `registered_at`.** A row once carried only `registered_at IS NOT NULL`, which covered two states; adding `Blocked` broke that, so `status` became a real column and `registered_at` is now a pure timestamp — *when* it was registered. Rule: `registered_at` is filled when leaving `Unregistered` and is **not** cleared by a block.
+- `ck_users_registered_at_status` = `registered_at IS NULL OR status <> 0` guards the one contradiction that would make a row mean two things at once (a registration timestamp on an account that is still `Unregistered`). The opposite is deliberately allowed — blocking an account that never confirmed its email is a legitimate move against a spammer. Verified both directions in the database.
+- **Login and email are compared case sensitively** (`admin` and `Admin` are two accounts). Verified in the database.
+- **`User` is not a response contract.** It carries `PasswordHash` and `RegistrationCodeHash` because the state of the account needs them; anything sent to a client has to be built from it explicitly, without those two.
+
+### The first administrator
+
+`Fluxy.Application/Services/DefaultUserSeeder.cs`, reached through `AddApplicationServices()` in `Program.cs` and run by `await app.Services.SeedDatabaseAsync()` **before** `app.Run()`.
+
+- It calls `Database.MigrateAsync()` first — idempotent, so installing is `docker compose up` plus `dotnet run`, and `dotnet ef database update` is not needed.
+- If any user with `Role = Admin` exists, it does nothing and prints nothing.
+- Otherwise it inserts `admin` / `admin@localhost`, `Role = Admin`, `Status = Registered`, `RegisteredAt = CreatedAt`, and a **random 20 character password**, and logs it once.
+- **There is no `HasData` anywhere, on purpose.** A bootstrap password baked into a migration file is a password in the git history forever, and it cannot be a random one because a migration cannot print anything. This is the reason the row is created by a service.
+- There are **no configuration keys** for it — the password is always generated, and it is stored nowhere in clear text (not in the repo, not in the database). Save it from the log; `docker compose logs` also contains it, which is accepted for a dev machine.
+- It is an awaited call rather than an `IHostedService` on purpose: hosted services start in registration order, so Kestrel could serve requests before the schema existed.
+- On the very first run EF logs `fail: … SELECT "MigrationId" … FROM "__EFMigrationsHistory"` — that is the probe for the migrations history table, not a failure. The migration is applied on the next line.
 
 ## Infrastructure (compose.yaml) and secrets
 
@@ -97,7 +153,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1
 - The named volume mounts at **`/var/lib/postgresql`**, and `PGDATA` is left at the image default `/var/lib/postgresql/18/docker`. In postgres 18 both `PGDATA` and the image's `VOLUME` moved off `/var/lib/postgresql/data` (the entrypoint even detects the old mount). **Do not move the volume back** — use `pg_dumpall`/`pg_restore` or `pg_upgrade` to cross major versions.
 - `POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"` is required. Without it `initdb` writes `trust` for `127.0.0.1/32` and `::1/128`, and the entrypoint's `host all all all scram-sha-256` line lands *after* them — `pg_hba.conf` is first-match-wins, so TCP logins need no password at all. The unix socket deliberately stays `trust` so `docker exec postgres psql -U fluxy` keeps working.
 - **Changing `POSTGRES_PASSWORD` does not affect an existing volume** — the entrypoint reads it only when `PGDATA` is empty. Either `docker compose down -v` (acceptable while the database is empty) or `docker exec -it postgres psql -U fluxy -d postgres -c "ALTER USER fluxy WITH PASSWORD '...'"`.
-- There is no schema yet: EF Core migrations in `Fluxy.DataAccess/Migrations` are the intended path.
+- The schema is created by EF Core migrations in `Fluxy.DataAccess/Migrations`, applied by the seeder at startup. There is **no** bootstrap SQL: compose still bind-mounts the missing `../2. Init Database` folder, and that stays empty.
 
 ### redis (`redis:8.6`)
 

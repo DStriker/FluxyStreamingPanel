@@ -1,6 +1,7 @@
 
 
 using Fluxy.API.Configuration;
+using Fluxy.Application;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;
 
@@ -9,7 +10,7 @@ namespace Fluxy.API
 
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +26,7 @@ namespace Fluxy.API
             // Add services to the container.
 
             builder.Services.AddDataAccess(builder.Configuration);
+            builder.Services.AddApplicationServices();
             builder.Services.AddControllers();
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi(); 
@@ -65,6 +67,11 @@ namespace Fluxy.API
 
 
             app.MapControllers();
+
+            // Applies the pending migrations and creates the first administrator, which prints
+            // its generated password once. It runs before app.Run() so that the schema exists
+            // by the time the first request arrives.
+            await app.Services.SeedDatabaseAsync();
 
             app.Run();
         }
