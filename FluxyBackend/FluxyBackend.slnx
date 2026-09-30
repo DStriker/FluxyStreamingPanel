@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="Fluxy.API/Fluxy.API.csproj" />
+  <Project Path="Fluxy.Application/Fluxy.Application.csproj" Id="5bd39015-c95f-47a3-92b5-febeadaaff2c" />
+  <Project Path="Fluxy.Core/Fluxy.Core.csproj" Id="c76ef4af-5369-4d94-9f1a-806439d32ce8" />
+  <Project Path="Fluxy.DataAccess/Fluxy.DataAccess.csproj" Id="b4da22ab-1ff0-4e37-9f95-632b3f5a903a" />
 </Solution>

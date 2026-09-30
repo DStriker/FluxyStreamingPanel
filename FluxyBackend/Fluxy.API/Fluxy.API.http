@@ -1,6 +1,0 @@
-@Refluxy.API_HostAddress = http://localhost:5159
-
-GET {{Refluxy.API_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

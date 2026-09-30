@@ -1,60 +1,99 @@
+# Пароли НЕ хранятся в этом файле. Они читаются из .env (в .gitignore),
+# который генерируется скриптом:
+#   powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1
+# Обязательные переменные подставляются через ${VAR:?подсказка}, поэтому
+# отсутствующий секрет валит compose с внятной ошибкой, а не даёт
+# запустить сервис с пустым паролем.
+#
+# Порты публикуются на 0.0.0.0 - postgres, redis и pgadmin доступны из
+# локальной сети. Взамен redis ограничен ACL (см. ниже), у postgres
+# scram-sha-256, у каждого сервиса свой пароль.
+
 services:
     postgres:
         container_name: postgres
-        image: postgres:latest
+        image: postgres:18.6
         command: "postgres"
         environment:
-            POSTGRES_DB: "fluxy"
-            POSTGRES_USER: "fluxy"
-            POSTGRES_PASSWORD: "asnsnn34ANBShdj333be"
-            PGDATA: "/var/lib/postgresql/data/pgdata"
+            POSTGRES_DB: "${POSTGRES_DB:-fluxy}"
+            POSTGRES_USER: "${POSTGRES_USER:-fluxy}"
+            POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?не задано - запустите scripts/init-secrets.ps1}"
+            # Без этого initdb делает trust для 127.0.0.1/32 и ::1/128, а
+            # scram-sha-256 дописывается в конец pg_hba.conf, а он читается
+            # по первому совпадению - то есть по TCP пароль не спрашивается.
+            # Локальный unix-сокет остаётся на trust, поэтому docker exec
+            # postgres psql -U fluxy работает без пароля.
+            POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
         volumes:
             - ../2. Init Database:/docker-entrypoint-initdb.d
-            - fluxy-data:/var/lib/postgresql/data
+            # В postgres:18 PGDATA = /var/lib/postgresql/18/docker, и VOLUME
+            # переехал с /var/lib/postgresql/data на /var/lib/postgresql.
+            - fluxy-data:/var/lib/postgresql
         ports:
             - "5432:5432"
         restart: unless-stopped
         networks:
             - postgres
-            
+
     pgadmin:
         container_name: pgadmin
-        image: dpage/pgadmin4:latest
+        image: dpage/pgadmin4:9.10
         environment:
-          PGADMIN_DEFAULT_EMAIL: "mainuser@mail.com"
-          PGADMIN_DEFAULT_PASSWORD: "asnsnn34ANBShdj333be"
-          PGADMIN_CONFIG_SERVER_MODE: "False"
+          PGADMIN_DEFAULT_EMAIL: "${PGADMIN_EMAIL:-mainuser@mail.com}"
+          PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_PASSWORD:?не задано - запустите scripts/init-secrets.ps1}"
+          # True обязателен, пока порт 5050 доступен из локальной сети:
+          # в desktop mode ("False") pgAdmin отдаёт /browser/ без формы входа
+          # и пароль PGADMIN_DEFAULT_PASSWORD ни на что не влияет.
+          PGADMIN_CONFIG_SERVER_MODE: "True"
+          # Мастер-пароль не включён: вход администратора и есть контроль доступа.
+          PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+          # Регистрируем сервер автоматически. Host здесь - имя сервиса compose,
+          # а не 127.0.0.1: у контейнера pgAdmin своя сетевая namespaces, и
+          # 127.0.0.1 внутри него - это сам pgAdmin (connection refused).
+          PGADMIN_SERVER_JSON_FILE: "/servers.json"
+          # servers.json - источник истины: на каждом старте список серверов
+          # пересоздаётся, поэтому ошибочно заведённый сервер не залипает.
+          PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
         volumes:
           - pgadmin-data:/var/lib/pgadmin
+          # Пароля БД здесь нет намеренно - pgAdmin спросит его при подключении.
+          - ./pgadmin/servers.json:/servers.json:ro
         ports:
           - "5050:80"
         networks:
           - postgres
-          
+
     redis:
         container_name: redis
-        image: redis:latest
+        image: redis:8.6
         environment:
-            REDIS_PASSWORD: "asnsnn34ANBShdj333be"
-            REDIS_USER: "fluxy"
-            REDIS_USER_PASSWORD: "asnsnn34ANBShdj333be"
-            REDIS_PORT: 6379
-            REDIS_DATABASES: 16
+            # В контейнер уходят только хеши SHA-256 - открытых паролей
+            # нет ни в docker inspect, ни в docker compose config.
+            REDIS_USER: "${REDIS_USER:-fluxy}"
+            REDIS_ACL_HASH: "${REDIS_ACL_HASH:?не задано - запустите scripts/init-secrets.ps1}"
+            # Пусто -> пользователь dev-admin не создаётся.
+            REDIS_ADMIN_ACL_HASH: "${REDIS_ADMIN_ACL_HASH:-}"
         command: >
               sh -c '
-                mkdir -p /usr/local/etc/redis/redis.conf && truncate -s 0 /usr/local/etc/redis/redis.conf/redis.conf &&
-                truncate -s 0 /usr/local/etc/redis/users.acl &&
-                echo "bind 0.0.0.0" > /usr/local/etc/redis/redis.conf/redis.conf &&
-                echo "requirepass asnsnn34ANBShdj333be" >> /usr/local/etc/redis/redis.conf/redis.conf &&
-                echo "appendonly yes" >> /usr/local/etc/redis/redis.conf/redis.conf &&
-                echo "appendfsync everysec" >> /usr/local/etc/redis/redis.conf/redis.conf &&
-                echo "user default on >asnsnn34ANBShdj333be ~* +@all" >> /usr/local/etc/redis/users.acl &&
-                redis-server /usr/local/etc/redis/redis.conf/redis.conf --aclfile /usr/local/etc/redis/users.acl
+                printf "bind 0.0.0.0\nprotected-mode yes\nappendonly yes\nappendfsync everysec\ndir /data\n" > /tmp/redis.conf &&
+                printf "user default off\nuser $$REDIS_USER on #$$REDIS_ACL_HASH ~* &* +@all -@admin -@dangerous +client|setname +client|getname +client|setinfo\n" > /tmp/users.acl &&
+                if [ -n "$$REDIS_ADMIN_ACL_HASH" ]; then printf "user dev-admin on #$$REDIS_ADMIN_ACL_HASH ~* +@all\n" >> /tmp/users.acl; fi &&
+                exec redis-server /tmp/redis.conf --aclfile /tmp/users.acl
               '
+        # Права пользователя приложения: +@all -@admin -@dangerous.
+        # Читает и пишет любые данные, но не может CONFIG / MODULE / DEBUG /
+        # SHUTDOWN / REPLICAOF / FLUSHALL / FLUSHDB / RESTORE / KEYS / SORT /
+        # INFO / SAVE / ACL. +client|setinfo нужен StackExchange.Redis при
+        # коннекте. ~* - все ключи, &* - все каналы pub/sub.
+        # Lua остаётся разрешённой: её используют distributed lock'и
+        # StackExchange.Redis. В песочнице Redis, но может нагружать CPU.
+        # default выключен - неаутентифицированного доступа нет.
+        # Конфиг и ACL пишутся в /tmp и пересобираются на каждом старте,
+        # поэтому восстановление доступа = docker compose up -d --force-recreate redis
         volumes:
             - redis-data:/data
         ports:
-            - 6379:6379
+            - "6379:6379"
         restart: unless-stopped
         networks:
           - redis

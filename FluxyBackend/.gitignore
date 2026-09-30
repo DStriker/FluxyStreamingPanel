@@ -1,0 +1,6 @@
+# Локальные секреты - никогда не коммитить.
+# Реальные значения генерируются: scripts\init-secrets.ps1
+.env
+.env.*
+!.env.example
+secrets/

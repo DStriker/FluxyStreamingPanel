@@ -1,0 +1,12 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "fluxy-postgres",
+            "Group": "Fluxy",
+            "Host": "postgres",
+            "Port": 5432,
+            "Username": "fluxy",
+            "MaintenanceDB": "fluxy"
+        }
+    }
+}
