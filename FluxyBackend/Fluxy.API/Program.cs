@@ -16,10 +16,13 @@ namespace Fluxy.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // The compose .env file (next to compose.yaml) holds the real infrastructure secrets and is
-            // gitignored, so it is read from disk here instead of being duplicated in appsettings.json.
-            // It also provides ConnectionStrings:Postgres and ConnectionStrings:Redis, composed from its
-            // POSTGRES_* and REDIS_* secrets.
+            // The .env file (next to compose.yaml) holds the real secrets and is gitignored, so it is read
+            // from disk here instead of being duplicated in appsettings.json. Compose reads the same
+            // file for the passwords of postgres, pgadmin and redis; this call composes
+            // ConnectionStrings:Postgres and ConnectionStrings:Redis out of its POSTGRES_* and
+            // REDIS_* keys, and feeds SMTP_* and RECAPTCHA_SECRET_KEY to the options they configure.
+            // No credential appears in appsettings.json at all - not even as an empty placeholder,
+            // because a key present there outranks this file and would silently win over it.
             // The search walks up from the content root, because the content root is the Fluxy.API
             // project folder while the file lives one directory above it. The file is inserted as the
             // FIRST source rather than appended, so appsettings.json, environment variables and
@@ -72,13 +75,22 @@ namespace Fluxy.API
             if (envFilePath is null)
             {
                 // Not fatal on its own - the same values may come from user-secrets or environment
-                // variables - but AddDataAccess throws a descriptive error at the first real use.
+                // variables - but AddDataAccess throws a descriptive error at the first real use, and
+                // without the file the mail settings have nowhere to come from at all.
                 app.Logger.LogWarning(
-                    "No .env file was found above the content root, so the compose secrets were not " +
-                    "loaded. Connection strings have to come from user-secrets or environment variables.");
+                    "No .env file was found above the content root, so the secrets it holds were not " +
+                    "loaded. Connection strings, SMTP settings and the reCAPTCHA key have to come from " +
+                    "user-secrets or environment variables.");
             }
 
-            if (!CorsExtensions.HasAllowedOrigins(builder.Configuration))
+            if (!CorsExtensions.IsEnabled(builder.Configuration))
+            {
+                app.Logger.LogWarning(
+                    $"The browser policy is switched off ('{CorsExtensions.EnabledKey}' is false). " +
+                    "Browsers may reach this API from its own origin only - a page served from " +
+                    "another origin will be refused, and no origin list can bring it back.");
+            }
+            else if (!CorsExtensions.HasAllowedOrigins(builder.Configuration))
             {
                 app.Logger.LogWarning(
                     $"No origin is listed in '{CorsExtensions.OriginsSectionName}', so no browser " +
@@ -92,8 +104,8 @@ namespace Fluxy.API
                 // it has been exploited.
                 app.Logger.LogWarning(
                     $"'{RecaptchaOptions.SectionName}:SecretKey' is not set, so the reCAPTCHA check " +
-                    "is bypassed entirely and every registration is accepted on its word. Set the key " +
-                    "before exposing this installation.");
+                    "is bypassed entirely and every registration is accepted on its word. Put " +
+                    "RECAPTCHA_SECRET_KEY in .env before exposing this installation.");
             }
 
             // Configure the HTTP request pipeline.
@@ -107,12 +119,31 @@ namespace Fluxy.API
                     options.SwaggerEndpoint("/openapi/v1.json", "API v1");
                 });
             }
-            app.UseHttpsRedirection();
-
             // Routing comes first so that CORS and the authorization middleware can see which
             // endpoint is about to handle the request.
             app.UseRouting();
-            app.UseCors(CorsExtensions.PolicyName);
+
+            // CORS has to answer a preflight itself. A preflight that gets redirected first is
+            // answered with a 307 that carries no Access-Control-Allow-Origin, and the browser
+            // reports that as `PreflightMissingAllowOriginHeader` - a CORS failure caused by
+            // middleware ordering, not by the origin policy. `UseCors` therefore runs before
+            // `UseHttpsRedirection`, which is the reverse of the order the templates suggest.
+            app.UseFrontendCors();
+
+            // TLS is terminated by whatever fronts this process, so the redirect is skipped for
+            // requests that arrived through the Vite dev proxy. That proxy sends
+            // `X-Forwarded-Proto: http`, and a proxied response must not redirect: the browser
+            // would follow the Location to a different scheme, the call becomes cross-origin, and
+            // the antiforgery cookies come back `secure` over a plain http connection and are
+            // discarded - which reads as `csrf_invalid` with no cause in the response.
+            //
+            // Scoped to Development on purpose. Outside it the header is attacker-controlled, and
+            // honouring it would let anyone skip TLS on this process. A production deployment
+            // terminates TLS at its own reverse proxy, which is not this middleware's business.
+            app.UseWhen(
+                context => !app.Environment.IsDevelopment()
+                    || !context.Request.Headers.ContainsKey(CorsExtensions.ProxyProtocolHeader),
+                branch => branch.UseHttpsRedirection());
 
             //app.UseAuthentication();
             app.UseAuthorization();

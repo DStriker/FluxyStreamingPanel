@@ -66,3 +66,21 @@ body {
   margin-top: 8px;
   text-align: center;
 }
+
+/* The code field is the one control that is not full width. antd styles `Input.OTP` as
+   `display: inline-flex` (`antd/es/input/style/otp.js`), so `.ant-otp` shrink-wraps its six
+   cells and sits at the left edge of the wider wrapper - it reads as a stray fragment rather
+   than a field.
+   Centring therefore has to move the *box*, not distribute what is inside it: the wrapper is
+   the block that has the spare width, and `text-align` on it positions the inline-level
+   `.ant-otp` within itself. `justify-content` on `.ant-otp` cannot do this - the box is
+   already exactly as wide as its content, so there is nothing to distribute. Centring the
+   `ant-row` instead is also wrong: it would drag the control column along with the label. */
+.auth-form .auth-form__otp .ant-form-item-control-input-content {
+  text-align: center;
+}
+
+.auth-form .auth-form__otp .ant-form-item-label,
+.auth-form .auth-form__otp .ant-form-item-label > label {
+  text-align: center;
+}

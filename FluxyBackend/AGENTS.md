@@ -8,6 +8,7 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 dotnet build FluxyBackend.slnx                                 # 4 projects, ~4s, 0 warnings
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
+dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
 dotnet ef migrations add <Name> --project Fluxy.DataAccess    # scaffolds into Fluxy.DataAccess/Migrations
 docker_run.bat                                                # generates .env if missing, then == docker compose up -d (run from FluxyBackend)
 powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)generate secrets in .env; -Force regenerates all
@@ -15,7 +16,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 
 - Needs the .NET 10 SDK (installed: 10.0.401). Solution uses the new XML `.slnx` format.
 - **No test project, no `.editorconfig`, no lint/format config, no CI, no `Directory.Build.props`/`Directory.Packages.props` (no central package management).** Verification is `dotnet build` plus hitting the endpoint.
-- Both launch profiles hardcode `ASPNETCORE_ENVIRONMENT=Development`, so the dev-only middleware is on even outside Visual Studio. Content root is `Fluxy.API/`, not the repo root — run docker from `FluxyBackend/`, not from the project folder.
+- All three launch profiles hardcode `ASPNETCORE_ENVIRONMENT=Development`, so the dev-only middleware is on even outside Visual Studio — and the `lan` profile therefore serves Swagger and the developer exception page to the whole network. Content root is `Fluxy.API/`, not the repo root — run docker from `FluxyBackend/`, not from the project folder.
 - Single branch, commit directly. Don't open branches or PRs.
 - `git` 2.43.0 is on PATH via the **user** PATH entry `C:\Users\user\Tools\Git\cmd` (a copy of the portable git that ships inside `C:\Program Files\BeefLang\bin\Git`; `msys64` has no git). It works on the repo one level up. New shells pick it up; a shell started before the change needs a restart.
 
@@ -208,9 +209,11 @@ Three endpoints exist now. They are the first thing in the API layer, and they f
 
 | Endpoint | Auth | Rate limit | Purpose |
 | --- | --- | --- | --- |
-| `GET /api/auth/csrf` | none | none | Issue the antiforgery token |
-| `POST /api/auth/register` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code |
-| `POST /api/auth/register/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
+| `GET /auth/csrf` | none | none | Issue the antiforgery token |
+| `POST /auth/register` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code |
+| `POST /auth/register/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
+
+**There is no `api` segment in any route, on purpose.** This process serves nothing but the API, so a prefix that distinguishes it from a website tells nobody anything, and it becomes one more thing to change when the API is moved behind a path of its own — which a reverse proxy or a gateway adds anyway. The route lives in one place, `[Route("auth")]` on `AuthController`; the frontend builds its paths from the same shape in `src/lib/api.js`. If a shared host ever needs the distinction back, put it in front of the application as a path prefix rather than in the controllers.
 
 ### The layering
 
@@ -254,7 +257,7 @@ Every response carries `{ code, message }`. The frontend reads `data.message`; t
 
 ### CSRF
 
-Built-in `IAntiforgery`. The framework cookie name is **not** changed. A readable `XSRF-TOKEN` cookie is written manually on every `GET /api/auth/csrf` response, containing `tokenSet.RequestToken`. The request header is `X-CSRF-Token` (`options.HeaderName`). The frontend reads the cookie first and falls back to the JSON body — both paths yield the same value.
+Built-in `IAntiforgery`. The framework cookie name is **not** changed. A readable `XSRF-TOKEN` cookie is written manually on every `GET /auth/csrf` response, containing `tokenSet.RequestToken`. The request header is `X-CSRF-Token` (`options.HeaderName`). The frontend reads the cookie first and falls back to the JSON body — both paths yield the same value.
 
 **The token is checked by calling `IAntiforgery.ValidateRequestAsync` in each POST, not with `[ValidateAntiForgeryToken]`.** The attribute resolves to the MVC filter `ValidateAntiforgeryTokenAuthorizationFilter`, which is registered by **`AddControllersWithViews` only** — this project calls `AddControllers` because it is a JSON API with no views, so the attribute resolves to a type that is not in the container and every protected request fails with **500 `No service for type ... ValidateAntiforgeryTokenAuthorizationFilter has been registered`**. Verified against a running instance. Pulling the Razor view engine in to satisfy an attribute is the wrong trade for an API that has no views.
 
@@ -265,11 +268,76 @@ Two API changes in this framework version worth remembering, both verified here:
 - There is **no `AddApiBehaviorOptions`** extension. Use `services.Configure<ApiBehaviorOptions>(...)`.
 - There is **no `HttpContext.GetAntiforgeryTokenSet()`**. Inject `IAntiforgery` and call `GetAndStoreTokens(HttpContext)`, which is synchronous and also writes the framework cookie.
 
+### The middleware order is load-bearing: CORS before HTTPS redirection
+
+`app.UseCors(...)` runs **before** `app.UseHttpsRedirection()`. That is the reverse of the order the templates suggest, and it is deliberate.
+
+A CORS preflight must be answered by the CORS middleware itself. When redirection ran first, a preflight sent to the http port was answered with a **307** carrying no `Access-Control-Allow-Origin` at all — the request never reached the CORS middleware — and the browser reported it as **`PreflightMissingAllowOriginHeader`**. The origin policy was irrelevant; the failure was pure middleware ordering, and it looks identical to an origin that was refused. Verified against a running instance: the same preflight returned `307` with zero CORS headers before the change, `204` with the full set after it.
+
+The real `POST` improved as a side effect: the CORS middleware writes its headers before calling the next middleware, so the `307` on a non-preflight request now carries `Access-Control-Allow-Origin` and `Access-Control-Allow-Credentials` and a browser can follow the redirect instead of aborting the chain.
+
+Do not move `UseHttpsRedirection` back above `UseCors` to "tidy up" the pipeline. That is the exact regression this paragraph exists to prevent.
+
+### Serving clients that are not on this machine
+
+Kestrel binds `localhost` in the `http` and `https` profiles, so nothing outside the machine can reach it. The **`lan` profile** binds `http://0.0.0.0:5159`:
+
+```bash
+dotnet run --project Fluxy.API --launch-profile lan
+```
+
+It is **http only on purpose.** The dev certificate is `CN=localhost`, so an https listener on `0.0.0.0` would present a certificate that fails hostname validation on every remote client. Real TLS needs a certificate for the name clients actually use, which is a deployment concern rather than a profile.
+
+**CORS does not apply to these clients at all.** It is a browser mechanism: a browser refuses to hand a response to script that did not come from an allowed origin. `curl`, a native app and a server-to-server caller never consult it, which is why exposing the ports is enough for them and why the antiforgery cookies stay `SameSite=Lax` — the weakening a genuinely cross-site browser deployment would need is not required and has not been done.
+
+Verified over the LAN address: `GET /auth/csrf` → 200 with both cookies and no `secure` flag; `POST /auth/register` with the cookie and header → `captcha_invalid`, which is the next gate after CSRF; the same POST without the cookie → `csrf_invalid`.
+
+### The `https` profile turns a same-origin call into a CORS failure
+
+This one produced a long, misleading hunt, so the chain is written out. It is **not** a CORS configuration problem, and every link was measured against a running instance rather than inferred.
+
+1. Under the `https` profile the **http** port answers **`307`** to `https://localhost:7221`.
+2. A Vite dev server proxying `/auth` relays that redirect verbatim — a proxied response must not redirect, but nothing stops the proxy from passing it on.
+3. The browser follows it to a different **scheme**, so a request that was same-origin for the page becomes **cross-origin**.
+4. Cross-origin means a preflight. The backend answers it with `Access-Control-Allow-Origin` only for an origin in `Cors:AllowedOrigins`; otherwise the response is a `204` with no such header.
+5. The browser reports the missing header as **`PreflightMissingAllowOriginHeader`**.
+
+So a CORS error that appears *together with a redirect* means **the request reached this process without passing through the dev proxy** — usually the wrong port, or the proxy header missing. Check that first and the origin list second, or you will spend the day on the list. Measured while this was still broken: proxied `/auth/csrf` returned `307 → https://localhost:7221/auth/csrf`; the follow-up preflight from the real page origin came back `204` with no ACAO, while the same preflight from a listed origin came back `204` **with** it.
+
+### The fix is a forwarded-proto header, not "use the other profile"
+
+The chain above is now handled rather than merely documented around. The Vite dev proxy sets **`X-Forwarded-Proto: http`**, and `Program.cs` wraps `UseHttpsRedirection` in a `UseWhen` branch that skips it when that header is present **in Development only**:
+
+```csharp
+app.UseWhen(
+    context => !app.Environment.IsDevelopment()
+        || !context.Request.Headers.ContainsKey(CorsExtensions.ProxyProtocolHeader),
+    branch => branch.UseHttpsRedirection());
+```
+
+**Both launch profiles now work**, which is the point. Visual Studio launches the `https` profile by default, and a rule that only holds under `http` is a rule that breaks again on the next F5. Scoped to Development deliberately: outside it the header is attacker-controlled, and honouring it would let anyone skip TLS on this process — production terminates TLS at its own reverse proxy, which is not this middleware's job.
+
+The header carries the scheme the **browser** used. The dev server now speaks https (`@vitejs/plugin-basic-ssl` on the frontend side), so it sends `https`; the value is read only for its presence, but a marker stating the wrong scheme is worse than none — it would suppress the redirect while misreporting what happened.
+
+Note what this does **not** do: it does not run `UseForwardedHeaders`, so `Request.IsHttps` stays false and the antiforgery cookies are still written without `secure`. That is correct and required — the proxy reaches this process over plain http, so a `secure` cookie would be set on a response the browser received over an insecure connection. The browser's own connection to the dev server is https, which is a different hop and is what the antiforgery scheme check actually cares about. It also means the header is used **only** as a marker of "a terminator already decided", never to rewrite the scheme or the client address. Do not be tempted to switch that on: `RemoteIpAddress` is what the rate limiter keys on, and trusting a forwarded address from an unvalidated source would let one caller mint unlimited windows.
+
+Verified on the `https` profile with the proxy: `/auth/csrf` → `200` JSON, both cookies with `samesite=lax` and **no** `secure`, POST advancing to `captcha_invalid` (past CSRF), and the same POST without the cookie still refused with `csrf_invalid`. Directly hitting the http port without the header still returns the `307`, which is the intended behaviour — the guard is about proxied requests, not about disabling TLS.
+
+**Remember that the origin list is per-machine and lives in `.env`,** as `CORS_ALLOWED_ORIGINS` — currently `http://localhost:5173,http://localhost:5174`. A browser on any origin absent from it — a LAN address, another machine, a real domain — is refused, and it fails as a 204 preflight **with no `Access-Control-Allow-Origin`**, which is indistinguishable from the redirect chain above. Both 5173 and 5174 are listed because a second dev server used to push the page onto 5174 silently; `strictPort` in `vite.config.js` stops that happening again, and the extra entry is there so the failure cannot return if it does.
+
+**What `lan` exposes.** Both launch profiles pin `ASPNETCORE_ENVIRONMENT=Development`, so `lan` also serves Swagger UI, `/openapi/v1.json` and the developer exception page to the network, and the backend has **no authentication scheme at all** (see "Auth is not set up at all"). Only `/auth/csrf`, `/auth/register` and `/auth/register/confirm` exist. That is acceptable on a trusted LAN and is not a public deployment.
+
+### reCAPTCHA v3 cannot be satisfied by a non-browser client
+
+reCAPTCHA v3 tokens are minted by Google's JavaScript **running in a page**. There is no server-side way to produce one: `siteverify` only checks a token a page has already obtained. So with `RECAPTCHA_SECRET_KEY` set, `POST /auth/register` and `POST /auth/register/confirm` are **browser-only by construction** — a native app, `curl` or a server-to-server caller gets `captcha_invalid` however correct its antiforgery pair is. Verified: a correct cookie and header over the LAN address advances past CSRF and is then refused at the captcha.
+
+This is a real conflict between two reasonable requirements and it has no clean code fix. Exempting non-browser callers would remove the protection from exactly the callers worth protecting, since an attacker impersonating a legitimate integration is the case the check exists for. The workable answer is deployment-shaped rather than code-shaped: **leave the key empty on a development machine and set it only on the instance meant to serve browsers.** An empty key bypasses the check, which is also why a production deployment that forgot it logs a warning instead of failing quietly.
+
 ### reCAPTCHA
 
 Bypassed when `Recaptcha:SecretKey` is empty. This keeps a dev machine usable and is the reason `getCaptchaToken()` can return `null` in DEV. **A startup warning is logged when the key is missing** so a production deployment that forgot it does not silently have no protection.
 
-The action is fixed per endpoint, not chosen by the caller: `register` for `POST /api/auth/register`, `register_confirm` for `POST /api/auth/register/confirm`. The frontend must call `getCaptchaToken('register')` to match.
+The action is fixed per endpoint, not chosen by the caller: `register` for `POST /auth/register`, `register_confirm` for `POST /auth/register/confirm`. The frontend must call `getCaptchaToken('register')` to match.
 
 ### Email
 
@@ -280,6 +348,14 @@ The action is fixed per endpoint, not chosen by the caller: `register` for `POST
 ### CORS
 
 `CorsExtensions.AddFrontendCors(configuration)` reads `Cors:AllowedOrigins`. `AllowCredentials` is required (the frontend uses cookies). A wildcard `*` is **rejected at startup** — it cannot be combined with credentials and would produce a confusing browser error later. An empty list logs a warning and means no browser can reach the API.
+
+Both settings come from the gitignored `.env` as `CORS_ENABLED` and `CORS_ALLOWED_ORIGINS` (comma separated exact origins, each with scheme and port). `appsettings.json` carries **only** a `_comment` under `Cors:` — any key written there would shadow the file, and an empty string counts as written just as much as a filled one. `CORS_ALLOWED_ORIGINS` becomes indexed configuration keys (`Cors:AllowedOrigins:0`, `:1`, ...) because a list cannot be expressed through the flat `ApplicationSecretKeys` mapping. An origin is per-machine, which is the whole reason it is not committed.
+
+**CORS cannot be removed, only switched off — and switching it off is not the same as allowing everything.** The mechanism lives in the browser, not in the server: the server can only decide which origins to answer. The browser's default when no policy matches is to **refuse**. So `CORS_ENABLED=false` turns "sometimes refused" into "always refused"; it cannot make a cross-origin call succeed. It is honest only in the one topology where the policy is never consulted: page and API on a single origin, which is what the vite dev proxy produces, and what a reverse proxy produces in production.
+
+Verified both branches against a running instance: with `CORS_ENABLED` set in `.env`, the origin listed there answers `204` with `Access-Control-Allow-Origin` and an origin that is not listed answers `204` **without** it; with `Cors:Enabled=false` the preflight falls through to `405` and no CORS header is written, plus the startup warning naming the key.
+
+The two halves of the switch have to agree, which is why they are one method each rather than a call in `Program.cs`: `UseCors` for a policy that was never registered **throws at startup**. `AddFrontendCors` skips registering and `UseFrontendCors` skips asking, both reading the same key.
 
 ### The custom `InvalidModelStateResponseFactory`
 
@@ -293,7 +369,7 @@ Every row below was produced against a live instance talking to the compose post
 
 | Scenario | Result |
 | --- | --- |
-| `GET /api/auth/csrf` | 200, both cookies written, `XSRF-TOKEN` readable, body token equals the cookie |
+| `GET /auth/csrf` | 200, both cookies written, `XSRF-TOKEN` readable, body token equals the cookie |
 | POST without `X-CSRF-Token` | 400 `csrf_invalid` **with** a body |
 | POST, no mail configured | 503 `registration_not_configured`, **no row written** |
 | POST valid | 200 `registration_submitted`, row inserted with `status = 0`, mail delivered |

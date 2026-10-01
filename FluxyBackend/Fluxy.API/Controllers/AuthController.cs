@@ -20,8 +20,14 @@ namespace Fluxy.API.Controllers
     /// sentence. It holds no registration rule: a value that is wrong is rejected by
     /// <c>RegistrationService</c>, and if a rule ever changes this class is not where it changes.
     /// </remarks>
+    /// <remarks>
+    /// The route carries no <c>api</c> segment. This process serves nothing but the API, so a
+    /// prefix that distinguishes it from a website is a segment every caller has to type without
+    /// telling anybody anything - and it becomes one more thing to change when the API is moved
+    /// behind a path of its own, which a reverse proxy or gateway tends to add anyway.
+    /// </remarks>
     [ApiController]
-    [Route("api/auth")]
+    [Route("auth")]
     [Produces("application/json")]
     public sealed class AuthController : ControllerBase
     {

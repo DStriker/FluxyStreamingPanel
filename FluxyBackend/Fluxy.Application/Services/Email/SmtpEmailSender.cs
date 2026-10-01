@@ -14,6 +14,12 @@ namespace Fluxy.Application.Services.Email
     /// Every property is optional on purpose. A machine that has no mail server is a valid state
     /// - the rest of the application still works - so binding an empty section must not throw.
     /// The absence is reported through <see cref="IEmailSender.IsConfigured"/> instead.
+    ///
+    /// This section is deliberately absent from <c>appsettings.json</c>. The credentials come from
+    /// the gitignored <c>.env</c> file as <c>SMTP_HOST</c>, <c>SMTP_PORT</c>, <c>SMTP_USER</c>,
+    /// <c>SMTP_PASSWORD</c>, <c>SMTP_USE_TLS</c> and <c>SMTP_FROM</c>, and a placeholder key in
+    /// appsettings would shadow the real value, because appsettings has the higher priority. The
+    /// defaults below are what applies when the file says nothing.
     /// </remarks>
     public sealed class EmailOptions
     {

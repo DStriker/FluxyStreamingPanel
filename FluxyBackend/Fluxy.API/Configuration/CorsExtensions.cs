@@ -8,11 +8,36 @@ namespace Fluxy.API.Configuration
     /// </summary>
     public static class CorsExtensions
     {
+        /// <summary>
+        /// Header the Vite dev proxy sets on everything it forwards, carrying the scheme the
+        /// browser actually used.
+        /// </summary>
+        /// <remarks>
+        /// Its presence is what tells the pipeline that a request already came through a
+        /// terminator, so no redirect or cookie hardening applies to it. See the
+        /// <c>UseWhen</c> branch around <c>UseHttpsRedirection</c> in <c>Program.cs</c>, and
+        /// <c>vite.config.js</c> on the frontend side, which has to send it.
+        /// </remarks>
+        public const string ProxyProtocolHeader = "X-Forwarded-Proto";
+
         /// <summary>Configuration section the allowed origins are read from.</summary>
         public const string OriginsSectionName = "Cors:AllowedOrigins";
 
+        /// <summary>
+        /// Key that switches the browser policy off entirely. Absent or unparseable means on.
+        /// </summary>
+        public const string EnabledKey = "Cors:Enabled";
+
         /// <summary>Name of the registered policy.</summary>
         public const string PolicyName = "fluxy-frontend";
+
+        /// <summary>
+        /// Whether the browser policy is on. Defaults to on when the key is absent, so an
+        /// installation that never heard of the key behaves as before.
+        /// </summary>
+        /// <param name="configuration">Configuration to read.</param>
+        public static bool IsEnabled(IConfiguration configuration)
+            => !bool.TryParse(configuration[EnabledKey], out var enabled) || enabled;
 
         /// <summary>
         /// Registers the one browser policy this API has.
@@ -44,6 +69,15 @@ namespace Fluxy.API.Configuration
             this IServiceCollection services,
             IConfiguration configuration)
         {
+            // Switched off on purpose: no policy is registered at all, and `UseFrontendCors`
+            // correspondingly does not ask for one. A wildcard is not the way to express this -
+            // a browser refuses `*` together with credentials, and the request would still fail,
+            // only with a different and more confusing message.
+            if (!IsEnabled(configuration))
+            {
+                return services;
+            }
+
             var origins = ReadOrigins(configuration);
 
             if (origins.Any(origin => origin is "*" or "null"))
@@ -72,6 +106,25 @@ namespace Fluxy.API.Configuration
         /// <param name="configuration">Configuration to read from.</param>
         public static bool HasAllowedOrigins(IConfiguration configuration)
             => ReadOrigins(configuration).Length > 0;
+
+        /// <summary>
+        /// Adds the browser policy to the pipeline, unless it was switched off.
+        /// </summary>
+        /// <param name="app">Application to add the middleware to.</param>
+        /// <remarks>
+        /// Paired with <see cref="AddFrontendCors"/>: calling <c>UseCors</c> for a policy that was
+        /// never registered throws at start-up, which is why the decision has to be made in both
+        /// places and read from the same key.
+        /// </remarks>
+        public static void UseFrontendCors(this WebApplication app)
+        {
+            if (!IsEnabled(app.Configuration))
+            {
+                return;
+            }
+
+            app.UseCors(PolicyName);
+        }
 
         private static string[] ReadOrigins(IConfiguration configuration)
             => configuration.GetSection(OriginsSectionName).Get<string[]>() ?? [];

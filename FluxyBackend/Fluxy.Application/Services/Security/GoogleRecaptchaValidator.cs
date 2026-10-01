@@ -23,6 +23,11 @@ namespace Fluxy.Application.Services.Security
         /// <summary>
         /// Secret shared with the site key the browser uses. Absent means the check is bypassed.
         /// </summary>
+        /// <remarks>
+        /// Read from the gitignored <c>.env</c> file as <c>RECAPTCHA_SECRET_KEY</c>, never from
+        /// <c>appsettings.json</c>: a key that exists in appsettings shadows the file, so even an
+        /// empty placeholder there would silently win over the real secret.
+        /// </remarks>
         public string? SecretKey { get; set; }
 
         /// <summary>
@@ -76,9 +81,9 @@ namespace Fluxy.Application.Services.Security
             {
                 _logger.LogWarning(
                     "reCAPTCHA is not configured, so the check for action '{Action}' was skipped " +
-                    "entirely. Set {Section}:SecretKey to enforce it.",
+                    "entirely. Put the private key in .env as {EnvKey} to enforce it.",
                     expectedAction,
-                    RecaptchaOptions.SectionName);
+                    "RECAPTCHA_SECRET_KEY");
 
                 return RecaptchaValidationOutcome.Skipped;
             }

@@ -1,5 +1,7 @@
+import { apiUrl } from './url'
+
 const COOKIE_NAME = 'XSRF-TOKEN'
-const TOKEN_URL = '/api/auth/csrf'
+const TOKEN_URL = '/auth/csrf'
 
 let cachedToken = null
 
@@ -20,7 +22,12 @@ export async function getCsrfToken({ refresh = false } = {}) {
   }
 
   try {
-    const res = await fetch(TOKEN_URL, {
+    // Through `apiUrl`, not the bare path. A relative '/auth/csrf' goes to whatever is
+    // serving the page - the Vite dev server in development - which answers the SPA shell
+    // with a 200, so the token lookup silently yields nothing and every later POST comes
+    // back `csrf_invalid`. Same `credentials: 'include'` as `apiFetch`, because the
+    // antiforgery cookies live on the API's origin, not the page's.
+    const res = await fetch(apiUrl(TOKEN_URL), {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     })

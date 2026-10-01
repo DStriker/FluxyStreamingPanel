@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "favicon": "node scripts/generate-favicons.mjs",
+    "probe": "esbuild --bundle scripts/probe-registration.mjs --format=esm --platform=node --outfile=node_modules/.cache/probe-registration.mjs --log-level=error && node scripts/run-probe.mjs",
+    "probe:render": "esbuild --bundle scripts/probe-render.jsx --format=cjs --platform=node --jsx=automatic --outfile=node_modules/.cache/probe-render.cjs --log-level=error && node node_modules/.cache/probe-render.cjs",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -23,6 +25,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.37.0",
     "eslint-plugin-react-hooks": "^6.1.1",

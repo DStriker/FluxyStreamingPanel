@@ -1,3 +1,5 @@
+using Fluxy.Application.Services.Email;
+using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
@@ -5,8 +7,16 @@ using Microsoft.Extensions.Configuration.Memory;
 namespace Fluxy.API.Configuration
 {
     /// <summary>
-    /// Loads the compose <c>.env</c> file as a configuration source.
+    /// Loads the <c>.env</c> file as a configuration source, and derives the application
+    /// settings from it that no tracked file should hold.
     /// </summary>
+    /// <remarks>
+    /// The file serves two masters. Compose reads it directly for the passwords of postgres,
+    /// pgadmin and redis, and this class reads the same values to compose the connection strings -
+    /// so one generated file configures both halves without a second copy of any password. The
+    /// reCAPTCHA secret and the SMTP credentials are consumed by the application alone; compose
+    /// ignores variables it does not interpolate, so they simply sit unused there.
+    /// </remarks>
     public static class DotEnvConfigurationExtensions
     {
         /// <summary>
@@ -51,6 +61,65 @@ namespace Fluxy.API.Configuration
         /// </summary>
         private const string DefaultRedisPort = "6379";
 
+        /// <summary>Private key of the reCAPTCHA pair, shared with Google and with nothing else.</summary>
+        private const string RecaptchaSecretKey = "RECAPTCHA_SECRET_KEY";
+
+        /// <summary>
+        /// Credentials and address of the SMTP server the installation mails through.
+        /// </summary>
+        /// <remarks>
+        /// <c>SMTP_USER</c> and <c>SMTP_PASSWORD</c> are the only credentials here. The rest is
+        /// ordinary configuration, kept in this file anyway so that setting up a mail server never
+        /// means editing a tracked file.
+        /// </remarks>
+        private const string SmtpHostKey = "SMTP_HOST";
+        private const string SmtpPortKey = "SMTP_PORT";
+        private const string SmtpUsernameKey = "SMTP_USER";
+        private const string SmtpPasswordKey = "SMTP_PASSWORD";
+        private const string SmtpUseTlsKey = "SMTP_USE_TLS";
+        private const string SmtpFromKey = "SMTP_FROM";
+
+        /// <summary>
+        /// Switch for the browser policy, and the comma separated list of origins it allows.
+        /// </summary>
+        /// <remarks>
+        /// Neither is a secret, but both are per-machine, which is the reason they live in a
+        /// gitignored file rather than in a tracked one: the origin that has to be allowed is the
+        /// one this machine happens to serve the SPA from, and a committed list would be wrong on
+        /// every machine that is not the author's.
+        ///
+        /// <c>CORS_ALLOWED_ORIGINS</c> cannot go through <see cref="ApplicationSecretKeys"/> because
+        /// that maps one flat key to one flat key, and this is a list.
+        /// </remarks>
+        private const string CorsEnabledKey = "CORS_ENABLED";
+        private const string CorsOriginsKey = "CORS_ALLOWED_ORIGINS";
+
+        /// <summary>
+        /// Every <c>.env</c> key that feeds an application setting, paired with the configuration key
+        /// it feeds.
+        /// </summary>
+        /// <remarks>
+        /// Compose interpolates only the variables it names in <c>compose.yaml</c> and ignores the
+        /// rest, so the app's own secrets live in the same file as the infrastructure ones rather
+        /// than in a second place with its own rules.
+        ///
+        /// The section names come from the options types themselves, so a section that is renamed
+        /// cannot silently stop being fed.
+        ///
+        /// The order is not significant: nothing here is derived from anything else, unlike the two
+        /// connection strings.
+        /// </remarks>
+        private static readonly (string EnvKey, string ConfigurationKey)[] ApplicationSecretKeys =
+        [
+            (RecaptchaSecretKey, $"{RecaptchaOptions.SectionName}:SecretKey"),
+            (SmtpHostKey, $"{EmailOptions.SectionName}:Host"),
+            (SmtpPortKey, $"{EmailOptions.SectionName}:Port"),
+            (SmtpUsernameKey, $"{EmailOptions.SectionName}:User"),
+            (SmtpPasswordKey, $"{EmailOptions.SectionName}:Password"),
+            (SmtpUseTlsKey, $"{EmailOptions.SectionName}:UseTls"),
+            (SmtpFromKey, $"{EmailOptions.SectionName}:From")
+        ];
+
         /// <summary>
         /// How far above the content root the <c>.env</c> file is looked for. The content root of
         /// Fluxy.API is the project folder, while the file sits next to compose.yaml, so one level up
@@ -75,11 +144,24 @@ namespace Fluxy.API.Configuration
         /// user-secrets or environment variables.
         /// </returns>
         /// <remarks>
-        /// The file becomes the lowest priority source, so a connection string configured in
-        /// appsettings.json, in user-secrets or in environment variables always wins over the derived
-        /// one. Because the derivation happens while reading the file, <c>POSTGRES_*</c> keys supplied
-        /// as real environment variables are not picked up - in that case configure
-        /// <c>ConnectionStrings:Postgres</c> directly.
+        /// The file becomes the lowest priority source, so anything configured in appsettings.json,
+        /// in user-secrets or in environment variables always wins over what is derived here. Two
+        /// consequences are worth remembering, because both have surprised someone already:
+        ///
+        /// <list type="bullet">
+        /// <item>
+        /// A key that exists in appsettings.json <em>shadows</em> the file even when the file has a
+        /// real value for it. That is why no credential appears in appsettings.json at all: a
+        /// placeholder such as <c>"SecretKey": ""</c> is not harmless, it silently wins over the
+        /// secret someone put in <c>.env</c>.
+        /// </item>
+        /// <item>
+        /// Because the derivation happens while reading the file, <c>POSTGRES_*</c> or
+        /// <c>SMTP_*</c> keys supplied as real environment variables are not picked up. In that
+        /// setup configure <c>ConnectionStrings:Postgres</c> and the <c>Email</c> section directly
+        /// as environment variables instead.
+        /// </item>
+        /// </list>
         /// </remarks>
         public static string? AddDotEnvFile(
             this IConfigurationBuilder builder,
@@ -95,6 +177,8 @@ namespace Fluxy.API.Configuration
             var values = Parse(File.ReadAllLines(path));
             AddDerivedPostgresConnectionString(values);
             AddDerivedRedisConnectionString(values);
+            AddDerivedCorsSettings(values);
+            AddApplicationSettings(values);
 
             // Inserted at the front on purpose: the last provider that knows a key wins, so the
             // .env file has to come first to stay the lowest priority one. Everything configured in
@@ -243,6 +327,68 @@ namespace Fluxy.API.Configuration
                 $"user={username}",
                 $"password={password}",
                 "abortConnect=false");
+        }
+
+        /// <summary>
+        /// Copies the application secrets of the <c>.env</c> file straight into configuration keys,
+        /// so a tracked <c>appsettings.json</c> never has to hold a credential.
+        /// </summary>
+        /// <remarks>
+        /// An empty <c>.env</c> value adds nothing at all rather than adding an empty setting. That
+        /// matters because the file is inserted as the lowest priority source: an empty value it
+        /// supplied would sit <em>below</em> appsettings.json and user-secrets anyway, so writing it
+        /// would only suggest that the setting was configured when it is not. Leaving the key absent
+        /// also means the options class default applies, which is where a default belongs.
+        ///
+        /// The values are not quoted or escaped on the way in - the parser already removed any
+        /// surrounding quotes, so a secret containing <c>=</c> or <c>;</c> is usable as long as it is
+        /// written quoted. This is the same rule the connection strings above follow, and the reason
+        /// <c>scripts\init-secrets.ps1</c> can generate hex.
+        /// </remarks>
+        private static void AddApplicationSettings(Dictionary<string, string?> values)
+        {
+            foreach (var (envKey, configurationKey) in ApplicationSecretKeys)
+            {
+                if (values.TryGetValue(envKey, out var value) && !string.IsNullOrWhiteSpace(value))
+                {
+                    values[configurationKey] = value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Turns <c>CORS_ENABLED</c> and <c>CORS_ALLOWED_ORIGINS</c> into the configuration keys the
+        /// browser policy reads.
+        /// </summary>
+        /// <remarks>
+        /// The origins become indexed children, which is how the configuration system represents a
+        /// list from a flat source. Writing them this way is also why the array must not exist in
+        /// <c>appsettings.json</c>: a list coming from two providers does not merge, the higher
+        /// priority one simply wins per index, so a committed default would shadow this file and
+        /// quietly replace the developer's own origin with the author's.
+        ///
+        /// An empty value leaves the key absent, which is not the same as an empty list: absent
+        /// means the switch keeps its default of on, and an empty list means no browser is allowed.
+        /// A blank line in the template therefore does not disable the policy.
+        /// </remarks>
+        private static void AddDerivedCorsSettings(Dictionary<string, string?> values)
+        {
+            if (values.TryGetValue(CorsEnabledKey, out var enabled) && !string.IsNullOrWhiteSpace(enabled))
+            {
+                values[CorsExtensions.EnabledKey] = enabled;
+            }
+
+            if (!values.TryGetValue(CorsOriginsKey, out var origins) || string.IsNullOrWhiteSpace(origins))
+            {
+                return;
+            }
+
+            var index = 0;
+            foreach (var origin in origins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                values[$"{CorsExtensions.OriginsSectionName}:{index}"] = origin;
+                index++;
+            }
         }
     }
 }
