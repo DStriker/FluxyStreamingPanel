@@ -26,6 +26,12 @@ namespace Fluxy.DataAccess.Context
         /// <summary>User accounts.</summary>
         public DbSet<UserEntity> Users => Set<UserEntity>();
 
+        /// <summary>
+        /// Issued refresh tokens. One row per token ever issued, kept after it is spent so that
+        /// presenting it twice is recognisable as such.
+        /// </summary>
+        public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

@@ -17,6 +17,13 @@ export default function ClientLoginPage() {
       onSubmit={({ values, csrfToken, captchaToken }) =>
         submitAuth({ action: 'client-login', values, csrfToken, captchaToken })
       }
+      // The server names the destination, in `redirect`, because only it knows what the
+      // account's role is and the three areas do not share a layout. Following it rather
+      // than hardcoding the path here is what keeps one rule - which page a role belongs on -
+      // instead of three copies of it.
+      onSuccess={(result) =>
+        navigate(result?.redirect ?? routePath(config.CLIENT_HOME_ROUTE), { replace: true })
+      }
       footer={
         <Button
           type="link"

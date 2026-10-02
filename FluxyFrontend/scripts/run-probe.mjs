@@ -26,7 +26,10 @@ import { spawn } from 'node:child_process'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = join(here, '..')
-const bundle = join(repo, 'node_modules', '.cache', 'probe-registration.mjs')
+// The bundle name is an argument so a second probe can reuse this runner (and its
+// certificate trust) instead of growing a copy of it. The registration probe stays the
+// default, so `npm run probe` behaves exactly as before.
+const bundle = join(repo, 'node_modules', '.cache', process.argv[2] ?? 'probe-registration.mjs')
 const cert = join(repo, 'node_modules', '.vite', 'basic-ssl', '_cert.pem')
 const base = process.env.FLUXY_API ?? 'http://localhost:5159'
 

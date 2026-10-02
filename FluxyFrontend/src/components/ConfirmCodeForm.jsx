@@ -35,7 +35,7 @@ export default function ConfirmCodeForm({ email: initialEmail, onSubmit, onBack 
 
     try {
       const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken({ refresh: true }),
+        getCsrfToken(),
         // A fixed action per endpoint, not a free choice: the token the browser asks for
         // has to be the one the server expects for this route.
         getCaptchaToken(ConfirmCaptchaAction),

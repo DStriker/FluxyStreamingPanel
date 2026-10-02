@@ -20,6 +20,13 @@ namespace Fluxy.API.Contracts
     internal static class RegistrationResponses
     {
         /// <summary>
+        /// Code reported once a registration has been confirmed. Named here rather than written
+        /// inline so that the code the frontend branches on has one definition - the same reason
+        /// the other codes are literals in one table instead of scattered through the controller.
+        /// </summary>
+        public const string ConfirmedCode = "registration_confirmed";
+
+        /// <summary>
         /// Answer describing <paramref name="status"/>.
         /// </summary>
         /// <param name="status">Outcome reported by the service.</param>
@@ -71,7 +78,7 @@ namespace Fluxy.API.Contracts
 
             RegistrationStatus.Confirmed => new(
                 StatusCodes.Status200OK,
-                "registration_confirmed",
+                ConfirmedCode,
                 "Registration confirmed. You can sign in now."),
 
             RegistrationStatus.InvalidCode => new(

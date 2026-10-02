@@ -34,5 +34,35 @@ namespace Fluxy.API.Configuration
 
         /// <summary>Length of the confirmation window.</summary>
         public TimeSpan ConfirmWindow { get; set; } = TimeSpan.FromMinutes(15);
+
+        /// <summary>Sign-in attempts a client may spend in one window.</summary>
+        /// <remarks>
+        /// Five per window, and the window is keyed by role, address and name together - see
+        /// <c>AuthenticationController</c> for why all three are in the key. The number is
+        /// chosen by what a legitimate person does: a person who mistypes a password tries it
+        /// again, so the limit has to leave room for two or three corrections without punishing
+        /// someone who is simply bad at typing, while staying far below the count that would
+        /// make an online guess worth running.
+        ///
+        /// A successful sign-in clears the window rather than leaving it to expire, because
+        /// someone who has just proved they know the password is no longer guessing.
+        /// </remarks>
+        public int LoginLimit { get; set; } = 5;
+
+        /// <summary>Length of the sign-in window.</summary>
+        public TimeSpan LoginWindow { get; set; } = TimeSpan.FromMinutes(15);
+
+        /// <summary>Token refreshes a client may spend in one window.</summary>
+        /// <remarks>
+        /// Much higher than the sign-in limit, and the reason is who makes the requests. A
+        /// refresh is made by the application the user is already signed in to, roughly once
+        /// every few minutes, with a token that is valid and spent only if it is accepted. A
+        /// limit here is a guard against a stolen refresh token being cycled, not against a
+        /// person doing anything, so it must not be low enough to interrupt ordinary use.
+        /// </remarks>
+        public int RefreshLimit { get; set; } = 30;
+
+        /// <summary>Length of the refresh window.</summary>
+        public TimeSpan RefreshWindow { get; set; } = TimeSpan.FromMinutes(15);
     }
 }

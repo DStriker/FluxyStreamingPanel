@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button } from 'antd'
+import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import ConfirmCodeForm from '../components/ConfirmCodeForm'
@@ -28,7 +28,6 @@ const CodeExpired = 'code_expired'
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { message } = App.useApp()
 
   const [email, setEmail] = useState(readPendingEmail)
   const [step, setStep] = useState(() => (readPendingEmail() ? 'code' : 'details'))
@@ -45,10 +44,13 @@ export default function RegisterPage() {
     setStep('code')
   }
 
-  const handleConfirmed = () => {
+  const handleConfirmed = (result) => {
+    // Confirming a registration opens a session on the server, so the visitor is already
+    // signed in here. Going to the login form after that would be asking them for a
+    // password they just used, and the form would immediately be submitted against a
+    // session that already exists. The server names the landing path in `redirect`.
     forgetPendingEmail()
-    message.success(t('messages.api.registration_confirmed'))
-    navigate(routePath(config.CLIENT_LOGIN_ROUTE), { replace: true })
+    navigate(result?.redirect ?? routePath(config.CLIENT_HOME_ROUTE), { replace: true })
   }
 
   if (step === 'code') {
@@ -58,8 +60,13 @@ export default function RegisterPage() {
         onBack={backToDetails}
         onSubmit={async ({ email: address, code, csrfToken, captchaToken }) => {
           try {
-            await confirmRegistration({ email: address, code, csrfToken, captchaToken })
-            handleConfirmed()
+            const result = await confirmRegistration({
+              email: address,
+              code,
+              csrfToken,
+              captchaToken,
+            })
+            handleConfirmed(result)
           } catch (err) {
             // An expired code cannot be revived by typing a better one, so the step is
             // dropped back to the first form - which is also what asks for a fresh code.

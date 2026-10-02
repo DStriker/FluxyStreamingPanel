@@ -14,6 +14,11 @@
     <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <!-- Pinned to exactly what Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 resolves
+         in Fluxy.API, for the same reason Relational is pinned above. The token service mints
+         here and the scheme validates there, and a mismatch between the two is either an
+         MSB3277 or a signature the two halves disagree about. -->
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.2" />
     <PackageReference Include="StackExchange.Redis" Version="3.3.1" />
   </ItemGroup>
 

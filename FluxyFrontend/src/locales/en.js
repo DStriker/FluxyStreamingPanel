@@ -35,6 +35,7 @@ export default {
     back: 'Use a different account',
     haveAccount: 'Already have an account? Sign in',
     noAccount: "Don't have an account? Sign up",
+    signOut: 'Sign out',
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
@@ -58,6 +59,14 @@ export default {
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',
+      authenticated: 'You have signed in.',
+      invalid_credentials: 'The username or password is incorrect.',
+      login_rate_limited: 'Too many sign-in attempts. Please try again later.',
+      refresh_rate_limited: 'Too many refresh attempts. Please try again later.',
+      session_expired: 'Your session has ended. Please sign in again.',
+      auth_required: 'Please sign in to continue.',
+      auth_role_changed: 'Your access level has changed. Please sign in again.',
+      signed_out: 'You have signed out.',
     },
   },
 }

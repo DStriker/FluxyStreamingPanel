@@ -1,6 +1,7 @@
 using Fluxy.API.Configuration;
 using Fluxy.API.Contracts;
 using Fluxy.Application;
+using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;
@@ -39,6 +40,11 @@ namespace Fluxy.API
             builder.Services.AddFluxyAntiforgery();
             builder.Services.AddFrontendCors(builder.Configuration);
 
+            // The JWT scheme and the three role policies. Read before the host is built, so a
+            // missing or too-short signing key aborts here rather than at the first request that
+            // carries a token - see AddFluxyAuthentication for what it validates.
+            builder.Services.AddFluxyAuthentication(builder.Configuration);
+
             builder.Services.AddOptions<RateLimitOptions>()
                 .Bind(builder.Configuration.GetSection(RateLimitOptions.SectionName))
                 .Validate(
@@ -49,9 +55,34 @@ namespace Fluxy.API
                     options => options.ConfirmLimit > 0 && options.ConfirmWindow > TimeSpan.Zero,
                     $"'{RateLimitOptions.SectionName}' needs a positive ConfirmLimit and a " +
                     "ConfirmWindow longer than zero.")
+                .Validate(
+                    options => options.LoginLimit > 0 && options.LoginWindow > TimeSpan.Zero,
+                    $"'{RateLimitOptions.SectionName}' needs a positive LoginLimit and a " +
+                    "LoginWindow longer than zero.")
+                .Validate(
+                    options => options.RefreshLimit > 0 && options.RefreshWindow > TimeSpan.Zero,
+                    $"'{RateLimitOptions.SectionName}' needs a positive RefreshLimit and a " +
+                    "RefreshWindow longer than zero.")
                 // Checked while the host starts rather than on the first request, so a limit of
                 // zero is a startup error naming the setting rather than an API that refuses
                 // every registration and never says why.
+                .ValidateOnStart();
+
+            builder.Services.AddOptions<AuthenticationOptions>()
+                .Bind(builder.Configuration.GetSection(AuthenticationOptions.SectionName))
+                .Validate(
+                    options => options.AccessLifetime > TimeSpan.Zero,
+                    $"'{AuthenticationOptions.SectionName}' needs an AccessLifetime longer than " +
+                    "zero, otherwise no request could ever be authorized.")
+                .Validate(
+                    options => options.RefreshLifetime >= options.AccessLifetime,
+                    $"'{AuthenticationOptions.SectionName}' needs a RefreshLifetime at least as " +
+                    "long as the AccessLifetime, otherwise a session would expire while its " +
+                    "access token was still valid and no token could ever be exchanged.")
+                // Deliberately not validated here. The signing key is checked once, eagerly, by
+                // AddFluxyAuthentication, because it has to be turned into bytes before the
+                // scheme can exist at all - it cannot be a lazy validation on an options object
+                // nothing resolves until the first authorized request.
                 .ValidateOnStart();
 
             builder.Services.AddControllers();
@@ -145,7 +176,16 @@ namespace Fluxy.API
                     || !context.Request.Headers.ContainsKey(CorsExtensions.ProxyProtocolHeader),
                 branch => branch.UseHttpsRedirection());
 
-            //app.UseAuthentication();
+            // Authentication runs before authorization, and both come after the middleware that can change
+            // the identity of the request. `UseAuthentication` is what turns a token into a
+            // principal at all: without it the principal stays anonymous, `[Authorize]` has
+            // nothing to check, and every protected endpoint answers 401 for every caller
+            // including the ones holding a perfectly good token.
+            //
+            // Nothing about CORS or the HTTPS redirect has to come first, because neither reads
+            // the principal - but the redirect does have to stay above this, since a browser that
+            // follows a 307 to the other port would arrive here with the token absent.
+            app.UseAuthentication();
             app.UseAuthorization();
 
 

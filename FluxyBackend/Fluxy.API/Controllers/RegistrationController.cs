@@ -1,6 +1,6 @@
-using System.Globalization;
 using Fluxy.API.Configuration;
 using Fluxy.API.Contracts;
+using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace Fluxy.API.Controllers
 {
     /// <summary>
-    /// Everything an unauthenticated visitor may do: fetch a CSRF token, ask for a
+    /// Everything an unauthenticated visitor may do: fetch an antiforgery token, ask for a
     /// registration, and confirm it with the code that was mailed out.
     /// </summary>
     /// <remarks>
@@ -19,8 +19,12 @@ namespace Fluxy.API.Controllers
     /// hands the values to a service and turns what comes back into a status code, a code and a
     /// sentence. It holds no registration rule: a value that is wrong is rejected by
     /// <c>RegistrationService</c>, and if a rule ever changes this class is not where it changes.
-    /// </remarks>
-    /// <remarks>
+    ///
+    /// It is separate from the sign-in controller because the two answer different questions and
+    /// share almost nothing: registration writes a row and mails it a code, sign-in reads a row
+    /// and opens a session. What they do share is the three guards in
+    /// <see cref="AuthControllerBase"/>, which is exactly what that base class is for.
+    ///
     /// The route carries no <c>api</c> segment. This process serves nothing but the API, so a
     /// prefix that distinguishes it from a website is a segment every caller has to type without
     /// telling anybody anything - and it becomes one more thing to change when the API is moved
@@ -29,11 +33,8 @@ namespace Fluxy.API.Controllers
     [ApiController]
     [Route("auth")]
     [Produces("application/json")]
-    public sealed class AuthController : ControllerBase
+    public sealed class RegistrationController : AuthControllerBase
     {
-        /// <summary>Header the reCAPTCHA token arrives in.</summary>
-        public const string CaptchaHeaderName = "X-Recaptcha-Token";
-
         /// <summary>
         /// Action a registration token has to have been minted for. The frontend asks for it by
         /// name, so the two have to agree, and this is the backend half of that agreement.
@@ -47,53 +48,45 @@ namespace Fluxy.API.Controllers
         /// </summary>
         public const string ConfirmCaptchaAction = "register_confirm";
 
-        /// <summary>Code reported when the antiforgery token is missing, stale or does not match.</summary>
-        public const string InvalidCsrfCode = "csrf_invalid";
-
-        /// <summary>Code reported when the reCAPTCHA check refuses a request.</summary>
-        public const string InvalidCaptchaCode = "captcha_invalid";
-
         /// <summary>Code reported when a client already spent its registration for this window.</summary>
         public const string RegisterThrottledCode = "registration_rate_limited";
 
         /// <summary>Code reported when a client spent its confirmation attempts for this window.</summary>
         public const string ConfirmThrottledCode = "confirmation_rate_limited";
 
-        /// <summary>Address used as a throttle key when the connection has none.</summary>
-        private const string UnknownClient = "unknown";
-
         private readonly IRegistrationService _registrationService;
         private readonly IRecaptchaValidator _captchaValidator;
-        private readonly IAttemptThrottle _throttle;
-        private readonly IAntiforgery _antiforgery;
-        private readonly IOptionsMonitor<RateLimitOptions> _rateLimits;
-        private readonly ILogger<AuthController> _logger;
+        private readonly ITokenService _tokenService;
+        private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="AuthController"/> class.
+        /// Initializes a new instance of the <see cref="RegistrationController"/> class.
         /// </summary>
         /// <param name="registrationService">Service that owns the registration rules.</param>
         /// <param name="captchaValidator">Check that a request came from a person.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
+        /// <param name="tokenService">Service that opens the session a confirmation earns.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
+        /// <param name="throttle">Counter that limits how often one client may try.</param>
         /// <param name="rateLimits">
         /// Live limits, so a configuration reload changes them without a restart.
         /// </param>
+        /// <param name="authOptions">Live token settings and landing paths.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
-        public AuthController(
+        public RegistrationController(
             IRegistrationService registrationService,
             IRecaptchaValidator captchaValidator,
-            IAttemptThrottle throttle,
+            ITokenService tokenService,
             IAntiforgery antiforgery,
+            IAttemptThrottle throttle,
             IOptionsMonitor<RateLimitOptions> rateLimits,
-            ILogger<AuthController> logger)
+            IOptionsMonitor<AuthenticationOptions> authOptions,
+            ILogger<RegistrationController> logger)
+            : base(antiforgery, throttle, rateLimits, logger)
         {
             _registrationService = registrationService;
             _captchaValidator = captchaValidator;
-            _throttle = throttle;
-            _antiforgery = antiforgery;
-            _rateLimits = rateLimits;
-            _logger = logger;
+            _tokenService = tokenService;
+            _authOptions = authOptions;
         }
 
         /// <summary>
@@ -105,6 +98,19 @@ namespace Fluxy.API.Controllers
         /// token synchronously on every submit, and the body is what a client that cannot see the
         /// cookie falls back to. The frontend prefers the cookie and reads this body only when
         /// there is none.
+        ///
+        /// It is the one cookie in this application that a script is meant to read. It cannot be
+        /// used to do anything on its own - it is half of a pair whose other half is
+        /// <c>HttpOnly</c> - so exposing it costs nothing, while hiding it would mean a
+        /// round-trip to this endpoint before every single POST.
+        ///
+        /// A token is bound to the identity that was current when it was minted, and that is
+        /// why the copy is not a lasting convenience: a token read while anonymous is refused
+        /// once the same request carries a signed-in user (and the other way round), with
+        /// <c>"meant for a different claims-based user"</c> as the reason. A client that signs
+        /// in or out must therefore ask for a token again rather than reuse the one it already
+        /// has - which is why every submit in the frontend refetches, and why the copy is
+        /// dropped from the cookie whenever the session changes (see <c>AuthCookies</c>).
         /// </remarks>
         /// <returns>The token, with the readable cookie set alongside it.</returns>
         [HttpGet("csrf")]
@@ -112,7 +118,7 @@ namespace Fluxy.API.Controllers
         public IActionResult GetCsrfToken()
         {
             // Also writes the framework's own cookie, which holds the secret half of the pair.
-            var tokenSet = _antiforgery.GetAndStoreTokens(HttpContext);
+            var tokenSet = Antiforgery.GetAndStoreTokens(HttpContext);
 
             if (string.IsNullOrEmpty(tokenSet.RequestToken))
             {
@@ -164,7 +170,7 @@ namespace Fluxy.API.Controllers
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = _rateLimits.CurrentValue;
+            var limits = RateLimits.CurrentValue;
             var policy = new AttemptPolicy(limits.RegisterLimit, limits.RegisterWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -172,7 +178,7 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(RegisterCaptchaAction, clientAddress, cancellationToken))
+            if (!await PassesCaptchaAsync(_captchaValidator, RegisterCaptchaAction, clientAddress, cancellationToken))
             {
                 return CaptchaRefused();
             }
@@ -183,9 +189,9 @@ namespace Fluxy.API.Controllers
             // row really exists.
             var limit = limits.RegisterLimit;
 
-            if (_throttle.GetAttempts(RegisterThrottleKey(clientAddress), policy) >= limit)
+            if (Throttle.GetAttempts(RegisterThrottleKey(clientAddress), policy) >= limit)
             {
-                _logger.LogInformation(
+                Logger.LogInformation(
                     "Refused a registration from {ClientAddress}: the limit of {Limit} " +
                     "registrations per window is spent.",
                     clientAddress,
@@ -213,7 +219,7 @@ namespace Fluxy.API.Controllers
                 // username or email first. That is an ordinary outcome of two people choosing the
                 // same name at the same moment, not a fault, so it becomes the same refusal the
                 // loser would have got from a check that had not raced.
-                _logger.LogInformation(
+                Logger.LogInformation(
                     exception,
                     "A registration lost the race for a unique value and was refused.");
 
@@ -222,21 +228,33 @@ namespace Fluxy.API.Controllers
 
             if (outcome.RowPersisted)
             {
-                _throttle.RecordAttempt(RegisterThrottleKey(clientAddress), policy);
+                Throttle.RecordAttempt(RegisterThrottleKey(clientAddress), policy);
             }
 
             return Respond(outcome);
         }
 
         /// <summary>
-        /// Confirms a pending registration with the code that was mailed to the address.
+        /// Confirms a pending registration with the code that was mailed to the address, and
+        /// signs the visitor in on the strength of it.
         /// </summary>
         /// <param name="request">Address and code the visitor supplied.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 once the account is confirmed, 400 when the code is wrong or has expired, and 429
-        /// once the client has spent its attempts for this window.
+        /// 200 once the account is confirmed and a session is open, 400 when the code is wrong or
+        /// has expired, and 429 once the client has spent its attempts for this window.
         /// </returns>
+        /// <remarks>
+        /// The session is issued here rather than leaving the visitor to sign in a moment later.
+        /// Confirming a registration is the one moment where the server has just proved the
+        /// visitor controls a mailbox and holds a password they chose, which is precisely what
+        /// signing in proves; making them type both again immediately afterwards would be asking
+        /// for the same proof twice, and it would train people to expect a second form right
+        /// after a successful one.
+        ///
+        /// The tokens are the same two cookies a sign-in writes, produced by the same service,
+        /// so nothing downstream can tell a confirmed session from a signed-in one.
+        /// </remarks>
         [HttpPost("register/confirm")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
@@ -246,7 +264,7 @@ namespace Fluxy.API.Controllers
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = _rateLimits.CurrentValue;
+            var limits = RateLimits.CurrentValue;
             var policy = new AttemptPolicy(limits.ConfirmLimit, limits.ConfirmWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -254,7 +272,7 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(ConfirmCaptchaAction, clientAddress, cancellationToken))
+            if (!await PassesCaptchaAsync(_captchaValidator, ConfirmCaptchaAction, clientAddress, cancellationToken))
             {
                 return CaptchaRefused();
             }
@@ -266,9 +284,9 @@ namespace Fluxy.API.Controllers
             // comparison would start, so the expensive work is unreachable.
             var limit = limits.ConfirmLimit;
 
-            if (_throttle.RecordAttempt(ConfirmThrottleKey(clientAddress), policy) > limit)
+            if (Throttle.RecordAttempt(ConfirmThrottleKey(clientAddress), policy) > limit)
             {
-                _logger.LogInformation(
+                Logger.LogInformation(
                     "Refused a confirmation from {ClientAddress}: the limit of {Limit} attempts " +
                     "per window is spent.",
                     clientAddress,
@@ -282,118 +300,37 @@ namespace Fluxy.API.Controllers
                 request.Code!,
                 cancellationToken);
 
+            if (outcome.ConfirmedAccount is { } account)
+            {
+                var tokens = await _tokenService.IssueAsync(
+                    account,
+                    clientAddress,
+                    Request.Headers.UserAgent.FirstOrDefault(),
+                    cancellationToken);
+
+                AuthCookies.Write(HttpContext, tokens);
+
+                Logger.LogInformation(
+                    "Confirmed the registration of {Username} and opened a session for it.",
+                    account.Username);
+
+                return Ok(new MessageResponse
+                {
+                    Code = RegistrationResponses.ConfirmedCode,
+                    Message = "Your account is confirmed. You are now signed in.",
+                    Redirect = "/" + _authOptions.CurrentValue
+                        .LandingPathOf(account.Role).TrimStart('/')
+                });
+            }
+
             return Respond(outcome);
         }
-
-        /// <summary>
-        /// Address the request came from, as this server saw it.
-        /// </summary>
-        /// <remarks>
-        /// Nothing sits in front of the application yet, so this is the address of the socket and
-        /// it is exactly the client. Put a proxy in front and this becomes the proxy's address,
-        /// and every client would then share one window - which is the failure that shows up as
-        /// "everybody is rate limited at once". Reading the forwarded headers is the fix, and it
-        /// has to happen in the pipeline as early as possible.
-        /// </remarks>
-        private string ClientAddress
-            => HttpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient;
 
         private static string RegisterThrottleKey(string clientAddress)
             => $"register:{clientAddress}";
 
         private static string ConfirmThrottleKey(string clientAddress)
             => $"confirm:{clientAddress}";
-
-        /// <summary>
-        /// Checks the antiforgery token and, when it does not hold, builds the refusal.
-        /// </summary>
-        /// <returns>
-        /// Null when the request may continue, otherwise the response to answer with.
-        /// </returns>
-        /// <remarks>
-        /// The token is checked here rather than with <c>[ValidateAntiForgeryToken]</c> for two
-        /// reasons. That attribute resolves to an MVC filter that only
-        /// <c>AddControllersWithViews</c> registers, and this application is a JSON API that
-        /// calls <c>AddControllers</c> - the attribute therefore resolves to a type that is not
-        /// in the container and every protected request fails with a 500. Pulling the Razor view
-        /// engine in to satisfy an attribute would be the wrong trade for an API that has no
-        /// views.
-        ///
-        /// The second reason is the response. The attribute answers a bad token with a 400 and
-        /// no body at all, and the frontend shows what it finds in <c>data.message</c>, so the
-        /// visitor would be told "something went wrong" instead of "reload the page". Asking the
-        /// service directly produces the same verdict with a body that says what happened.
-        /// </remarks>
-        private async Task<IActionResult?> RejectsCsrfAsync()
-        {
-            try
-            {
-                await _antiforgery.ValidateRequestAsync(HttpContext);
-            }
-            catch (AntiforgeryValidationException exception)
-            {
-                _logger.LogInformation(
-                    exception,
-                    "Refused a request to {Path} because its antiforgery token did not validate.",
-                    HttpContext.Request.Path);
-
-                return StatusCode(
-                    StatusCodes.Status400BadRequest,
-                    new MessageResponse
-                    {
-                        Code = InvalidCsrfCode,
-                        Message = "The request could not be verified. Reload the page and try again."
-                    });
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Runs the reCAPTCHA check for an action. Anything other than an outright refusal lets
-        /// the request continue, which is what makes an installation without a secret usable.
-        /// </summary>
-        private async Task<bool> PassesCaptchaAsync(
-            string action,
-            string clientAddress,
-            CancellationToken cancellationToken)
-        {
-            var token = Request.Headers[CaptchaHeaderName].FirstOrDefault();
-
-            var outcome = await _captchaValidator.ValidateAsync(
-                token,
-                action,
-                clientAddress,
-                cancellationToken);
-
-            return outcome is not RecaptchaValidationOutcome.Failed;
-        }
-
-        private IActionResult CaptchaRefused()
-            => StatusCode(
-                StatusCodes.Status400BadRequest,
-                new MessageResponse
-                {
-                    Code = InvalidCaptchaCode,
-                    Message = "The request could not be verified as coming from a person. Please try again."
-                });
-
-        /// <summary>
-        /// Refuses a client that has spent its window, and says for how long so that a caller can
-        /// tell the visitor what to expect.
-        /// </summary>
-        private IActionResult Throttled(string code, TimeSpan window)
-        {
-            Response.Headers.RetryAfter = ((int)window.TotalSeconds).ToString(CultureInfo.InvariantCulture);
-
-            return StatusCode(
-                StatusCodes.Status429TooManyRequests,
-                new MessageResponse
-                {
-                    Code = code,
-                    Message = $"Too many attempts. Please try again in {Describe(window)}."
-                });
-        }
 
         /// <summary>
         /// Renders what a service reported, normalizing the field names on the way out so that a
@@ -405,16 +342,5 @@ namespace Fluxy.API.Controllers
                 RegistrationResponses.Describe(
                     outcome.Status,
                     FieldErrorKeys.FromPropertyNames(outcome.Errors)));
-
-        /// <summary>
-        /// A window in words, rounded to whole minutes so that a fifteen minute wait does not come
-        /// out as "14.99 minutes".
-        /// </summary>
-        private static string Describe(TimeSpan window)
-        {
-            var minutes = (int)Math.Round(window.TotalMinutes, MidpointRounding.AwayFromZero);
-
-            return minutes == 1 ? "1 minute" : $"{minutes} minutes";
-        }
     }
 }

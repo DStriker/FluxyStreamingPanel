@@ -1,4 +1,6 @@
 using Fluxy.Application.Services;
+using Fluxy.Application.Services.Authentication;
+using Fluxy.Application.Services.Authorization;
 using Fluxy.Application.Services.Email;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
@@ -30,11 +32,23 @@ namespace Fluxy.Application
         {
             services.AddScoped<IUserSeeder, DefaultUserSeeder>();
             services.AddScoped<IRegistrationService, RegistrationService>();
+            services.AddScoped<IAccessChecker, AccessChecker>();
+
+            // The sign-in service is scoped because it reads and writes through the context.
+            // The token service is scoped with it rather than shared, for the same reason: it
+            // writes a row per issued token.
+            services.AddScoped<IAuthenticationService, AuthenticationService>();
+            services.AddScoped<ITokenService, JwtTokenService>();
 
             // The throttle counts attempts for every request that reaches an endpoint, so it is
             // shared. It holds no per-request state, which is what lets it live next to the redis
             // connection rather than in a scope.
             services.AddSingleton<IAttemptThrottle, RedisAttemptThrottle>();
+
+            // Checked on every authorized request, so it is asked on every request. It holds
+            // only the redis connection and its own logger, and lives next to the connection for
+            // the same reason the throttle does.
+            services.AddSingleton<ITokenRevocationStore, RedisTokenRevocationStore>();
 
             // The mailer is shared too. MailKit opens a connection per message, so there is no
             // connection to keep warm between requests.
@@ -58,6 +72,8 @@ namespace Fluxy.Application
                     configuration.GetSection(RecaptchaOptions.SectionName));
                 services.Configure<RegistrationOptions>(
                     configuration.GetSection(RegistrationOptions.SectionName));
+                services.Configure<AuthenticationOptions>(
+                    configuration.GetSection(AuthenticationOptions.SectionName));
             }
 
             return services;

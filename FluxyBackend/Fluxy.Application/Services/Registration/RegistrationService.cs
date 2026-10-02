@@ -222,7 +222,12 @@ namespace Fluxy.Application.Services.Registration
 
             return new RegistrationOutcome
             {
-                Status = RegistrationStatus.Confirmed
+                Status = RegistrationStatus.Confirmed,
+
+                // The account is handed back rather than looked up again by the transport layer.
+                // Proving a mailbox was never a right to name an account, and re-reading the row
+                // by the address the visitor typed would make that string the credential.
+                ConfirmedAccount = user.ToModel()
             };
         }
 

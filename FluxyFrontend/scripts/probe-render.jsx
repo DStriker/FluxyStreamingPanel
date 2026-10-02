@@ -19,6 +19,7 @@ import ClientLoginPage from '../src/pages/ClientLoginPage.jsx'
 import ResellerLoginPage from '../src/pages/ResellerLoginPage.jsx'
 import AdminLoginPage from '../src/pages/AdminLoginPage.jsx'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm.jsx'
+import GuestOnly from '../src/components/GuestOnly.jsx'
 
 const render = (Page, path) =>
   renderToStaticMarkup(
@@ -115,6 +116,29 @@ async function main() {
     confirmHtml.includes('probe@example.com')
       ? 'email prefilled from the pending registration'
       : 'email is NOT prefilled',
+  )
+
+  // The guard wraps every guest route, and its documented choice is to render the children
+  // while it is still asking the server - a login form must not sit behind a round trip,
+  // and `fetch` has no timeout to hide a hang behind. The effect never runs in
+  // `renderToStaticMarkup`, so this render *is* the "still asking" state: the full form
+  // appearing here is what pins that choice. A spinner or a blank page would fail it, and
+  // so would a guard that swallowed its children.
+  const guardedHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/login']}>
+      <AntApp>
+        <GuestOnly>
+          <ClientLoginPage />
+        </GuestOnly>
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the guest guard shows the form while it is still asking the server',
+    guardedHtml.includes('Sign in') && guardedHtml.includes('auth-form__footer'),
+    guardedHtml.includes('Sign in')
+      ? `children render during the check (${guardedHtml.length} bytes)`
+      : 'GUARD RENDERED NO FORM',
   )
 
   console.log(

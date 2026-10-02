@@ -25,5 +25,23 @@ namespace Fluxy.API.Contracts
         /// property. Null whenever nothing was rejected, so a client can test it as a boolean.
         /// </summary>
         public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+
+        /// <summary>
+        /// Path the browser should show the visitor next, without a leading origin. Null when
+        /// there is nowhere in particular to go.
+        /// </summary>
+        /// <remarks>
+        /// The server names the path rather than sending a redirect. This API is JSON, and a
+        /// <c>fetch</c> that follows a 302 ends up holding an HTML page it cannot parse - so a
+        /// redirect here would arrive at the frontend as a parse failure with no status and no
+        /// body to explain it. Naming the destination instead keeps the decision in the
+        /// application that owns the routes, and the leading slash is added here so the frontend
+        /// can hand the value straight to its router.
+        ///
+        /// It is a path and not a full address on purpose. The server does not know which host
+        /// serves the frontend, and building an absolute URL from a guess is how an open redirect
+        /// gets introduced.
+        /// </remarks>
+        public string? Redirect { get; init; }
     }
 }

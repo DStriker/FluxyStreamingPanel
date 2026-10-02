@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "favicon": "node scripts/generate-favicons.mjs",
     "probe": "esbuild --bundle scripts/probe-registration.mjs --format=esm --platform=node --outfile=node_modules/.cache/probe-registration.mjs --log-level=error && node scripts/run-probe.mjs",
+    "probe:session": "esbuild --bundle scripts/probe-session.mjs --format=esm --platform=node --outfile=node_modules/.cache/probe-session.mjs --log-level=error && node scripts/run-probe.mjs probe-session.mjs",
     "probe:render": "esbuild --bundle scripts/probe-render.jsx --format=cjs --platform=node --jsx=automatic --outfile=node_modules/.cache/probe-render.cjs --log-level=error && node node_modules/.cache/probe-render.cjs",
     "lint": "eslint ."
   },

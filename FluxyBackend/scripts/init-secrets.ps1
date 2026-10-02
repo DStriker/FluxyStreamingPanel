@@ -87,10 +87,10 @@ foreach ($key in $existing.Keys) {
 $generated = @()
 
 function Set-Secret {
-    param([string]$Key, [switch]$Always)
+    param([string]$Key, [switch]$Always, [int]$ByteCount = 32)
     $current = [string]$values[$Key]
     if ([string]::IsNullOrWhiteSpace($current) -or $Always) {
-        $values[$Key] = New-RandomHex
+        $values[$Key] = New-RandomHex -ByteCount $ByteCount
         $script:generated += $Key
         return $true
     }
@@ -101,6 +101,11 @@ function Set-Secret {
 $null = Set-Secret -Key 'POSTGRES_PASSWORD' -Always:$Force
 $null = Set-Secret -Key 'PGADMIN_PASSWORD'  -Always:$Force
 $null = Set-Secret -Key 'REDIS_PASSWORD'    -Always:$Force
+
+# Ключ подписи access токенов. 64 байта (128 hex-символов) - вдвое больше
+# минимума в 32 байта, требуемого HMAC-SHA256. Ротация (-Force) обрывает все
+# выданные access токены, но не трогает refresh-цепочки в базе.
+$null = Set-Secret -Key 'JWT_SIGNING_KEY' -Always:$Force -ByteCount 64
 
 if ($RedisAdmin) {
     $null = Set-Secret -Key 'REDIS_ADMIN_PASSWORD' -Always:$Force

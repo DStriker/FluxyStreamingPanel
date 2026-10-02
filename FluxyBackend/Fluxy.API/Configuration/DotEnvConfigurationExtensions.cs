@@ -1,3 +1,4 @@
+using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Email;
 using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
@@ -80,6 +81,21 @@ namespace Fluxy.API.Configuration
         private const string SmtpFromKey = "SMTP_FROM";
 
         /// <summary>
+        /// The secret the access token is signed with, and the two names that go into it.
+        /// </summary>
+        /// <remarks>
+        /// Only <c>JWT_SIGNING_KEY</c> is a secret. The issuer and the audience are ordinary
+        /// configuration kept here for the same reason the SMTP host is: they identify this
+        /// installation, so setting it up should never mean editing a tracked file.
+        ///
+        /// Rotating the key invalidates every access token signed with it at once, which is the
+        /// intended way to end all sessions without touching the refresh chains.
+        /// </remarks>
+        private const string JwtSigningKey = "JWT_SIGNING_KEY";
+        private const string JwtIssuer = "JWT_ISSUER";
+        private const string JwtAudience = "JWT_AUDIENCE";
+
+        /// <summary>
         /// Switch for the browser policy, and the comma separated list of origins it allows.
         /// </summary>
         /// <remarks>
@@ -117,7 +133,10 @@ namespace Fluxy.API.Configuration
             (SmtpUsernameKey, $"{EmailOptions.SectionName}:User"),
             (SmtpPasswordKey, $"{EmailOptions.SectionName}:Password"),
             (SmtpUseTlsKey, $"{EmailOptions.SectionName}:UseTls"),
-            (SmtpFromKey, $"{EmailOptions.SectionName}:From")
+            (SmtpFromKey, $"{EmailOptions.SectionName}:From"),
+            (JwtSigningKey, $"{AuthenticationOptions.SectionName}:SigningKey"),
+            (JwtIssuer, $"{AuthenticationOptions.SectionName}:Issuer"),
+            (JwtAudience, $"{AuthenticationOptions.SectionName}:Audience")
         ];
 
         /// <summary>

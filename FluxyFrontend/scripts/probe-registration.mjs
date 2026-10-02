@@ -75,7 +75,7 @@ let csrfToken = null
  * the real function could have caught it.
  */
 const primeCsrf = async () => {
-  csrfToken = await getCsrfToken({ refresh: true })
+  csrfToken = await getCsrfToken()
   if (!csrfToken) throw new Error('getCsrfToken returned no token')
   return csrfToken
 }
@@ -109,7 +109,7 @@ globalThis.fetch = (url, init) => {
   csrfUrls.push(String(url))
   return fetchBefore(url, init)
 }
-const probedToken = await getCsrfToken({ refresh: true })
+const probedToken = await getCsrfToken()
 globalThis.fetch = fetchBefore
 
 record(
@@ -199,7 +199,13 @@ const rateLimited = !created.ok && created.err.code === 'registration_rate_limit
 // same reasoning as the 429 above. Reported as its own outcome rather than as FAIL, or the
 // probe would be permanently red on any machine that has the key set.
 const captchaEnforced = !created.ok && created.err.code === 'captcha_invalid'
-const rowUnavailable = rateLimited || captchaEnforced
+// A backend with no SMTP settings refuses the registration outright: `RegisterAsync` checks
+// the mail configuration first and answers 503 before a row is ever written. That is the
+// server working correctly on a machine with no mail server - the same reasoning as the two
+// cases above - and failing on it would leave the probe permanently red on any machine that
+// has not stood up a sink, which is the machine where the other fifteen checks still matter.
+const notConfigured = !created.ok && created.err.code === 'registration_not_configured'
+const rowUnavailable = rateLimited || captchaEnforced || notConfigured
 if (rateLimited) {
   console.log(`\nSKIP  registration window is full (429) - the happy path below cannot run.`)
   console.log(`      Clear it and re-run for the full flow:`)
@@ -210,6 +216,10 @@ if (rateLimited) {
   console.log(`      To run the happy path, leave RECAPTCHA_SECRET_KEY empty in the backend .env`)
   console.log(`      and restart it - the check is bypassed when the key is absent.`)
   console.log(`      Every other check below still applies.`)
+} else if (notConfigured) {
+  console.log(`\nSKIP  this backend has no SMTP settings and refuses registrations (503).`)
+  console.log(`      Set SMTP_HOST and SMTP_FROM in the backend .env and restart it - the happy`)
+  console.log(`      path runs as soon as mail is configured. Every other check below still applies.`)
 } else {
   record('valid body -> registration_submitted', describe(created), created.ok && created.data.code === 'registration_submitted')
 
@@ -294,9 +304,12 @@ record('messageForError localizes a transport code', `"${messageForError(unreach
 // endpoint for a stale fixture.
 const mailDir = process.env.FLUXY_MAIL_DIR
 if (rowUnavailable) {
-  console.log(`SKIP  full flow: skipped because no row was created (${
-    rateLimited ? 'the registration window is full' : 'the backend enforces reCAPTCHA'
-  })`)
+  const reason = rateLimited
+    ? 'the registration window is full'
+    : captchaEnforced
+      ? 'the backend enforces reCAPTCHA'
+      : 'the backend has no SMTP settings'
+  console.log(`SKIP  full flow: skipped because no row was created (${reason})`)
 } else if (!mailDir) {
   console.log('\nSKIP  full flow: set FLUXY_MAIL_DIR to the directory the SMTP sink writes to')
 } else {

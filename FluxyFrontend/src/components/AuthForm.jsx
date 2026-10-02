@@ -54,7 +54,7 @@ export default function AuthForm({
     clearServerErrors()
     try {
       const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken({ refresh: true }),
+        getCsrfToken(),
         getCaptchaToken(captchaAction),
       ])
       const result = await onSubmit({ values, csrfToken, captchaToken })
@@ -76,15 +76,28 @@ export default function AuthForm({
     }
   }
 
+  // The complexity rule belongs to registration and only to registration. A sign-in is not
+  // choosing a password - it is presenting one the account already has - and an account
+  // created before a rule existed, or by someone who set a password in another tool, would
+  // be locked out of itself by a form that refuses to submit. It would also tell an
+  // attacker something for free: "this password is worth guessing" is a different response
+  // from "this password is wrong", and only one of them is what the server will say.
+  //
+  // The length bounds stay on both. They bound the request rather than judge the password,
+  // and the server applies exactly the same numbers - see LoginRequest.
   const passwordRules = [
     { required: true, message: t('validation.passwordRequired') },
     { min: PASSWORD_MIN, max: PASSWORD_MAX, message: t('validation.passwordLength') },
-    {
-      validator: (_, value) =>
-        !value || meetsPasswordComplexity(value)
-          ? Promise.resolve()
-          : Promise.reject(new Error(t('validation.passwordComplexity'))),
-    },
+    ...(register
+      ? [
+          {
+            validator: (_, value) =>
+              !value || meetsPasswordComplexity(value)
+                ? Promise.resolve()
+                : Promise.reject(new Error(t('validation.passwordComplexity'))),
+          },
+        ]
+      : []),
   ]
 
   return (

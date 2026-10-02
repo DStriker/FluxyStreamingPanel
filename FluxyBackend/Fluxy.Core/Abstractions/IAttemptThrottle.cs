@@ -34,5 +34,26 @@ namespace Fluxy.Core.Abstractions
         /// <param name="policy">Limit and window the count is kept in.</param>
         /// <returns>The count including the attempt just recorded.</returns>
         int RecordAttempt(string key, AttemptPolicy policy);
+
+        /// <summary>
+        /// Forgets everything recorded for <paramref name="key"/>, so the next attempt starts a
+        /// new window.
+        /// </summary>
+        /// <param name="key">
+        /// Identifier of the counted party. A key that was never recorded, or one whose window has
+        /// already closed, is not an error and costs nothing.
+        /// </param>
+        /// <remarks>
+        /// This exists for the case where a limit counts failures but should not punish someone
+        /// for what they got right. A sign-in attempt is capped because a wrong password costs a
+        /// deliberate key derivation, and a caller who then signs in correctly has demonstrated
+        /// they are not guessing - so their window is cleared instead of being left to expire
+        /// with the failures still counted against them.
+        ///
+        /// A caller must not reach for this to undo a limit that is supposed to hold. It is a way
+        /// of saying the attempts so far no longer describe the party, not a way of spending the
+        /// budget earlier.
+        /// </remarks>
+        void ResetAttempts(string key);
     }
 }
