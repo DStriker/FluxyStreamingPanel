@@ -32,6 +32,13 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
 
+        /// <summary>
+        /// Changes that were requested and are waiting for their code to be confirmed: a
+        /// profile change of an account that is signed in, or a password reset asked for from
+        /// the public form.
+        /// </summary>
+        public DbSet<PendingChangeEntity> PendingChanges => Set<PendingChangeEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

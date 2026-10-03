@@ -7,6 +7,14 @@ export default {
     code: 'Confirmation code',
     usernamePlaceholder: 'user',
     emailPlaceholder: 'user@example.com',
+    // The profile form. Separate from `password` because they are not the same field there:
+    // the current one proves the session is the owner's, the new one is what the account
+    // should have from now on, and one label over both would make the form unreadable.
+    currentPassword: 'Current password',
+    newPassword: 'New password',
+    newUsername: 'New username',
+    newEmail: 'New email address',
+    role: 'Access level',
   },
   validation: {
     usernameRequired: 'Enter your username',
@@ -20,10 +28,14 @@ export default {
     passwordMismatch: 'Passwords do not match',
     codeRequired: 'Enter the code from the email',
     codeLength: 'The code is 6 digits',
+    currentPasswordRequired: 'Enter your current password',
   },
   titles: {
     register: 'Registration',
     confirmRegistration: 'Confirm your registration',
+    forgotPassword: 'Password reset',
+    confirmPasswordReset: 'Confirm the password reset',
+    profile: 'Profile',
     clientLogin: 'Client area',
     resellerLogin: 'Reseller panel',
     adminLogin: 'Admin panel',
@@ -43,6 +55,12 @@ export default {
     noAccount: "Don't have an account? Sign up",
     signOut: 'Sign out',
     backHome: 'Back to my page',
+    // The third door out of the sign-in form: not "I have no account" but "I cannot get
+    // into mine", which is a different visitor with a different problem.
+    forgotPassword: 'Forgot your password?',
+    resetPassword: 'Reset the password',
+    change: 'Change',
+    cancel: 'Cancel',
   },
   nav: {
     // Categories are the sidebar's submenus; items are the routes beneath them. Both are
@@ -78,10 +96,45 @@ export default {
       month: 'This month',
     },
   },
+  // The profile page. Everything on it is a sentence the server does not send: the server
+  // answers in codes and the codes live under `messages.api`, so what is here is only the
+  // copy the page itself writes - headings, hints and the names of the three things it can
+  // change.
+  profile: {
+    currentTitle: 'Your account',
+    changeTitle: 'Change',
+    confirmTitle: 'Confirm the change',
+    // Shown after the request: what the visitor should be waiting for, and what to do if
+    // nothing arrives. The address is the one the code went to, which is not always the
+    // address on the account - an address change is confirmed at the new one.
+    codeSentTo: 'We sent a confirmation code to {{where}}.',
+    codeSentHint:
+      'The change takes effect only when the code is entered. Requesting another change replaces this code.',
+    codeSent: 'Check your inbox for the confirmation code.',
+    changed: 'Your profile has been updated.',
+    cancelHint: 'Give up on this change. Requesting a new one replaces the code.',
+    changeHint:
+      'Your current password is required for every change. When a password changes, every other session of this account is signed out.',
+    kinds: {
+      username: 'Username',
+      email: 'Email address',
+      password: 'Password',
+    },
+    roles: {
+      Client: 'Client',
+      Reseller: 'Reseller',
+      Admin: 'Administrator',
+    },
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
     sendFailed: 'Failed to submit the form',
+    // The refusal a visitor gets when this installation cannot send mail at all, so there
+    // is no code to confirm a reset with. Never a fault of what they typed - the form is
+    // simply not offered on such a server.
+    passwordResetUnavailable:
+      'Password reset is not available on this server. Please contact support to regain access to your account.',
     // The shell's own placeholders. Neither is produced by the server: `areaNotBuilt` says
     // which section has no page behind it yet, and `notFound` is the catch-all route and
     // the refusal a role mismatch gets.
@@ -96,12 +149,28 @@ export default {
       validation_failed: 'Please correct the highlighted fields.',
       user_already_exists: 'That username or email address is already taken.',
       invalid_code: 'That confirmation code is not correct.',
-      code_expired: 'The code has expired. Register again to get a new one.',
+      code_expired: 'The code has expired. Request a new one to get a fresh code.',
       captcha_invalid: 'Could not verify that a person sent this. Please try again.',
       csrf_invalid: 'Your session expired. Please try again.',
       registration_rate_limited: 'Too many registrations from your address. Please try again later.',
       confirmation_rate_limited: 'Too many attempts. Please try again later.',
       email_delivery_failed: 'The confirmation email could not be sent. Please try again later.',
+      // Profile changes: the same three shapes as registration (sent / applied / refused),
+      // plus the two refusals only an authenticated caller can meet.
+      profile_updated: 'Your profile has been updated.',
+      profile_change_submitted: 'Check your inbox for the confirmation code.',
+      profile_change_confirmed: 'Your profile has been updated.',
+      invalid_current_password: 'The password you entered is not your current password.',
+      account_not_active: 'This account cannot change its profile.',
+      profile_rate_limited: 'Too many attempts to change your profile. Please try again later.',
+      profile_confirmation_rate_limited: 'Too many attempts. Please try again later.',
+      // The public password reset.
+      password_reset_submitted: 'Check your inbox for the confirmation code.',
+      password_reset_confirmed: 'Your password has been changed. You can sign in now.',
+      password_reset_not_configured: 'Password reset is not available on this server.',
+      credentials_mismatch: 'That username and email address do not belong to the same account.',
+      password_reset_rate_limited: 'Too many attempts. Please try again later.',
+      password_reset_confirmation_rate_limited: 'Too many attempts. Please try again later.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',

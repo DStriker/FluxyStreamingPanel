@@ -18,6 +18,8 @@ import RegisterPage from '../src/pages/RegisterPage.jsx'
 import ClientLoginPage from '../src/pages/ClientLoginPage.jsx'
 import ResellerLoginPage from '../src/pages/ResellerLoginPage.jsx'
 import AdminLoginPage from '../src/pages/AdminLoginPage.jsx'
+import ForgotPasswordPage from '../src/pages/ForgotPasswordPage.jsx'
+import ProfilePage from '../src/pages/ProfilePage.jsx'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm.jsx'
 import GuestOnly from '../src/components/GuestOnly.jsx'
 import RequireAuth from '../src/components/RequireAuth.jsx'
@@ -47,16 +49,17 @@ const check = (name, ok, detail = '') => {
 async function main() {
   await i18n.changeLanguage('en')
 
-  // Only two of the four pages ever had a footer, and which two is a fact about the app
-  // rather than an accident: `git log -S footer` over Reseller/Admin returns nothing, so
-  // they have never offered a cross-link. Asserting one there would fail forever, and the
-  // fix would be inventing a link nobody asked for.
+  // Reseller and Admin never had a footer either - `git log -S footer` over those two
+  // returns nothing - until the password reset gave them a reason to. Each form now offers
+  // the way out that fits its own visitor: registration for a client who has no account,
+  // the reset for anybody who has one and cannot open it, both on the same page as the
+  // form they belong to.
   const cases = [
     {
       page: ClientLoginPage,
       path: '/login',
-      mustContain: ["Don't have an account? Sign up", 'Sign in'],
-      label: 'client login links to registration',
+      mustContain: ["Don't have an account? Sign up", 'Forgot your password?', 'Sign in'],
+      label: 'client login links to registration and to the password reset',
       hasFooter: true,
     },
     {
@@ -67,18 +70,28 @@ async function main() {
       hasFooter: true,
     },
     {
+      page: ForgotPasswordPage,
+      path: '/forgot-password',
+      // Nothing here renders an effect, so this is the page while it is still asking the
+      // server whether a mail server exists at all - the state that must be a spinner and
+      // a heading, never a form whose second step cannot arrive.
+      mustContain: ['Password reset', 'Already have an account? Sign in'],
+      label: 'the password reset waits for the server and offers a way back to signing in',
+      hasFooter: true,
+    },
+    {
       page: ResellerLoginPage,
       path: '/reseller/login',
-      mustContain: ['Sign in'],
-      label: 'reseller login renders its form',
-      hasFooter: false,
+      mustContain: ['Sign in', 'Forgot your password?'],
+      label: 'reseller login renders its form and links to the password reset',
+      hasFooter: true,
     },
     {
       page: AdminLoginPage,
       path: '/admin/login',
-      mustContain: ['Sign in'],
-      label: 'admin login renders its form',
-      hasFooter: false,
+      mustContain: ['Sign in', 'Forgot your password?'],
+      label: 'admin login renders its form and links to the password reset',
+      hasFooter: true,
     },
   ]
 
@@ -154,6 +167,34 @@ async function main() {
   // Three things cannot be checked by rendering, so they are checked against the route
   // table instead, which is the only place the three areas are declared.
   const ROLES = ['Client', 'Reseller', 'Admin']
+
+  // --- The profile page ------------------------------------------------------
+  //
+  // It sits behind a session and asks the server for the row, so an effect never runs under
+  // `renderToStaticMarkup` and this render *is* the moment before the answer arrives. What
+  // it proves is that the page draws at all and that it waits rather than showing a form
+  // against nothing - a spinner where the change form would be.
+  const profileHtml = render(ProfilePage, '/profile')
+  check(
+    'the profile page waits for the server instead of rendering a form against nothing',
+    profileHtml.includes('ant-spin') && !profileHtml.includes('auth-form__otp'),
+    `rendered ${profileHtml.length} bytes with the profile still being fetched`,
+  )
+
+  // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`
+  // when an item carries no `page`, so a profile menu entry with the component dropped from
+  // it would render the placeholder, lint would pass, the build would pass, and the only
+  // sign would be a section that says it is under construction.
+  const profileItems = ROLES.map((role) =>
+    flatItems(role).find((item) => item.key === 'profile'),
+  )
+  check(
+    'every role menu points its profile item at the real page rather than the placeholder',
+    profileItems.every((item) => item?.page === ProfilePage),
+    profileItems.every((item) => item?.page === ProfilePage)
+      ? 'Client, Reseller and Admin all use ProfilePage'
+      : 'A ROLE WOULD OPEN THE PLACEHOLDER INSTEAD OF THE PROFILE',
+  )
 
   const areaRouteFor = (role) =>
     (routeTable ?? []).find(

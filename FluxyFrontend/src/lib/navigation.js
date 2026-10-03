@@ -9,6 +9,7 @@ import {
   UsergroupAddOutlined,
 } from '@ant-design/icons'
 import DashboardPage from '../pages/DashboardPage'
+import ProfilePage from '../pages/ProfilePage'
 
 /**
  * What each signed-in role sees in the sidebar, as categories of items.
@@ -60,7 +61,13 @@ export const NAVIGATION = {
       labelKey: 'nav.groups.account',
       icon: UserOutlined,
       items: [
-        { key: 'profile', path: 'profile', labelKey: 'nav.items.profile', icon: IdcardOutlined },
+        {
+          key: 'profile',
+          path: 'profile',
+          labelKey: 'nav.items.profile',
+          icon: IdcardOutlined,
+          page: ProfilePage,
+        },
       ],
     },
   ],
@@ -90,7 +97,13 @@ export const NAVIGATION = {
       labelKey: 'nav.groups.account',
       icon: UserOutlined,
       items: [
-        { key: 'profile', path: 'profile', labelKey: 'nav.items.profile', icon: IdcardOutlined },
+        {
+          key: 'profile',
+          path: 'profile',
+          labelKey: 'nav.items.profile',
+          icon: IdcardOutlined,
+          page: ProfilePage,
+        },
       ],
     },
   ],
@@ -133,7 +146,13 @@ export const NAVIGATION = {
       labelKey: 'nav.groups.account',
       icon: UserOutlined,
       items: [
-        { key: 'profile', path: 'profile', labelKey: 'nav.items.profile', icon: IdcardOutlined },
+        {
+          key: 'profile',
+          path: 'profile',
+          labelKey: 'nav.items.profile',
+          icon: IdcardOutlined,
+          page: ProfilePage,
+        },
       ],
     },
   ],

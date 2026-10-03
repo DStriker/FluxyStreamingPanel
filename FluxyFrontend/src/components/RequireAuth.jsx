@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Skeleton } from 'antd'
 import config, { routePath } from '../config'
@@ -41,18 +41,30 @@ export default function RequireAuth({ role, children }) {
   // `undefined` means "not answered yet"; `null` is an answer - no session.
   const [session, setSession] = useState(undefined)
 
-  useEffect(() => {
-    let cancelled = false
-
-    currentSession().then((answer) => {
-      if (cancelled) return
-      setSession(answer)
-    })
-
-    return () => {
-      cancelled = true
-    }
+  /**
+   * Asks again who is signed in and republishes the answer.
+   *
+   * One flow needs it, and it is the reason this is a function and not only an effect:
+   * changing the username changes the `name` claim the header is displaying, while the
+   * value held here was obtained before the change went through. Reloading the page would
+   * also make the guard re-run - and it takes the success message off the screen before
+   * the visitor has had time to read it, which is how a correct change looks like nothing
+   * happened. Having the header ask `/auth/me` itself instead would put a second answer to
+   * a question this component already owns, with two chances for them to disagree.
+   *
+   * The old value stays on screen until the new one arrives, so a refresh never flashes a
+   * skeleton over a signed-in area. An answer of `null` means the session ended and the
+   * redirect below takes over, which is the same outcome the initial ask would produce.
+   */
+  const refresh = useCallback(async () => {
+    const answer = await currentSession()
+    setSession(answer)
+    return answer
   }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   if (session === undefined) return <Skeleton active paragraph={{ rows: 6 }} />
   if (!session) return <Navigate to={routePath(config.CLIENT_LOGIN_ROUTE)} replace />
@@ -60,7 +72,7 @@ export default function RequireAuth({ role, children }) {
   const allowed = sessionOpensArea(session, role)
 
   return (
-    <SessionContext.Provider value={session}>
+    <SessionContext.Provider value={{ ...session, refresh }}>
       {allowed ? children : <NotFoundPage />}
     </SessionContext.Provider>
   )

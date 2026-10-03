@@ -2,6 +2,7 @@ using Fluxy.Application.Services;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Authorization;
 using Fluxy.Application.Services.Email;
+using Fluxy.Application.Services.Profile;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
 using Fluxy.Application.Services.Throttling;
@@ -33,6 +34,11 @@ namespace Fluxy.Application
             services.AddScoped<IUserSeeder, DefaultUserSeeder>();
             services.AddScoped<IRegistrationService, RegistrationService>();
             services.AddScoped<IAccessChecker, AccessChecker>();
+
+            // Both are scoped for the reason every service that reads and writes through the
+            // context is: a DbContext is not safe to share between requests.
+            services.AddScoped<IProfileService, ProfileService>();
+            services.AddScoped<IPasswordResetService, PasswordResetService>();
 
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it

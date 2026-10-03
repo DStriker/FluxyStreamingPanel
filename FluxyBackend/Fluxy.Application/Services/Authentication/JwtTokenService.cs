@@ -256,6 +256,35 @@ namespace Fluxy.Application.Services.Authentication
             return updated > 0;
         }
 
+        /// <inheritdoc />
+        public async Task<bool> RevokeAllSessionsAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            var now = _timeProvider.GetUtcNow();
+
+            // Same shape, and for the same reason: only the live rows are touched, because the
+            // timestamp on an already revoked row is the record of when it was spent and
+            // overwriting it would destroy the one thing that tells a spent token from a stolen
+            // one. Every chain of the account goes at once rather than one at a time - a
+            // password change has to leave nothing behind that could be exchanged later.
+            var updated = await _context.RefreshTokens
+                .Where(token => token.UserId == userId && token.RevokedAt == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(token => token.RevokedAt, now),
+                    cancellationToken);
+
+            if (updated > 0)
+            {
+                _logger.LogInformation(
+                    "Ended {Count} live refresh token(s) of account {UserId}.",
+                    updated,
+                    userId);
+            }
+
+            return updated > 0;
+        }
+
         /// <summary>
         /// Builds the signed part of a session: who the account is, what it may do, and which
         /// session and token this is.

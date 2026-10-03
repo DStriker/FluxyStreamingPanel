@@ -7,6 +7,7 @@ import RegisterPage from '../pages/RegisterPage'
 import ClientLoginPage from '../pages/ClientLoginPage'
 import ResellerLoginPage from '../pages/ResellerLoginPage'
 import AdminLoginPage from '../pages/AdminLoginPage'
+import ForgotPasswordPage from '../pages/ForgotPasswordPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import SectionPage from '../pages/SectionPage'
 import { flatItems } from '../lib/navigation'
@@ -21,7 +22,8 @@ import { flatItems } from '../lib/navigation'
  * visitor lands on a 404 after a successful login. One source for the strings, on each
  * side, is what keeps that from drifting.
  *
- * The four guest routes - the three entrances and registration - are wrapped in
+ * The five guest routes - the three entrances, registration and the password reset - are
+ * wrapped in
  * `GuestOnly`, because a visitor who already holds a session has no business being offered
  * a form for creating or re-entering one: the pages would have them stack a second session
  * over a first that nothing can end anymore. The guard sends such a visitor to their own
@@ -97,6 +99,14 @@ export const routes = [
     element: (
       <GuestOnly>
         <RegisterPage />
+      </GuestOnly>
+    ),
+  },
+  {
+    path: routePath(config.FORGOT_PASSWORD_ROUTE),
+    element: (
+      <GuestOnly>
+        <ForgotPasswordPage />
       </GuestOnly>
     ),
   },

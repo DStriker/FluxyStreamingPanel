@@ -57,5 +57,21 @@ namespace Fluxy.Core.Abstractions
         /// <see cref="ITokenRevocationStore"/> is for.
         /// </remarks>
         Task<bool> RevokeSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Ends every session of one account, so that no refresh token it holds can be
+        /// exchanged again.
+        /// </summary>
+        /// <param name="userId">Account whose sessions end.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>True when at least one live token was revoked.</returns>
+        /// <remarks>
+        /// This is the security answer to a password that changed: whoever held the old
+        /// password may hold a session with it, and the only honest reading of that is to assume
+        /// they do. The access tokens already in browsers still run until they expire, which is
+        /// bounded by <c>Auth:AccessLifetime</c> - the refresh chain is what this ends, and it
+        /// is what keeps a session alive.
+        /// </remarks>
+        Task<bool> RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken = default);
     }
 }

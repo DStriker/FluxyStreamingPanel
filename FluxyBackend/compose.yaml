@@ -77,7 +77,7 @@ services:
               sh -c '
                 printf "bind 0.0.0.0\nprotected-mode yes\nappendonly yes\nappendfsync everysec\ndir /data\n" > /tmp/redis.conf &&
                 printf "user default off\nuser $$REDIS_USER on #$$REDIS_ACL_HASH ~* &* +@all -@admin -@dangerous +client|setname +client|getname +client|setinfo\n" > /tmp/users.acl &&
-                if [ -n "$$REDIS_ADMIN_ACL_HASH" ]; then printf "user dev-admin on #$$REDIS_ADMIN_ACL_HASH ~* +@all\n" >> /tmp/users.acl; fi &&
+                if [ -n "$$REDIS_ADMIN_ACL_HASH" ]; then printf "user dev-admin on #$$REDIS_ADMIN_ACL_HASH ~* &* +@all\n" >> /tmp/users.acl; fi &&
                 exec redis-server /tmp/redis.conf --aclfile /tmp/users.acl
               '
         # Права пользователя приложения: +@all -@admin -@dangerous.
@@ -96,8 +96,35 @@ services:
             - "6379:6379"
         restart: unless-stopped
         networks:
-          - redis
-          
+            - redis
+
+    # RedisInsight - веб-панель для просмотра состояния redis. Отдельный
+    # контейнер, потому что образ redis:8.6 Insight внутри себя не содержит:
+    # бандл на порту 8001 существовал только у redis-stack.
+    #
+    # Порт привязан к 127.0.0.1, а не к 0.0.0.0 как у остальных сервисов:
+    # у UI Insight нет аутентификации, а подключение сделано под dev-admin
+    # с полными правами. Публиковать такую панель в LAN нельзя.
+    redisinsight:
+        container_name: redisinsight
+        image: redis/redisinsight:3.8
+        environment:
+            # Предзапись соединения: имя хоста - имя сервиса compose, сеть
+            # общая. ВНИМАНИЕ: пока эти переменные заданы, любые соединения,
+            # добавленные в UI вручную, удаляются при рестарте контейнера.
+            RI_REDIS_HOST: redis
+            RI_REDIS_PORT: "6379"
+            RI_REDIS_ALIAS: fluxy-redis
+            RI_REDIS_USERNAME: dev-admin
+            RI_REDIS_PASSWORD: "${REDIS_ADMIN_PASSWORD:?не задано - запустите scripts/init-secrets.ps1 -RedisAdmin}"
+        volumes:
+            - redisinsight-data:/data
+        ports:
+            - "127.0.0.1:5540:5540"
+        restart: unless-stopped
+        networks:
+            - redis
+
     # mailpit:
        # image: axllent/mailpit:latest
        # container_name: mailpit
@@ -118,6 +145,7 @@ volumes:
   fluxy-data:
   pgadmin-data:
   redis-data:
+  redisinsight-data:
 
 networks:
   postgres:

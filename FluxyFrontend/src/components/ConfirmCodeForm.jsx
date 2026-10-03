@@ -15,12 +15,40 @@ import { CODE_LENGTH } from '../lib/policy'
  * nothing in common but the page they sit on - the first asks for three values, this asks
  * for an address and six digits - and because the endpoint, the captcha action and the
  * rate limit are all different.
+ *
+ * The same form carries the second step of a password reset, which is why the identifier
+ * is a prop rather than a field written into the markup: the two steps ask for different
+ * things (an address the visitor just typed, a login name carried over from step one) and
+ * only the code they both confirm is the same. Registration passes `email` and the default
+ * applies, so nothing about it changed; the reset passes `identifier` and gets its own field
+ * under the same rules of shape.
  */
-export default function ConfirmCodeForm({ email: initialEmail, onSubmit, onBack }) {
+export default function ConfirmCodeForm({
+  email: initialEmail,
+  identifier,
+  title,
+  captchaAction = ConfirmCaptchaAction,
+  onSubmit,
+  onBack,
+}) {
   const { t } = useTranslation()
   const [form] = Form.useForm()
   const { message } = App.useApp()
   const [submitting, setSubmitting] = useState(false)
+
+  // What the code is being confirmed for. Everything the form knows about it is read from
+  // here, so the two shapes below differ in one place instead of in five.
+  const field = identifier ?? {
+    name: 'email',
+    label: t('fields.email'),
+    initialValue: initialEmail,
+    autoComplete: 'email',
+    placeholder: t('fields.emailPlaceholder'),
+    rules: [
+      { required: true, message: t('validation.emailRequired') },
+      { type: 'email', message: t('validation.emailInvalid') },
+    ],
+  }
 
   useEffect(() => {
     getCsrfToken()
@@ -29,7 +57,7 @@ export default function ConfirmCodeForm({ email: initialEmail, onSubmit, onBack 
   const handleFinish = async (values) => {
     setSubmitting(true)
     form.setFields([
-      { name: 'email', errors: [] },
+      { name: field.name, errors: [] },
       { name: 'code', errors: [] },
     ])
 
@@ -37,8 +65,9 @@ export default function ConfirmCodeForm({ email: initialEmail, onSubmit, onBack 
       const [csrfToken, captchaToken] = await Promise.all([
         getCsrfToken(),
         // A fixed action per endpoint, not a free choice: the token the browser asks for
-        // has to be the one the server expects for this route.
-        getCaptchaToken(ConfirmCaptchaAction),
+        // has to be the one the server expects for this route. The two steps of a flow
+        // that ask for a code under one session do not share theirs either.
+        getCaptchaToken(captchaAction),
       ])
       await onSubmit({ ...values, csrfToken, captchaToken })
     } catch (err) {
@@ -53,14 +82,15 @@ export default function ConfirmCodeForm({ email: initialEmail, onSubmit, onBack 
   }
 
   return (
-    <AuthCard title={t('titles.confirmRegistration')} form={form} onFinish={handleFinish}>
-      <Form.Item name="email" label={t('fields.email')} initialValue={initialEmail}
-        rules={[
-          { required: true, message: t('validation.emailRequired') },
-          { type: 'email', message: t('validation.emailInvalid') },
-        ]}
+    <AuthCard title={title ?? t('titles.confirmRegistration')} form={form} onFinish={handleFinish}>
+      <Form.Item name={field.name} label={field.label} initialValue={field.initialValue}
+        rules={field.rules}
       >
-        <Input autoComplete="email" placeholder={t('fields.emailPlaceholder')} />
+        <Input
+          autoComplete={field.autoComplete}
+          placeholder={field.placeholder}
+          type={field.type}
+        />
       </Form.Item>
 
       <Form.Item

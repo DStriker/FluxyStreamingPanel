@@ -1,0 +1,392 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Descriptions,
+  Form,
+  Input,
+  Segmented,
+  Space,
+  Spin,
+  Typography,
+} from 'antd'
+import { useTranslation } from 'react-i18next'
+import { getCsrfToken } from '../lib/csrf'
+import { getCaptchaToken } from '../lib/recaptcha'
+import {
+  ProfileChangeCaptchaAction,
+  ProfileConfirmCaptchaAction,
+  changeEmail,
+  changePassword,
+  changeUsername,
+  confirmProfileChange,
+  getProfile,
+} from '../lib/api'
+import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
+import { useSession } from '../lib/sessionContext'
+import {
+  CODE_LENGTH,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  USERNAME_MAX,
+  USERNAME_MIN,
+  meetsPasswordComplexity,
+} from '../lib/policy'
+
+/** The codes that decide what happens next. */
+const Submitted = 'profile_change_submitted'
+const Updated = 'profile_updated'
+const Confirmed = 'profile_change_confirmed'
+const AccountNotActive = 'account_not_active'
+
+const KINDS = ['username', 'email', 'password']
+
+/**
+ * Changing the username, the email address or the password of the account behind this
+ * session.
+ *
+ * One form with a switch rather than three forms, because the three are the same act - prove
+ * you own this account, then say what it should become - and only the last field differs.
+ * Three separate forms would carry three copies of the current-password field and of every
+ * rule attached to it, and one of them would eventually drift.
+ *
+ * The confirmation step is inline rather than a second route, for the reason registration is
+ * built that way: what changes is the form, not the place, and a step that moved address
+ * would break a back button and a reload for no gain.
+ *
+ * Nothing here decides whether a change needs a code. That is the server's answer to the one
+ * question this page cannot ask - whether this installation has a mail server at all - and
+ * the page reads it off the response: `profile_change_submitted` means a code is on its way,
+ * `profile_updated` means the change is already on the account.
+ */
+export default function ProfilePage() {
+  const { t } = useTranslation()
+  const { message } = App.useApp()
+  const session = useSession()
+
+  const [form] = Form.useForm()
+  const [codeForm] = Form.useForm()
+
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [kind, setKind] = useState('username')
+  const [submitting, setSubmitting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  // The change waiting for its code, and where the code was sent - both are needed to tell
+  // the visitor what to look for, and the address differs by kind: an address change is
+  // confirmed at the address it is moving *to*.
+  const [pending, setPending] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setProfile(await getProfile())
+      setLoadError(null)
+    } catch (err) {
+      // A blocked or deleted account answers 403 with `account_not_active`, and the
+      // interesting part of that is the sentence rather than the status code. An expired
+      // token never reaches here: the transport refreshes and retries it first.
+      setProfile(null)
+      setLoadError(messageForError(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  /**
+   * Puts a new login name in front of the visitor where they can see it.
+   *
+   * The username is the one value of the session that this page is allowed to change, and
+   * the header's copy of it was read from `/auth/me` before the change went through - it
+   * belongs to `RequireAuth`, not to this page, so nothing here can overwrite it directly.
+   * `refresh` re-asks; reloading the page would do the same thing and additionally take
+   * the success message off the screen before it could be read, which makes a correct
+   * change look as though nothing happened.
+   *
+   * The other two kinds need no such thing: the address is deliberately not a claim of the
+   * token, and a password change ends the *other* sessions of the account while leaving
+   * this one exactly as it was.
+   */
+  const publishRename = async (renamed) => {
+    if (renamed) await session?.refresh?.()
+  }
+
+  const handleFinish = async (values) => {
+    setSubmitting(true)
+    form.setFields(
+      ['currentPassword', 'username', 'email', 'newPassword'].map((name) => ({
+        name,
+        errors: [],
+      })),
+    )
+
+    try {
+      const [csrfToken, captchaToken] = await Promise.all([
+        getCsrfToken(),
+        getCaptchaToken(ProfileChangeCaptchaAction),
+      ])
+      const args = { currentPassword: values.currentPassword, csrfToken, captchaToken }
+
+      const result =
+        kind === 'username'
+          ? await changeUsername({ ...args, username: values.username })
+          : kind === 'email'
+            ? await changeEmail({ ...args, email: values.email })
+            : await changePassword({ ...args, newPassword: values.newPassword })
+
+      if (result?.code === Submitted) {
+        message.success(textForCode(result.code) ?? t('profile.codeSent'))
+        setPending({
+          kind,
+          where: kind === 'email' ? values.email : (profile?.email ?? ''),
+        })
+        codeForm.resetFields()
+        return
+      }
+
+      // No mail server on this installation, so there was nothing to confirm and the change
+      // is already on the account. The form is cleared and the card re-read, which is the
+      // only visible difference - the visitor never sees a second step at all. The rename
+      // still has to reach the header, and this is the path that needs it most: there is
+      // no confirmation step afterwards to notice the difference in.
+      message.success(textForCode(result?.code) ?? t('messages.sent'))
+      form.resetFields()
+      await load()
+      await publishRename(kind === 'username')
+    } catch (err) {
+      const fields = fieldErrors(err instanceof ApiError ? err.errors : null)
+      if (fields.length > 0) form.setFields(fields)
+      message.error(messageForError(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleConfirm = async (values) => {
+    const wasKind = pending?.kind
+    setConfirming(true)
+    codeForm.setFields([{ name: 'code', errors: [] }])
+
+    try {
+      const [csrfToken, captchaToken] = await Promise.all([
+        getCsrfToken(),
+        getCaptchaToken(ProfileConfirmCaptchaAction),
+      ])
+      const result = await confirmProfileChange({
+        code: values.code,
+        csrfToken,
+        captchaToken,
+      })
+
+      if (result?.code !== Confirmed) return
+
+      message.success(textForCode(result.code) ?? t('profile.changed'))
+      setPending(null)
+      codeForm.resetFields()
+      form.resetFields()
+      await load()
+      await publishRename(wasKind === 'username')
+    } catch (err) {
+      const fields = fieldErrors(err instanceof ApiError ? err.errors : null)
+      if (fields.length > 0) codeForm.setFields(fields)
+      message.error(messageForError(err))
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin />
+        </div>
+      </Card>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Card>
+        <Alert type="error" showIcon message={loadError} />
+      </Card>
+    )
+  }
+
+  if (pending) {
+    return (
+      <Card title={t('profile.confirmTitle')}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={t('profile.codeSentTo', { where: pending.where })}
+            description={t('profile.codeSentHint')}
+          />
+
+          <Form form={codeForm} layout="vertical" onFinish={handleConfirm}>
+            <Form.Item
+              name="code"
+              label={t('fields.code')}
+              className="auth-form__otp"
+              rules={[
+                { required: true, message: t('validation.codeRequired') },
+                { len: CODE_LENGTH, message: t('validation.codeLength') },
+                {
+                  validator: (_, value) =>
+                    !value || /^\d+$/.test(value)
+                      ? Promise.resolve()
+                      : Promise.reject(new Error(t('validation.codeLength'))),
+                },
+              ]}
+            >
+              <Input.OTP
+                length={CODE_LENGTH}
+                formatter={(value) => value.replace(/\D/g, '')}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+              />
+            </Form.Item>
+
+            <Space>
+              <Button type="primary" htmlType="submit" loading={confirming}>
+                {t('actions.confirm')}
+              </Button>
+              <Button
+                onClick={() => setPending(null)}
+                loading={confirming}
+                title={t('profile.cancelHint')}
+              >
+                {t('actions.cancel')}
+              </Button>
+            </Space>
+          </Form>
+        </Space>
+      </Card>
+    )
+  }
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card title={t('profile.currentTitle')}>
+        <Descriptions column={1} size="small">
+          <Descriptions.Item label={t('fields.username')}>
+            {profile?.username ?? ''}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('fields.email')}>{profile?.email ?? ''}</Descriptions.Item>
+          <Descriptions.Item label={t('fields.role')}>
+            {profile?.role ? t(`profile.roles.${profile.role}`) : ''}
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      <Card title={t('profile.changeTitle')}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Segmented
+            value={kind}
+            options={KINDS.map((value) => ({ value, label: t(`profile.kinds.${value}`) }))}
+            onChange={(value) => {
+              setKind(value)
+              // The previous kind's fields are not on the form any more, and a red error
+              // under a field that has been switched away is a complaint about nothing.
+              form.resetFields()
+            }}
+          />
+
+          <Form form={form} layout="vertical" onFinish={handleFinish}>
+            <Form.Item
+              name="currentPassword"
+              label={t('fields.currentPassword')}
+              rules={[{ required: true, message: t('validation.currentPasswordRequired') }]}
+            >
+              <Input.Password autoComplete="current-password" />
+            </Form.Item>
+
+            {kind === 'username' && (
+              <Form.Item
+                name="username"
+                label={t('fields.newUsername')}
+                rules={[
+                  { required: true, message: t('validation.usernameRequired') },
+                  { min: USERNAME_MIN, max: USERNAME_MAX, message: t('validation.usernameLength') },
+                ]}
+              >
+                <Input autoComplete="username" placeholder={t('fields.usernamePlaceholder')} />
+              </Form.Item>
+            )}
+
+            {kind === 'email' && (
+              <Form.Item
+                name="email"
+                label={t('fields.newEmail')}
+                rules={[
+                  { required: true, message: t('validation.emailRequired') },
+                  { type: 'email', message: t('validation.emailInvalid') },
+                ]}
+              >
+                <Input autoComplete="email" placeholder={t('fields.emailPlaceholder')} />
+              </Form.Item>
+            )}
+
+            {kind === 'password' && (
+              <>
+                <Form.Item
+                  name="newPassword"
+                  label={t('fields.newPassword')}
+                  rules={[
+                    { required: true, message: t('validation.passwordRequired') },
+                    { min: PASSWORD_MIN, max: PASSWORD_MAX, message: t('validation.passwordLength') },
+                    {
+                      validator: (_, value) =>
+                        !value || meetsPasswordComplexity(value)
+                          ? Promise.resolve()
+                          : Promise.reject(new Error(t('validation.passwordComplexity'))),
+                    },
+                  ]}
+                >
+                  <Input.Password autoComplete="new-password" />
+                </Form.Item>
+
+                <Form.Item
+                  name="confirmPassword"
+                  label={t('fields.confirmPassword')}
+                  dependencies={['newPassword']}
+                  rules={[
+                    { required: true, message: t('validation.confirmRequired') },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue('newPassword') === value) {
+                          return Promise.resolve()
+                        }
+                        return Promise.reject(new Error(t('validation.passwordMismatch')))
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password autoComplete="new-password" />
+                </Form.Item>
+              </>
+            )}
+
+            <Form.Item>
+              <Button type="primary" htmlType="submit" loading={submitting}>
+                {t('actions.change')}
+              </Button>
+            </Form.Item>
+          </Form>
+
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            {t('profile.changeHint')}
+          </Typography.Paragraph>
+        </Space>
+      </Card>
+    </Space>
+  )
+}

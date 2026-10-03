@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
@@ -19,6 +20,17 @@ export default function AdminLoginPage() {
       // The server names the destination, in `redirect` - see ClientLoginPage.
       onSuccess={(result) =>
         navigate(result?.redirect ?? routePath(config.ADMIN_HOME_ROUTE), { replace: true })
+      }
+      // See ResellerLoginPage: the first cross-link this footer has ever carried, and the
+      // reason it is the reset rather than registration is that an administrator who cannot
+      // sign in has an account, not none.
+      footer={
+        <Button
+          type="link"
+          onClick={() => navigate(routePath(config.FORGOT_PASSWORD_ROUTE))}
+        >
+          {t('actions.forgotPassword')}
+        </Button>
       }
     />
   )

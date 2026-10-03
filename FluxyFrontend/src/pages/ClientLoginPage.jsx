@@ -24,13 +24,26 @@ export default function ClientLoginPage() {
       onSuccess={(result) =>
         navigate(result?.redirect ?? routePath(config.CLIENT_HOME_ROUTE), { replace: true })
       }
+      // Two cross-links, and they belong to different flows: this one is for somebody who
+      // has an account and cannot get into it, the other for somebody who has none yet.
+      // Both live in the footer because that is where the one between sign-in and
+      // registration has always sat - the reset is a third door out of the same form, so it
+      // goes where the visitor already looks for a way out.
       footer={
-        <Button
-          type="link"
-          onClick={() => navigate(routePath(config.REGISTER_ROUTE))}
-        >
-          {t('actions.noAccount')}
-        </Button>
+        <>
+          <Button
+            type="link"
+            onClick={() => navigate(routePath(config.FORGOT_PASSWORD_ROUTE))}
+          >
+            {t('actions.forgotPassword')}
+          </Button>
+          <Button
+            type="link"
+            onClick={() => navigate(routePath(config.REGISTER_ROUTE))}
+          >
+            {t('actions.noAccount')}
+          </Button>
+        </>
       }
     />
   )
