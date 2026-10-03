@@ -27,6 +27,12 @@ export default {
     clientLogin: 'Client area',
     resellerLogin: 'Reseller panel',
     adminLogin: 'Admin panel',
+    // The heading in the pinned header of each signed-in area. Separate from the `*Login`
+    // titles above on purpose: those title a form on a page a visitor is not signed in on,
+    // these title the area itself once they are.
+    clientArea: 'Client area',
+    resellerArea: 'Reseller panel',
+    adminArea: 'Admin panel',
   },
   actions: {
     login: 'Sign in',
@@ -36,11 +42,51 @@ export default {
     haveAccount: 'Already have an account? Sign in',
     noAccount: "Don't have an account? Sign up",
     signOut: 'Sign out',
+    backHome: 'Back to my page',
+  },
+  nav: {
+    // Categories are the sidebar's submenus; items are the routes beneath them. Both are
+    // rendered from `src/lib/navigation.js`, which decides where each item points - so a
+    // label added here and nothing else shows up nowhere.
+    groups: {
+      overview: 'Overview',
+      management: 'Management',
+      account: 'Account',
+    },
+    items: {
+      dashboard: 'Dashboard',
+      orders: 'Orders',
+      clients: 'Clients',
+      users: 'Users',
+      settings: 'Settings',
+      profile: 'Profile',
+    },
+  },
+  header: {
+    settings: 'Settings',
+    collapseMenu: 'Collapse the menu',
+    expandMenu: 'Expand the menu',
+    themeLight: 'Light theme',
+    themeDark: 'Dark theme',
+    themeSystem: 'Follow the system',
+  },
+  dashboard: {
+    greeting: 'Welcome back, {{name}}.',
+    stats: {
+      today: 'Today',
+      week: 'This week',
+      month: 'This month',
+    },
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
     sendFailed: 'Failed to submit the form',
+    // The shell's own placeholders. Neither is produced by the server: `areaNotBuilt` says
+    // which section has no page behind it yet, and `notFound` is the catch-all route and
+    // the refusal a role mismatch gets.
+    areaNotBuilt: 'The "{{section}}" section is still under construction.',
+    notFound: 'This page does not exist, or it belongs to another area.',
     // Every code the API can answer with. The keys are the server's own `code` values, so
     // a new one on the backend falls back to its English `message` until it is added here.
     api: {

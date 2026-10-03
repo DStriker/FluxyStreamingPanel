@@ -28,12 +28,22 @@ export default defineConfig(({ mode }) => {
   // a different scheme, the call becomes cross-origin, and the antiforgery cookies come back
   // `secure` over a plain http connection and get discarded, which reads as `csrf_invalid` with
   // nothing wrong in the response body.
-  const proxy = {
-    '/auth': {
-      target,
-      headers: { 'X-Forwarded-Proto': 'https' },
-    },
-  }
+  // Every path prefix this backend serves. Adding an endpoint outside this list is the
+  // documented silent failure: the dev server answers an unknown path with the SPA shell
+  // and a **200**, so `res.ok` is true, the JSON parse yields null and the call reads as a
+  // successful empty answer rather than as a miss. Nothing reports it. When a controller
+  // lands outside `/auth`, add its prefix here in the same commit.
+  const backendPaths = ['/auth']
+
+  const proxy = Object.fromEntries(
+    backendPaths.map((path) => [
+      path,
+      {
+        target,
+        headers: { 'X-Forwarded-Proto': 'https' },
+      },
+    ]),
+  )
 
   return {
     // `basicSsl` supplies a self-signed certificate so the dev server speaks https. That is what

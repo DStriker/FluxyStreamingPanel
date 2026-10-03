@@ -7,7 +7,8 @@ const DEFAULTS = {
   // appsettings.json, which is the authority - the server sends the path back in the
   // `redirect` field of its answer, so these exist for the router to have a matching route
   // and for a person reading the config to see where the three areas are meant to begin.
-  // There is no page behind any of them yet; each renders a placeholder.
+  // Each is the root of a guarded area in `src/router/routes.jsx`: `RequireAuth` checks the
+  // role before `AccountLayout` renders, and the section pages hang off it as children.
   CLIENT_HOME_ROUTE: 'client/index',
   RESELLER_HOME_ROUTE: 'reseller/dashboard',
   ADMIN_HOME_ROUTE: 'admin/dashboard',
@@ -38,5 +39,26 @@ export const config = {
 }
 
 export const routePath = (route) => (route.startsWith('/') ? route : `/${route}`)
+
+/**
+ * The area a route sits in - `admin/dashboard` -> `admin`.
+ *
+ * The landing paths above name where a role *enters* its area, and that is a page with a
+ * name of its own in it. The area is what every section of it hangs from, and reading the
+ * two as one string is what once put `profile` under the dashboard:
+ * `/admin/dashboard/profile` instead of `/admin/profile`. One configured string, two
+ * readings, so the two can never move apart.
+ */
+export const areaOf = (route) => route.split('/')[0]
+
+/**
+ * What is left of a landing path once its area is taken off - `admin/dashboard` ->
+ * `dashboard`, `client` -> `''`.
+ *
+ * The empty answer is not an edge case to guard against but the other legitimate shape: a
+ * landing path that *is* the area has no remainder, and that role's home is then the
+ * area's index route rather than a page inside it.
+ */
+export const insideArea = (route) => route.split('/').slice(1).join('/')
 
 export default config

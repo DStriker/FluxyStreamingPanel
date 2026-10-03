@@ -235,6 +235,19 @@ async function rawFetch(path, { method, body, csrfToken, captchaToken } = {}) {
 
   const data = await response.json().catch(() => null)
 
+  // A 2xx whose body is not JSON. In development the dev server answers an unknown path
+  // with the SPA shell and a 200, so this is the shape a typo'd API prefix takes: `ok` is
+  // true, the parse fails, and without this the call would return `{}` - a successful,
+  // empty answer to a question that was never asked. Nothing else reports it, and every
+  // API in this backend answers 2xx with a body, so the case is unambiguous.
+  if (response.ok && data === null) {
+    throw new ApiError({
+      code: ServerErrorCode,
+      message: i18n.t(`messages.api.${ServerErrorCode}`, { status: response.status }),
+      status: response.status,
+    })
+  }
+
   if (!response.ok) {
     // A body that is not the documented shape still has to become a usable error, so an
     // HTML error page from an intermediary degrades to the status instead of throwing on

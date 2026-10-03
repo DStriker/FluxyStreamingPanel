@@ -7,16 +7,115 @@
   box-sizing: border-box;
 }
 
+/* The `prefers-color-scheme` block that used to live here is gone on purpose. It painted
+   `body` from the operating system, which was correct while the theme was only ever the
+   OS's opinion; since `App.jsx` paints it from `colorBgLayout` - the same token the
+   algorithm produces - a visitor who picks the other theme would otherwise have had two
+   answers for one background, with the stylesheet winning on `body` and losing everywhere
+   the shell renders. `#f5f5f5` stays as the value before the first effect runs, which is
+   exactly `colorBgLayout` of the light algorithm, so the light case never flashes. */
 body {
   margin: 0;
   min-height: 100vh;
   background: #f5f5f5;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #202020;
-    color: rgba(255, 255, 255, 0.85);
+/* --- The signed-in shell ------------------------------------------------------ */
+
+/* `100vh` and nothing scrolls but the panes inside it. A pinned header over a normally
+   scrolling document would mean the header rides up out of view on the first scroll, and
+   a pinned sidebar over that same document would be pinned to the viewport while its
+   content scrolled under it. So the frame owns the viewport and each region owns its own
+   overflow: header fixed at the top, sidebar scrolling its own list, workspace scrolling
+   its own widgets. */
+.layout-shell {
+  height: 100vh;
+}
+
+/* The shell's own rules are scoped under `.layout-shell` where they land on an element
+   antd already styles, which is `.layout-shell__header` and `.layout-shell__title` below
+   and `.ant-layout-content` after that. Both selectors name one class, so with them bare
+   the winner would be whoever's stylesheet the browser happened to read last - and that
+   is a fact about where antd injects its cssinjs output, not a fact this file controls.
+   Two classes over one decides it here instead, and beats `h5.ant-typography` too
+   (a class outranks an element at the second level, before counting). */
+.layout-shell .layout-shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  /* antd sets `line-height: 64px` on the header, and it is inherited by every child - a
+     Segmented, a Button and an Avatar each have their own idea of their own height, and
+     a shared 64px line box is not any of theirs. */
+  line-height: normal;
+}
+
+.layout-shell__header-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.layout-shell__logo {
+  flex: none;
+}
+
+/* The area's name, and the only thing in the bar that is a title rather than a control.
+   Uppercase and 20px against the 16px `level={5}` antd hands an `<h5>`: uppercase is what
+   separates it from the headings inside the workspace below - it reads as a label for the
+   frame, not as the first of a page's headings - and the size keeps that readable once the
+   letters are spaced out. `line-height: 1.2` is tight enough to centre the cap height in the
+   64px bar without pulling the surrounding gap off. */
+.layout-shell .layout-shell__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* A flex item will not go below its content by default - `min-width: auto` is the size of
+     the text, which is the very thing that grows when the title grows. Without this the
+     ellipsis above never fires and the bar overflows instead of truncating. */
+  min-width: 0;
+}
+
+.layout-shell__username {
+  white-space: nowrap;
+}
+
+/* The sidebar itself is sized by the flex row; the scroll sits on the wrapper inside it.
+   `Sider` sets its own overflow, so putting the scroll there would mean winning a cascade
+   against a stylesheet antd injects at a place this file does not control. A child
+   element has no such opinion: `height: 100%` of a container that is already sized, and
+   anything taller than that scrolls without moving the frame. */
+.layout-shell__sider-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* `flex: 1` rather than antd's `flex: auto` on purpose: the workspace must be sized by the
+   space left over, not by what it happens to contain, or a wide widget would push its own
+   base size into the row and the sidebar would share a viewport it is supposed to own. */
+.layout-shell .layout-shell__content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* The header loses its periphery before it loses anything load-bearing: the collapse
+   trigger, the logo and the way out. The title and the name are both repeated elsewhere -
+   in the tab, and in the dropdown beside the avatar. */
+@media (max-width: 768px) {
+  .layout-shell .layout-shell__title,
+  .layout-shell__username,
+  .layout-shell__signout-label {
+    display: none;
   }
 }
 
@@ -30,7 +129,11 @@ body {
   padding: 24px;
 }
 
-.lang-switcher {
+/* Scoped to the auth pages rather than left global: the same switcher also sits in the
+   pinned header of the signed-in shell, where absolute positioning at the top-right of the
+   viewport would tear it out of the header row. Only `.auth-page` is a positioned
+   ancestor, so scoping here is what makes one component usable in both places. */
+.auth-page .lang-switcher {
   position: absolute;
   top: 16px;
   right: 16px;
