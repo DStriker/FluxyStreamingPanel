@@ -49,7 +49,7 @@ export interface CallOptions {
  * attempt window behind it; an endpoint that does not exist is a typo that would otherwise
  * arrive as a 404 the form has no text for.
  */
-export type LoginEndpoint = 'client-login' | 'reseller-login' | 'admin-login'
+type LoginEndpoint = 'client-login' | 'reseller-login' | 'admin-login'
 
 /**
  * Actions a reCAPTCHA token has to have been minted for. The backend fixes one per
