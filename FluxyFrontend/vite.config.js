@@ -46,6 +46,76 @@ export default defineConfig(({ mode }) => {
   )
 
   return {
+    build: {
+      // How the bundle is divided, and the two options that were measured to get here.
+      //
+      // This build used to be one URL: 1,048.45 kB / 339.22 kB gzip, the sign-in form and
+      // the profile editor in the same file. One URL means one cache entry, and one cache
+      // entry can only be either entirely old or entirely new - so every edit to this
+      // repository re-sent antd, React and both locales to every returning visitor.
+      //
+      // Two changes fix different halves of that, and neither substitutes for the other:
+      //
+      //   1. route-level `React.lazy` (`src/router/routes.tsx`) - the nine pages and the
+      //      auth forms are fetched when their address is asked for rather than with the
+      //      shell;
+      //   2. this `manualChunks` - four named groups, so what an edit to *this* repository
+      //      invalidates is the entry chunk and not the whole framework.
+      //
+      // The alternative was built and is written down because it looks better than it is.
+      // Dropping `vendor-ui` and letting Rollup place antd by the graph gives a *first*
+      // load of 926 kB / 302 kB gzip instead of 1,036 kB / 338, because tree-shaking runs
+      // before chunking and the entry then receives only the antd the entry renders. But
+      // that layout puts the application code back inside the entry chunk as well, so an
+      // app-only deploy re-downloads ~177 kB gzip where this one re-downloads ~11. This is
+      // a signed-in application that is deployed often and read daily: the first number is
+      // paid once per visitor, the second on every deploy. The entry chunk therefore stays
+      // small (33 kB / ~11 kB gzip) and antd stays in a file only a version bump can
+      // invalidate. The lazy routes add 19 kB / 9 kB gzip on top of the first load, and
+      // only when an address asks for them.
+      //
+      // What it costs: the antd only the profile and dashboard render arrives with the
+      // shell. There is no way to say "only the entry's antd" here - `manualChunks` is
+      // handed a module id and nothing else, and antd's barrel statically re-exports every
+      // component, so all of it is reachable from `main.tsx` no matter what the entry
+      // actually renders. The same reason defeated an `app` chunk (it swallowed antd, 647 kB)
+      // and a reachability walk over `importedIds` (identical 613.66 kB with and without the
+      // lazy routes), which is why neither is in this file.
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            // Application code is not named here on purpose - see the note above. It stays
+            // in the entry chunk, which is the smallest thing that can be invalidated
+            // without telling a chunk where a module is reached from.
+            if (!id.includes('node_modules')) return undefined
+            // Checked before React: `react-i18next` matches both tests, and it belongs with
+            // its own runtime rather than with the framework.
+            if (id.includes('i18next')) return 'vendor-i18n'
+            // antd, its icons and the `rc-*` / `@rc-component/*` primitives it renders from.
+            // Splitting any of them apart would leave a chunk whose only consumer is another
+            // chunk of the same group.
+            if (
+              id.includes('antd') ||
+              id.includes('@ant-design') ||
+              id.includes('@rc-component') ||
+              /[\\/]rc-[^\\/]+[\\/]/.test(id)
+            ) {
+              return 'vendor-ui'
+            }
+            // React, ReactDOM, the router and the scheduler they share a release train
+            // with. After antd and not before: `react-router-dom` matches `react` as well,
+            // and the only thing that matters is that one test wins.
+            if (id.includes('react') || id.includes('scheduler')) return 'vendor-react'
+            // The remainder of third-party code (dayjs, csstype, ...) - small, and shared by
+            // the groups above. This bucket must stay small: an untargeted one is how
+            // `Circular chunk: vendor -> vendor-react -> vendor` appeared when antd was left
+            // in it, because it collects packages that import React and antd that imports
+            // them back. With antd named above, nothing here does either.
+            return 'vendor'
+          },
+        },
+      },
+    },
     // `basicSsl` supplies a self-signed certificate so the dev server speaks https. That is what
   // makes the page and the backend the same scheme, which is the difference between a same-site
   // and a cross-site request: a site is scheme plus registrable domain, and ports play no part.

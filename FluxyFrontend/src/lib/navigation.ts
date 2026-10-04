@@ -9,8 +9,6 @@ import {
   UserOutlined,
   UsergroupAddOutlined,
 } from '@ant-design/icons'
-import DashboardPage from '../pages/DashboardPage'
-import ProfilePage from '../pages/ProfilePage'
 import type { Role } from '../types'
 
 /**
@@ -24,7 +22,7 @@ import type { Role } from '../types'
 type NavIcon = typeof DashboardOutlined
 
 /** One entry of a category: a route, the label it is shown under, and the page it opens. */
-export interface NavItem {
+interface NavItem {
   /** The item's own id, distinct from the address - `dashboard`, `profile`. */
   key: string
   /** Relative to the area's prefix. Empty for the role's home - see `NAVIGATION`. */
@@ -33,17 +31,25 @@ export interface NavItem {
   labelKey: string
   icon: NavIcon
   /**
-   * The page this item opens, or nothing for the placeholder.
+   * How to get the page this item opens, or nothing for the placeholder.
+   *
+   * A loader rather than the component itself, and that is the whole reason this field is
+   * shaped like a function: this table is what the sidebar *reads*, so importing the pages
+   * here would drag the profile editor and the dashboard into the first chunk every
+   * visitor downloads to see a sign-in form. `routes.tsx` calls the loader and wraps the
+   * answer in `React.lazy`, which means the module is fetched when an address asks for it
+   * rather than when the table is defined.
    *
    * Every page behind a menu takes the section key, including the ones that ignore it:
    * the router renders all of them through one `<Page sectionKey={...} />` call, and a
-   * page typed as taking no props would not accept it.
+   * page typed as taking no props would not accept it. The `default` of the module is what
+   * has to satisfy that, so the shape is stated here once instead of at six call sites.
    */
-  page?: ComponentType<{ sectionKey: string }>
+  page?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
 }
 
 /** A category of items - `overview`, `management`, `account`. */
-export interface NavGroup {
+interface NavGroup {
   key: string
   labelKey: string
   icon: NavIcon
@@ -85,7 +91,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: '',
           labelKey: 'nav.items.dashboard',
           icon: DashboardOutlined,
-          page: DashboardPage,
+          page: () => import('../pages/DashboardPage'),
         },
         {
           key: 'orders',
@@ -105,7 +111,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: 'profile',
           labelKey: 'nav.items.profile',
           icon: IdcardOutlined,
-          page: ProfilePage,
+          page: () => import('../pages/ProfilePage'),
         },
       ],
     },
@@ -121,7 +127,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: '',
           labelKey: 'nav.items.dashboard',
           icon: DashboardOutlined,
-          page: DashboardPage,
+          page: () => import('../pages/DashboardPage'),
         },
         {
           key: 'clients',
@@ -141,7 +147,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: 'profile',
           labelKey: 'nav.items.profile',
           icon: IdcardOutlined,
-          page: ProfilePage,
+          page: () => import('../pages/ProfilePage'),
         },
       ],
     },
@@ -157,7 +163,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: '',
           labelKey: 'nav.items.dashboard',
           icon: DashboardOutlined,
-          page: DashboardPage,
+          page: () => import('../pages/DashboardPage'),
         },
       ],
     },
@@ -190,7 +196,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: 'profile',
           labelKey: 'nav.items.profile',
           icon: IdcardOutlined,
-          page: ProfilePage,
+          page: () => import('../pages/ProfilePage'),
         },
       ],
     },

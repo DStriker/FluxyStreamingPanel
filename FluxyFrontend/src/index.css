@@ -187,3 +187,16 @@ body {
 .auth-form .auth-form__otp .ant-form-item-label > label {
   text-align: center;
 }
+
+/* Where a route-level chunk resolves - the boundary `App` puts above `RouterProvider`.
+   `min-height: 100vh` is not decoration: at that moment the router has rendered nothing,
+   so there is no content to give the document any height, and a spinner at the top of a
+   blank page is not a loading state anybody would read as one. */
+.route-fallback {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}

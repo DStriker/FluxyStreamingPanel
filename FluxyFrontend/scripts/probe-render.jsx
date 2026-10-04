@@ -182,16 +182,26 @@ async function main() {
   )
 
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`
-  // when an item carries no `page`, so a profile menu entry with the component dropped from
-  // it would render the placeholder, lint would pass, the build would pass, and the only
-  // sign would be a section that says it is under construction.
-  const profileItems = ROLES.map((role) =>
-    flatItems(role).find((item) => item.key === 'profile'),
+  // when an item carries no `page`, so a profile menu entry with the loader dropped from it
+  // would render the placeholder, lint would pass, the build would pass, and the only sign
+  // would be a section that says it is under construction.
+  //
+  // The item holds a *loader* rather than the component now that the pages are route-level
+  // chunks, so the question is asked after the answer arrives. Testing the loader itself
+  // would prove nothing - an arrow function is never equal to `ProfilePage` - and awaiting
+  // it keeps this check exactly as strong as it was: the module that opens still has to be
+  // this page's module, or the placeholder is what the visitor would have got.
+  const profileModules = await Promise.all(
+    ROLES.map(async (role) => {
+      const item = flatItems(role).find((candidate) => candidate.key === 'profile')
+      return item?.page ? await item.page() : null
+    }),
   )
+  const opensProfilePage = profileModules.every((module) => module?.default === ProfilePage)
   check(
     'every role menu points its profile item at the real page rather than the placeholder',
-    profileItems.every((item) => item?.page === ProfilePage),
-    profileItems.every((item) => item?.page === ProfilePage)
+    opensProfilePage,
+    opensProfilePage
       ? 'Client, Reseller and Admin all use ProfilePage'
       : 'A ROLE WOULD OPEN THE PLACEHOLDER INSTEAD OF THE PROFILE',
   )

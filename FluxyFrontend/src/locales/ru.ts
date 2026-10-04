@@ -19,11 +19,17 @@ const ru: Translation = {
     newEmail: 'Новый email',
     role: 'Уровень доступа',
   },
+  // Фразы, не принадлежащие конкретной странице: то, что shell пишет до того, как узнает,
+  // какую именно страницу он собирается нарисовать.
+  common: {
+    loading: 'Загрузка',
+  },
   validation: {
     usernameRequired: 'Введите имя пользователя',
     usernameLength: 'От 5 до 20 символов',
     emailRequired: 'Введите email',
     emailInvalid: 'Некорректный email',
+    emailMaxLength: 'Слишком длинный email - не более {{max}} символов',
     passwordRequired: 'Введите пароль',
     passwordLength: 'От 8 до 100 символов',
     passwordComplexity: 'Нужна строчная буква, заглавная буква и цифра',
@@ -38,7 +44,6 @@ const ru: Translation = {
     confirmRegistration: 'Подтверждение регистрации',
     forgotPassword: 'Сброс пароля',
     confirmPasswordReset: 'Подтверждение сброса пароля',
-    profile: 'Профиль',
     clientLogin: 'Вход для клиента',
     resellerLogin: 'Вход для реселлера',
     adminLogin: 'Вход для администратора',

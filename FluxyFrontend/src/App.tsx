@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react'
-import { App as AntApp, ConfigProvider } from 'antd'
+import { Suspense, useEffect, useMemo } from 'react'
+import { App as AntApp, ConfigProvider, Spin, Typography } from 'antd'
 import ruRU from 'antd/locale/ru_RU'
 import enUS from 'antd/locale/en_US'
 import { RouterProvider } from 'react-router-dom'
@@ -10,7 +10,7 @@ import { router } from './router'
 
 export default function App() {
   const dark = useIsDark()
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
   const antdLocale = i18n.language.startsWith('ru') ? ruRU : enUS
   // One object per theme, not per render: `derived` below is an identity the effect can
   // depend on without re-firing on every keystroke in an input somewhere.
@@ -37,7 +37,24 @@ export default function App() {
   return (
     <ConfigProvider locale={antdLocale} theme={config}>
       <AntApp>
-        <RouterProvider router={router} />
+        {/* The pages are route-level chunks (`src/router/routes.tsx`), so the first visit
+            to any of them arrives a moment after the navigation does. This is the boundary
+            those imports resolve into, placed above the router rather than inside a route
+            because the guard, the layout and every page are one subtree that suspends. It
+            sits inside `ConfigProvider` and `AntApp`, so the spinner is themed and the
+            locale it would announce is already chosen - which is why the label below is a
+            real sentence: a `role="status"` region with nothing but a spinner in it
+            announces nothing to the one visitor it exists for. */}
+        <Suspense
+          fallback={
+            <div className="route-fallback" role="status">
+              <Spin />
+              <Typography.Text type="secondary">{t('common.loading')}</Typography.Text>
+            </div>
+          }
+        >
+          <RouterProvider router={router} />
+        </Suspense>
       </AntApp>
     </ConfigProvider>
   )

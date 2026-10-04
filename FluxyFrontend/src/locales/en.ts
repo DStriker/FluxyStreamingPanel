@@ -16,11 +16,17 @@ const en = {
     newEmail: 'New email address',
     role: 'Access level',
   },
+  // Sentences that belong to no page in particular: what the shell writes before it knows
+  // which page it is about to draw.
+  common: {
+    loading: 'Loading',
+  },
   validation: {
     usernameRequired: 'Enter your username',
     usernameLength: 'Between 5 and 20 characters',
     emailRequired: 'Enter your email',
     emailInvalid: 'Invalid email address',
+    emailMaxLength: 'Email address is too long - up to {{max}} characters',
     passwordRequired: 'Enter your password',
     passwordLength: 'Between 8 and 100 characters',
     passwordComplexity: 'Needs a lowercase letter, an uppercase letter and a digit',
@@ -35,7 +41,6 @@ const en = {
     confirmRegistration: 'Confirm your registration',
     forgotPassword: 'Password reset',
     confirmPasswordReset: 'Confirm the password reset',
-    profile: 'Profile',
     clientLogin: 'Client area',
     resellerLogin: 'Reseller panel',
     adminLogin: 'Admin panel',

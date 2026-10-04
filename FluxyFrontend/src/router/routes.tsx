@@ -1,18 +1,36 @@
+import { lazy } from 'react'
 import { Navigate } from 'react-router-dom'
 import type { RouteObject } from 'react-router-dom'
 import config, { areaOf, insideArea, routePath } from '../config'
 import GuestOnly from '../components/GuestOnly'
 import RequireAuth from '../components/RequireAuth'
 import AccountLayout from '../components/AccountLayout'
-import RegisterPage from '../pages/RegisterPage'
-import ClientLoginPage from '../pages/ClientLoginPage'
-import ResellerLoginPage from '../pages/ResellerLoginPage'
-import AdminLoginPage from '../pages/AdminLoginPage'
-import ForgotPasswordPage from '../pages/ForgotPasswordPage'
 import NotFoundPage from '../pages/NotFoundPage'
-import SectionPage from '../pages/SectionPage'
 import { flatItems } from '../lib/navigation'
 import type { Role } from '../types'
+
+/**
+ * The five guest pages and the placeholder section, each behind a dynamic import.
+ *
+ * These were the reason the whole application built as one chunk: the route table imported
+ * every page it could open, so a first visit to a sign-in form downloaded the profile
+ * editor, the dashboard and all three entrances as well. `lazy` turns each entry into a
+ * chunk that arrives when its address does.
+ *
+ * `NotFoundPage` is the deliberate exception. `RequireAuth` imports it *statically* to
+ * render for a role mismatch, so it is in the main bundle whether the catch-all asks for
+ * it or not - wrapping that one in `lazy` would buy nothing and cost a second path to the
+ * same component.
+ *
+ * `App` supplies the `Suspense` boundary these resolve into; without it a first visit to
+ * any of these routes would throw instead of waiting.
+ */
+const RegisterPage = lazy(() => import('../pages/RegisterPage'))
+const ClientLoginPage = lazy(() => import('../pages/ClientLoginPage'))
+const ResellerLoginPage = lazy(() => import('../pages/ResellerLoginPage'))
+const AdminLoginPage = lazy(() => import('../pages/AdminLoginPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
+const SectionPage = lazy(() => import('../pages/SectionPage'))
 
 /**
  * The three sign-in areas, each of which has to answer the path the backend names in its
@@ -70,7 +88,13 @@ import type { Role } from '../types'
  */
 const sectionRoutes = (role: Role, homeRoute: string): RouteObject[] =>
   flatItems(role).map((item) => {
-    const Page = item.page ?? SectionPage
+    // `lazy` is called here rather than at the loader's definition site because a loader
+    // belongs to an *item*, and the same page is an item of all three roles: one wrapper
+    // per item keeps the nine wrappers static and created exactly once. This function runs
+    // a single time, while the table below is being built at module load - which is what
+    // makes it safe. Wrapping during render would mint a new component type per render and
+    // remount the page on every navigation.
+    const Page = item.page ? lazy(item.page) : SectionPage
     const element = <Page sectionKey={item.labelKey} />
     // The item with no path of its own is this role's home - the page a sign-in opens,
     // whose address the server names in `redirect`. It is a child of the area like every
