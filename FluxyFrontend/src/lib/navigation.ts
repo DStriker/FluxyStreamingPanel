@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import {
   AppstoreOutlined,
   DashboardOutlined,
@@ -10,6 +11,44 @@ import {
 } from '@ant-design/icons'
 import DashboardPage from '../pages/DashboardPage'
 import ProfilePage from '../pages/ProfilePage'
+import type { Role } from '../types'
+
+/**
+ * An icon as this table stores it.
+ *
+ * Taken from one of the icons rather than written out, because every entry in the table is
+ * an export of the same package with the same shape - a component antd's `Menu` renders
+ * from `createElement(icon)` with no props at all. Naming the type after the value means
+ * the table cannot drift from what the renderer accepts.
+ */
+type NavIcon = typeof DashboardOutlined
+
+/** One entry of a category: a route, the label it is shown under, and the page it opens. */
+export interface NavItem {
+  /** The item's own id, distinct from the address - `dashboard`, `profile`. */
+  key: string
+  /** Relative to the area's prefix. Empty for the role's home - see `NAVIGATION`. */
+  path: string
+  /** Locale key of the label. */
+  labelKey: string
+  icon: NavIcon
+  /**
+   * The page this item opens, or nothing for the placeholder.
+   *
+   * Every page behind a menu takes the section key, including the ones that ignore it:
+   * the router renders all of them through one `<Page sectionKey={...} />` call, and a
+   * page typed as taking no props would not accept it.
+   */
+  page?: ComponentType<{ sectionKey: string }>
+}
+
+/** A category of items - `overview`, `management`, `account`. */
+export interface NavGroup {
+  key: string
+  labelKey: string
+  icon: NavIcon
+  items: NavItem[]
+}
 
 /**
  * What each signed-in role sees in the sidebar, as categories of items.
@@ -34,7 +73,7 @@ import ProfilePage from '../pages/ProfilePage'
  * Keyed by the role name exactly as the backend reports it in `me`, so this and
  * `homeForRole` read the same strings.
  */
-export const NAVIGATION = {
+export const NAVIGATION: Record<Role, NavGroup[]> = {
   Client: [
     {
       key: 'overview',
@@ -159,4 +198,5 @@ export const NAVIGATION = {
 }
 
 /** Every menu item of a role, flattened in display order. */
-export const flatItems = (role) => (NAVIGATION[role] ?? []).flatMap((group) => group.items)
+export const flatItems = (role: Role): NavItem[] =>
+  (NAVIGATION[role] ?? []).flatMap((group) => group.items)

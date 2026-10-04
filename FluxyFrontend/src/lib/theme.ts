@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { theme } from 'antd'
+import { theme, type ThemeConfig } from 'antd'
 import { usePrefersDark } from '../hooks/usePrefersDark'
 
 /**
@@ -87,7 +87,22 @@ import { usePrefersDark } from '../hooks/usePrefersDark'
  *                                 rail are one surface and the transparent menu above
  *                                 has the right colour underneath it.
  */
-export const appTheme = (dark) => {
+/**
+ * What `appTheme` answers with: the config for `ConfigProvider`, and the tokens of that
+ * exact theme for everything `ConfigProvider` cannot reach - `body`, which paints itself
+ * from `App`'s effect.
+ *
+ * `derived` is antd's own return type of `getDesignToken` rather than `GlobalToken`, which
+ * is a *different* type in v6: `GlobalToken` is the cssinjs-utils shape carrying the
+ * component tokens as well, and the alias token the algorithm produces is not assignable
+ * to it. Naming it here once keeps both halves of the answer honest.
+ */
+export type AppTheme = {
+  config: ThemeConfig
+  derived: ReturnType<typeof theme.getDesignToken>
+}
+
+export const appTheme = (dark: boolean): AppTheme => {
   const algorithm = dark ? theme.darkAlgorithm : theme.defaultAlgorithm
   const derived = theme.getDesignToken({ algorithm })
 
@@ -119,17 +134,27 @@ export const appTheme = (dark) => {
 
 const STORAGE_KEY = 'fluxy-theme'
 
-/** The three states a visitor can be in; `system` follows the OS and is the default. */
+/**
+ * The three states a visitor can be in; `system` follows the OS and is the default.
+ *
+ * `as const` so each member is its literal rather than `string`: `ThemeChoice.Dark` is
+ * then `'dark'`, and the union below is the set of values `useThemeChoice` can answer
+ * with. A plain object would widen every one of them to `string` and the type would say
+ * nothing.
+ */
 export const ThemeChoice = {
   Light: 'light',
   Dark: 'dark',
   System: 'system',
-}
+} as const
 
-const isChoice = (value) =>
+/** One of the three, and the only thing the stored preference can be. */
+export type ThemeChoiceValue = (typeof ThemeChoice)[keyof typeof ThemeChoice]
+
+const isChoice = (value: unknown): value is ThemeChoiceValue =>
   value === ThemeChoice.Light || value === ThemeChoice.Dark || value === ThemeChoice.System
 
-const readStored = () => {
+const readStored = (): ThemeChoiceValue => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     return isChoice(saved) ? saved : ThemeChoice.System
@@ -144,14 +169,14 @@ const readStored = () => {
 // the router tree. A context between them would have to wrap `ConfigProvider`, and
 // `ConfigProvider` is what produces the token the switch renders with - a cycle for no
 // gain. Both ends subscribe to this instead, and there is exactly one copy of the value.
-let choice = readStored()
-const listeners = new Set()
+let choice: ThemeChoiceValue = readStored()
+const listeners = new Set<() => void>()
 
 const notify = () => listeners.forEach((listener) => listener())
 
-export const themeChoice = () => choice
+export const themeChoice = (): ThemeChoiceValue => choice
 
-export const setThemeChoice = (next) => {
+export const setThemeChoice = (next: ThemeChoiceValue): void => {
   if (!isChoice(next) || next === choice) return
   choice = next
   try {
@@ -163,13 +188,13 @@ export const setThemeChoice = (next) => {
   notify()
 }
 
-const subscribe = (listener) => {
+const subscribe = (listener: () => void): (() => void) => {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
 
 /** The stored preference: `light`, `dark`, or `system` to follow the OS. */
-export function useThemeChoice() {
+export function useThemeChoice(): ThemeChoiceValue {
   return useSyncExternalStore(subscribe, themeChoice, themeChoice)
 }
 
@@ -182,7 +207,7 @@ export function useThemeChoice() {
  * to override it. It stays as the fallback rather than being replaced, so a first visit
  * still matches the visitor's own system setting.
  */
-export function useIsDark() {
+export function useIsDark(): boolean {
   const stored = useThemeChoice()
   const systemDark = usePrefersDark()
   return stored === ThemeChoice.System ? systemDark : stored === ThemeChoice.Dark

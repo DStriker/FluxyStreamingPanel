@@ -12,7 +12,7 @@
 
 const KEY = 'fluxy-pending-registration'
 
-export const readPendingEmail = () => {
+export const readPendingEmail = (): string => {
   try {
     return sessionStorage.getItem(KEY) ?? ''
   } catch {
@@ -22,7 +22,7 @@ export const readPendingEmail = () => {
   }
 }
 
-export const rememberPendingEmail = (email) => {
+export const rememberPendingEmail = (email: string): void => {
   try {
     sessionStorage.setItem(KEY, email)
   } catch {
@@ -36,7 +36,7 @@ export const rememberPendingEmail = (email) => {
  * Called once the account is confirmed and once the code has expired - in both cases the
  * stored address would only produce a second, guaranteed failure.
  */
-export const forgetPendingEmail = () => {
+export const forgetPendingEmail = (): void => {
   try {
     sessionStorage.removeItem(KEY)
   } catch {

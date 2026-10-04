@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import type { SessionContextValue } from '../types'
 
 /**
  * The account the current area was opened for, or `null` outside one.
@@ -18,6 +19,12 @@ import { createContext, useContext } from 'react'
  * in, `RequireAuth` on the way in here) both want a fresh answer per navigation. This
  * holds the result of that answer for as long as the area is mounted.
  */
-export const SessionContext = createContext(null)
+/**
+ * `null` outside an area rather than a missing provider: `RequireAuth` is the only
+ * publisher, and every consumer below is a part of the shell it renders. The type says so
+ * plainly - a consumer that forgets to check is a compile error instead of a `Cannot read
+ * properties of null` at render time.
+ */
+export const SessionContext = createContext<SessionContextValue | null>(null)
 
-export const useSession = () => useContext(SessionContext)
+export const useSession = (): SessionContextValue | null => useContext(SessionContext)

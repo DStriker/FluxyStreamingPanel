@@ -1,17 +1,23 @@
 import config, { areaOf, routePath } from '../config'
+import type { Role, Session } from '../types'
 
 /**
  * Landing paths per role, keyed by the role name as the backend reports it in `me`
  * (`UserRole` serialized by name: `Client`, `Reseller`, `Admin`).
+ *
+ * Typed `Record<Role, string>` so that all three are present or the file does not compile.
+ * The input to the lookup is whatever the server called a role, and a role this build does
+ * not know falls through to the client area - which is what the runtime `??` below is for;
+ * the type states the protocol, not a guarantee about the next deployment.
  */
-const HOME_BY_ROLE = {
+const HOME_BY_ROLE: Record<Role, string> = {
   Admin: config.ADMIN_HOME_ROUTE,
   Reseller: config.RESELLER_HOME_ROUTE,
   Client: config.CLIENT_HOME_ROUTE,
 }
 
 /** The configured landing path for a role - `admin/dashboard` - with the client's as the fallback. */
-const landingRouteFor = (role) => HOME_BY_ROLE[role] ?? config.CLIENT_HOME_ROUTE
+const landingRouteFor = (role: Role): string => HOME_BY_ROLE[role] ?? config.CLIENT_HOME_ROUTE
 
 /**
  * Where a session of this role belongs - the destination a successful sign-in names.
@@ -33,7 +39,7 @@ const landingRouteFor = (role) => HOME_BY_ROLE[role] ?? config.CLIENT_HOME_ROUTE
  * same reason. Sending a session that demonstrably exists back to a guest page would put it
  * straight through the guard that just asked, which is a loop and not a fallback.
  */
-export const homeForRole = (role) => routePath(landingRouteFor(role))
+export const homeForRole = (role: Role): string => routePath(landingRouteFor(role))
 
 /**
  * The address of the role's **area** - `/admin`, `/reseller`, `/client` - where
@@ -46,7 +52,7 @@ export const homeForRole = (role) => routePath(landingRouteFor(role))
  * out as `/admin/dashboard/profile`. Everything that builds an address inside an area -
  * the router's children, the sidebar's keys, the header's shortcut - takes this one.
  */
-export const areaForRole = (role) => routePath(areaOf(landingRouteFor(role)))
+export const areaForRole = (role: Role): string => routePath(areaOf(landingRouteFor(role)))
 
 /**
  * Whether a session may open the area guarded for `role`.
@@ -64,6 +70,15 @@ export const areaForRole = (role) => routePath(areaOf(landingRouteFor(role)))
  * inside a component cannot be - `renderToStaticMarkup` never runs an effect, so a guard
  * never reaches its decision while being rendered, and a check that cannot execute proves
  * nothing.
+ *
+ * Written as an early return rather than the original `Boolean(session) && ...`, because
+ * `Boolean()` narrows nothing: TypeScript would still call `session.role` a read of a
+ * possibly-null value on the second half. `!session` narrows the rest of the function.
  */
-export const sessionOpensArea = (session, role) =>
-  Boolean(session) && (role === undefined || role === null || session.role === role)
+export const sessionOpensArea = (
+  session: Session | null | undefined,
+  role?: Role | null,
+): boolean => {
+  if (!session) return false
+  return role === undefined || role === null || session.role === role
+}

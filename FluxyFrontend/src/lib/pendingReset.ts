@@ -15,7 +15,7 @@
 
 const KEY = 'fluxy-pending-reset'
 
-export const readPendingReset = () => {
+export const readPendingReset = (): string => {
   try {
     return sessionStorage.getItem(KEY) ?? ''
   } catch {
@@ -25,7 +25,7 @@ export const readPendingReset = () => {
   }
 }
 
-export const rememberPendingReset = (username) => {
+export const rememberPendingReset = (username: string): void => {
   try {
     sessionStorage.setItem(KEY, username)
   } catch {
@@ -33,7 +33,7 @@ export const rememberPendingReset = (username) => {
   }
 }
 
-export const forgetPendingReset = () => {
+export const forgetPendingReset = (): void => {
   try {
     sessionStorage.removeItem(KEY)
   } catch {
