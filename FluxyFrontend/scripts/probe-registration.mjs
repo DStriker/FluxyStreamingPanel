@@ -8,8 +8,8 @@
  *
  * Run: node_modules\.bin\esbuild --bundle scripts\probe-registration.mjs --format=esm --outfile=%TEMP%\probe.mjs --define:import.meta.env=%TEMP%\env.json
  */
-import { config } from '../src/config/index.js'
-import i18n from '../src/i18n.js'
+import { config } from '../src/config/index'
+import i18n from '../src/i18n'
 import {
   ApiError,
   apiFetch,
@@ -17,14 +17,14 @@ import {
   fieldErrors,
   messageForError,
   textForCode,
-} from '../src/lib/http.js'
+} from '../src/lib/http'
 import {
   confirmRegistration,
   RegisterCaptchaAction,
   submitRegistration,
-} from '../src/lib/api.js'
-import { meetsPasswordComplexity, CODE_LENGTH } from '../src/lib/policy.js'
-import { getCsrfToken } from '../src/lib/csrf.js'
+} from '../src/lib/api'
+import { meetsPasswordComplexity, CODE_LENGTH } from '../src/lib/policy'
+import { getCsrfToken } from '../src/lib/csrf'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 

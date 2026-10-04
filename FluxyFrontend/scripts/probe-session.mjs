@@ -19,12 +19,12 @@
  *
  * Run: npm run probe:session
  */
-import { config, routePath } from '../src/config/index.js'
-import i18n from '../src/i18n.js'
-import { apiFetch, textForCode } from '../src/lib/http.js'
-import { currentSession, signOut, submitAuth } from '../src/lib/api.js'
-import { getCsrfToken } from '../src/lib/csrf.js'
-import { homeForRole } from '../src/lib/session.js'
+import { config, routePath } from '../src/config/index'
+import i18n from '../src/i18n'
+import { apiFetch, textForCode } from '../src/lib/http'
+import { currentSession, signOut, submitAuth } from '../src/lib/api'
+import { getCsrfToken } from '../src/lib/csrf'
+import { homeForRole } from '../src/lib/session'
 
 const BASE = process.env.FLUXY_API ?? 'http://localhost:5159'
 config.API_BASE_URL = BASE
