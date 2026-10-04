@@ -97,25 +97,87 @@ import { usePrefersDark } from '../hooks/usePrefersDark'
  * component tokens as well, and the alias token the algorithm produces is not assignable
  * to it. Naming it here once keeps both halves of the answer honest.
  */
-export type AppTheme = {
+type AppTheme = {
   config: ThemeConfig
   derived: ReturnType<typeof theme.getDesignToken>
 }
 
+/**
+ * The primary of each theme, and why there are two of them rather than one.
+ *
+ * `#1677ff` - the antd default this used to be - fails WCAG AA everywhere this application
+ * paints it: white on it is 4.10:1 and it as link text on `#f5f5f5` is 3.77:1, and a 14px
+ * label needs 4.5. The ratio is symmetric, so one darker blue fixes the fill and the text
+ * in a single move: `#0958d9` measures 6.16:1 against white and 5.65:1 against the page.
+ *
+ * The dark theme needs the opposite direction, and no single colour can serve both. Its
+ * text sits on `#141414`, where a blue dark enough to carry white text is a blue nobody
+ * can read on a near-black page - the two requirements are the same ratio asked of the two
+ * ends of the scale at once, and between them the window is empty. So the seed goes *light*
+ * there instead (`#4096ff`, which the dark algorithm renders as `#3983dc`), and what is
+ * written on a primary fill goes dark rather than white - `onPrimary` below is that answer,
+ * 4.78:1 for a button label in either direction.
+ *
+ * `colorLink` is set to the same seed deliberately rather than left to follow
+ * `colorPrimary`: in v6 it no longer does. Untouched it stays `#1677ff` - the very value
+ * this replaces - and it is the colour of all six links on the guest pages, which are the
+ * most-read text in the application. Measured with `theme.getDesignToken` rather than
+ * reasoned: the derived palette rounds the seed, so `#4096ff` comes out of the dark
+ * algorithm as `#3983dc` and `colorPrimaryHover` comes out of `#0958d9` as `#2e7ae6`.
+ *
+ * Every state, measured against the surface it is painted on, with what stock antd gave
+ * before this in the last line:
+ *
+ *            light: rest / hover / active        dark: rest / hover / active
+ *   link     6.16 / 2.80 / 8.97                  4.78 / 2.20 / 3.29
+ *   button   6.16 / 4.16 / 8.97                  4.78 / 6.82 / 3.29
+ *   before   4.10 / 2.25 / 6.16                  3.55 / 1.83 / 2.55
+ *
+ * Hover is the honest weak spot and it is not settable from here: `colorLinkHover` and
+ * `colorLinkActive` are not seeds but `linkColors[4]` and `linkColors[7]` in antd's
+ * `genColorMapToken`, computed *after* the seed is read, so a value handed to
+ * `ConfigProvider` for them is overwritten. It improves with the seed rather than with a
+ * setting, and it belongs to antd's palette rather than to this file - which is why the
+ * resting state, the one a reader spends their time in, is the one these two colours were
+ * chosen to fix.
+ */
+const primaryFor = (dark: boolean): string => (dark ? '#4096ff' : '#0958d9')
+
+/**
+ * What a primary fill says: white in light, the page's own near-black in dark.
+ *
+ * This is `Button.primaryColor` and `Menu.darkItemSelectedColor`, both of which default to
+ * `colorTextLightSolid` (`#fff` in both themes) over a background of `colorPrimary` - so
+ * with the light dark-theme seed above, leaving them alone would put white on `#3983dc`
+ * for 3.85:1. `dangerColor` is deliberately *not* set: it takes the same default and sits
+ * on red, where white is still the right answer.
+ */
+const onPrimaryFor = (dark: boolean): string => (dark ? '#141414' : '#ffffff')
+
 export const appTheme = (dark: boolean): AppTheme => {
   const algorithm = dark ? theme.darkAlgorithm : theme.defaultAlgorithm
-  const derived = theme.getDesignToken({ algorithm })
+  const onPrimary = onPrimaryFor(dark)
+  // One object, used by both halves of the answer. `derived` has to be computed from the
+  // exact seed `ConfigProvider` receives - `body` reads it in `App` - and two copies of the
+  // same list are two copies that can drift. They already did once while this was being
+  // written: the `colorLink` below reached the page while this call did not have it, so
+  // `derived` reported `#1677ff` for a link the browser painted `#0958d9` - the same lie
+  // the paragraph above exists to prevent, in a quieter voice.
+  const token = {
+    colorPrimary: primaryFor(dark),
+    colorLink: primaryFor(dark),
+    fontSize: 14,
+    fontSizeLG: 16,
+  }
+  const derived = theme.getDesignToken({ algorithm, token })
 
   return {
     /** Exactly what `ConfigProvider` takes as its `theme` prop - nothing else. */
     config: {
       algorithm,
-      token: {
-        colorPrimary: '#1677ff',
-        fontSize: 14,
-        fontSizeLG: 16,
-      },
+      token,
       components: {
+        Button: { primaryColor: onPrimary },
         Layout: { headerBg: derived.colorBgContainer, siderBg: derived.colorBgContainer },
         Menu: {
           itemMarginBlock: 0,
@@ -124,6 +186,10 @@ export const appTheme = (dark: boolean): AppTheme => {
           darkItemBg: 'transparent',
           darkSubMenuItemBg: 'transparent',
           darkPopupBg: derived.colorBgElevated,
+          // The selected row of the dark menu is a primary *fill* - `darkItemSelectedBg`
+          // takes `colorPrimary` - so it is the button's problem again and gets the same
+          // answer from `onPrimary` above.
+          darkItemSelectedColor: onPrimary,
         },
       },
     },
@@ -149,7 +215,7 @@ export const ThemeChoice = {
 } as const
 
 /** One of the three, and the only thing the stored preference can be. */
-export type ThemeChoiceValue = (typeof ThemeChoice)[keyof typeof ThemeChoice]
+type ThemeChoiceValue = (typeof ThemeChoice)[keyof typeof ThemeChoice]
 
 const isChoice = (value: unknown): value is ThemeChoiceValue =>
   value === ThemeChoice.Light || value === ThemeChoice.Dark || value === ThemeChoice.System
@@ -174,7 +240,7 @@ const listeners = new Set<() => void>()
 
 const notify = () => listeners.forEach((listener) => listener())
 
-export const themeChoice = (): ThemeChoiceValue => choice
+const themeChoice = (): ThemeChoiceValue => choice
 
 export const setThemeChoice = (next: ThemeChoiceValue): void => {
   if (!isChoice(next) || next === choice) return
