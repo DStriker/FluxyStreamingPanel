@@ -1,4 +1,6 @@
-export default {
+import type { Translation } from './en'
+
+const ru: Translation = {
   fields: {
     username: 'Имя пользователя',
     email: 'Email',
@@ -185,3 +187,5 @@ export default {
     },
   },
 }
+
+export default ru

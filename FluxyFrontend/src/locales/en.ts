@@ -1,4 +1,4 @@
-export default {
+const en = {
   fields: {
     username: 'Username',
     email: 'Email',
@@ -185,3 +185,14 @@ export default {
     },
   },
 }
+
+/**
+ * The shape of the English file, which is the shape every other locale has to have.
+ *
+ * It is derived from the object rather than written out, so it cannot drift from it: a key
+ * added to `en` is automatically required by `ru`, and a key `en` does not have is an error
+ * in `ru` rather than a string nothing ever reads. `ru.ts` annotates itself with this type.
+ */
+export type Translation = typeof en
+
+export default en
