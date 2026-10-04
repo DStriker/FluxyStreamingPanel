@@ -1,4 +1,5 @@
 import { apiUrl } from './url'
+import type { CsrfTokenResponse } from '../types'
 
 const COOKIE_NAME = 'XSRF-TOKEN'
 const TOKEN_URL = '/auth/csrf'
@@ -46,12 +47,13 @@ export async function getCsrfToken(): Promise<string | null> {
     })
     if (res.ok) {
       // `token` is what the endpoint answers with (`CsrfTokenResponse`); `csrfToken` is
-      // accepted as well so the lookup does not depend on one spelling of the field.
-      // `unknown` rather than `any` so the value is narrowed below instead of being
-      // handed to a caller as a `string` nobody checked.
-      const data: { token?: unknown; csrfToken?: unknown } | null = await res.json().catch(
-        () => null,
-      )
+      // accepted as well so the lookup does not depend on one spelling of the field. The
+      // second one is `unknown` rather than `string` because nothing documents it, and
+      // what reaches the caller below is checked for being a string rather than asserted
+      // to be one.
+      const data: (Partial<CsrfTokenResponse> & { csrfToken?: unknown }) | null = await res
+        .json()
+        .catch(() => null)
       const value = data?.token ?? data?.csrfToken ?? readCookie(COOKIE_NAME) ?? null
       return typeof value === 'string' ? value : null
     }

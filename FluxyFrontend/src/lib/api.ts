@@ -1,5 +1,53 @@
 import { apiFetch, apiGet } from './http'
 import { getCsrfToken } from './csrf'
+import type {
+  MessageResponse,
+  PasswordStatusResponse,
+  ProfileResponse,
+  Session,
+} from '../types'
+
+/**
+ * The two fields every sign-in form submits, and the three the registration and public
+ * reset forms do.
+ *
+ * They are spelled out here rather than typed `any` or taken from antd's `Form` so that
+ * the endpoints do not depend on how the forms are built: `submitAuth` cares what the
+ * server is sent, not which `Form.Item` the value was read from.
+ */
+interface SignInValues {
+  username: string
+  password: string
+}
+
+interface RegistrationValues extends SignInValues {
+  email: string
+}
+
+/**
+ * What every call carries beside its values: the antiforgery token, and outside
+ * development the captcha one.
+ *
+ * Both are `string | null` rather than `string` because that is what minting them answers
+ * when it cannot - `getCsrfToken` is silent when the backend is absent, `getCaptchaToken`
+ * is silent in development and whenever no site key is configured. Required rather than
+ * optional because every call site already supplies them: a forgotten `csrfToken` compiles
+ * just as happily as a wrong one and fails later, at the server, as `csrf_invalid`.
+ */
+interface CallOptions {
+  csrfToken: string | null
+  captchaToken: string | null
+}
+
+/**
+ * The three sign-in endpoints, as kebab-case - `client-login`, `reseller-login`,
+ * `admin-login` - which is also the path under `/auth/`.
+ *
+ * A union rather than `string` because there are exactly three doors and each has its own
+ * attempt window behind it; an endpoint that does not exist is a typo that would otherwise
+ * arrive as a 404 the form has no text for.
+ */
+export type LoginEndpoint = 'client-login' | 'reseller-login' | 'admin-login'
 
 /**
  * Actions a reCAPTCHA token has to have been minted for. The backend fixes one per
@@ -34,7 +82,11 @@ export const PasswordResetConfirmCaptchaAction = 'password_reset_confirm'
  * the token from the `X-Recaptcha-Token` header and ignores both body fields, so sending
  * them would suggest that the client chooses the action - it does not.
  */
-export const submitRegistration = ({ values, csrfToken, captchaToken }) =>
+export const submitRegistration = ({
+  values,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { values: RegistrationValues }): Promise<MessageResponse> =>
   apiFetch('/auth/register', {
     body: { username: values.username, email: values.email, password: values.password },
     csrfToken,
@@ -42,7 +94,12 @@ export const submitRegistration = ({ values, csrfToken, captchaToken }) =>
   })
 
 /** Answers with the code that was mailed to `email`, and with a session on success. */
-export const confirmRegistration = ({ email, code, csrfToken, captchaToken }) =>
+export const confirmRegistration = ({
+  email,
+  code,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { email: string; code: string }): Promise<MessageResponse> =>
   apiFetch('/auth/register/confirm', {
     body: { email, code },
     csrfToken,
@@ -58,7 +115,12 @@ export const confirmRegistration = ({ email, code, csrfToken, captchaToken }) =>
  * the same form written twice, and two constants that have to agree will eventually stop
  * agreeing.
  */
-export const submitAuth = ({ action, values, csrfToken, captchaToken }) =>
+export const submitAuth = ({
+  action,
+  values,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { action: LoginEndpoint; values: SignInValues }): Promise<MessageResponse> =>
   apiFetch(`/auth/${action}`, {
     body: { username: values.username, password: values.password },
     csrfToken,
@@ -78,7 +140,9 @@ export const submitAuth = ({ action, values, csrfToken, captchaToken }) =>
  * has merely expired is refreshed by `http.js` on the way, so the refusal means there was
  * genuinely nothing to end.
  */
-export const signOut = async ({ csrfToken } = {}) => {
+export const signOut = async ({
+  csrfToken,
+}: { csrfToken?: string | null } = {}): Promise<MessageResponse> => {
   const token = csrfToken ?? (await getCsrfToken())
   return apiFetch('/auth/logout', { csrfToken: token })
 }
@@ -90,9 +154,9 @@ export const signOut = async ({ csrfToken } = {}) => {
  * to ask. Returns `null` rather than throwing when there is no session, since "not signed
  * in" is the answer to the question on a public page and not a failure.
  */
-export const currentSession = async () => {
+export const currentSession = async (): Promise<Session | null> => {
   try {
-    return await apiGet('/auth/me')
+    return await apiGet<Session>('/auth/me')
   } catch {
     return null
   }
@@ -105,7 +169,7 @@ export const currentSession = async () => {
  * deliberately not among them - a claim is a copy that outlives the change it describes -
  * so anything that has to show or verify the current address has to ask the row.
  */
-export const getProfile = () => apiGet('/auth/profile')
+export const getProfile = (): Promise<ProfileResponse> => apiGet<ProfileResponse>('/auth/profile')
 
 /**
  * Starts changing one of the three, and answers with the outcome.
@@ -115,7 +179,12 @@ export const getProfile = () => apiGet('/auth/profile')
  * `profile_change_submitted` when a code is on its way and the caller has to run it through
  * `confirmProfileChange`. Both are successes; only the second one continues.
  */
-export const changeUsername = ({ currentPassword, username, csrfToken, captchaToken }) =>
+export const changeUsername = ({
+  currentPassword,
+  username,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { currentPassword: string; username: string }): Promise<MessageResponse> =>
   apiFetch('/auth/profile/username', {
     body: { currentPassword, username },
     csrfToken,
@@ -123,7 +192,12 @@ export const changeUsername = ({ currentPassword, username, csrfToken, captchaTo
   })
 
 /** The code for an address change is mailed to the new one, never to the old one. */
-export const changeEmail = ({ currentPassword, email, csrfToken, captchaToken }) =>
+export const changeEmail = ({
+  currentPassword,
+  email,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { currentPassword: string; email: string }): Promise<MessageResponse> =>
   apiFetch('/auth/profile/email', {
     body: { currentPassword, email },
     csrfToken,
@@ -135,7 +209,12 @@ export const changeEmail = ({ currentPassword, email, csrfToken, captchaToken })
  * entered, and doing so ends every session of the account - the browser that made the
  * change is signed straight back in, every other device has to sign in again.
  */
-export const changePassword = ({ currentPassword, newPassword, csrfToken, captchaToken }) =>
+export const changePassword = ({
+  currentPassword,
+  newPassword,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { currentPassword: string; newPassword: string }): Promise<MessageResponse> =>
   apiFetch('/auth/profile/password', {
     body: { currentPassword, newPassword },
     csrfToken,
@@ -148,7 +227,11 @@ export const changePassword = ({ currentPassword, newPassword, csrfToken, captch
  * No identifier travels with the code: the account comes from the session, so a code is
  * never a credential on its own and cannot be spent by whoever is holding it.
  */
-export const confirmProfileChange = ({ code, csrfToken, captchaToken }) =>
+export const confirmProfileChange = ({
+  code,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { code: string }): Promise<MessageResponse> =>
   apiFetch('/auth/profile/confirm', {
     body: { code },
     csrfToken,
@@ -162,9 +245,9 @@ export const confirmProfileChange = ({ code, csrfToken, captchaToken }) =>
  * step cannot exist on this server. It answers `false` rather than throwing when the
  * question cannot be asked - the refusal is then the same one the request itself would get.
  */
-export const passwordResetStatus = async () => {
+export const passwordResetStatus = async (): Promise<boolean> => {
   try {
-    const result = await apiGet('/auth/password/status')
+    const result = await apiGet<PasswordStatusResponse>('/auth/password/status')
     return result?.configured === true
   } catch {
     return false
@@ -179,7 +262,11 @@ export const passwordResetStatus = async () => {
  * the form has no input for would arrive as a bare toast instead of a reason under the
  * input.
  */
-export const requestPasswordReset = ({ values, csrfToken, captchaToken }) =>
+export const requestPasswordReset = ({
+  values,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { values: RegistrationValues }): Promise<MessageResponse> =>
   apiFetch('/auth/password/forgot', {
     body: { username: values.username, email: values.email, password: values.password },
     csrfToken,
@@ -192,7 +279,12 @@ export const requestPasswordReset = ({ values, csrfToken, captchaToken }) =>
  * The login name travels with the code because a code is stored as a hash and cannot be
  * looked up backwards: the name picks the pending row, the code decides whether it opens.
  */
-export const confirmPasswordReset = ({ username, code, csrfToken, captchaToken }) =>
+export const confirmPasswordReset = ({
+  username,
+  code,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { username: string; code: string }): Promise<MessageResponse> =>
   apiFetch('/auth/password/reset', {
     body: { username, code },
     csrfToken,

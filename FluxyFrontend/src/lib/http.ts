@@ -1,6 +1,8 @@
 import i18n from '../i18n'
 import { csrfHeader, getCsrfToken } from './csrf'
 import { apiUrl } from './url'
+import type { TOptions } from 'i18next'
+import type { FieldErrors, MessageResponse } from '../types'
 
 /**
  * Codes for the two failures that never reached the API, so a caller can branch on them
@@ -43,30 +45,68 @@ const NO_RETRY_PATHS = new Set([
 ])
 
 /**
+ * The options a request carries. `body` is `unknown` because it is JSON-serialized without
+ * being looked at, and the token fields are `string | null` rather than `string` because
+ * `getCsrfToken` and `getCaptchaToken` both answer `null` when they cannot produce one -
+ * which is a state the caller passes through, not an error to fix at the call site.
+ */
+interface RequestOptions {
+  body?: unknown
+  csrfToken?: string | null
+  captchaToken?: string | null
+}
+
+/** A request as `rawFetch` makes it: a `RequestOptions` plus the method. */
+interface RawOptions extends RequestOptions {
+  method?: 'GET' | 'POST'
+}
+
+/** Everything `ApiError` is constructed from. */
+interface ApiErrorInit {
+  code: string
+  message: string
+  status: number
+  errors?: FieldErrors
+  redirect?: string | null
+}
+
+/**
  * A failed call, carrying the machine readable `code` the server chose rather than only a
  * sentence.
  *
  * The code is what a caller should branch on, and it is what the localized text is looked
  * up by. `message` stays the server's English fallback for a code this build has no
  * translation for, which is why it is kept instead of being replaced at the throw site.
+ *
+ * The four fields are declared here rather than assigned only in the constructor: under
+ * `strict` a property the constructor fills in has to be declared before it can be
+ * written, and declaring them puts the shape of the error at the top of the class instead
+ * of three-quarters of the way down it.
  */
 export class ApiError extends Error {
-  constructor({ code, message, status, errors = null, redirect = null }) {
+  /** Machine readable outcome - what callers branch on and what locales translate. */
+  readonly code: string
+  /** HTTP status of the refusal, or `0` when no response arrived at all. */
+  readonly status: number
+  /** Rejected fields as `{ fieldName: [reason, ...] }`, or null when nothing was rejected. */
+  readonly errors: FieldErrors
+  /**
+   * Path the server says this visitor belongs on, or null.
+   *
+   * The server names the destination rather than redirecting, and that is not a stylistic
+   * choice: this API answers in JSON, and a `fetch` that follows a 302 ends up holding an
+   * HTML page it cannot parse, so a real redirect would reach this application as a parse
+   * failure with no status and no body. A path is also a smaller thing to trust - the
+   * server does not know which host serves the page, so it cannot and does not send one.
+   */
+  readonly redirect: string | null
+
+  constructor({ code, message, status, errors = null, redirect = null }: ApiErrorInit) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
-    /** Rejected fields as `{ fieldName: [reason, ...] }`, or null when nothing was rejected. */
     this.errors = errors
-    /**
-     * Path the server says this visitor belongs on, or null.
-     *
-     * The server names the destination rather than redirecting, and that is not a stylistic
-     * choice: this API answers in JSON, and a `fetch` that follows a 302 ends up holding an
-     * HTML page it cannot parse, so a real redirect would reach this application as a parse
-     * failure with no status and no body. A path is also a smaller thing to trust - the
-     * server does not know which host serves the page, so it cannot and does not send one.
-     */
     this.redirect = typeof redirect === 'string' && redirect ? redirect : null
   }
 }
@@ -75,13 +115,19 @@ export class ApiError extends Error {
 export { apiUrl }
 
 /** Key in the locale files a server code is translated under, or null when there is none. */
-const codeKey = (code) => (typeof code === 'string' && code ? `messages.api.${code}` : null)
+const codeKey = (code: unknown): string | null =>
+  typeof code === 'string' && code ? `messages.api.${code}` : null
 
 /**
  * Localized text for a server `code`, or `null` when this build has no translation for it.
  * Callers decide what to show in that case rather than being handed a raw i18next key.
+ *
+ * The parameter is `unknown` rather than `string` because the thing being looked up is
+ * read off a response body: a proxy page, a gateway 502 or an empty answer all reach this
+ * function, and typing it `string` would only move the check into its callers. `codeKey`
+ * is where the value is decided to be a code at all.
  */
-export const textForCode = (code, options) => {
+export const textForCode = (code: unknown, options?: TOptions): string | null => {
   const key = codeKey(code)
   return key && i18n.exists(key) ? i18n.t(key, options) : null
 }
@@ -96,14 +142,14 @@ export const textForCode = (code, options) => {
  * whole session. So the promise is kept here: the first caller starts the attempt, the rest
  * await the same one, and the result is the same for all of them.
  */
-let refreshInFlight = null
+let refreshInFlight: Promise<boolean> | null = null
 
 /**
  * Exchanges the stored refresh token for a new pair, at most one attempt at a time.
  *
- * @returns {Promise<boolean>} whether a new pair was issued.
+ * @returns whether a new pair was issued.
  */
-async function refreshSession() {
+async function refreshSession(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
@@ -141,9 +187,12 @@ async function refreshSession() {
  * the page should not know about it. The retry happens at most once per call, and only for
  * paths where a retry is meaningful.
  */
-export async function apiFetch(path, { body, csrfToken, captchaToken } = {}) {
+export async function apiFetch(
+  path: string,
+  { body, csrfToken, captchaToken }: RequestOptions = {},
+): Promise<MessageResponse> {
   try {
-    return await rawFetch(path, { body, csrfToken, captchaToken })
+    return await rawFetch<MessageResponse>(path, { body, csrfToken, captchaToken })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
 
@@ -161,7 +210,7 @@ export async function apiFetch(path, { body, csrfToken, captchaToken } = {}) {
     // with its own cookie - but a token is minted again anyway, because the one the failed
     // call carried was minted under whatever identity was current then, and that is exactly
     // the kind of detail a retry must not inherit.
-    return rawFetch(path, {
+    return rawFetch<MessageResponse>(path, {
       body,
       csrfToken: await getCsrfToken(),
       captchaToken,
@@ -177,9 +226,9 @@ export async function apiFetch(path, { body, csrfToken, captchaToken } = {}) {
  * are two GETs in this application and both of them want the retry, and a boolean argument
  * at each of them would be an easy thing to forget to pass.
  */
-export async function apiGet(path) {
+export async function apiGet<T>(path: string): Promise<T> {
   try {
-    return await rawFetch(path, { method: 'GET' })
+    return await rawFetch<T>(path, { method: 'GET' })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
 
@@ -192,7 +241,7 @@ export async function apiGet(path) {
       throw error
     }
 
-    return rawFetch(path, { method: 'GET' })
+    return rawFetch<T>(path, { method: 'GET' })
   }
 }
 
@@ -200,10 +249,13 @@ export async function apiGet(path) {
  * One request, and one answer. This is the part everything else is built on; `apiFetch` and
  * `apiGet` add the session handling around it.
  */
-async function rawFetch(path, { method, body, csrfToken, captchaToken } = {}) {
+async function rawFetch<T>(
+  path: string,
+  { method, body, csrfToken, captchaToken }: RawOptions = {},
+): Promise<T> {
   const isWrite = method !== 'GET'
 
-  let response
+  let response: Response
 
   try {
     response = await fetch(apiUrl(path), {
@@ -233,7 +285,14 @@ async function rawFetch(path, { method, body, csrfToken, captchaToken } = {}) {
     })
   }
 
-  const data = await response.json().catch(() => null)
+  const data: unknown = await response.json().catch(() => null)
+
+  // The body, as far as this file can rely on it. Read once into the documented shape so
+  // that the checks below are property reads on a known type rather than on `unknown` -
+  // and still guarded, because every one of them exists for a body that is *not* this
+  // shape: a proxy error page, a gateway 502, an empty answer. Named `payload` rather than
+  // `body`, which the request's own payload has already claimed above.
+  const payload = data as Partial<MessageResponse> | null
 
   // A 2xx whose body is not JSON. In development the dev server answers an unknown path
   // with the SPA shell and a 200, so this is the shape a typo'd API prefix takes: `ok` is
@@ -253,27 +312,42 @@ async function rawFetch(path, { method, body, csrfToken, captchaToken } = {}) {
     // HTML error page from an intermediary degrades to the status instead of throwing on
     // a missing property.
     throw new ApiError({
-      code: typeof data?.code === 'string' ? data.code : ServerErrorCode,
+      code: typeof payload?.code === 'string' ? payload.code : ServerErrorCode,
       message:
-        typeof data?.message === 'string'
-          ? data.message
+        typeof payload?.message === 'string'
+          ? payload.message
           : i18n.t(`messages.api.${ServerErrorCode}`, { status: response.status }),
       status: response.status,
-      errors: data?.errors && typeof data.errors === 'object' ? data.errors : null,
-      redirect: typeof data?.redirect === 'string' ? data.redirect : null,
+      errors: payload?.errors && typeof payload.errors === 'object' ? payload.errors : null,
+      redirect: typeof payload?.redirect === 'string' ? payload.redirect : null,
     })
   }
 
-  return data ?? {}
+  return (data ?? {}) as T
+}
+
+/**
+ * The `message` of whatever was thrown, when it has one that is a string.
+ *
+ * Not `error instanceof Error`: a `catch` in TypeScript has the type `unknown` for a
+ * reason - anything at all can be thrown, including a plain object with a `message` on it,
+ * which is what a library that predates `Error` hands out. Reading it through this shape
+ * check keeps the original `error?.message || fallback` for those without narrowing a type
+ * it never had.
+ */
+const messageOf = (error: unknown): string => {
+  if (error === null || typeof error !== 'object') return ''
+  const { message } = error as { message?: unknown }
+  return typeof message === 'string' ? message : ''
 }
 
 /**
  * The text to show for a rejection: this build's translation of the code, the server's
  * English fallback when there is none, and a generic line when even that is missing.
  */
-export function messageForError(error, fallbackKey = 'messages.sendFailed') {
+export function messageForError(error: unknown, fallbackKey = 'messages.sendFailed'): string {
   if (!(error instanceof ApiError)) {
-    return error?.message || i18n.t(fallbackKey)
+    return messageOf(error) || i18n.t(fallbackKey)
   }
 
   return (
@@ -287,14 +361,21 @@ export function messageForError(error, fallbackKey = 'messages.sendFailed') {
  * Field errors as antd's `setFields` wants them: an array of `{ name, errors }`, which is
  * what puts the reason under the input that caused it instead of in a toast.
  *
- * Unknown field names are dropped - a form that does not render a field has nowhere to
- * put its error - and any reason that is not an array is wrapped, because the server is
- * free to send either shape and antd only reads arrays.
+ * A name survives only with something to say: an empty list, or a value that is not a list
+ * at all, contributes nothing - an error with no reasons would put an empty red outline
+ * under an input, which reads as a rejection the server never made. The key of each entry
+ * is the camelCase JSON property name, deliberately the same name the `Form.Item`s use,
+ * so `setFields` needs no translation step between the two.
+ *
+ * `unknown` because the value comes off a response body, and the return type is written
+ * out rather than left to inference because it is a *contract with antd*: `setFields`
+ * takes `FieldData[]`, and a `{ name, errors: any[] }` that happens to fit is not the same
+ * claim as one that is declared to.
  */
-export function fieldErrors(errors) {
+export function fieldErrors(errors: unknown): { name: string; errors: string[] }[] {
   if (!errors || typeof errors !== 'object') return []
 
-  return Object.entries(errors)
-    .filter(([, reasons]) => Array.isArray(reasons) && reasons.length > 0)
-    .map(([name, reasons]) => ({ name, errors: reasons }))
+  return Object.entries(errors).flatMap(([name, reasons]) =>
+    Array.isArray(reasons) && reasons.length > 0 ? [{ name, errors: reasons as string[] }] : [],
+  )
 }
