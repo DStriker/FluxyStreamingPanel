@@ -7,7 +7,7 @@ import { useIsDark } from '../lib/theme'
 
 const SIDEBAR_KEY = 'fluxy-sidebar-collapsed'
 
-const readCollapsed = () => {
+const readCollapsed = (): boolean => {
   try {
     return localStorage.getItem(SIDEBAR_KEY) === '1'
   } catch {
@@ -15,7 +15,7 @@ const readCollapsed = () => {
   }
 }
 
-const writeCollapsed = (value) => {
+const writeCollapsed = (value: boolean): void => {
   try {
     localStorage.setItem(SIDEBAR_KEY, value ? '1' : '0')
   } catch {
@@ -63,7 +63,8 @@ const writeCollapsed = (value) => {
  * storage: it is a fact about the viewport, and storing it would leave somebody who once
  * resized the window with a sidebar they cannot get back.
  */
-export default function AccountLayout({ titleKey }) {
+/** The locale key of the area's heading - `titles.clientArea`, `titles.adminArea`. */
+export default function AccountLayout({ titleKey }: { titleKey: string }) {
   const dark = useIsDark()
   const [collapsed, setCollapsed] = useState(readCollapsed)
 

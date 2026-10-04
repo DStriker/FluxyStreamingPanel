@@ -33,12 +33,29 @@ import { ThemeChoice, setThemeChoice, useThemeChoice } from '../lib/theme'
  * `homeForRole`: profile is a sibling of the dashboard, and hanging it off the landing
  * path is what once made this button go to `/admin/dashboard/profile`.
  */
-export default function AccountHeader({ titleKey, collapsed, onToggle }) {
+export default function AccountHeader({
+  titleKey,
+  collapsed,
+  onToggle,
+}: {
+  /** Locale key of the heading the layout put in the bar. */
+  titleKey: string
+  /** Whether the rail is currently narrowed to its icons. */
+  collapsed: boolean
+  /** Flips `collapsed`, and writes it so the next visit remembers. */
+  onToggle: () => void
+}) {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { message } = App.useApp()
   const session = useSession()
   const storedTheme = useThemeChoice()
+
+  // Only `RequireAuth` renders this bar, and it always publishes a session - so `null` here
+  // means the guard was bypassed rather than that nobody happens to be signed in. An empty
+  // bar would still draw the logo, the theme switch and a sign-out button for a visitor
+  // with no session to end, so it draws nothing at all.
+  if (!session) return null
 
   const profilePath = `${areaForRole(session.role)}/profile`
   const toggleLabel = collapsed ? t('header.expandMenu') : t('header.collapseMenu')

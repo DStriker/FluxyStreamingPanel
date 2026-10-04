@@ -41,9 +41,14 @@ export default function AccountSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Same rule as the header: only `RequireAuth` renders the rail, and a `null` session here
+  // would be that guard being bypassed. Drawing a menu would be worse than drawing none -
+  // every item of it points at a section the visitor has no session to open.
+  if (!session) return null
+
   const area = areaForRole(session.role)
   const home = homeForRole(session.role)
-  const absolute = (path) => (path ? `${area}/${path}` : home)
+  const absolute = (path: string) => (path ? `${area}/${path}` : home)
 
   // A trailing slash still matches the route - `matchPath` is not strict about one - but
   // it would not match the menu key built above, and the effect would be a section that

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Skeleton } from 'antd'
 import config, { routePath } from '../config'
@@ -6,6 +7,7 @@ import { currentSession } from '../lib/api'
 import { sessionOpensArea } from '../lib/session'
 import { SessionContext } from '../lib/sessionContext'
 import NotFoundPage from '../pages/NotFoundPage'
+import type { Role, Session } from '../types'
 
 /**
  * Lets only a signed-in visitor whose role matches through, and hands the rest a decision
@@ -37,9 +39,19 @@ import NotFoundPage from '../pages/NotFoundPage'
  * The session is published to `children` so everything below - the header, the not-found
  * page - reads the one answer this component already obtained instead of asking again.
  */
-export default function RequireAuth({ role, children }) {
-  // `undefined` means "not answered yet"; `null` is an answer - no session.
-  const [session, setSession] = useState(undefined)
+export default function RequireAuth({
+  role,
+  children,
+}: {
+  /** The one role this area belongs to; absent means "any signed-in visitor". */
+  role?: Role
+  children: ReactNode
+}) {
+  // Three states in one slot, which is the whole point of the annotation: `undefined` means
+  // "not answered yet" (render the skeleton), `null` is an answer - no session - and
+  // anything else is the session itself. Inferred from `useState(undefined)` the state would
+  // be typed `null` and the two answers below could not both be represented.
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
 
   /**
    * Asks again who is signed in and republishes the answer.

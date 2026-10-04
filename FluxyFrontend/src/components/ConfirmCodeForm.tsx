@@ -1,12 +1,59 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
+import type { FormRule, InputProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
 import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError } from '../lib/http'
 import { ConfirmCaptchaAction } from '../lib/api'
+import type { CallOptions } from '../lib/api'
 import { CODE_LENGTH } from '../lib/policy'
+
+/** What the registration confirm step submits: the address it was mailed to, and the code. */
+export type RegistrationConfirmValues = { email: string; code: string }
+
+/** What the password-reset confirm step submits: the login name, and the code. */
+export type ResetConfirmValues = { username: string; code: string }
+
+/**
+ * The identifier field, as a bundle of the `Form.Item` and `Input` props it needs.
+ *
+ * Only the second step's field is described this way, because there are exactly two of
+ * them and they differ in every part but the code beside them: the address the visitor just
+ * typed, or the login name carried over from step one. Stating the bundle once keeps the
+ * two shapes differing in one place instead of in five, which is the reason `identifier` is
+ * a prop at all.
+ */
+export interface ConfirmIdentifier {
+  /** The item's name, which is also the JSON property the server may reject. */
+  name: string
+  /** Label above the input, already translated. */
+  label: ReactNode
+  /** The value the field starts with - the address from step one, when there is one. */
+  initialValue?: string
+  autoComplete: string
+  placeholder: string
+  rules: FormRule[]
+  /** `Input`'s `type`; the address field sets it, the login-name field leaves it out. */
+  type?: InputProps['type']
+}
+
+interface ConfirmCodeFormProps<Values extends { code: string }> {
+  /** The address the code was mailed to. Ignored when `identifier` names its own field. */
+  email?: string
+  /** The field the code belongs to, when it is not the address - see the note above. */
+  identifier?: ConfirmIdentifier
+  /** The heading inside the card, already translated. */
+  title?: ReactNode
+  /** The captcha action for this endpoint. One per endpoint, fixed by the server. */
+  captchaAction?: string
+  /** Performs the call with the form's values and both tokens, in one object. */
+  onSubmit: (args: Values & CallOptions) => Promise<unknown>
+  /** Goes back a step - the visitor's own change of mind, and an expired code. */
+  onBack: () => void
+}
 
 /**
  * Second step of registration: the code that was mailed out.
@@ -22,15 +69,20 @@ import { CODE_LENGTH } from '../lib/policy'
  * only the code they both confirm is the same. Registration passes `email` and the default
  * applies, so nothing about it changed; the reset passes `identifier` and gets its own field
  * under the same rules of shape.
+ *
+ * It is generic in what the form collects, and with no default: the identifier field is
+ * decided by the page, so only the page can say whether `values` carries an `email` or a
+ * `username`, and a type argument it forgets to pass lands as `unknown` rather than as a
+ * `string` that is not there. Both shapes are named above, so a call site reads as a fact.
  */
-export default function ConfirmCodeForm({
+export default function ConfirmCodeForm<Values extends { code: string }>({
   email: initialEmail,
   identifier,
   title,
   captchaAction = ConfirmCaptchaAction,
   onSubmit,
   onBack,
-}) {
+}: ConfirmCodeFormProps<Values>) {
   const { t } = useTranslation()
   const [form] = Form.useForm()
   const { message } = App.useApp()
@@ -38,7 +90,7 @@ export default function ConfirmCodeForm({
 
   // What the code is being confirmed for. Everything the form knows about it is read from
   // here, so the two shapes below differ in one place instead of in five.
-  const field = identifier ?? {
+  const field: ConfirmIdentifier = identifier ?? {
     name: 'email',
     label: t('fields.email'),
     initialValue: initialEmail,
@@ -54,7 +106,7 @@ export default function ConfirmCodeForm({
     getCsrfToken()
   }, [])
 
-  const handleFinish = async (values) => {
+  const handleFinish = async (values: Values) => {
     setSubmitting(true)
     form.setFields([
       { name: field.name, errors: [] },

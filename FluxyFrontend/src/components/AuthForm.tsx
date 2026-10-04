@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
@@ -12,6 +13,7 @@ import {
   USERNAME_MIN,
   meetsPasswordComplexity,
 } from '../lib/policy'
+import type { MessageResponse } from '../types'
 
 /**
  * Field names the API may answer with, matching the camelCase JSON property names it uses
@@ -20,7 +22,48 @@ import {
  */
 const SERVER_FIELDS = ['username', 'email', 'password']
 
-export default function AuthForm({
+/** What a page's `onSubmit` is handed, in the same shape `api.ts` expects. */
+interface SubmitArgs<Values> {
+  values: Values
+  csrfToken: string | null
+  captchaToken: string | null
+}
+
+interface AuthFormProps<Values> {
+  /** The heading inside the card, already translated. */
+  title: ReactNode
+  /**
+   * The captcha action for this endpoint - `client_login`, `register`, ... The server fixes
+   * one per endpoint, so this is a name the caller has to get right rather than a setting.
+   */
+  action: string
+  /** When the two differ. They usually do not, which is why it defaults to `action`. */
+  captchaAction?: string
+  /** Adds the two fields registration needs and the complexity rule that belongs to it. */
+  register?: boolean
+  /** The button's label, already translated. */
+  submitText: ReactNode
+  /** Text for an endpoint that answers a 2xx without naming its own outcome. */
+  successText?: ReactNode
+  /** Performs the call. Returns the response so the caller can read its `code`. */
+  onSubmit: (args: SubmitArgs<Values>) => Promise<MessageResponse>
+  /** Called after a successful submit, with the response and the values it was built from. */
+  onSuccess?: (result: MessageResponse, values: Values) => void
+  /** The cross-link between the two flows - see `AuthCard`. */
+  footer?: ReactNode
+}
+
+/**
+ * The shared credentials form.
+ *
+ * Generic in the values it collects, and with no default: a page that forgets the argument
+ * gets `unknown` where its `values` should be, which is a compile error rather than a
+ * `string` that turns out to be `undefined`. The type argument states what the page's form
+ * actually holds - `SignInValues` for an entrance, `RegistrationValues` for a flow that
+ * also takes an address - and from there everything downstream is checked: the call into
+ * `api.ts`, and any field the page reads off `values` in `onSuccess`.
+ */
+export default function AuthForm<Values>({
   title,
   action,
   captchaAction = action,
@@ -30,7 +73,7 @@ export default function AuthForm({
   onSubmit,
   onSuccess,
   footer,
-}) {
+}: AuthFormProps<Values>) {
   const { t } = useTranslation()
   const [form] = Form.useForm()
   const { message } = App.useApp()
@@ -46,7 +89,7 @@ export default function AuthForm({
     form.setFields(SERVER_FIELDS.map((name) => ({ name, errors: [] })))
   }
 
-  const handleFinish = async (values) => {
+  const handleFinish = async (values: Values) => {
     setSubmitting(true)
     // A rejection from the previous attempt has to go before the next submit, or the
     // fields stay red even after the visitor corrected them. Only the errors are cleared -
@@ -91,7 +134,7 @@ export default function AuthForm({
     ...(register
       ? [
           {
-            validator: (_, value) =>
+            validator: (_: unknown, value: string) =>
               !value || meetsPasswordComplexity(value)
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('validation.passwordComplexity'))),

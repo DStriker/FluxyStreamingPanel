@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { currentSession } from '../lib/api'
 import { homeForRole } from '../lib/session'
@@ -32,8 +33,11 @@ import { homeForRole } from '../lib/session'
  * It lives in the router rather than inside the pages so the rule is stated once and the
  * pages stay the thin wrappers they are; nothing here needs to know it is being guarded.
  */
-export default function GuestOnly({ children }) {
-  const [landing, setLanding] = useState(null)
+export default function GuestOnly({ children }: { children: ReactNode }) {
+  // The path to leave for, or nothing yet. `string | null` rather than `string` because
+  // `null` is the state the check starts in, and returning `children` for it is what the
+  // paragraph above says should happen while the round trip is in flight.
+  const [landing, setLanding] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false

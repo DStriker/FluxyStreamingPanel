@@ -13,14 +13,16 @@ import type {
  *
  * They are spelled out here rather than typed `any` or taken from antd's `Form` so that
  * the endpoints do not depend on how the forms are built: `submitAuth` cares what the
- * server is sent, not which `Form.Item` the value was read from.
+ * server is sent, not which `Form.Item` the value was read from. Exported because the
+ * forms name them too - `AuthForm` is generic in what its page collects, and the type
+ * argument at each call site is one of these.
  */
-interface SignInValues {
+export interface SignInValues {
   username: string
   password: string
 }
 
-interface RegistrationValues extends SignInValues {
+export interface RegistrationValues extends SignInValues {
   email: string
 }
 
@@ -34,7 +36,7 @@ interface RegistrationValues extends SignInValues {
  * optional because every call site already supplies them: a forgotten `csrfToken` compiles
  * just as happily as a wrong one and fails later, at the server, as `csrf_invalid`.
  */
-interface CallOptions {
+export interface CallOptions {
   csrfToken: string | null
   captchaToken: string | null
 }
@@ -137,7 +139,7 @@ export const submitAuth = ({
  *
  * The endpoint belongs to signed-in visitors: a caller with no session is refused with
  * `auth_required` rather than being told a session was signed out, and an access token that
- * has merely expired is refreshed by `http.js` on the way, so the refusal means there was
+ * has merely expired is refreshed by `http.ts` on the way, so the refusal means there was
  * genuinely nothing to end.
  */
 export const signOut = async ({
