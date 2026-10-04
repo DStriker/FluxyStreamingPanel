@@ -1,3 +1,4 @@
+import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -19,6 +20,14 @@ import tseslint from 'typescript-eslint'
  * file as well, and a companion that switches off base rules (`no-undef`, `prefer-const`)
  * this config never turned on. Only the rules object is taken from it, and only under
  * the TypeScript glob.
+ *
+ * The `.js` block takes `@eslint/js`'s `recommended` rules by the same logic and for the
+ * same reason it needs them: without them that block carried parser options and two
+ * plugin rules and nothing else, so an undefined variable or an unused one in
+ * `eslint.config.js`, `vite.config.js` or `scripts/probe-render.jsx` was invisible to it.
+ * `typescript-eslint`'s `eslint-recommended` companion is what switches `no-undef` off for
+ * `.ts`/`.tsx` - because the compiler already answers it better - and it is spread only
+ * into the TS rules, so `no-undef` stays on where nothing but the linter can catch it.
  */
 const plugins = {
   'react-hooks': reactHooks,
@@ -42,10 +51,48 @@ export default [
         sourceType: 'module',
       },
     },
-    plugins,
+    plugins: { ...plugins, '@typescript-eslint': tsBase.plugins['@typescript-eslint'] },
     rules: {
+      ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      // The core rule does not read a JSX element name as a reference to anything: every
+      // import this file's `<MemoryRouter>`, `<AntApp>` and the rest of the probe would
+      // otherwise be reported unused. The TypeScript spelling of the rule walks the same
+      // scope tree and does see them, which is the reason this switch is spelled the same
+      // way as the TS block's - and why `no-unused-vars` from the preset is switched off
+      // rather than left to disagree with it on the same line.
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    // `.jsx` is JSX first and JavaScript second, and the rule above needs a scope tree
+    // that records `<MemoryRouter>` as a reference to something: espree's does not, which
+    // is why all seven imports on the right-hand side of `probe-render.jsx`'s renders were
+    // reported unused while every one of them is rendered. The TypeScript parser decides
+    // JSX by file extension the way `tsc` does, so it is not an option that has to be
+    // asked for - and this is the whole reason `scripts/probe-render.jsx` is `.jsx` and
+    // not `.mjs`, which the note at its top already says.
+    files: ['**/*.jsx'],
+    languageOptions: {
+      parser: tsBase.languageOptions.parser,
+    },
+  },
+  {
+    // Every `.js`/`.jsx` file in this repo runs under Node - the two configs and the
+    // probe script, and nothing else: `src/` is TypeScript all the way down, which is
+    // what the note at the top of this file means by an exhaustive list. So the browser
+    // globals above are the wrong set for them, and `process`, which two of the three
+    // reach for, is not among them - `no-undef` from the preset is exactly the rule that
+    // should be live for a file nothing else type-checks, and it cannot be if the only
+    // globals in scope are the browser's.
+    files: ['**/*.config.js', 'scripts/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
     },
   },
   {
