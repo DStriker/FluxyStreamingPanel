@@ -98,6 +98,29 @@ body {
   overflow-x: hidden;
 }
 
+/* The title of the category you are standing in. antd gives `-submenu-selected` a colour
+   and *no* background (`menu/style/theme.js` sets `color` on the title and nothing else),
+   so unlike the row below it - which carries `itemSelectedBg` - it is read straight on the
+   rail. Both are fed from one token in the dark variant, `darkItemSelectedColor`
+   (`menu/style/index.js`), and the two surfaces disagree about what that token should be:
+   the row's fill needs a dark label (`#141414` on `#3983dc` is 4.78:1), the rail needs a
+   light one (14.9:1 for white on `#141414`), and no single colour is both. So the row
+   keeps the `onPrimary` `appTheme` hands it, and the title goes back to what antd's own
+   default for this token is in the light theme - `colorPrimary`, which here is the very
+   blue the row is filled with.
+
+   Scoped under the scroll wrapper for weight, not for tidiness: antd's own rule for this
+   class reads `:where(...).ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title`,
+   and `:where()` costs nothing, so it is three classes where this is four - it wins on
+   specificity, which is the half that does not depend on which stylesheet landed last.
+   The class itself appears only after mount (rc-menu records key paths in an effect), so
+   neither the SSR probe nor `typecheck` can see this rule do anything; that is pinned
+   instead to `appTheme(true).derived.colorPrimary`, the copy that would go quietly stale
+   if the seed ever changed. */
+.layout-shell__sider-scroll .ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  color: #3983dc;
+}
+
 /* `flex: 1` rather than antd's `flex: auto` on purpose: the workspace must be sized by the
    space left over, not by what it happens to contain, or a wide widget would push its own
    base size into the row and the sidebar would share a viewport it is supposed to own. */

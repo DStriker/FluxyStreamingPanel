@@ -10,6 +10,7 @@
  * `.jsx` rather than `.mjs` only so that `eslint.config.js` parses the JSX below - the
  * config enables `jsx` for `**\/*.{js,jsx}` and not for `.mjs`.
  */
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { matchRoutes, MemoryRouter } from 'react-router-dom'
 import { App as AntApp, ConfigProvider } from 'antd'
@@ -44,6 +45,27 @@ let failed = 0
 const check = (name, ok, detail = '') => {
   if (!ok) failed += 1
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `\n      ${detail}` : ''}`)
+}
+
+// WCAG relative luminance and the ratio between two colours. "Readable" has to end up as a
+// number if a check is going to say it: 4.5 is the bar for a 14px label, and the menu's two
+// selections below are the pair that failed it in opposite directions before it was split.
+const luminance = (hex) => {
+  const channel = (value) => {
+    const v = value / 255
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  }
+  const rgb = parseInt(hex.slice(1), 16)
+  return (
+    0.2126 * channel((rgb >> 16) & 255) +
+    0.7152 * channel((rgb >> 8) & 255) +
+    0.0722 * channel(rgb & 255)
+  )
+}
+
+const contrast = (fg, bg) => {
+  const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a)
+  return (hi + 0.05) / (lo + 0.05)
 }
 
 async function main() {
@@ -469,6 +491,52 @@ async function main() {
       adminShell.includes('ant-menu-dark') &&
       adminShell.includes('ant-layout-sider-dark'),
     'light rail with a light menu, dark rail with a dark menu',
+  )
+
+  // The dark rail's selected *category* cannot be checked the way the row can be. rc-menu
+  // records key paths in a `useEffect` (`@rc-component/menu/lib/SubMenu/index.js`), so a
+  // `renderToStaticMarkup` pass has no paths to match, `ant-menu-submenu-selected` never
+  // reaches static HTML, and the class exists only after mount, in a browser. That is also
+  // why this one reached a human instead of this script: antd's rule for that class paints
+  // the title with `--ant-menu-dark-item-selected-color`, which is `#141414` - the label
+  // for the row, whose background is a primary fill - and the category has no background
+  // of its own, so it became the rail's colour on the rail. What *is* checkable is the
+  // split: the rule in `index.css` exists, names the class antd uses, and says this theme's
+  // own primary - the very blue the selected row underneath it is filled with.
+  const railCss = readFileSync('src/index.css', 'utf8')
+  // The selector is pinned whole, colour included, and not merely the colour: the leading
+  // `.layout-shell__sider-scroll` is the fourth class that puts this rule above antd's own
+  // `-submenu-selected` rule, which is three classes once `:where()` is taken for what it
+  // costs - nothing. Drop it and two equal rules are left to be settled by whichever
+  // stylesheet landed last, and antd injects its at runtime, after this one.
+  const titleColor =
+    /\.layout-shell__sider-scroll \.ant-menu-dark \.ant-menu-submenu-selected > \.ant-menu-submenu-title \{\s*color:\s*(#[0-9a-f]{6});/.exec(
+      railCss,
+    )?.[1]
+  const darkTheme = appTheme(true)
+  const lightTheme = appTheme(false)
+
+  check(
+    'the dark rail overrides the selected category with the primary it renders with',
+    titleColor === darkTheme.derived.colorPrimary,
+    `index.css says ${titleColor ?? 'NO RULE'}, theme says ${darkTheme.derived.colorPrimary}`,
+  )
+
+  const rowRatio = contrast(
+    darkTheme.config.components.Menu.darkItemSelectedColor,
+    darkTheme.derived.colorPrimary,
+  )
+  const darkTitleRatio = titleColor ? contrast(titleColor, darkTheme.derived.colorBgContainer) : 0
+  const lightTitleRatio = contrast(
+    lightTheme.derived.colorPrimary,
+    lightTheme.derived.colorBgContainer,
+  )
+  check(
+    'every menu selection label clears 4.5:1 on the surface it is painted on',
+    rowRatio >= 4.5 && darkTitleRatio >= 4.5 && lightTitleRatio >= 4.5,
+    `dark row on its fill ${rowRatio.toFixed(2)}, dark category on the rail ${darkTitleRatio.toFixed(
+      2,
+    )}, light category on the rail ${lightTitleRatio.toFixed(2)}`,
   )
 
   console.log(
