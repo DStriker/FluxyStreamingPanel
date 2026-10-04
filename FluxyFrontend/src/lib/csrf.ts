@@ -3,11 +3,14 @@ import { apiUrl } from './url'
 const COOKIE_NAME = 'XSRF-TOKEN'
 const TOKEN_URL = '/auth/csrf'
 
-const readCookie = (name) => {
+const readCookie = (name: string): string | null => {
   const match = document.cookie.match(
     new RegExp(`(?:^|; )${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=([^;]*)`),
   )
-  return match ? decodeURIComponent(match[1]) : null
+  // `match[1]` is typed as possibly missing under `noUncheckedIndexedAccess`; a pattern
+  // that matched has captured it, and `decodeURIComponent(undefined)` would be the wrong
+  // way to find out either way, so the guard states what the match already proved.
+  return match?.[1] === undefined ? null : decodeURIComponent(match[1])
 }
 
 /**
@@ -30,7 +33,7 @@ const readCookie = (name) => {
  * The cookie is still the fallback when the server cannot be reached at all, so a caller
  * that has *some* token keeps it best-effort rather than failing outright.
  */
-export async function getCsrfToken() {
+export async function getCsrfToken(): Promise<string | null> {
   try {
     // Through `apiUrl`, not the bare path. A relative '/auth/csrf' goes to whatever is
     // serving the page - the Vite dev server in development - which answers the SPA shell
@@ -42,8 +45,15 @@ export async function getCsrfToken() {
       headers: { Accept: 'application/json' },
     })
     if (res.ok) {
-      const data = await res.json().catch(() => null)
-      return data?.token ?? data?.csrfToken ?? readCookie(COOKIE_NAME) ?? null
+      // `token` is what the endpoint answers with (`CsrfTokenResponse`); `csrfToken` is
+      // accepted as well so the lookup does not depend on one spelling of the field.
+      // `unknown` rather than `any` so the value is narrowed below instead of being
+      // handed to a caller as a `string` nobody checked.
+      const data: { token?: unknown; csrfToken?: unknown } | null = await res.json().catch(
+        () => null,
+      )
+      const value = data?.token ?? data?.csrfToken ?? readCookie(COOKIE_NAME) ?? null
+      return typeof value === 'string' ? value : null
     }
   } catch {
     // backend не подключён — работаем без токена
@@ -52,6 +62,6 @@ export async function getCsrfToken() {
   return readCookie(COOKIE_NAME)
 }
 
-export function csrfHeader(token) {
+export function csrfHeader(token?: string | null): Record<string, string> {
   return token ? { 'X-CSRF-Token': token } : {}
 }

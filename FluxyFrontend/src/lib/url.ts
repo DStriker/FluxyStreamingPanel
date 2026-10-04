@@ -11,4 +11,4 @@ import config from '../config'
  *
  * This module imports nothing but `config`, so both of them can import it freely.
  */
-export const apiUrl = (path) => `${config.API_BASE_URL}${path}`
+export const apiUrl = (path: string): string => `${config.API_BASE_URL}${path}`
