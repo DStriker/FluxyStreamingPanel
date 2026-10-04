@@ -64,7 +64,7 @@ const en = {
   },
   nav: {
     // Categories are the sidebar's submenus; items are the routes beneath them. Both are
-    // rendered from `src/lib/navigation.js`, which decides where each item points - so a
+    // rendered from `src/lib/navigation.ts`, which decides where each item points - so a
     // label added here and nothing else shows up nowhere.
     groups: {
       overview: 'Overview',

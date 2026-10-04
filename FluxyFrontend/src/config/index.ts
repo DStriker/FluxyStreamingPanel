@@ -4,13 +4,13 @@ const DEFAULTS = {
   RESELLER_LOGIN_ROUTE: 'reseller/login',
   ADMIN_LOGIN_ROUTE: 'admin/login',
   // The public password reset, reachable from the footers of the three sign-in forms.
-  // A guest route like the ones above, so it sits in `GuestOnly` in `src/router/routes.jsx`.
+  // A guest route like the ones above, so it sits in `GuestOnly` in `src/router/routes.tsx`.
   FORGOT_PASSWORD_ROUTE: 'forgot-password',
   // Where each role lands after signing in. They mirror the `Auth` section of the backend's
   // appsettings.json, which is the authority - the server sends the path back in the
   // `redirect` field of its answer, so these exist for the router to have a matching route
   // and for a person reading the config to see where the three areas are meant to begin.
-  // Each is the root of a guarded area in `src/router/routes.jsx`: `RequireAuth` checks the
+  // Each is the root of a guarded area in `src/router/routes.tsx`: `RequireAuth` checks the
   // role before `AccountLayout` renders, and the section pages hang off it as children.
   CLIENT_HOME_ROUTE: 'client/index',
   RESELLER_HOME_ROUTE: 'reseller/dashboard',
