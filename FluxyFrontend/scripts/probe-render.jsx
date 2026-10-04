@@ -211,7 +211,7 @@ async function main() {
   // `RequireAuth` refuses anybody whose role the route was not built for. If those two ever
   // disagreed, a sign-in would land somebody on a route that immediately refuses them with
   // a 404 - bounced between two guards, each doing exactly what it was told. The two sides
-  // come from different files (`lib/session.js` and `router/index.jsx`), which is the only
+  // come from different files (`lib/session.ts` and `router/routes.tsx`), which is the only
   // reason this check is worth having.
   //
   // "Lands on" is a question for the matcher rather than for string equality now: the

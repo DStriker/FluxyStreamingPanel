@@ -9,7 +9,7 @@
 
 /* The `prefers-color-scheme` block that used to live here is gone on purpose. It painted
    `body` from the operating system, which was correct while the theme was only ever the
-   OS's opinion; since `App.jsx` paints it from `colorBgLayout` - the same token the
+   OS's opinion; since `App.tsx` paints it from `colorBgLayout` - the same token the
    algorithm produces - a visitor who picks the other theme would otherwise have had two
    answers for one background, with the stylesheet winning on `body` and losing everywhere
    the shell renders. `#f5f5f5` stays as the value before the first effect runs, which is

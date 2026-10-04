@@ -1,12 +1,12 @@
 /**
  * Exercises the real frontend modules against the running backend.
  *
- * Not a copy of them: it imports `src/lib/http.js`, `src/lib/api.js`, `src/lib/policy.js`
+ * Not a copy of them: it imports `src/lib/http.ts`, `src/lib/api.ts`, `src/lib/policy.ts`
  * and the locale files, so what answers here is the same code the browser would run. It
  * exists because there is no test framework in this project and no browser attached to the
  * session, and the alternative was reading the code and hoping.
  *
- * Run: node_modules\.bin\esbuild --bundle scripts\probe-registration.mjs --format=esm --outfile=%TEMP%\probe.mjs --define:import.meta.env=%TEMP%\env.json
+ * Run: npm run probe
  */
 import { config } from '../src/config/index'
 import i18n from '../src/i18n'
