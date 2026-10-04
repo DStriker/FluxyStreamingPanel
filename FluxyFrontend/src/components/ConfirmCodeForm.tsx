@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import type { FormRule, InputProps } from 'antd'
@@ -9,7 +9,7 @@ import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError } from '../lib/http'
 import { ConfirmCaptchaAction } from '../lib/api'
 import type { CallOptions } from '../lib/api'
-import { CODE_LENGTH } from '../lib/policy'
+import { CODE_LENGTH, EMAIL_MAX } from '../lib/policy'
 
 /** What the registration confirm step submits: the address it was mailed to, and the code. */
 export type RegistrationConfirmValues = { email: string; code: string }
@@ -26,7 +26,7 @@ export type ResetConfirmValues = { username: string; code: string }
  * two shapes differing in one place instead of in five, which is the reason `identifier` is
  * a prop at all.
  */
-export interface ConfirmIdentifier {
+interface ConfirmIdentifier {
   /** The item's name, which is also the JSON property the server may reject. */
   name: string
   /** Label above the input, already translated. */
@@ -99,12 +99,13 @@ export default function ConfirmCodeForm<Values extends { code: string }>({
     rules: [
       { required: true, message: t('validation.emailRequired') },
       { type: 'email', message: t('validation.emailInvalid') },
+      { max: EMAIL_MAX, message: t('validation.emailMaxLength', { max: EMAIL_MAX }) },
     ],
   }
 
-  useEffect(() => {
-    getCsrfToken()
-  }, [])
+  // No `getCsrfToken()` on mount here either, and for the same reason as `AuthForm`: the
+  // submit below mints a fresh one immediately before sending, so a token requested while
+  // the form was loading would only ever be the one that gets thrown away.
 
   const handleFinish = async (values: Values) => {
     setSubmitting(true)

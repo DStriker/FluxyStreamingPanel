@@ -1,23 +1,23 @@
 import i18n from '../i18n'
 import { csrfHeader, getCsrfToken } from './csrf'
-import { apiUrl } from './url'
+import { apiUrl, internalPath } from './url'
 import type { TOptions } from 'i18next'
 import type { FieldErrors, MessageResponse } from '../types'
 
 /**
- * Codes for the two failures that never reached the API, so a caller can branch on them
- * the same way it branches on a server code. The first is this process talking to nobody,
- * the second is a response that was not the documented body - a proxy error page, a
- * gateway 502, anything that is not the API.
+ * Codes for the two failures that never reached the API, so the branches below read the
+ * same whether a code came back from the server or was invented here. The first is this
+ * process talking to nobody, the second is a response that was not the documented body - a
+ * proxy error page, a gateway 502, anything that is not the API.
  */
-export const NetworkErrorCode = 'network_error'
-export const ServerErrorCode = 'server_error'
+const NetworkErrorCode = 'network_error'
+const ServerErrorCode = 'server_error'
 
 /** The server says a session is gone and a refresh cannot rescue it. */
-export const SessionExpiredCode = 'session_expired'
+const SessionExpiredCode = 'session_expired'
 
 /** The server says a session is needed and none was presented. */
-export const AuthRequiredCode = 'auth_required'
+const AuthRequiredCode = 'auth_required'
 
 /**
  * Endpoints that must never be retried after a refresh, and endpoints that must never
@@ -98,6 +98,11 @@ export class ApiError extends Error {
    * HTML page it cannot parse, so a real redirect would reach this application as a parse
    * failure with no status and no body. A path is also a smaller thing to trust - the
    * server does not know which host serves the page, so it cannot and does not send one.
+   *
+   * "A path" is enforced, not assumed: `internalPath` decides it, so a value that is not a
+   * path this application can walk to - a scheme, a host, `//elsewhere` - arrives here as
+   * `null` and the caller falls back to its own landing page. The same guard runs on the
+   * success path, at the five `navigate(internalPath(...))` call sites.
    */
   readonly redirect: string | null
 
@@ -107,7 +112,7 @@ export class ApiError extends Error {
     this.code = code
     this.status = status
     this.errors = errors
-    this.redirect = typeof redirect === 'string' && redirect ? redirect : null
+    this.redirect = internalPath(redirect)
   }
 }
 

@@ -3,7 +3,8 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { submitAuth, type SignInValues } from '../lib/api'
+import { ClientLoginCaptchaAction, submitAuth, type SignInValues } from '../lib/api'
+import { internalPath } from '../lib/url'
 
 export default function ClientLoginPage() {
   const navigate = useNavigate()
@@ -12,7 +13,7 @@ export default function ClientLoginPage() {
   return (
     <AuthForm<SignInValues>
       title={t('titles.clientLogin')}
-      action="client_login"
+      action={ClientLoginCaptchaAction}
       submitText={t('actions.login')}
       onSubmit={({ values, csrfToken, captchaToken }) =>
         submitAuth({ action: 'client-login', values, csrfToken, captchaToken })
@@ -22,7 +23,13 @@ export default function ClientLoginPage() {
       // than hardcoding the path here is what keeps one rule - which page a role belongs on -
       // instead of three copies of it.
       onSuccess={(result) =>
-        navigate(result?.redirect ?? routePath(config.CLIENT_HOME_ROUTE), { replace: true })
+        // `internalPath` first: the server's word is a candidate path, not an instruction.
+        // Anything that is not a path this router could have - a scheme, a host,
+        // `//elsewhere` - is dropped here and the role's own landing page takes over, so a
+        // disagreed-about string can never send a visitor outside the application.
+        navigate(internalPath(result?.redirect) ?? routePath(config.CLIENT_HOME_ROUTE), {
+          replace: true,
+        })
       }
       // Two cross-links, and they belong to different flows: this one is for somebody who
       // has an account and cannot get into it, the other for somebody who has none yet.

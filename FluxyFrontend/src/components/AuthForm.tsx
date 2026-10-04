@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +7,7 @@ import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import {
+  EMAIL_MAX,
   PASSWORD_MAX,
   PASSWORD_MIN,
   USERNAME_MAX,
@@ -79,9 +80,12 @@ export default function AuthForm<Values>({
   const { message } = App.useApp()
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    getCsrfToken()
-  }, [])
+  // No token is minted here on mount, deliberately. `getCsrfToken` always asks for a fresh
+  // one and `handleFinish` mints immediately before sending - a token obtained while the
+  // form was still loading would be stale by the time it was used, and the antiforgery
+  // service binds it to the identity that was current when it was minted. The warm-up call
+  // that used to sit here was therefore a guaranteed extra `GET /auth/csrf` per page that
+  // nothing ever read.
 
   // The fields the server can name in `errors`. Clearing anything more would wipe a rule
   // the visitor has not satisfied yet, which is a different complaint than a stale one.
@@ -168,6 +172,11 @@ export default function AuthForm<Values>({
           rules={[
             { required: true, message: t('validation.emailRequired') },
             { type: 'email', message: t('validation.emailInvalid') },
+            // `EMAIL_MAX` is the one bound from `policy.ts` this form did not mirror: an
+            // address past it passes every rule above and is refused only by the server,
+            // where the reason lands in a toast instead of under the field. The other
+            // bounds (username, password) were already mirrored.
+            { max: EMAIL_MAX, message: t('validation.emailMaxLength', { max: EMAIL_MAX }) },
           ]}
         >
           <Input autoComplete="email" placeholder={t('fields.emailPlaceholder')} />

@@ -3,7 +3,8 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { submitAuth, type SignInValues } from '../lib/api'
+import { ResellerLoginCaptchaAction, submitAuth, type SignInValues } from '../lib/api'
+import { internalPath } from '../lib/url'
 
 export default function ResellerLoginPage() {
   const navigate = useNavigate()
@@ -12,14 +13,18 @@ export default function ResellerLoginPage() {
   return (
     <AuthForm<SignInValues>
       title={t('titles.resellerLogin')}
-      action="reseller_login"
+      action={ResellerLoginCaptchaAction}
       submitText={t('actions.login')}
       onSubmit={({ values, csrfToken, captchaToken }) =>
         submitAuth({ action: 'reseller-login', values, csrfToken, captchaToken })
       }
-      // The server names the destination, in `redirect` - see ClientLoginPage.
+      // The server names the destination, in `redirect` - see ClientLoginPage. A
+      // candidate path, not an instruction: `internalPath` keeps only one this router
+      // could have answered itself.
       onSuccess={(result) =>
-        navigate(result?.redirect ?? routePath(config.RESELLER_HOME_ROUTE), { replace: true })
+        navigate(internalPath(result?.redirect) ?? routePath(config.RESELLER_HOME_ROUTE), {
+          replace: true,
+        })
       }
       // The reseller entrance has never offered a cross-link - `git log -S footer` over this
       // file returns nothing - so the reset link is the first thing its footer carries. It

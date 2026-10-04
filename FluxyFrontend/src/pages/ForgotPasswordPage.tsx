@@ -7,6 +7,7 @@ import AuthForm from '../components/AuthForm'
 import ConfirmCodeForm, { type ResetConfirmValues } from '../components/ConfirmCodeForm'
 import config, { routePath } from '../config'
 import {
+  PasswordResetCaptchaAction,
   PasswordResetConfirmCaptchaAction,
   confirmPasswordReset,
   passwordResetStatus,
@@ -151,7 +152,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthForm<RegistrationValues>
       title={t('titles.forgotPassword')}
-      action="password_reset"
+      action={PasswordResetCaptchaAction}
       register
       submitText={t('actions.resetPassword')}
       onSubmit={async (args) => {

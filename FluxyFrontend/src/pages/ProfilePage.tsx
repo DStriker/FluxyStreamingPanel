@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Alert,
   App,
@@ -105,24 +105,54 @@ export default function ProfilePage() {
   // confirmed at the address it is moving *to*.
   const [pending, setPending] = useState<PendingChange | null>(null)
 
+  /**
+   * Reads the card's data, and decides for itself whether it is still allowed to show it.
+   *
+   * Two counters, because two different questions need answering. `generation` decides
+   * *which* answer may land: `load` runs from the mount and from both submit handlers, so
+   * an earlier request still in flight when a later one starts must not arrive afterwards
+   * and overwrite fresher data - which is exactly what a rename produces, the pre-rename
+   * read answering last. The effect below also bumps it on unmount, so nothing can be
+   * written to a page that is gone.
+   *
+   * `everLoaded` decides whether the spinner belongs at all. It used to be `loading` on
+   * its own, which meant every successful change re-ran the first-load branch: the card,
+   * the form and both form instances unmounted and came back over data the visitor
+   * already had. The spinner is now the *first* load's and nothing else's; a refresh
+   * updates in place, which is what a reader of `setProfile` expects anyway.
+   */
+  const generation = useRef(0)
+  const everLoaded = useRef(false)
+
   const load = useCallback(async () => {
-    setLoading(true)
+    const mine = ++generation.current
+    if (!everLoaded.current) setLoading(true)
     try {
-      setProfile(await getProfile())
+      const answer = await getProfile()
+      if (mine !== generation.current) return
+      setProfile(answer)
       setLoadError(null)
+      everLoaded.current = true
     } catch (err) {
       // A blocked or deleted account answers 403 with `account_not_active`, and the
       // interesting part of that is the sentence rather than the status code. An expired
       // token never reaches here: the transport refreshes and retries it first.
+      if (mine !== generation.current) return
       setProfile(null)
       setLoadError(messageForError(err))
+      everLoaded.current = true
     } finally {
-      setLoading(false)
+      if (mine === generation.current) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     load()
+    // Leaving the page invalidates whatever this one has in flight, so the guard inside
+    // `load` refuses an answer that would otherwise arrive after the page unmounted.
+    return () => {
+      generation.current += 1
+    }
   }, [load])
 
   /**

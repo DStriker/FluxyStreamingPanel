@@ -18,6 +18,7 @@ import { messageForError } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { ThemeChoice, setThemeChoice, useThemeChoice } from '../lib/theme'
+import { internalPath } from '../lib/url'
 
 /**
  * The pinned top bar: where this area is, who is signed in, how to get to their settings,
@@ -66,7 +67,8 @@ export default function AccountHeader({
     { value: ThemeChoice.System, icon: <LaptopOutlined />, tooltip: t('header.themeSystem') },
   ]
 
-  const handleSignOut = async () => {    // The tokens are in cookies the page cannot see, so the only way out is to ask the
+  const handleSignOut = async () => {
+    // The tokens are in cookies the page cannot see, so the only way out is to ask the
     // server to end the session. `signOut` mints its own antiforgery token immediately
     // before sending - a token carried over from the sign-in page was minted before the
     // session existed and the server refuses it, which is what once made this button look
@@ -76,7 +78,12 @@ export default function AccountHeader({
     try {
       const result = await signOut()
       message.success(t('messages.api.signed_out'))
-      navigate(result?.redirect ?? routePath(config.CLIENT_LOGIN_ROUTE), { replace: true })
+      // The sign-in form is where a sign-out belongs even when the server names no
+      // destination, so `internalPath` here only has to refuse what is not walkable -
+      // anything else falls back to the entrance this application chose for itself.
+      navigate(internalPath(result?.redirect) ?? routePath(config.CLIENT_LOGIN_ROUTE), {
+        replace: true,
+      })
     } catch (error) {
       message.error(messageForError(error))
     }

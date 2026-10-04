@@ -25,9 +25,9 @@ export const CODE_LENGTH = 6
  * The lookaheads are separate on purpose: one combined pattern would reject a password
  * for the wrong reason and could not say which rule was broken.
  */
-export const HAS_LOWERCASE = /[a-z]/
-export const HAS_UPPERCASE = /[A-Z]/
-export const HAS_DIGIT = /\d/
+const HAS_LOWERCASE = /[a-z]/
+const HAS_UPPERCASE = /[A-Z]/
+const HAS_DIGIT = /\d/
 
 export const meetsPasswordComplexity = (value: string): boolean =>
   HAS_LOWERCASE.test(value) && HAS_UPPERCASE.test(value) && HAS_DIGIT.test(value)

@@ -7,8 +7,14 @@ import ConfirmCodeForm, {
   type RegistrationConfirmValues,
 } from '../components/ConfirmCodeForm'
 import config, { routePath } from '../config'
-import { confirmRegistration, submitRegistration, type RegistrationValues } from '../lib/api'
+import {
+  RegisterCaptchaAction,
+  confirmRegistration,
+  submitRegistration,
+  type RegistrationValues,
+} from '../lib/api'
 import { ApiError } from '../lib/http'
+import { internalPath } from '../lib/url'
 import type { MessageResponse } from '../types'
 import {
   forgetPendingEmail,
@@ -53,7 +59,9 @@ export default function RegisterPage() {
     // password they just used, and the form would immediately be submitted against a
     // session that already exists. The server names the landing path in `redirect`.
     forgetPendingEmail()
-    navigate(result?.redirect ?? routePath(config.CLIENT_HOME_ROUTE), { replace: true })
+    navigate(internalPath(result?.redirect) ?? routePath(config.CLIENT_HOME_ROUTE), {
+      replace: true,
+    })
   }
 
   if (step === 'code') {
@@ -86,7 +94,7 @@ export default function RegisterPage() {
   return (
     <AuthForm<RegistrationValues>
       title={t('titles.register')}
-      action="register"
+      action={RegisterCaptchaAction}
       register
       submitText={t('actions.register')}
       onSubmit={({ values, csrfToken, captchaToken }) =>

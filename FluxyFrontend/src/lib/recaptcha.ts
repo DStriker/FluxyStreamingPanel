@@ -22,7 +22,7 @@ const loadScript = (siteKey: string): Promise<Grecaptcha> => {
   if (win.grecaptcha) return Promise.resolve(win.grecaptcha)
   if (loading) return loading
 
-  loading = new Promise<Grecaptcha>((resolve, reject) => {
+  const attempt = new Promise<Grecaptcha>((resolve, reject) => {
     const script = document.createElement('script')
     script.id = SCRIPT_ID
     script.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`
@@ -36,7 +36,24 @@ const loadScript = (siteKey: string): Promise<Grecaptcha> => {
     document.head.appendChild(script)
   })
 
-  return loading
+  // A failure must not become the cached answer. `loading` is module state, so a rejected
+  // promise left standing here makes every later `getCaptchaToken` in the tab reject
+  // instantly - and with a site key configured that is *every* submit failing until a
+  // reload, which is a permanent outage caused by one transient one. Dropping the binding
+  // is what turns "loaded once, failed once" into "try again on the next submit", and
+  // taking the broken element with it lets the retry append a fresh script rather than
+  // find the id already taken. The identity check keeps a slower rejection from clearing
+  // a newer attempt.
+  const cached = attempt.catch((err: unknown) => {
+    if (loading === cached) {
+      loading = null
+      document.getElementById(SCRIPT_ID)?.remove()
+    }
+    throw err
+  })
+
+  loading = cached
+  return cached
 }
 
 /**

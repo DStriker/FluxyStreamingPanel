@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Skeleton } from 'antd'
@@ -7,7 +7,7 @@ import { currentSession } from '../lib/api'
 import { sessionOpensArea } from '../lib/session'
 import { SessionContext } from '../lib/sessionContext'
 import NotFoundPage from '../pages/NotFoundPage'
-import type { Role, Session } from '../types'
+import type { SessionContextValue, Role, Session } from '../types'
 
 /**
  * Lets only a signed-in visitor whose role matches through, and hands the rest a decision
@@ -53,6 +53,13 @@ export default function RequireAuth({
   // be typed `null` and the two answers below could not both be represented.
   const [session, setSession] = useState<Session | null | undefined>(undefined)
 
+  // The bookkeeping `refresh` needs to answer "may I still write this?" - see the body.
+  // Refs rather than state: neither is ever rendered, and changing either must not cause
+  // a render - they exist only to decide whether the answer of an awaited call is still
+  // welcome when it arrives.
+  const generation = useRef(0)
+  const mounted = useRef(true)
+
   /**
    * Asks again who is signed in and republishes the answer.
    *
@@ -69,14 +76,47 @@ export default function RequireAuth({
    * redirect below takes over, which is the same outcome the initial ask would produce.
    */
   const refresh = useCallback(async () => {
+    // Two counters rather than hope. `generation` decides which of several in-flight
+    // answers may land - the mount's own ask and one from `ProfilePage` after a rename
+    // can both be outstanding, and the older one must not overwrite the newer. `mounted`
+    // is what stops an answer arriving after the visitor has already left the area: the
+    // effect below bumps the generation *and* clears this flag on cleanup, so nothing
+    // written here can reach a component that is gone. `GuestOnly` does the same thing
+    // with an `alive` flag; this needs both because `refresh` is also called from outside
+    // the effect, by the page that renames the account.
+    const mine = ++generation.current
     const answer = await currentSession()
-    setSession(answer)
+    if (mine === generation.current && mounted.current) {
+      setSession(answer)
+    }
     return answer
   }, [])
 
   useEffect(() => {
+    mounted.current = true
     refresh()
+    return () => {
+      mounted.current = false
+      generation.current += 1
+    }
   }, [refresh])
+
+  /**
+   * One object per session, not one per render.
+   *
+   * The literal below used to sit directly on the `value` prop, which rebuilt it on every
+   * render of this component - and this component renders on *every navigation*, because
+   * the route table re-creates the element under `RouterProvider`. Every consumer of the
+   * session (the header, the sidebar, both pages) was therefore re-rendered by a route
+   * change that had nothing to do with the session, and any `React.memo` around them would
+   * have been defeated by the context alone. `session` changes identity only when an
+   * answer arrives and `refresh` is `useCallback([])`-stable, so this barrier holds until
+   * something genuinely new to report.
+   */
+  const value = useMemo<SessionContextValue | null>(
+    () => (session ? { ...session, refresh } : null),
+    [session, refresh],
+  )
 
   if (session === undefined) return <Skeleton active paragraph={{ rows: 6 }} />
   if (!session) return <Navigate to={routePath(config.CLIENT_LOGIN_ROUTE)} replace />
@@ -84,7 +124,7 @@ export default function RequireAuth({
   const allowed = sessionOpensArea(session, role)
 
   return (
-    <SessionContext.Provider value={{ ...session, refresh }}>
+    <SessionContext.Provider value={value}>
       {allowed ? children : <NotFoundPage />}
     </SessionContext.Provider>
   )
