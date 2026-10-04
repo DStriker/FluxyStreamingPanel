@@ -34,14 +34,39 @@ import {
   USERNAME_MIN,
   meetsPasswordComplexity,
 } from '../lib/policy'
+import type { ProfileResponse } from '../types'
 
 /** The codes that decide what happens next. */
 const Submitted = 'profile_change_submitted'
-const Updated = 'profile_updated'
 const Confirmed = 'profile_change_confirmed'
-const AccountNotActive = 'account_not_active'
 
-const KINDS = ['username', 'email', 'password']
+const KINDS = ['username', 'email', 'password'] as const
+
+/** Which of the three changes is being made - the switch, and the branch in `handleFinish`. */
+type Kind = (typeof KINDS)[number]
+
+/**
+ * What the change form collects: the current password, which is always rendered, plus the
+ * one field the selected `kind` adds.
+ *
+ * The three named fields are never all present - exactly one of them is on the form for any
+ * given submit - so the type states what the form *can* hold rather than what it did. That
+ * is safe because every read below is inside the `kind ===` branch that rendered it: the
+ * guard and the field come from the same condition, and the one unguarded read
+ * (`currentPassword`) is the one always rendered.
+ */
+interface ProfileFormValues {
+  currentPassword: string
+  username: string
+  email: string
+  newPassword: string
+}
+
+/** The change waiting for its code, and where the code was sent. */
+interface PendingChange {
+  kind: Kind
+  where: string
+}
 
 /**
  * Changing the username, the email address or the password of the account behind this
@@ -69,16 +94,16 @@ export default function ProfilePage() {
   const [form] = Form.useForm()
   const [codeForm] = Form.useForm()
 
-  const [profile, setProfile] = useState(null)
+  const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(null)
-  const [kind, setKind] = useState('username')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [kind, setKind] = useState<Kind>('username')
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   // The change waiting for its code, and where the code was sent - both are needed to tell
   // the visitor what to look for, and the address differs by kind: an address change is
   // confirmed at the address it is moving *to*.
-  const [pending, setPending] = useState(null)
+  const [pending, setPending] = useState<PendingChange | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -114,11 +139,11 @@ export default function ProfilePage() {
    * token, and a password change ends the *other* sessions of the account while leaving
    * this one exactly as it was.
    */
-  const publishRename = async (renamed) => {
+  const publishRename = async (renamed: boolean) => {
     if (renamed) await session?.refresh?.()
   }
 
-  const handleFinish = async (values) => {
+  const handleFinish = async (values: ProfileFormValues) => {
     setSubmitting(true)
     form.setFields(
       ['currentPassword', 'username', 'email', 'newPassword'].map((name) => ({
@@ -169,7 +194,7 @@ export default function ProfilePage() {
     }
   }
 
-  const handleConfirm = async (values) => {
+  const handleConfirm = async (values: { code: string }) => {
     const wasKind = pending?.kind
     setConfirming(true)
     codeForm.setFields([{ name: 'code', errors: [] }])

@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
  * panel saying the wrong section's name is a bug that `lint`, `build` and a route table
  * will all pass.
  */
-export default function SectionPage({ sectionKey }) {
+export default function SectionPage({ sectionKey }: { sectionKey: string }) {
   const { t } = useTranslation()
 
   return (

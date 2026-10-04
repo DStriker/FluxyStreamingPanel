@@ -14,7 +14,7 @@ import { useSession } from '../lib/sessionContext'
  * `GET /auth/me`, so it is the account the session actually belongs to rather than a
  * string the page remembered from somewhere.
  */
-export default function DashboardPage({ sectionKey }) {
+export default function DashboardPage({ sectionKey }: { sectionKey: string }) {
   const { t } = useTranslation()
   const session = useSession()
 

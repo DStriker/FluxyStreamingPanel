@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
-import ConfirmCodeForm from '../components/ConfirmCodeForm'
+import ConfirmCodeForm, {
+  type RegistrationConfirmValues,
+} from '../components/ConfirmCodeForm'
 import config, { routePath } from '../config'
-import { confirmRegistration, submitRegistration } from '../lib/api'
+import { confirmRegistration, submitRegistration, type RegistrationValues } from '../lib/api'
 import { ApiError } from '../lib/http'
+import type { MessageResponse } from '../types'
 import {
   forgetPendingEmail,
   readPendingEmail,
@@ -38,13 +41,13 @@ export default function RegisterPage() {
     setStep('details')
   }
 
-  const handleRegistered = (_result, values) => {
+  const handleRegistered = (_result: MessageResponse, values: RegistrationValues) => {
     rememberPendingEmail(values.email)
     setEmail(values.email)
     setStep('code')
   }
 
-  const handleConfirmed = (result) => {
+  const handleConfirmed = (result: MessageResponse) => {
     // Confirming a registration opens a session on the server, so the visitor is already
     // signed in here. Going to the login form after that would be asking them for a
     // password they just used, and the form would immediately be submitted against a
@@ -55,7 +58,7 @@ export default function RegisterPage() {
 
   if (step === 'code') {
     return (
-      <ConfirmCodeForm
+      <ConfirmCodeForm<RegistrationConfirmValues>
         email={email}
         onBack={backToDetails}
         onSubmit={async ({ email: address, code, csrfToken, captchaToken }) => {
@@ -81,7 +84,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthForm
+    <AuthForm<RegistrationValues>
       title={t('titles.register')}
       action="register"
       register

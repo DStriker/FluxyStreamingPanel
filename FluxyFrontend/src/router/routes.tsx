@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom'
+import type { RouteObject } from 'react-router-dom'
 import config, { areaOf, insideArea, routePath } from '../config'
 import GuestOnly from '../components/GuestOnly'
 import RequireAuth from '../components/RequireAuth'
@@ -11,6 +12,7 @@ import ForgotPasswordPage from '../pages/ForgotPasswordPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import SectionPage from '../pages/SectionPage'
 import { flatItems } from '../lib/navigation'
+import type { Role } from '../types'
 
 /**
  * The three sign-in areas, each of which has to answer the path the backend names in its
@@ -66,7 +68,7 @@ import { flatItems } from '../lib/navigation'
  * has a route while every route has a menu item, and that react-router itself resolves each
  * of those addresses to that area rather than to the catch-all.
  */
-const sectionRoutes = (role, homeRoute) =>
+const sectionRoutes = (role: Role, homeRoute: string): RouteObject[] =>
   flatItems(role).map((item) => {
     const Page = item.page ?? SectionPage
     const element = <Page sectionKey={item.labelKey} />
@@ -79,7 +81,7 @@ const sectionRoutes = (role, homeRoute) =>
     return path === '' ? { index: true, element } : { path, element }
   })
 
-const area = (role, homeRoute, titleKey) => ({
+const area = (role: Role, homeRoute: string, titleKey: string): RouteObject => ({
   path: routePath(areaOf(homeRoute)),
   element: (
     <RequireAuth role={role}>
@@ -89,7 +91,16 @@ const area = (role, homeRoute, titleKey) => ({
   children: sectionRoutes(role, homeRoute),
 })
 
-export const routes = [
+/**
+ * Every address this application answers, in the shape react-router builds from.
+ *
+ * Annotated rather than inferred so that an entry is checked where it is written: `index:
+ * true` widens to `boolean` the moment nothing says otherwise, and an entry that carries
+ * both a `path` and an `index` is a contradiction the union can only report once a union
+ * is being asked for - which, unannotated, would be the first consumer of the table rather
+ * than the line the entry sits on.
+ */
+export const routes: RouteObject[] = [
   {
     path: '/',
     element: <Navigate to={routePath(config.CLIENT_LOGIN_ROUTE)} replace />,

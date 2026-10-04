@@ -4,15 +4,17 @@ import { App, Button, Spin, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from '../components/AuthCard'
 import AuthForm from '../components/AuthForm'
-import ConfirmCodeForm from '../components/ConfirmCodeForm'
+import ConfirmCodeForm, { type ResetConfirmValues } from '../components/ConfirmCodeForm'
 import config, { routePath } from '../config'
 import {
   PasswordResetConfirmCaptchaAction,
   confirmPasswordReset,
   passwordResetStatus,
   requestPasswordReset,
+  type RegistrationValues,
 } from '../lib/api'
 import { ApiError } from '../lib/http'
+import type { MessageResponse } from '../types'
 import {
   forgetPendingReset,
   readPendingReset,
@@ -50,7 +52,7 @@ export default function ForgotPasswordPage() {
 
   // `null` is "still asking", which is also the state a plain render produces - see the
   // render probe, which pins the spinner rather than a form appearing before the answer.
-  const [configured, setConfigured] = useState(null)
+  const [configured, setConfigured] = useState<boolean | null>(null)
   const [username, setUsername] = useState(readPendingReset)
   const [step, setStep] = useState(() => (readPendingReset() ? 'code' : 'details'))
 
@@ -76,7 +78,7 @@ export default function ForgotPasswordPage() {
     setStep('details')
   }
 
-  const handleRequested = (result, values) => {
+  const handleRequested = (result: MessageResponse, values: RegistrationValues) => {
     if (result?.code !== Submitted) return
     // Mirrored into `sessionStorage` for the reason registration mirrors its address: a
     // reload between the two steps would otherwise send the visitor back to the first form,
@@ -106,7 +108,7 @@ export default function ForgotPasswordPage() {
 
   if (step === 'code') {
     return (
-      <ConfirmCodeForm
+      <ConfirmCodeForm<ResetConfirmValues>
         title={t('titles.confirmPasswordReset')}
         identifier={{
           name: 'username',
@@ -147,7 +149,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthForm
+    <AuthForm<RegistrationValues>
       title={t('titles.forgotPassword')}
       action="password_reset"
       register

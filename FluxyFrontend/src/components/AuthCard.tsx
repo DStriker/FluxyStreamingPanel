@@ -21,9 +21,9 @@ interface AuthCardProps<Values> {
   /** The heading inside the card, already translated by the caller. */
   title: ReactNode
   /** The instance the caller created - `AuthCard` renders `<Form form={...}>` around it. */
-  form: FormInstance<Values>
+  form?: FormInstance<Values>
   /** What the caller does with the values the form produced. */
-  onFinish: (values: Values) => void
+  onFinish?: (values: Values) => void
   /** antd's `Form` name for the `autocomplete` attribute; sign-in pages want `on`. */
   autoComplete?: 'on' | 'off'
   children?: ReactNode

@@ -3,14 +3,14 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { submitAuth } from '../lib/api'
+import { submitAuth, type SignInValues } from '../lib/api'
 
 export default function ClientLoginPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
 
   return (
-    <AuthForm
+    <AuthForm<SignInValues>
       title={t('titles.clientLogin')}
       action="client_login"
       submitText={t('actions.login')}
