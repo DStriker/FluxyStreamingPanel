@@ -23,9 +23,11 @@ import {
   changeUsername,
   confirmProfileChange,
   getProfile,
+  updateTimezone,
 } from '../lib/api'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { useSession } from '../lib/sessionContext'
+import TimeZoneCard from '../components/TimeZoneCard'
 import {
   CODE_LENGTH,
   PASSWORD_MAX,
@@ -104,6 +106,14 @@ export default function ProfilePage() {
   // the visitor what to look for, and the address differs by kind: an address change is
   // confirmed at the address it is moving *to*.
   const [pending, setPending] = useState<PendingChange | null>(null)
+  // The time zone saves on selection, so it needs a draft of its own: the card is
+  // controlled by the value the server last confirmed, and without a draft in between the
+  // selector would show the old zone until the re-read landed - or, if the re-read were
+  // skipped, never at all. `undefined` means "no pick of my own yet, show what is stored";
+  // `null` is a real pick ("automatic"), which is why the two are different values and the
+  // draft cannot simply start at `null`.
+  const [timeZoneDraft, setTimeZoneDraft] = useState<string | null | undefined>(undefined)
+  const [savingTimeZone, setSavingTimeZone] = useState(false)
 
   /**
    * Reads the card's data, and decides for itself whether it is still allowed to show it.
@@ -171,6 +181,40 @@ export default function ProfilePage() {
    */
   const publishRename = async (renamed: boolean) => {
     if (renamed) await session?.refresh?.()
+  }
+
+  /**
+   * Saves the picked time zone, without a code and without a password.
+   *
+   * The two outcomes follow the shape the rest of the page already uses, because they are
+   * the same two outcomes: on success the row is re-read - which is what moves the selector
+   * onto the stored value and drops the draft - and on failure the draft is dropped without
+   * the re-read, so the selector falls back to what is actually stored instead of keeping
+   * offering a zone the server refused as though it had been accepted.
+   *
+   * Picking what is already stored sends nothing at all. The permit window is per client,
+   * not per account, and a selector opened by accident should not spend one.
+   */
+  const handleTimeZoneChange = async (next: string | null) => {
+    const stored = profile?.timeZone ?? null
+    setTimeZoneDraft(next)
+
+    if (next === stored) return
+
+    setSavingTimeZone(true)
+    try {
+      const csrfToken = await getCsrfToken()
+      const result = await updateTimezone({ timeZone: next, csrfToken })
+
+      message.success(textForCode(result.code) ?? t('profile.timezoneSaved'))
+      await load()
+      setTimeZoneDraft(undefined)
+    } catch (err) {
+      message.error(messageForError(err))
+      setTimeZoneDraft(undefined)
+    } finally {
+      setSavingTimeZone(false)
+    }
   }
 
   const handleFinish = async (values: ProfileFormValues) => {
@@ -341,6 +385,12 @@ export default function ProfilePage() {
           </Descriptions.Item>
         </Descriptions>
       </Card>
+
+      <TimeZoneCard
+        value={timeZoneDraft === undefined ? (profile?.timeZone ?? null) : timeZoneDraft}
+        saving={savingTimeZone}
+        onChange={handleTimeZoneChange}
+      />
 
       <Card title={t('profile.changeTitle')}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>

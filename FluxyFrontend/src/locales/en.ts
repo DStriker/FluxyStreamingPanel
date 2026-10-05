@@ -120,6 +120,12 @@ const en = {
     cancelHint: 'Give up on this change. Requesting a new one replaces the code.',
     changeHint:
       'Your current password is required for every change. When a password changes, every other session of this account is signed out.',
+    // The time zone card, which saves on selection rather than through the form below -
+    // hence its own success sentence instead of `changed`.
+    timezoneTitle: 'Time zone',
+    timezoneHint: 'Dates and times are shown in this zone. "Automatic" follows the browser.',
+    timezoneAuto: 'Automatic (from the browser)',
+    timezoneSaved: 'Time zone saved.',
     kinds: {
       username: 'Username',
       email: 'Email address',

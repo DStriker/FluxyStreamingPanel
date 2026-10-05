@@ -48,6 +48,21 @@ namespace Fluxy.Core.Models.Users
         /// </summary>
         public DateTimeOffset? RegisteredAt { get; init; }
 
+        /// <summary>
+        /// IANA identifier of the display time zone, or null when the visitor has not chosen
+        /// one and it should be read from their browser.
+        /// </summary>
+        /// <remarks>
+        /// A display preference, not a claim of the token: like <see cref="Email"/> it is
+        /// deliberately absent from the access token, so a change reaches the page on the next
+        /// read rather than at the moment the token expires. The value is an IANA name
+        /// (`Europe/Moscow`), never a Windows one and never a bare UTC offset, because a
+        /// product of this string with `TimeZoneInfo` has to survive both Linux and Windows
+        /// and has to know about daylight saving. Null means "not set" and is a valid state,
+        /// not an error: it is what every account has until somebody picks a zone.
+        /// </remarks>
+        public string? TimeZone { get; init; }
+
         /// <summary>Creation timestamp of the account.</summary>
         public required DateTimeOffset CreatedAt { get; init; }
 

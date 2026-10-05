@@ -63,6 +63,10 @@ namespace Fluxy.API
                     options => options.RefreshLimit > 0 && options.RefreshWindow > TimeSpan.Zero,
                     $"'{RateLimitOptions.SectionName}' needs a positive RefreshLimit and a " +
                     "RefreshWindow longer than zero.")
+                .Validate(
+                    options => options.PreferenceLimit > 0 && options.PreferenceWindow > TimeSpan.Zero,
+                    $"'{RateLimitOptions.SectionName}' needs a positive PreferenceLimit and a " +
+                    "PreferenceWindow longer than zero.")
                 // Checked while the host starts rather than on the first request, so a limit of
                 // zero is a startup error naming the setting rather than an API that refuses
                 // every registration and never says why.

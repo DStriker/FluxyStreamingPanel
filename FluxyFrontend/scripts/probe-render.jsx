@@ -21,6 +21,7 @@ import ResellerLoginPage from '../src/pages/ResellerLoginPage'
 import AdminLoginPage from '../src/pages/AdminLoginPage'
 import ForgotPasswordPage from '../src/pages/ForgotPasswordPage'
 import ProfilePage from '../src/pages/ProfilePage'
+import TimeZoneCard from '../src/components/TimeZoneCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
 import GuestOnly from '../src/components/GuestOnly'
 import RequireAuth from '../src/components/RequireAuth'
@@ -201,6 +202,32 @@ async function main() {
     'the profile page waits for the server instead of rendering a form against nothing',
     profileHtml.includes('ant-spin') && !profileHtml.includes('auth-form__otp'),
     `rendered ${profileHtml.length} bytes with the profile still being fetched`,
+  )
+
+  // The time zone card cannot be asserted through the page above: the page is a spinner
+  // until the server answers, and an effect never runs under `renderToStaticMarkup`, so
+  // the loaded state that holds this card is unreachable from here. That is exactly why
+  // the card is its own component - rendered directly, this is what proves it draws its
+  // heading, its hint and the zone the account actually stored, rather than accepting the
+  // props and putting nothing on the page.
+  const timezoneHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/profile']}>
+      <AntApp>
+        <TimeZoneCard value="Europe/Moscow" saving={false} onChange={() => {}} />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the profile offers a time zone card with the stored zone selected',
+    [
+      'Time zone',
+      'Dates and times are shown in this zone.',
+      'Europe/Moscow',
+      'ant-select',
+    ].every((needle) => timezoneHtml.includes(needle)),
+    timezoneHtml.includes('Europe/Moscow')
+      ? `rendered ${timezoneHtml.length} bytes with the saved zone on the selector`
+      : 'THE SELECTOR DID NOT RENDER THE STORED ZONE',
   )
 
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`

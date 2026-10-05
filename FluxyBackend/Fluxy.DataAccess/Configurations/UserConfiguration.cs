@@ -33,6 +33,13 @@ namespace Fluxy.DataAccess.Configurations
         /// </summary>
         public const int PasswordHashMaxLength = 255;
 
+        /// <summary>
+        /// Maximum length of an IANA time zone identifier. The longest identifier in the
+        /// tz database is well under this, so the room above is for a future rename rather
+        /// than for a value that is expected to grow.
+        /// </summary>
+        public const int TimeZoneMaxLength = 64;
+
         /// <inheritdoc />
         public void Configure(EntityTypeBuilder<UserEntity> builder)
         {
@@ -85,6 +92,13 @@ namespace Fluxy.DataAccess.Configurations
 
             builder.Property(user => user.RegisteredAt)
                 .HasColumnName("registered_at");
+
+            // Nullable, so the column has no HasDefaultValue either: an account that has
+            // never chosen a zone simply carries NULL, and the absence of the value is the
+            // state that means "read it from the browser" rather than a hole in the row.
+            builder.Property(user => user.TimeZone)
+                .HasColumnName("timezone")
+                .HasMaxLength(TimeZoneMaxLength);
 
             // Audit columns inherited from AuditableEntity. They are listed explicitly like
             // every other column, because a mapping that only names some of them would leave

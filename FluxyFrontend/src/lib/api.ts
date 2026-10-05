@@ -241,6 +241,27 @@ export const confirmProfileChange = ({
   })
 
 /**
+ * Sets the time zone the profile is displayed in, or clears it with `null` so the browser's
+ * own decides again.
+ *
+ * The one profile call without a captcha token: the endpoint expects no captcha (a
+ * signed-in visitor saving a display preference), and a header the server does not read
+ * would only suggest otherwise. The antiforgery token is still required - it is checked on
+ * every write of this API, session or not.
+ */
+export const updateTimezone = ({
+  timeZone,
+  csrfToken,
+}: {
+  timeZone: string | null
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch('/auth/profile/timezone', {
+    body: { timeZone },
+    csrfToken,
+  })
+
+/**
  * Whether this installation can send a code at all.
  *
  * Read before the reset form is rendered, so a visitor never types into a form whose second

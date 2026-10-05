@@ -11,7 +11,8 @@ using Microsoft.Extensions.Options;
 namespace Fluxy.API.Controllers
 {
     /// <summary>
-    /// Reading the profile of a signed-in account, and changing its username, email or password.
+    /// Reading the profile of a signed-in account, changing its username, email or password,
+    /// and setting the time zone it is displayed in.
     /// </summary>
     /// <remarks>
     /// The controller owns transport and nothing else: which check runs in which order, what
@@ -28,7 +29,9 @@ namespace Fluxy.API.Controllers
     ///
     /// The three change endpoints share one attempt window rather than having one each. They
     /// are the same act against the same account, and three separate windows would simply be
-    /// three times the guesses for a caller who is willing to rotate a path.
+    /// three times the guesses for a caller who is willing to rotate a path. The time zone
+    /// endpoint is the exception: it gets its own window, because it saves on selection and
+    /// would otherwise spend the permits the three changes are counting on.
     ///
     /// The route carries no <c>api</c> segment, for the reason the registration controller
     /// gives, and stays under <c>auth</c> so the frontend's dev proxy reaches it without being
@@ -85,7 +88,7 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// Reports the username, email and role of the account behind the presented token.
+        /// Reports the username, email, role and time zone of the account behind the presented token.
         /// </summary>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>200 with the profile, or 401 and 403 through the shared result handler.</returns>
@@ -113,8 +116,75 @@ namespace Fluxy.API.Controllers
             {
                 Username = profile.Username,
                 Email = profile.Email,
-                Role = profile.Role.ToString()
+                Role = profile.Role.ToString(),
+                TimeZone = profile.TimeZone
             });
+        }
+
+        /// <summary>
+        /// Sets the display time zone of the account, or clears it.
+        /// </summary>
+        /// <remarks>
+        /// The only endpoint here that applies at once: a time zone decides how dates are
+        /// shown to the person holding the session rather than what the account is, so there
+        /// is nothing an email code could prove that the session has not already. It is still
+        /// behind the antiforgery pair and behind an attempt window of its own - not the one
+        /// the three changes share, because a page that saves on selection would otherwise
+        /// spend the permits a password change is counting on, and the other way round.
+        ///
+        /// No captcha: it is called by a signed-in visitor from a form the application
+        /// rendered, and the cost of a refused request is a lookup rather than key
+        /// derivation, which is what the captcha on the other three exists for.
+        /// </remarks>
+        /// <param name="request">The IANA identifier, or nothing to return to the browser's own.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 once the choice is on the account, 400 for an identifier this system does not
+        /// know, 403 when the account may not change itself, 429 once the attempts are spent.
+        /// </returns>
+        [HttpPost("profile/timezone")]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
+        public async Task<IActionResult> ChangeTimeZone(
+            [FromBody] ChangeTimezoneRequest request,
+            CancellationToken cancellationToken)
+        {
+            var clientAddress = ClientAddress;
+            var limits = RateLimits.CurrentValue;
+            var policy = new AttemptPolicy(limits.PreferenceLimit, limits.PreferenceWindow);
+
+            if (await RejectsCsrfAsync() is { } csrfFailure)
+            {
+                return csrfFailure;
+            }
+
+            if (Throttle.RecordAttempt(TimeZoneThrottleKey(clientAddress), policy) > limits.PreferenceLimit)
+            {
+                Logger.LogInformation(
+                    "Refused a time zone change from {ClientAddress}: the limit of {Limit} " +
+                    "attempts per window is spent.",
+                    clientAddress,
+                    limits.PreferenceLimit);
+
+                return Throttled(ChangeThrottledCode, limits.PreferenceWindow);
+            }
+
+            if (ReadSubjectClaim() is not { } userId)
+            {
+                return Anonymous();
+            }
+
+            var outcome = await _profileService.UpdateTimeZoneAsync(
+                userId,
+                request.TimeZone,
+                cancellationToken);
+
+            // Nothing in this outcome touches a token - the time zone is not a claim - so the
+            // rendering half of RespondAsync is all that runs for it, which is exactly why it
+            // may be called here rather than the status being rendered a second time.
+            return await RespondAsync(outcome, clientAddress, cancellationToken);
         }
 
         /// <summary>
@@ -391,6 +461,14 @@ namespace Fluxy.API.Controllers
 
         private static string ChangeThrottleKey(string clientAddress)
             => $"login:profile:{clientAddress}";
+
+        /// <summary>
+        /// A window of its own, separate from <see cref="ChangeThrottleKey"/>: the time zone
+        /// endpoint saves on selection and would otherwise drain the permits a password change
+        /// is counting on.
+        /// </summary>
+        private static string TimeZoneThrottleKey(string clientAddress)
+            => $"profile_timezone:{clientAddress}";
 
         private static string ConfirmThrottleKey(string clientAddress)
             => $"profile_confirm:{clientAddress}";

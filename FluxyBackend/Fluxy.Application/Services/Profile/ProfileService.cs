@@ -84,7 +84,87 @@ namespace Fluxy.Application.Services.Profile
             {
                 Username = user.Username,
                 Email = user.Email,
-                Role = user.Role
+                Role = user.Role,
+                TimeZone = user.TimeZone
+            };
+        }
+
+        /// <summary>
+        /// Longest accepted identifier, matching the column width. Mirrored rather than
+        /// imported from <c>UserConfiguration</c> for the same reason the registration rules
+        /// keep their own copies: the limit belongs to the input being accepted, and the
+        /// column is what happens to agree with it.
+        /// </summary>
+        private const int TimeZoneMaxLength = 64;
+
+        /// <inheritdoc />
+        public async Task<ProfileChangeOutcome> UpdateTimeZoneAsync(
+            Guid userId,
+            string? timeZone,
+            CancellationToken cancellationToken = default)
+        {
+            var requested = timeZone?.Trim() ?? string.Empty;
+
+            if (requested.Length > TimeZoneMaxLength)
+            {
+                return InvalidTimeZone();
+            }
+
+            // Empty means the visitor picked "auto", which is stored as NULL - the absence
+            // of the value is the state that says "read it from the browser", and it is
+            // written rather than skipped so that clearing a zone cannot leave the old one
+            // behind.
+            if (requested.Length > 0)
+            {
+                // An identifier this installation's clock cannot resolve is refused here
+                // rather than stored and discovered later by whatever tries to format a date
+                // with it. On Linux the same API reads IANA ids natively, so a name that
+                // passes this check works where the application runs.
+                try
+                {
+                    TimeZoneInfo.FindSystemTimeZoneById(requested);
+                }
+                catch (TimeZoneNotFoundException)
+                {
+                    return InvalidTimeZone();
+                }
+                catch (InvalidTimeZoneException)
+                {
+                    return InvalidTimeZone();
+                }
+            }
+
+            var user = await _context.Users
+                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+
+            if (user is null || user.Status is not UserStatus.Registered)
+            {
+                return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
+            }
+
+            user.TimeZone = requested.Length > 0 ? requested : null;
+
+            // No unique index on this column, so unlike the three changes above a lost race
+            // cannot happen and the save needs no interpretation of its failures.
+            await _context.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Set the display time zone of {Username} to {TimeZone}.",
+                user.Username,
+                user.TimeZone ?? "(browser default)");
+
+            return new ProfileChangeOutcome { Status = ProfileChangeStatus.Applied };
+
+            ProfileChangeOutcome InvalidTimeZone() => new()
+            {
+                Status = ProfileChangeStatus.InvalidInput,
+                Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                {
+                    [nameof(AccountProfile.TimeZone)] =
+                    [
+                        "The time zone identifier is not one this system knows."
+                    ]
+                }
             };
         }
 

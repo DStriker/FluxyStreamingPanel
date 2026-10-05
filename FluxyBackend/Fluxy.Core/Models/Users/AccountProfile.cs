@@ -20,5 +20,11 @@ namespace Fluxy.Core.Models.Users
 
         /// <summary>Access level of the account.</summary>
         public required UserRole Role { get; init; }
+
+        /// <summary>
+        /// IANA identifier of the chosen display time zone, or null when the visitor has not
+        /// chosen one. Not required, so a profile always renders even before one exists.
+        /// </summary>
+        public string? TimeZone { get; init; }
     }
 }

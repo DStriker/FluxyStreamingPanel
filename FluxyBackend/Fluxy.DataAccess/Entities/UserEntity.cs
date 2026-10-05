@@ -55,6 +55,11 @@ namespace Fluxy.DataAccess.Entities
         public DateTimeOffset? RegisteredAt { get; set; }
 
         /// <summary>
+        /// IANA identifier of the chosen display time zone, or null when none is chosen.
+        /// </summary>
+        public string? TimeZone { get; set; }
+
+        /// <summary>
         /// Builds the business model out of this row.
         /// </summary>
         public User ToModel()
@@ -70,6 +75,7 @@ namespace Fluxy.DataAccess.Entities
                 RegistrationCodeHash = RegistrationCodeHash,
                 RegistrationCodeExpiresAt = RegistrationCodeExpiresAt,
                 RegisteredAt = RegisteredAt,
+                TimeZone = TimeZone,
                 CreatedAt = CreatedAt,
                 UpdatedAt = UpdatedAt
             };
@@ -91,7 +97,8 @@ namespace Fluxy.DataAccess.Entities
                 Status = model.Status,
                 RegistrationCodeHash = model.RegistrationCodeHash,
                 RegistrationCodeExpiresAt = model.RegistrationCodeExpiresAt,
-                RegisteredAt = model.RegisteredAt
+                RegisteredAt = model.RegisteredAt,
+                TimeZone = model.TimeZone
             };
         }
     }

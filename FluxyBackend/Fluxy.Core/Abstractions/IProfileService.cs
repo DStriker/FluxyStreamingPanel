@@ -6,11 +6,14 @@ namespace Fluxy.Core.Abstractions
     /// Reads and changes the profile of an account that is already signed in.
     /// </summary>
     /// <remarks>
-    /// Every change here is confirmed by a code mailed to the account, except on an
-    /// installation with no mail server, where there is nothing to confirm with and the change
-    /// is applied at once - the service decides that, the caller does not ask. The current
-    /// password is required for all three operations regardless: a session that is left open on
-    /// a shared machine is not proof of anything, and the password is.
+    /// The three account changes - username, email and password - are confirmed by a code
+    /// mailed to the account, except on an installation with no mail server, where there is
+    /// nothing to confirm with and the change is applied at once - the service decides that,
+    /// the caller does not ask. The current password is required for all three regardless: a
+    /// session that is left open on a shared machine is not proof of anything, and the
+    /// password is. The time zone is the exception to both rules: it is a display preference
+    /// rather than a fact about the account, so it applies at once behind nothing but the
+    /// session.
     ///
     /// The interface says nothing about HTTP, codes or cookies. It reports
     /// <see cref="ProfileChangeStatus"/>, and which of those becomes a 400 and which becomes a
@@ -19,7 +22,7 @@ namespace Fluxy.Core.Abstractions
     public interface IProfileService
     {
         /// <summary>
-        /// Reads the username, email and role of an account.
+        /// Reads the username, email, role and time zone of an account.
         /// </summary>
         /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -28,6 +31,33 @@ namespace Fluxy.Core.Abstractions
         /// <see cref="UserStatus.Registered"/> - a blocked account is not handed a profile.
         /// </returns>
         Task<AccountProfile?> GetProfileAsync(Guid userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Sets the display time zone of an account, or clears it.
+        /// </summary>
+        /// <remarks>
+        /// Unlike the three changes above, this one applies at once: it is a rendering
+        /// preference rather than a fact about the account, there is no mailed code to wait
+        /// for, and the person changing it is already holding a session. The account must
+        /// still be <see cref="UserStatus.Registered"/>, which is the same rule every other
+        /// method here applies to a blocked account.
+        /// </remarks>
+        /// <param name="userId">Identifier taken from the access token.</param>
+        /// <param name="timeZone">
+        /// IANA identifier to store, or null / empty to return the account to "read it from
+        /// the browser".
+        /// </param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// The outcome: <see cref="ProfileChangeStatus.Applied"/> on success,
+        /// <see cref="ProfileChangeStatus.InvalidInput"/> for an identifier the system clock
+        /// does not know, <see cref="ProfileChangeStatus.AccountNotActive"/> for an account
+        /// that is not registered.
+        /// </returns>
+        Task<ProfileChangeOutcome> UpdateTimeZoneAsync(
+            Guid userId,
+            string? timeZone,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Starts changing the login name of an account: applies it at once when there is no

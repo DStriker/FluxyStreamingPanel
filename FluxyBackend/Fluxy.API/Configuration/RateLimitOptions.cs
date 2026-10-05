@@ -64,5 +64,19 @@ namespace Fluxy.API.Configuration
 
         /// <summary>Length of the refresh window.</summary>
         public TimeSpan RefreshWindow { get; set; } = TimeSpan.FromMinutes(15);
+
+        /// <summary>Profile preference saves a client may spend in one window.</summary>
+        /// <remarks>
+        /// High by the same rule as <see cref="RefreshLimit"/>: it guards an endpoint that
+        /// costs a lookup rather than key derivation, reached by somebody who is already
+        /// signed in, and this endpoint saves on selection - a person comparing zones may
+        /// change their mind several times in a minute. It is separate from
+        /// <see cref="LoginLimit"/> so that this can be generous without making the password
+        /// change window generous too.
+        /// </remarks>
+        public int PreferenceLimit { get; set; } = 30;
+
+        /// <summary>Length of the profile preference window.</summary>
+        public TimeSpan PreferenceWindow { get; set; } = TimeSpan.FromMinutes(15);
     }
 }

@@ -21,5 +21,11 @@ namespace Fluxy.API.Contracts
 
         /// <summary>Access level of the account, as the name of the enum member.</summary>
         public required string Role { get; init; }
+
+        /// <summary>
+        /// IANA identifier of the chosen display time zone, or null when the visitor has not
+        /// chosen one and it should be read from their browser.
+        /// </summary>
+        public string? TimeZone { get; init; }
     }
 }
