@@ -3,12 +3,14 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Fluxy.Application.Services.GeoIp;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -52,6 +54,9 @@ namespace Fluxy.Application.Services.Authentication
 
         private readonly FluxyDbContext _context;
         private readonly IOptionsMonitor<AuthenticationOptions> _options;
+        private readonly IGeoIpResolver _geoIp;
+        private readonly ILoginGuardService _guard;
+        private readonly IHostEnvironment _environment;
         private readonly SigningCredentials _credentials;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<JwtTokenService> _logger;
@@ -61,6 +66,9 @@ namespace Fluxy.Application.Services.Authentication
         /// </summary>
         /// <param name="context">Context holding the issued refresh tokens.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
+        /// <param name="geoIp">Resolver that places the client address on the map.</param>
+        /// <param name="guard">Enforcer of the account's allow lists.</param>
+        /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="timeProvider">
         /// Clock the lifetimes are measured with. Injected so a window can be exercised without
         /// waiting for it.
@@ -73,11 +81,17 @@ namespace Fluxy.Application.Services.Authentication
         public JwtTokenService(
             FluxyDbContext context,
             IOptionsMonitor<AuthenticationOptions> options,
+            IGeoIpResolver geoIp,
+            ILoginGuardService guard,
+            IHostEnvironment environment,
             TimeProvider timeProvider,
             ILogger<JwtTokenService> logger)
         {
             _context = context;
             _options = options;
+            _geoIp = geoIp;
+            _guard = guard;
+            _environment = environment;
             _timeProvider = timeProvider;
             _logger = logger;
 
@@ -196,6 +210,46 @@ namespace Fluxy.Application.Services.Authentication
 
             var options = _options.CurrentValue;
             var refreshToken = GenerateRefreshToken();
+
+            // A session bound to its opening address ends here rather than rotating: the address
+            // on the presented token is the last one the session was seen at, so a different one
+            // now means the session moved. Compared as addresses rather than as text, because one
+            // IPv6 peer has many spellings and a session must not end over formatting.
+            if (user.BindSessionToIp && !LoginGuardPolicy.AddressesEqual(stored.ClientAddress, clientAddress))
+            {
+                await RevokeSessionAsync(stored.SessionId, cancellationToken);
+
+                _logger.LogInformation(
+                    "A refresh of session {SessionId} was refused because it arrived from " +
+                    "{ClientAddress} while the session is bound to {BoundAddress}, and its " +
+                    "session was revoked.",
+                    stored.SessionId,
+                    clientAddress,
+                    stored.ClientAddress);
+
+                return new RefreshOutcome { Status = RefreshStatus.SessionRevoked };
+            }
+
+            // The guard is rechecked on every rotation, not just at sign-in: a session outlives
+            // the network it was opened from, and a stolen refresh token is worthless if the
+            // thief's network is not allowed. Revoked rather than merely refused, like a
+            // blocked account - the session must not survive its own network.
+            if (user.GeoProtectionEnabled && !BypassesGuard(clientAddress))
+            {
+                var geo = await _geoIp.ResolveAsync(clientAddress, cancellationToken);
+
+                if (!await _guard.IsAllowedAsync(user.Id, geo, cancellationToken))
+                {
+                    await RevokeSessionAsync(stored.SessionId, cancellationToken);
+
+                    _logger.LogInformation(
+                        "A refresh of session {SessionId} was refused because its network is no " +
+                        "longer on the account's allow lists, and its session was revoked.",
+                        stored.SessionId);
+
+                    return new RefreshOutcome { Status = RefreshStatus.SessionRevoked };
+                }
+            }
 
             // Mapped to the model rather than passed as the entity, because the token service
             // deals in accounts and has no business knowing how one is stored.
@@ -364,6 +418,27 @@ namespace Fluxy.Application.Services.Authentication
             await _context.RefreshTokens
                 .Where(t => t.ExpiresAt <= now || (t.RevokedAt != null && t.RevokedAt < cutoff))
                 .ExecuteDeleteAsync(ct);
+        }
+
+        /// <summary>
+        /// Whether the guard is skipped for this address. Same rule as on the sign-in path:
+        /// local networks carry no GeoIP data, so in Development they are bypassed rather than
+        /// refused, and outside Development there is no bypass at all.
+        /// </summary>
+        private bool BypassesGuard(string? clientAddress)
+        {
+            if (!_environment.IsDevelopment()
+                || !LoginGuardPolicy.IsLocalAddress(clientAddress))
+            {
+                return false;
+            }
+
+            _logger.LogWarning(
+                "The login guard was bypassed for local address {ClientAddress} because this " +
+                "host runs in Development.",
+                clientAddress);
+
+            return true;
         }
 
         /// <summary>

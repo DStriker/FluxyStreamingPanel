@@ -102,9 +102,38 @@ namespace Fluxy.Core.Abstractions
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Applies the change whose code was mailed to the account.
+        /// Reads the login guard of an account: the two switches and the three allow lists.
         /// </summary>
         /// <param name="userId">Identifier taken from the access token.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// The guard, or null when the account is missing or is not
+        /// <see cref="UserStatus.Registered"/>.
+        /// </returns>
+        Task<LoginGuardSettings?> GetLoginGuardAsync(Guid userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Starts changing the login guard of an account: applies it at once when there is no
+        /// mail server, otherwise stages it and mails the code that confirms it.
+        /// </summary>
+        /// <param name="userId">Identifier taken from the access token.</param>
+        /// <param name="currentPassword">Password the account signs in with, verified here.</param>
+        /// <param name="settings">Requested guard, unnormalized exactly as the service expects.</param>
+        /// <param name="clientAddress">
+        /// Address the request came from, as the server saw it. The service resolves it itself
+        /// and refuses a guard that would lock this very network out.
+        /// </param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<ProfileChangeOutcome> ChangeLoginGuardAsync(
+            Guid userId,
+            string currentPassword,
+            LoginGuardSettings settings,
+            string? clientAddress,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Applies the change whose code was mailed to the account.
+        /// </summary>        /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="code">Code as typed, digits only.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>

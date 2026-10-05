@@ -21,6 +21,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- MaxMind databases the login guard resolves addresses with. They live next to the
+         solution rather than in this project, are downloaded by hand, and are deliberately
+         not in git. Linked into the output so a relative GeoIp path means "next to the
+         binaries", wherever the host runs from. -->
+    <Content Include="..\GeoLite2-City.mmdb" Link="GeoLite2-City.mmdb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\GeoLite2-ASN.mmdb" Link="GeoLite2-ASN.mmdb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Fluxy.Application\Fluxy.Application.csproj" />
     <ProjectReference Include="..\Fluxy.DataAccess\Fluxy.DataAccess.csproj" />
   </ItemGroup>

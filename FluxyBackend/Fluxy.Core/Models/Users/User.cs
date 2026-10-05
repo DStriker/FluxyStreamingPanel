@@ -51,8 +51,7 @@ namespace Fluxy.Core.Models.Users
         /// <summary>
         /// IANA identifier of the display time zone, or null when the visitor has not chosen
         /// one and it should be read from their browser.
-        /// </summary>
-        /// <remarks>
+        /// </summary>        /// <remarks>
         /// A display preference, not a claim of the token: like <see cref="Email"/> it is
         /// deliberately absent from the access token, so a change reaches the page on the next
         /// read rather than at the moment the token expires. The value is an IANA name
@@ -62,6 +61,18 @@ namespace Fluxy.Core.Models.Users
         /// not an error: it is what every account has until somebody picks a zone.
         /// </remarks>
         public string? TimeZone { get; init; }
+
+        /// <summary>
+        /// Whether a sign-in is refused when the network it comes from is not on the
+        /// account's allow lists. Off means the lists are stored but ignored.
+        /// </summary>
+        public bool GeoProtectionEnabled { get; init; }
+
+        /// <summary>
+        /// Whether a session is bound to the address it was opened from. A refresh that
+        /// arrives from another address ends the session instead of rotating it.
+        /// </summary>
+        public bool BindSessionToIp { get; init; }
 
         /// <summary>Creation timestamp of the account.</summary>
         public required DateTimeOffset CreatedAt { get; init; }

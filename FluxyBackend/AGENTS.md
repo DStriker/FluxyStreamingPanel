@@ -63,6 +63,93 @@ The old inline `BasicAuthHandler` (hardcoded `admin`/`admin`) has been **deleted
 - **Endpoints**: `POST /auth/client-login`, `/auth/reseller-login`, `/auth/admin-login` (identical `invalid_credentials` refusal for every failure, bcrypt for every one of them, early exit with a decoy hash when there is no such account), `POST /auth/refresh` (rotation; a replayed refresh token revokes the whole family; **a request with no refresh cookie is refused without spending one of the 30 permits** — there is nothing to rotate, and the frontend asks `refresh` after any 401 it cannot answer otherwise, so a guest page loading `/auth/me` would otherwise drain the window), `POST /auth/logout` (revokes the refresh family in the DB and denylists the access `jti` in Redis for its remaining lifetime — fail-open with a warning if Redis is down; **requires a session** — `[Authorize]` refuses an unauthenticated caller with 401 `auth_required` before the antiforgery check, which used to answer a visitor with no session to end the misleading `csrf_invalid`), `GET /auth/me`. Limits: **5 logins / 15 min** keyed by role and client address (no username — that would let someone lock an account out, not just slow themselves down) and **30 refreshes / 15 min**. Registration confirmation issues a session and follows `redirect`, like a sign-in.
 - Session state lives in the `refresh_tokens` rows and the Redis denylist. There is no server-side session store, no cookie session, nothing else to clean up.
 
+## Login guard: GeoIP allow lists, session binding, fail-closed refusals
+
+Accounts carry two switches (`users.geo_protection_enabled`, `users.bind_session_to_ip`, both
+`boolean NOT NULL DEFAULT FALSE`, mapped on `User`/`UserEntity`) and three allow lists in
+`user_login_guard_rules` (`id uuid PK`, `user_id FK → users ON DELETE CASCADE`, `kind smallint`
+as `LoginGuardRuleKind`: `IpAddress=1, Country=2, AutonomousSystem=3`, `value` canonical,
+`UNIQUE(user_id, kind, value)`). Limits are the contract: **5 addresses,
+1 country, 1 provider**. Between lists the relation is AND, inside one list OR, an empty list
+does not restrict. Addresses are exact or CIDR, v4 and v6 (`LoginGuardPolicy`); countries are
+upper case ISO alpha-2 validated against the runtime's own regions; providers match by
+**autonomous system number only**. There is no stored display name for a rule: the `label`
+column existed on the first version of the table and was dropped by
+`20261005183847_DropLoginGuardRuleLabel` - a name the account typed would be a second source
+of truth for a fact only the GeoIP database knows, and nothing ever matched on it. The
+organization name that `GET /auth/geo/lookup` reports is a *lookup* of the caller's own
+network, not a stored field.
+
+- **Source of truth is local MaxMind files**, not a lookup API: `GeoLite2-City.mmdb` (country)
+  + `GeoLite2-ASN.mmdb` (provider), read by `MaxMindGeoIpResolver` (`MaxMind.GeoIP2` 6.1.0 in
+  `Fluxy.Application`). The files live next to the solution and are linked into the API output
+  as `Content` with `PreserveNewest` (`Fluxy.API.csproj`), so they travel with the binaries
+  into publish as well. Paths come from the gitignored `.env` as `GEOIP_CITY_DB_PATH` /
+  `GEOIP_ASN_DB_PATH` → `GeoIp:CityDbPath` / `GeoIp:AsnDbPath`; a relative path is resolved
+  against the API output folder, not the working directory, so a bare file name works however
+  the host was started. The `.mmdb` files are not in git (tens of megabytes, refreshed
+  monthly) - a missing file is not a startup error, the resolver answers `Unknown` for every
+  address and logs a warning naming the `GeoIp` section.
+- **Enforcement is fail-closed and silent.** `AuthenticationService` checks the guard after the
+  password, status and role, before `IssueAsync`: a violation returns the same `Refused()` as a
+  wrong password, so the client gets `401 invalid_credentials` either way and cannot tell a
+  wrong password from a wrong network. `JwtTokenService.RefreshAsync` rechecks on every
+  rotation: a violation revokes the whole session and answers `401 session_expired`, like a
+  blocked account. The distinct reasons exist only in the server log
+  (`LoginGuardService ... not on the account's allow lists`).
+- **`bind_session_to_ip` pins a session to its opening address.** The address is already stored
+  on every refresh row; a refresh from another address revokes the session (`session_expired`).
+  Compared as parsed addresses, not as text (`::1` vs `0:0:...:1` must not end a session).
+  Access tokens stay stateless, so a move is caught on rotation, within one access lifetime.
+- **Development bypasses local networks with a warning, nothing else does.**
+  `LoginGuardPolicy.IsLocalAddress` (loopback, private, link-local) + `IHostEnvironment`:
+  in Development a local address skips both the enforcement and the anti-lock below, because
+  loopback carries no GeoIP data and would otherwise refuse its own developer. Outside
+  Development there is no bypass - a local address there is a misconfiguration, not the
+  developer. `Microsoft.Extensions.Hosting` 10.0.12 is pinned in `Fluxy.Application.csproj`
+  for `IHostEnvironment`, same MSB3277 reason as the other pins.
+- **Profile surface**: `GET /auth/profile` renders the guard fields, `POST /auth/profile/geo`
+  (`ChangeLoginGuardRequest`) changes them behind the current password plus the shared change
+  attempt window, confirmed by the existing `POST /auth/profile/confirm` flow with the new
+  `PendingChangeKind.ChangeLoginGuard = 5`. The staged guard travels as JSON in the new
+  nullable `pending_changes.payload` column (five networks do not fit `target_value`), and a
+  guard change touches no session - the refresh path rechecks each one on rotation.
+  `GET /auth/geo/lookup` (`[Authorize]`, no guards of its own) reports the caller's own
+  `{ ip, countryCode, autonomousSystemNumber, organization }` for the "allow my current
+  network" button; every field but the address may be null.
+- **Anti-lock is a server rule, not UI advice.** Saving `geoProtectionEnabled=true` resolves the
+  caller's own address server-side and refuses with `validation_failed` on
+  `geoProtectionEnabled` when the new lists would lock that very network out. The caller-supplied
+  "current" values are never trusted for this.
+- **A password reset clears the guard.** `PasswordResetService.ConfirmAsync` sets both switches
+  off and deletes the rules in the same `SaveChanges` as the password; the controller already
+  ends every session there. The mailbox is the recovery path for a self-inflicted lockout.
+- **Foreign keys are real now.** `refresh_tokens.user_id`, `pending_changes.user_id` and
+  `user_login_guard_rules.user_id` are `ON DELETE CASCADE` constraints, and the migration
+  deletes orphan rows before adding them. This reverses the old "bare indexed column"
+  decision: an account can now be deleted, and a session or a code that outlives its account
+  is a credential for nobody. Verified: deleting an account removes its rules, tokens and
+  pending rows, nothing else.
+
+What was verified by running (no `.mmdb` files on the machine, so country/provider paths
+were exercised as `Unknown` and the address list carried the allow decisions):
+
+| Scenario | Result |
+| --- | --- |
+| `GET /auth/profile` | 200 with `geoProtectionEnabled`, `bindSessionToIp`, `allowedIps`, `allowedCountry`, `allowedAutonomousSystemNumber` (no `allowedOrganizationName` - the field went with the `label` column) |
+| `POST /auth/profile/geo` with a stale `allowedOrganizationName` in the body | 200 `profile_updated`, ASN rule stored as `15169`, unknown property ignored, profile still carries no organization name |
+| `20261005183847_DropLoginGuardRuleLabel` applied at startup | `user_login_guard_rules` = `id, user_id, kind, value, created_at, updated_at`, guard round trip after the drop unchanged |
+| `POST /auth/profile/geo`, 6 addresses / bad CIDR / `XX` / ASN 0 | 400 `validation_failed` with `errors.allowedIps` / `allowedCountry` / `allowedAutonomousSystemNumber` |
+| `POST /auth/profile/geo` enabling, no mail configured | 200 `profile_updated`, rules in the table, `created_at`-only write on replace |
+| `POST /auth/profile/geo` with `[8.8.8.8]` from loopback (Production) | 400 `validation_failed` on `geoProtectionEnabled`, row untouched (anti-lock) |
+| Correct password, blocked network (Production) | 401 `invalid_credentials`, indistinguishable from a wrong password |
+| Allowed network, then list narrowed | next `POST /auth/refresh` → 401 `session_expired`, session revoked, retry → 401 |
+| Session bound, stored address tampered to another | `POST /auth/refresh` → 401 `session_expired`, session revoked |
+| Development + loopback + guard on | 200 with a bypass warning naming the address, no lockout of the developer |
+| Missing `.mmdb` files | startup warning naming the `GeoIp` section, lookups `Unknown` |
+| `DELETE FROM users` | rules, refresh rows and pending rows of that account gone, other accounts untouched |
+| `POST /auth/admin-login` with the old `Test1234` after the rotation | 401 (the password printed during verification no longer works) |
+
 ## PostgreSQL is wired up (EF Core 10, Npgsql provider)
 
 The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:

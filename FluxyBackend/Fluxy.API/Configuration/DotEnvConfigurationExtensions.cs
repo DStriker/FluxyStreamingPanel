@@ -1,5 +1,6 @@
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Email;
+using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
 using Microsoft.Extensions.Configuration;
@@ -97,8 +98,7 @@ namespace Fluxy.API.Configuration
 
         /// <summary>
         /// Switch for the browser policy, and the comma separated list of origins it allows.
-        /// </summary>
-        /// <remarks>
+        /// </summary>        /// <remarks>
         /// Neither is a secret, but both are per-machine, which is the reason they live in a
         /// gitignored file rather than in a tracked one: the origin that has to be allowed is the
         /// one this machine happens to serve the SPA from, and a committed list would be wrong on
@@ -109,6 +109,18 @@ namespace Fluxy.API.Configuration
         /// </remarks>
         private const string CorsEnabledKey = "CORS_ENABLED";
         private const string CorsOriginsKey = "CORS_ALLOWED_ORIGINS";
+
+        /// <summary>
+        /// Filesystem paths of the MaxMind databases the login guard resolves addresses with.
+        /// </summary>
+        /// <remarks>
+        /// Not secrets and not infrastructure, but per-machine files kept out of git for the
+        /// same reason the secrets are: the path one machine downloaded them to is not the
+        /// path another one will. An absent key leaves the options default, which is how an
+        /// installation without the files declares it has none.
+        /// </remarks>
+        private const string GeoIpCityDbKey = "GEOIP_CITY_DB_PATH";
+        private const string GeoIpAsnDbKey = "GEOIP_ASN_DB_PATH";
 
         /// <summary>
         /// Every <c>.env</c> key that feeds an application setting, paired with the configuration key
@@ -136,7 +148,9 @@ namespace Fluxy.API.Configuration
             (SmtpFromKey, $"{EmailOptions.SectionName}:From"),
             (JwtSigningKey, $"{AuthenticationOptions.SectionName}:SigningKey"),
             (JwtIssuer, $"{AuthenticationOptions.SectionName}:Issuer"),
-            (JwtAudience, $"{AuthenticationOptions.SectionName}:Audience")
+            (JwtAudience, $"{AuthenticationOptions.SectionName}:Audience"),
+            (GeoIpCityDbKey, $"{GeoIpOptions.SectionName}:CityDbPath"),
+            (GeoIpAsnDbKey, $"{GeoIpOptions.SectionName}:AsnDbPath")
         ];
 
         /// <summary>

@@ -18,6 +18,13 @@ export const EMAIL_MAX = 254
 export const CODE_LENGTH = 6
 
 /**
+ * How many networks one login guard may allow. Mirrors `LoginGuardPolicy.MaxAllowedIps`
+ * on the server: the card stops at five, the server refuses a sixth, and the two have to
+ * agree or the sixth address fails with a toast instead of never being typed.
+ */
+export const LOGIN_GUARD_MAX_IPS = 5
+
+/**
  * At least one lowercase letter, one uppercase letter and one digit - the same three
  * rules the server counts with `char.IsLower` / `IsUpper` / `IsDigit`, expressed for
  * a JavaScript string.

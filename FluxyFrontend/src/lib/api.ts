@@ -1,6 +1,8 @@
 import { apiFetch, apiGet } from './http'
 import { getCsrfToken } from './csrf'
 import type {
+  GeoLookup,
+  LoginGuardSettings,
   MessageResponse,
   PasswordStatusResponse,
   ProfileResponse,
@@ -239,6 +241,57 @@ export const confirmProfileChange = ({
     csrfToken,
     captchaToken,
   })
+
+/**
+ * What the login guard form submits: the current password proving the session is the
+ * owner's, plus the guard itself.
+ *
+ * The guard is `LoginGuardSettings` rather than a second spelling of the same six
+ * fields, because the card edits that shape and the endpoint accepts it - one shape
+ * with two spellings would drift the way every duplicated contract eventually does.
+ */
+export interface LoginGuardValues {
+  currentPassword: string
+  guard: LoginGuardSettings
+}
+
+/**
+ * Starts changing the login guard: the two switches and the three allow lists.
+ *
+ * Like the other three changes, a 2xx is one of two things and the `code` says which:
+ * `profile_updated` when the change is already on the account, and
+ * `profile_change_submitted` when a code is on its way through `confirmProfileChange`.
+ * A new guard touches no session either way - the refresh path rechecks each session
+ * against the new lists on its next rotation.
+ */
+export const changeLoginGuard = ({
+  currentPassword,
+  guard,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { currentPassword: string; guard: LoginGuardSettings }): Promise<MessageResponse> =>
+  apiFetch('/auth/profile/geo', {
+    body: {
+      currentPassword,
+      geoProtectionEnabled: guard.geoProtectionEnabled,
+      bindSessionToIp: guard.bindSessionToIp,
+      allowedIps: guard.allowedIps,
+      allowedCountry: guard.allowedCountry,
+      allowedAutonomousSystemNumber: guard.allowedAutonomousSystemNumber,
+    },
+    csrfToken,
+    captchaToken,
+  })
+
+/**
+ * What the GeoIP database knows about the network this browser arrived from.
+ *
+ * Exists for the "use my current network" button: a visitor cannot be expected to know
+ * their own autonomous system number. Throws like every other call when the backend is
+ * unreachable - the button then toasts the transport error rather than filling the form
+ * with nothing.
+ */
+export const lookupGeo = (): Promise<GeoLookup> => apiGet<GeoLookup>('/auth/geo/lookup')
 
 /**
  * Sets the time zone the profile is displayed in, or clears it with `null` so the browser's

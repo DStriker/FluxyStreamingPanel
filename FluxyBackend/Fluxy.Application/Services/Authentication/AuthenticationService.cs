@@ -3,6 +3,7 @@ using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Fluxy.Application.Services.Authentication
@@ -43,6 +44,9 @@ namespace Fluxy.Application.Services.Authentication
 
         private readonly FluxyDbContext _context;
         private readonly ITokenService _tokenService;
+        private readonly IGeoIpResolver _geoIp;
+        private readonly ILoginGuardService _guard;
+        private readonly IHostEnvironment _environment;
         private readonly ILogger<AuthenticationService> _logger;
 
         /// <summary>
@@ -50,14 +54,23 @@ namespace Fluxy.Application.Services.Authentication
         /// </summary>
         /// <param name="context">Context holding the accounts.</param>
         /// <param name="tokenService">Minter of the session tokens.</param>
+        /// <param name="geoIp">Resolver that places the client address on the map.</param>
+        /// <param name="guard">Enforcer of the account's allow lists.</param>
+        /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public AuthenticationService(
             FluxyDbContext context,
             ITokenService tokenService,
+            IGeoIpResolver geoIp,
+            ILoginGuardService guard,
+            IHostEnvironment environment,
             ILogger<AuthenticationService> logger)
         {
             _context = context;
             _tokenService = tokenService;
+            _geoIp = geoIp;
+            _guard = guard;
+            _environment = environment;
             _logger = logger;
         }
 
@@ -130,6 +143,25 @@ namespace Fluxy.Application.Services.Authentication
                 return Refused();
             }
 
+            // Runs after the password, the status and the role, and that order is the point. A
+            // guard verdict before the password would let a caller without the password learn
+            // whether a network is allowed, and a verdict folded into anything but the one
+            // refusal would tell a wrong password from a wrong network.
+            if (user.GeoProtectionEnabled && !BypassesGuard(credentials.ClientAddress))
+            {
+                var geo = await _geoIp.ResolveAsync(credentials.ClientAddress, cancellationToken);
+
+                if (!await _guard.IsAllowedAsync(user.Id, geo, cancellationToken))
+                {
+                    _logger.LogInformation(
+                        "Refused a sign-in for {Username}: the network it came from is not on " +
+                        "the account's allow lists.",
+                        username);
+
+                    return Refused();
+                }
+            }
+
             var tokens = await _tokenService.IssueAsync(
                 user.ToModel(),
                 credentials.ClientAddress,
@@ -151,5 +183,27 @@ namespace Fluxy.Application.Services.Authentication
         /// </summary>
         private static AuthenticationOutcome Refused()
             => new() { Status = AuthenticationStatus.InvalidCredentials };
+
+        /// <summary>
+        /// Whether the guard is skipped for this address. Loopback and private networks carry
+        /// no GeoIP data by definition, so in Development - where every client is one - the
+        /// guard would refuse its own developer. Outside Development there is no bypass: a
+        /// local address on a public host is not the developer, it is a misconfiguration.
+        /// </summary>
+        private bool BypassesGuard(string? clientAddress)
+        {
+            if (!_environment.IsDevelopment()
+                || !GeoIp.LoginGuardPolicy.IsLocalAddress(clientAddress))
+            {
+                return false;
+            }
+
+            _logger.LogWarning(
+                "The login guard was bypassed for local address {ClientAddress} because this " +
+                "host runs in Development.",
+                clientAddress);
+
+            return true;
+        }
     }
 }

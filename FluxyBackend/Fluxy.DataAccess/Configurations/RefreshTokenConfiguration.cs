@@ -51,6 +51,14 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("user_id")
                 .IsRequired();
 
+            // A token belongs to exactly one account and dies with it, for the same reason a
+            // staged change does: deleting an account must not leave sessions that sign in as
+            // nobody.
+            builder.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             builder.Property(token => token.TokenHash)
                 .HasColumnName("token_hash")
                 .HasMaxLength(TokenHashLength)

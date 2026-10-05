@@ -100,6 +100,16 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("timezone")
                 .HasMaxLength(TimeZoneMaxLength);
 
+            // Two switches with no unknown state: an account either guards its sign-ins or it
+            // does not, and a session is either bound to its opening address or it is not.
+            builder.Property(user => user.GeoProtectionEnabled)
+                .HasColumnName("geo_protection_enabled")
+                .IsRequired();
+
+            builder.Property(user => user.BindSessionToIp)
+                .HasColumnName("bind_session_to_ip")
+                .IsRequired();
+
             // Audit columns inherited from AuditableEntity. They are listed explicitly like
             // every other column, because a mapping that only names some of them would leave
             // the rest with the CLR property name.

@@ -39,6 +39,15 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("user_id")
                 .IsRequired();
 
+            // A staged change belongs to exactly one account and dies with it. This used to be a
+            // bare indexed column on purpose, like the refresh tokens still are in prose - but an
+            // account can now be deleted, and a code that outlives its account is a confirmation
+            // for nobody. The foreign key says so where a comment used to.
+            builder.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(change => change.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // Stored as smallint, like every other enum here.
             builder.Property(change => change.Kind)
                 .HasColumnName("kind")
@@ -61,6 +70,11 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(change => change.ExpiresAt)
                 .HasColumnName("expires_at")
                 .IsRequired();
+
+            // The staged guard of a ChangeLoginGuard request, as JSON. See the property: every
+            // other kind leaves it null and keeps using the columns it always used.
+            builder.Property(change => change.Payload)
+                .HasColumnName("payload");
 
             // Audit columns inherited from AuditableEntity, listed explicitly like every other
             // column for the reason the other mappings give.

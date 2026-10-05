@@ -12,8 +12,13 @@
          does not flow here (Design is PrivateAssets), so NuGet would resolve 10.0.4 in this
          project and the build would fail with MSB3277. Relational brings Core 10.0.12 with it. -->
     <PackageReference Include="MailKit" Version="4.18.1" />
+    <PackageReference Include="MaxMind.GeoIP2" Version="6.1.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <!-- Pinned for the same reason as Http above: IHostEnvironment is what the sign-in, refresh
+         and profile paths ask whether local networks are bypassed in Development, and an
+         unpinned Hosting would resolve below the 10.0.12 the host runs. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <!-- Pinned to exactly what Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 resolves
          in Fluxy.API, for the same reason Relational is pinned above. The token service mints
          here and the scheme validates there, and a mismatch between the two is either an

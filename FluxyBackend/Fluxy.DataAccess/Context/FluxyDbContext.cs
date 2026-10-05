@@ -39,6 +39,11 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<PendingChangeEntity> PendingChanges => Set<PendingChangeEntity>();
 
+        /// <summary>
+        /// Entries of the login guard allow lists, one row per allowed value.
+        /// </summary>
+        public DbSet<UserLoginGuardRuleEntity> LoginGuardRules => Set<UserLoginGuardRuleEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

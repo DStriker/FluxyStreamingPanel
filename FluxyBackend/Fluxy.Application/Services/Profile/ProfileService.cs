@@ -1,10 +1,14 @@
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
+using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -37,6 +41,8 @@ namespace Fluxy.Application.Services.Profile
 
         private readonly FluxyDbContext _context;
         private readonly IEmailSender _emailSender;
+        private readonly IGeoIpResolver _geoIp;
+        private readonly IHostEnvironment _environment;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<ProfileService> _logger;
@@ -46,6 +52,8 @@ namespace Fluxy.Application.Services.Profile
         /// </summary>
         /// <param name="context">Context holding the accounts and the pending changes.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
+        /// <param name="geoIp">Resolver that places the client address on the map.</param>
+        /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
@@ -55,12 +63,16 @@ namespace Fluxy.Application.Services.Profile
         public ProfileService(
             FluxyDbContext context,
             IEmailSender emailSender,
+            IGeoIpResolver geoIp,
+            IHostEnvironment environment,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
             ILogger<ProfileService> logger)
         {
             _context = context;
             _emailSender = emailSender;
+            _geoIp = geoIp;
+            _environment = environment;
             _options = options;
             _timeProvider = timeProvider;
             _logger = logger;
@@ -165,6 +177,186 @@ namespace Fluxy.Application.Services.Profile
                         "The time zone identifier is not one this system knows."
                     ]
                 }
+            };
+        }
+
+        /// <inheritdoc />
+        public async Task<LoginGuardSettings?> GetLoginGuardAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            var user = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+
+            if (user is null || user.Status is not UserStatus.Registered)
+            {
+                return null;
+            }
+
+            var rules = await _context.LoginGuardRules
+                .AsNoTracking()
+                .Where(rule => rule.UserId == userId)
+                .ToListAsync(cancellationToken);
+
+            var provider = rules.FirstOrDefault(rule => rule.Kind is LoginGuardRuleKind.AutonomousSystem);
+
+            return new LoginGuardSettings
+            {
+                GeoProtectionEnabled = user.GeoProtectionEnabled,
+                BindSessionToIp = user.BindSessionToIp,
+                AllowedIps = rules
+                    .Where(rule => rule.Kind is LoginGuardRuleKind.IpAddress)
+                    .Select(rule => rule.Value)
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToArray(),
+                AllowedCountry = rules
+                    .FirstOrDefault(rule => rule.Kind is LoginGuardRuleKind.Country)?.Value,
+                AllowedAutonomousSystemNumber = provider is not null
+                    && int.TryParse(provider.Value, out var asn) ? asn : null
+            };
+        }
+
+        /// <inheritdoc />
+        public async Task<ProfileChangeOutcome> ChangeLoginGuardAsync(
+            Guid userId,
+            string currentPassword,
+            LoginGuardSettings settings,
+            string? clientAddress,
+            CancellationToken cancellationToken = default)
+        {
+            var staged = NormalizeGuard(settings);
+            if (staged.Errors.Count > 0)
+            {
+                return new ProfileChangeOutcome
+                {
+                    Status = ProfileChangeStatus.InvalidInput,
+                    Errors = staged.Errors
+                };
+            }
+
+            var user = await _context.Users
+                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+
+            if (user is null || user.Status is not UserStatus.Registered)
+            {
+                return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
+            }
+
+            // The expensive step of this path, so the endpoint counts the attempt before it
+            // calls in - the same order the sign-in endpoint uses for the same reason.
+            if (string.IsNullOrEmpty(currentPassword)
+                || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+            {
+                return new ProfileChangeOutcome
+                {
+                    Status = ProfileChangeStatus.InvalidCurrentPassword
+                };
+            }
+
+            // The anti-lock: a guard that refuses the very network it is saved from is a
+            // self-inflicted lockout with the password reset as its only way back. Refused
+            // here, while the owner is still holding a session that proves who they are.
+            if (staged.Value.GeoProtectionEnabled && !BypassesGuard(clientAddress))
+            {
+                var geo = await _geoIp.ResolveAsync(clientAddress, cancellationToken);
+
+                if (!LoginGuardPolicy.AllowsAddress(staged.Value.AllowedIps, geo)
+                    || !LoginGuardPolicy.AllowsCountry(
+                        staged.Value.AllowedCountry is { } country ? [country] : [],
+                        geo)
+                    || !LoginGuardPolicy.AllowsProvider(
+                        staged.Value.AllowedAutonomousSystemNumber is { } asn ? [asn] : [],
+                        geo))
+                {
+                    return new ProfileChangeOutcome
+                    {
+                        Status = ProfileChangeStatus.InvalidInput,
+                        Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                        {
+                            [nameof(LoginGuardSettings.GeoProtectionEnabled)] =
+                            [
+                                "Your current network would not pass this guard, so saving it " +
+                                "would lock you out. Add your current address, country or " +
+                                "provider first."
+                            ]
+                        }
+                    };
+                }
+            }
+
+            var options = _options.CurrentValue;
+            var now = _timeProvider.GetUtcNow();
+
+            // An installation without a mail server has nothing to confirm with, so the change
+            // is applied straight away rather than refused. The password has been verified
+            // either way, which is what makes it safe to skip the second proof.
+            if (!_emailSender.IsConfigured)
+            {
+                _logger.LogWarning(
+                    "Applying a login guard change without confirmation because this " +
+                    "installation has no mail server configured. See the Email configuration " +
+                    "section.");
+
+                await ApplyLoginGuardAsync(user, staged.Value, cancellationToken);
+
+                return new ProfileChangeOutcome
+                {
+                    Status = ProfileChangeStatus.Applied,
+                    Kind = PendingChangeKind.ChangeLoginGuard,
+                    Account = user.ToModel()
+                };
+            }
+
+            var code = GenerateCode(options.CodeLength);
+
+            if (!await StageLoginGuardAsync(
+                    userId,
+                    staged.Value,
+                    code,
+                    now.Add(options.CodeLifetime),
+                    cancellationToken))
+            {
+                // Two requests for the same account arrived at the same moment and the unique
+                // index let one of them win. The winner stored a row and mailed a code of its
+                // own, so this one has nothing of its own to send - answering "check your inbox"
+                // sends the visitor to the code that does exist.
+                return new ProfileChangeOutcome
+                {
+                    Status = ProfileChangeStatus.Submitted,
+                    RowPersisted = true
+                };
+            }
+
+            var result = await _emailSender.SendAsync(
+                new EmailMessage
+                {
+                    To = user.Email,
+                    Subject = "Your Fluxy confirmation code",
+                    Body = BuildCodeBody(
+                        user.Username,
+                        PendingChangeKind.ChangeLoginGuard,
+                        null,
+                        code,
+                        options.CodeLifetime)
+                },
+                cancellationToken);
+
+            if (result is not EmailSendResult.Sent)
+            {
+                // The row is stored, so the caller has to be told that the code did not arrive.
+                // A new request replaces it once the visitor asks again.
+                return new ProfileChangeOutcome
+                {
+                    Status = ProfileChangeStatus.EmailDeliveryFailed,
+                    RowPersisted = true
+                };
+            }
+
+            return new ProfileChangeOutcome
+            {
+                Status = ProfileChangeStatus.Submitted,
+                RowPersisted = true
             };
         }
 
@@ -296,6 +488,14 @@ namespace Fluxy.Application.Services.Profile
             if (_timeProvider.GetUtcNow() > pending.ExpiresAt)
             {
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.CodeExpired };
+            }
+
+            // The guard carries its content in the payload rather than in the staged columns,
+            // so it is confirmed on its own branch: the uniqueness check below has nothing to
+            // say about networks, and the generic apply knows nothing about rules.
+            if (pending.Kind is PendingChangeKind.ChangeLoginGuard)
+            {
+                return await ConfirmLoginGuardAsync(user, pending, cancellationToken);
             }
 
             // The value was checked when the change was requested, and the code may have spent
@@ -595,6 +795,280 @@ namespace Fluxy.Application.Services.Profile
                 "23505",
                 StringComparison.Ordinal) == true;
 
+        /// <summary>
+        /// The staged content of a <see cref="PendingChangeKind.ChangeLoginGuard"/> row, as JSON
+        /// in <see cref="PendingChangeEntity.Payload"/>. Values are canonical already - the
+        /// request normalized them - so the confirmation applies them without re-reading the
+        /// form.
+        /// </summary>
+        private sealed record StagedLoginGuard(
+            bool GeoProtectionEnabled,
+            bool BindSessionToIp,
+            string[] AllowedIps,
+            string? AllowedCountry,
+            int? AllowedAutonomousSystemNumber);
+
+        /// <summary>
+        /// Canonical form of a requested guard plus everything wrong with it. Normalization
+        /// happens once, here, so the anti-lock check, the staging and the confirmation all
+        /// read the same values the database will hold.
+        /// </summary>
+        private static (StagedLoginGuard Value, Dictionary<string, string[]> Errors) NormalizeGuard(
+            LoginGuardSettings settings)
+        {
+            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+            var ips = (settings.AllowedIps ?? [])
+                .Select(LoginGuardPolicy.NormalizeIpEntry)
+                .ToList();
+
+            if (ips.Any(entry => entry is null))
+            {
+                errors[nameof(LoginGuardSettings.AllowedIps)] =
+                [
+                    "Every address must be an IP address or a CIDR range, IPv4 or IPv6."
+                ];
+            }
+
+            var canonicalIps = ips
+                .Where(entry => entry is not null)
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (canonicalIps.Length > LoginGuardPolicy.MaxAllowedIps)
+            {
+                errors[nameof(LoginGuardSettings.AllowedIps)] =
+                [
+                    $"No more than {LoginGuardPolicy.MaxAllowedIps} addresses may be allowed."
+                ];
+            }
+
+            string? country = null;
+            if (!string.IsNullOrWhiteSpace(settings.AllowedCountry))
+            {
+                country = LoginGuardPolicy.NormalizeCountry(settings.AllowedCountry);
+                if (country is null)
+                {
+                    errors[nameof(LoginGuardSettings.AllowedCountry)] =
+                    [
+                        "The country must be an ISO 3166-1 alpha-2 code this system knows."
+                    ];
+                }
+            }
+
+            int? asn = null;
+            if (settings.AllowedAutonomousSystemNumber is { } requested)
+            {
+                if (!LoginGuardPolicy.IsAutonomousSystemNumber(requested))
+                {
+                    errors[nameof(LoginGuardSettings.AllowedAutonomousSystemNumber)] =
+                    [
+                        "The provider must be an autonomous system number greater than zero."
+                    ];
+                }
+                else
+                {
+                    asn = requested;
+                }
+            }
+
+            return (
+                new StagedLoginGuard(
+                    settings.GeoProtectionEnabled,
+                    settings.BindSessionToIp,
+                    canonicalIps,
+                    country,
+                    asn),
+                errors);
+        }
+
+        /// <summary>
+        /// Stores the staged guard, replacing whatever this account was waiting for before.
+        /// </summary>
+        /// <returns>False when a concurrent request for the same account won the race.</returns>
+        private async Task<bool> StageLoginGuardAsync(
+            Guid userId,
+            StagedLoginGuard staged,
+            string code,
+            DateTimeOffset expiresAt,
+            CancellationToken cancellationToken)
+        {
+            var pending = await _context.PendingChanges
+                .FirstOrDefaultAsync(change => change.UserId == userId, cancellationToken);
+
+            if (pending is null)
+            {
+                pending = new PendingChangeEntity { UserId = userId };
+                _context.PendingChanges.Add(pending);
+            }
+
+            pending.Kind = PendingChangeKind.ChangeLoginGuard;
+            pending.TargetValue = null;
+            pending.NewPasswordHash = null;
+            pending.Payload = JsonSerializer.Serialize(staged);
+            pending.CodeHash = BCrypt.Net.BCrypt.HashPassword(code);
+            pending.ExpiresAt = expiresAt;
+
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception)
+            {
+                if (IsUniqueViolation(exception))
+                {
+                    _context.ChangeTracker.Clear();
+
+                    return false;
+                }
+
+                throw;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Applies a confirmed guard: the switches go on the account, the lists replace
+        /// whatever the account held before.
+        /// </summary>
+        private async Task<ProfileChangeOutcome> ConfirmLoginGuardAsync(
+            UserEntity user,
+            PendingChangeEntity pending,
+            CancellationToken cancellationToken)
+        {
+            StagedLoginGuard? staged = null;
+            try
+            {
+                staged = JsonSerializer.Deserialize<StagedLoginGuard>(pending.Payload ?? string.Empty);
+            }
+            catch (JsonException)
+            {
+                // A row this installation cannot read authorizes nothing. Reported like a wrong
+                // code, so a corrupted row is indistinguishable from a guessed one.
+            }
+
+            if (staged is null)
+            {
+                return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
+            }
+
+            await ApplyLoginGuardAsync(user, staged, cancellationToken);
+            _context.PendingChanges.Remove(pending);
+
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception)
+            {
+                // Two confirmations of the same code raced and the unique index let one win.
+                // The code is spent either way, so the loser gets the same answer a wrong code
+                // gets rather than a conflict about a list it never saw.
+                if (IsUniqueViolation(exception))
+                {
+                    _context.ChangeTracker.Clear();
+
+                    return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
+                }
+
+                throw;
+            }
+
+            _logger.LogInformation(
+                "Applied a confirmed {Kind} for {Username}.",
+                pending.Kind,
+                user.Username);
+
+            return new ProfileChangeOutcome
+            {
+                Status = ProfileChangeStatus.Confirmed,
+                Kind = pending.Kind,
+                Account = user.ToModel()
+            };
+        }
+
+        /// <summary>
+        /// Writes the switches and replaces the rules. The old lists are deleted first, so a
+        /// guard that drops a network does not keep it beside the new one.
+        /// </summary>
+        private async Task ApplyLoginGuardAsync(
+            UserEntity user,
+            StagedLoginGuard staged,
+            CancellationToken cancellationToken)
+        {
+            user.GeoProtectionEnabled = staged.GeoProtectionEnabled;
+            user.BindSessionToIp = staged.BindSessionToIp;
+
+            await _context.LoginGuardRules
+                .Where(rule => rule.UserId == user.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            foreach (var ip in staged.AllowedIps)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = user.Id,
+                    Kind = LoginGuardRuleKind.IpAddress,
+                    Value = ip
+                });
+            }
+
+            if (staged.AllowedCountry is { } country)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = user.Id,
+                    Kind = LoginGuardRuleKind.Country,
+                    Value = country
+                });
+            }
+
+            if (staged.AllowedAutonomousSystemNumber is { } asn)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = user.Id,
+                    Kind = LoginGuardRuleKind.AutonomousSystem,
+                    Value = asn.ToString(CultureInfo.InvariantCulture)
+                });
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation(
+                "Set the login guard of {Username}: protection {Protection}, session binding " +
+                "{Binding}, {Ips} address(es), country {Country}, provider AS{Asn}.",
+                user.Username,
+                staged.GeoProtectionEnabled ? "on" : "off",
+                staged.BindSessionToIp ? "on" : "off",
+                staged.AllowedIps.Length,
+                staged.AllowedCountry ?? "any",
+                staged.AllowedAutonomousSystemNumber?.ToString(CultureInfo.InvariantCulture) ?? "any");
+        }
+
+        /// <summary>
+        /// Whether the anti-lock check is skipped for this address. Same rule as on the
+        /// sign-in path: local networks carry no GeoIP data, so in Development they are
+        /// bypassed rather than refused.
+        /// </summary>
+        private bool BypassesGuard(string? clientAddress)
+        {
+            if (!_environment.IsDevelopment()
+                || !LoginGuardPolicy.IsLocalAddress(clientAddress))
+            {
+                return false;
+            }
+
+            _logger.LogWarning(
+                "The login guard anti-lock check was bypassed for local address " +
+                "{ClientAddress} because this host runs in Development.",
+                clientAddress);
+
+            return true;
+        }
+
         /// <summary>Folds an address into the single form the database compares against.</summary>
         private static string NormalizeEmail(string? email)
             => email?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -632,6 +1106,7 @@ namespace Fluxy.Application.Services.Profile
                 PendingChangeKind.ChangeEmail =>
                     $"the email address of your account changed to {targetValue}",
                 PendingChangeKind.ChangePassword => "the password of your account changed",
+                PendingChangeKind.ChangeLoginGuard => "the login protection of your account changed",
                 _ => "a change to your account"
             };
 

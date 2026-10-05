@@ -19,6 +19,7 @@ import {
   ProfileChangeCaptchaAction,
   ProfileConfirmCaptchaAction,
   changeEmail,
+  changeLoginGuard,
   changePassword,
   changeUsername,
   confirmProfileChange,
@@ -28,6 +29,7 @@ import {
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { useSession } from '../lib/sessionContext'
 import TimeZoneCard from '../components/TimeZoneCard'
+import LoginGuardCard from '../components/LoginGuardCard'
 import {
   CODE_LENGTH,
   PASSWORD_MAX,
@@ -48,6 +50,14 @@ const KINDS = ['username', 'email', 'password'] as const
 type Kind = (typeof KINDS)[number]
 
 /**
+ * Everything that can wait for a code: the three changes above, plus the login guard.
+ * The guard is not a fourth `Kind` because it is not edited by that form - it has its
+ * own card - but it is confirmed by the same step, with the code mailed to the same
+ * address the account holds.
+ */
+type PendingKind = Kind | 'guard'
+
+/**
  * What the change form collects: the current password, which is always rendered, plus the
  * one field the selected `kind` adds.
  *
@@ -66,7 +76,7 @@ interface ProfileFormValues {
 
 /** The change waiting for its code, and where the code was sent. */
 interface PendingChange {
-  kind: Kind
+  kind: PendingKind
   where: string
 }
 
@@ -268,8 +278,23 @@ export default function ProfilePage() {
     }
   }
 
-  const handleConfirm = async (values: { code: string }) => {
-    const wasKind = pending?.kind
+  /**
+   * A guard code is on its way to the account's address: swap the page for the
+   * confirmation step, the way a username, email or password change does. The address
+   * is the one the account holds - a guard change proves nothing about a new address,
+   * so there is no "moving to" here.
+   */
+  const handleGuardSubmitted = () => {
+    setPending({ kind: 'guard', where: profile?.email ?? '' })
+    codeForm.resetFields()
+  }
+
+  /** The guard is already on the account: re-read it onto the card. */
+  const handleGuardApplied = async () => {
+    await load()
+  }
+
+  const handleConfirm = async (values: { code: string }) => {    const wasKind = pending?.kind
     setConfirming(true)
     codeForm.setFields([{ name: 'code', errors: [] }])
 
@@ -391,6 +416,21 @@ export default function ProfilePage() {
         saving={savingTimeZone}
         onChange={handleTimeZoneChange}
       />
+
+      {profile && (
+        <LoginGuardCard
+          value={{
+            geoProtectionEnabled: profile.geoProtectionEnabled,
+            bindSessionToIp: profile.bindSessionToIp,
+            allowedIps: profile.allowedIps,
+            allowedCountry: profile.allowedCountry,
+            allowedAutonomousSystemNumber: profile.allowedAutonomousSystemNumber,
+          }}
+          onSubmit={changeLoginGuard}
+          onSubmitted={handleGuardSubmitted}
+          onApplied={handleGuardApplied}
+        />
+      )}
 
       <Card title={t('profile.changeTitle')}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>

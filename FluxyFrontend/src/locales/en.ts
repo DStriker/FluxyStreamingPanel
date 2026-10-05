@@ -65,6 +65,7 @@ const en = {
     forgotPassword: 'Forgot your password?',
     resetPassword: 'Reset the password',
     change: 'Change',
+    save: 'Save',
     cancel: 'Cancel',
   },
   nav: {
@@ -126,6 +127,26 @@ const en = {
     timezoneHint: 'Dates and times are shown in this zone. "Automatic" follows the browser.',
     timezoneAuto: 'Automatic (from the browser)',
     timezoneSaved: 'Time zone saved.',
+    // The login guard card: which networks may sign this account in, and whether a
+    // session may move between IPs. The lists are stored even while the switch is off -
+    // off means they are ignored, not deleted - so the inputs below are disabled rather
+    // than taken away, and the hint says the lists are kept.
+    guardTitle: 'Sign-in protection',
+    guardProtection: 'Protect sign-in by network',
+    guardProtectionHint:
+      'When on, a sign-in from a network that is not allowed is refused exactly like a wrong password. When off, the lists below are kept but ignored.',
+    guardIps: 'Allowed IP addresses (up to {{max}})',
+    guardIpsPlaceholder: '203.0.113.0/24',
+    guardIpsInvalid: 'Not an IP address or a CIDR network: {{entry}}',
+    guardCountry: 'Allowed country',
+    guardCountryPlaceholder: 'Select country',
+    guardAsn: 'Allowed provider (AS number)',
+    guardBind: 'Bind the session to one IP',
+    guardBindHint:
+      'When on, refreshing from another IP ends the session. Mobile networks and IP changes will sign you out.',
+    guardUseCurrent: 'Use my current network',
+    guardCurrentUnknown: 'Your current network could not be determined.',
+    guardCurrentFilled: 'Filled in from your current network.',
     kinds: {
       username: 'Username',
       email: 'Email address',

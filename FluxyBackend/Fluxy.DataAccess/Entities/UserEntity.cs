@@ -60,6 +60,17 @@ namespace Fluxy.DataAccess.Entities
         public string? TimeZone { get; set; }
 
         /// <summary>
+        /// Whether a sign-in from a network that is not allowed is refused with the same
+        /// answer a wrong password gets.
+        /// </summary>
+        public bool GeoProtectionEnabled { get; set; }
+
+        /// <summary>
+        /// Whether a refresh from an address other than the session's own ends the session.
+        /// </summary>
+        public bool BindSessionToIp { get; set; }
+
+        /// <summary>
         /// Builds the business model out of this row.
         /// </summary>
         public User ToModel()
@@ -76,6 +87,8 @@ namespace Fluxy.DataAccess.Entities
                 RegistrationCodeExpiresAt = RegistrationCodeExpiresAt,
                 RegisteredAt = RegisteredAt,
                 TimeZone = TimeZone,
+                GeoProtectionEnabled = GeoProtectionEnabled,
+                BindSessionToIp = BindSessionToIp,
                 CreatedAt = CreatedAt,
                 UpdatedAt = UpdatedAt
             };
@@ -98,7 +111,9 @@ namespace Fluxy.DataAccess.Entities
                 RegistrationCodeHash = model.RegistrationCodeHash,
                 RegistrationCodeExpiresAt = model.RegistrationCodeExpiresAt,
                 RegisteredAt = model.RegisteredAt,
-                TimeZone = model.TimeZone
+                TimeZone = model.TimeZone,
+                GeoProtectionEnabled = model.GeoProtectionEnabled,
+                BindSessionToIp = model.BindSessionToIp
             };
         }
     }

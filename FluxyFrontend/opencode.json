@@ -13,6 +13,11 @@
 		  "type": "local",
 		  "enabled": true,
 		  "command": ["npx", "-y", "@ant-design/cli", "mcp"]
+		},
+		"playwright": {
+		  "type": "local",
+		  "enabled": true,
+		  "command": ["npx", "@playwright/mcp@latest"]
 		}
 	}
   }

@@ -47,6 +47,15 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>BCrypt hash of the one-time code that authorizes the change.</summary>
         public string CodeHash { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Staged content of a change that does not fit <see cref="TargetValue"/>: the login
+        /// guard carries up to five networks plus a country and a provider, which a 254
+        /// character column cannot hold. JSON, written by the profile service and read back by
+        /// it alone - nothing else in the project parses this column. Null for every other
+        /// kind, which keeps using the columns they always used.
+        /// </summary>
+        public string? Payload { get; set; }
+
         /// <summary>Moment the pending code stops being accepted.</summary>
         public DateTimeOffset ExpiresAt { get; set; }
     }

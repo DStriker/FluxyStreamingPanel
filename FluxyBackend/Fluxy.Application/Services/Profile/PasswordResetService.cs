@@ -222,6 +222,17 @@ namespace Fluxy.Application.Services.Profile
             }
 
             user.PasswordHash = pending.NewPasswordHash;
+
+            // A password reset proves the mailbox, which is also the recovery path for a guard
+            // that locked its owner out - so the guard goes with the password rather than
+            // staying on to refuse the sign-in the reset was made for. The sessions end in the
+            // controller, like every other password replacement.
+            user.GeoProtectionEnabled = false;
+            user.BindSessionToIp = false;
+            await _context.LoginGuardRules
+                .Where(rule => rule.UserId == user.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+
             _context.PendingChanges.Remove(pending);
 
             try
@@ -243,7 +254,8 @@ namespace Fluxy.Application.Services.Profile
             }
 
             _logger.LogInformation(
-                "Replaced the password of {Username} from the public reset form.",
+                "Replaced the password of {Username} from the public reset form and cleared " +
+                "its login guard.",
                 user.Username);
 
             return new PasswordResetOutcome

@@ -2,6 +2,7 @@ using Fluxy.Application.Services;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Authorization;
 using Fluxy.Application.Services.Email;
+using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Profile;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
@@ -46,10 +47,18 @@ namespace Fluxy.Application
             services.AddScoped<IAuthenticationService, AuthenticationService>();
             services.AddScoped<ITokenService, JwtTokenService>();
 
+            // The guard check runs on the sign-in and refresh paths, next to the context it
+            // reads the allow lists through, so it lives in a scope like the services it serves.
+            services.AddScoped<ILoginGuardService, LoginGuardService>();
+
             // The throttle counts attempts for every request that reaches an endpoint, so it is
             // shared. It holds no per-request state, which is what lets it live next to the redis
             // connection rather than in a scope.
             services.AddSingleton<IAttemptThrottle, RedisAttemptThrottle>();
+
+            // The GeoIP databases are opened once and shared between requests. The readers are
+            // safe to share, and holding them in a scope would reopen the files per request.
+            services.AddSingleton<IGeoIpResolver, MaxMindGeoIpResolver>();
 
             // Checked on every authorized request, so it is asked on every request. It holds
             // only the redis connection and its own logger, and lives next to the connection for
@@ -80,6 +89,8 @@ namespace Fluxy.Application
                     configuration.GetSection(RegistrationOptions.SectionName));
                 services.Configure<AuthenticationOptions>(
                     configuration.GetSection(AuthenticationOptions.SectionName));
+                services.Configure<GeoIpOptions>(
+                    configuration.GetSection(GeoIpOptions.SectionName));
             }
 
             return services;

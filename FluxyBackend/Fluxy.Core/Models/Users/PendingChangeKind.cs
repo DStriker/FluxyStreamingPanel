@@ -25,6 +25,13 @@ namespace Fluxy.Core.Models.Users
         ChangeEmail = 3,
 
         /// <summary>A new password, waiting to be confirmed from the profile page.</summary>
-        ChangePassword = 4
+        ChangePassword = 4,
+
+        /// <summary>
+        /// A new login guard (the two switches and the three allow lists), waiting to be
+        /// confirmed from the profile page. Its content travels in the pending row's payload,
+        /// because a guard of five networks does not fit the staged value column.
+        /// </summary>
+        ChangeLoginGuard = 5
     }
 }

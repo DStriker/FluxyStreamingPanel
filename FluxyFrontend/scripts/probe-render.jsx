@@ -22,6 +22,7 @@ import AdminLoginPage from '../src/pages/AdminLoginPage'
 import ForgotPasswordPage from '../src/pages/ForgotPasswordPage'
 import ProfilePage from '../src/pages/ProfilePage'
 import TimeZoneCard from '../src/components/TimeZoneCard'
+import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
 import GuestOnly from '../src/components/GuestOnly'
 import RequireAuth from '../src/components/RequireAuth'
@@ -228,6 +229,83 @@ async function main() {
     timezoneHtml.includes('Europe/Moscow')
       ? `rendered ${timezoneHtml.length} bytes with the saved zone on the selector`
       : 'THE SELECTOR DID NOT RENDER THE STORED ZONE',
+  )
+
+  // The login guard card cannot be asserted through the page either, for the same
+  // reason: it lives in the loaded state the static render never reaches. Rendered
+  // directly, this is what proves it draws its heading, its hint, the stored lists and
+  // both switches, rather than accepting the guard and putting nothing on the page.
+  const guardHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/profile']}>
+      <AntApp>
+        <LoginGuardCard
+          value={{
+            geoProtectionEnabled: true,
+            bindSessionToIp: false,
+            allowedIps: ['198.51.100.7'],
+            allowedCountry: 'RU',
+            allowedAutonomousSystemNumber: 12345,
+          }}
+          onSubmit={() => Promise.resolve({ code: 'profile_updated' })}
+          onSubmitted={() => {}}
+          onApplied={() => Promise.resolve()}
+        />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  // The stored country now arrives as a *selection* rather than as two letters in an
+  // input: `RU` is in the markup only as its name, because the code is what the form
+  // holds and the name is what it draws. `Russia` is the English label this probe's
+  // language gives it - the language itself is pinned by the heading two needles above.
+  check(
+    'the profile offers a login guard card with the stored lists on it',
+    [
+      'Sign-in protection',
+      'Protect sign-in by network',
+      '198.51.100.7',
+      'Russia',
+      '12345',
+      'ant-switch',
+      'ant-select',
+    ].every((needle) => guardHtml.includes(needle)),
+    guardHtml.includes('198.51.100.7')
+      ? `rendered ${guardHtml.length} bytes with the stored guard on the card`
+      : 'THE CARD DID NOT RENDER THE STORED GUARD',
+  )
+
+  // The switch decides whether the four allow lists are read at all, and while it is off
+  // the card disables them rather than unmounting them: a field that is not rendered is a
+  // field whose value `onFinish` never reports, and a save through it would empty the very
+  // lists it was meant to keep. So the assertion is the `disabled` attribute *and* the
+  // values still being there. This is the only thing that can see it - typecheck, lint and
+  // build all pass over a switch wired to nothing - and it can only be seen from out here,
+  // because `useWatch` never runs under `renderToStaticMarkup`: what is rendered below is
+  // the stored value underneath it, which is the same answer the watcher gives after mount.
+  const guardOffHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/profile']}>
+      <AntApp>
+        <LoginGuardCard
+          value={{
+            geoProtectionEnabled: false,
+            bindSessionToIp: false,
+            allowedIps: ['198.51.100.7'],
+            allowedCountry: 'RU',
+            allowedAutonomousSystemNumber: 12345,
+          }}
+          onSubmit={() => Promise.resolve({ code: 'profile_updated' })}
+          onSubmitted={() => {}}
+          onApplied={() => Promise.resolve()}
+        />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  const disabledCount = guardOffHtml.split('disabled').length - 1
+  check(
+    'the login guard disables its allow lists while protection is off, without hiding them',
+    guardOffHtml.includes('198.51.100.7') && disabledCount >= 3,
+    guardOffHtml.includes('198.51.100.7')
+      ? `${disabledCount} occurrences of "disabled", the stored lists still on the card`
+      : 'THE LISTS DISAPPEARED FROM THE CARD',
   )
 
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`
