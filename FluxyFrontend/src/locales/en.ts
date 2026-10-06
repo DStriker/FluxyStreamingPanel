@@ -180,6 +180,13 @@ const en = {
     // For the screen reader: a placeholder is not a label, and it disappears the moment
     // anything is typed - which is exactly when the field needs naming.
     searchLabel: 'Search visits',
+    // The handle at the right edge of every column header, which the visitor drags to change
+    // the width. `{{column}}` is that column's own name - a separator a screen reader cannot
+    // name is a separator it can only find by tabbing into it blindly.
+    resizeColumn: 'Resize the {{column}} column',
+    // Puts all five columns back to the widths they ship with. Offered next to the search
+    // rather than in a menu, because the widths it undoes are set by hand in the first place.
+    resetWidths: 'Reset widths',
     columns: {
       when: 'When',
       ip: 'IP address',

@@ -21,13 +21,15 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-i18next": "^17.0.15",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "ua-parser-js": "^1.0.41"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "@types/ua-parser-js": "^0.7.39",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.37.0",

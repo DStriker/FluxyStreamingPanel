@@ -33,6 +33,8 @@ import { SessionContext } from '../src/lib/sessionContext'
 import { NAVIGATION, flatItems } from '../src/lib/navigation'
 import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
+import { countryName } from '../src/lib/countryName'
+import { describeUserAgent } from '../src/lib/userAgent'
 import { routePath } from '../src/config/index'
 
 const render = (Page, path) =>
@@ -242,10 +244,54 @@ async function main() {
     'the visit history table is fixed-layout with a width on each column',
     /table-layout:\s*fixed/.test(sessionsHtml) &&
       sessionsCols.length === 5 &&
-      ['300px', '170px', '110px', '240px', '280px'].every((w) =>
+      ['300px', '170px', '150px', '240px', '280px'].every((w) =>
         sessionsCols.some((col) => col.includes(`width:${w}`)),
       ),
     `${sessionsCols.length} columns: ${sessionsCols.join(' ')}`,
+  )
+
+  // The resize handles, and the fact that they are the whole of the resizing feature. They are
+  // produced by `ResizableHeaderCell` through `components.header.cell` from props supplied by
+  // `onHeaderCell` on each of the five columns, and every link in that chain is invisible to
+  // typecheck, lint and the build: break any one of them and the table still draws five perfect
+  // columns with nothing on them to drag and nothing focusable for a keyboard to reach.
+  //
+  // The last condition is the one that caught a real bug. `aria-label` cannot simply be passed
+  // through `onHeaderCell`, because `useSorter` writes that attribute onto a sortable header
+  // cell itself, *after* what the column returned - so the two sortable columns came back
+  // labelled "When" and "IP address" while the other three said "Resize the Country column",
+  // and the table was perfectly well formed and named two of its handles wrong. Only the
+  // rendered markup shows that; the types are satisfied either way.
+  const sessionHandles = [...sessionsHtml.matchAll(/<span[^>]*sessions-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  check(
+    'every visit history column carries a keyboard-reachable resize handle, named for resizing',
+    sessionHandles.length === 5 &&
+      sessionHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('aria-orientation="vertical"') &&
+          handle.includes('tabindex="0"') &&
+          handle.includes('aria-label="Resize the '),
+      ),
+    `${sessionHandles.length} handles: ${sessionHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'}`,
+  )
+
+  // ...and the other half of that same bug: what the *cell* kept. `useSorter` gives a sortable
+  // header its `tabIndex` and its `aria-label` so that a keyboard can focus it and press Enter
+  // to sort, and the handle used to take both of them for itself - which left the header
+  // unfocusable and keyboard sorting gone, with nothing anywhere in the output saying so. The
+  // handle having a label is not enough: the column still needs its own.
+  const sessionHeaderCells = [...sessionsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'a sortable visit history header keeps its own access to sorting',
+    sessionHeaderCells.some(
+      (th) => th.includes('aria-label="When"') && th.includes('tabindex="0"'),
+    ),
+    `${sessionHeaderCells.length} header cells, sortable one: ${
+      sessionHeaderCells.find((th) => th.includes('aria-label="When"'))?.slice(0, 220) ?? 'none'
+    }`,
   )
 
   const sessionsContent = /<div[^>]*ant-table-content[^>]*>/.exec(sessionsHtml)?.[0] ?? ''
@@ -259,6 +305,43 @@ async function main() {
     'the visit history page offers a search box rather than a sentence about the table',
     sessionsHtml.includes('Search visits') && !sessionsHtml.includes('newest first'),
     `rendered ${sessionsHtml.length} bytes`,
+  )
+
+  // Two helpers the cells above are built from, asserted as functions rather than as markup.
+  // Every render above lands in the state before the first answer arrives, so no row is ever
+  // drawn and neither helper ever reaches the DOM - which means the cell that shows a country
+  // as a name and the one that shows a user agent as one readable line are unreachable from
+  // here as HTML. `probe:render` is the probe that needs no backend, so it is the only one of
+  // the three that can check them at all; the alternative is a fourth probe for two pure
+  // functions, and the reason to put them here is the reason the rest of this file exists -
+  // typecheck, lint and the build are all content to pass while the thing renders nothing.
+  check(
+    'a user agent becomes one readable line, and an unreadable one is left exactly as it is',
+    describeUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    ) === 'Chrome 140 (Windows 10, x64)' &&
+      describeUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
+      ) === 'Safari 18.1 (macOS 14.5)' &&
+      describeUserAgent('curl/8.5.0') === null &&
+      describeUserAgent(null) === null,
+    `${describeUserAgent('curl/8.5.0')} / ${describeUserAgent(null)} / ${describeUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    )}`,
+  )
+
+  // The second line is the one worth having: `Intl.DisplayNames` answers a lower-case `de`
+  // with `de` rather than with an error, so a case the source happened to use would quietly
+  // turn the whole column back into codes. The third is the `RangeError` guard - `X1` is not
+  // two letters and the runtime refuses it before it looks anything up.
+  check(
+    'a country code reads as the name of the country, in the language of the page',
+    countryName('DE', 'en') === 'Germany' &&
+      countryName('DE', 'ru') === 'Германия' &&
+      countryName('de', 'en') === 'Germany' &&
+      countryName('X1', 'en') === 'X1' &&
+      countryName(null, 'en') === null,
+    `${countryName('DE', 'en')} / ${countryName('DE', 'ru')} / ${countryName('de', 'en')} / ${countryName('X1', 'en')}`,
   )
 
   // The time zone card cannot be asserted through the page above: the page is a spinner
