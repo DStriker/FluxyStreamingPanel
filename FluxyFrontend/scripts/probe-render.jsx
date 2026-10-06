@@ -22,6 +22,7 @@ import AdminLoginPage from '../src/pages/AdminLoginPage'
 import ForgotPasswordPage from '../src/pages/ForgotPasswordPage'
 import ProfilePage from '../src/pages/ProfilePage'
 import SessionsPage from '../src/pages/SessionsPage'
+import ActiveSessionsPage from '../src/pages/ActiveSessionsPage'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -305,6 +306,43 @@ async function main() {
     'the visit history page offers a search box rather than a sentence about the table',
     sessionsHtml.includes('Search visits') && !sessionsHtml.includes('newest first'),
     `rendered ${sessionsHtml.length} bytes`,
+  )
+
+  // --- The active sessions page ----------------------------------------------
+  //
+  // Same reasoning as the history section above: its own `sectionKey`, because the router is
+  // what supplies it, and the state it lands in is the one before the first answer arrives.
+  // Three facts, none of which typecheck, lint or the build can see: the heading resolves
+  // from the nav key rather than reaching the DOM raw, the bulk button exists while disabled
+  // (it is the page's whole second action, and a button that vanishes during load would be
+  // the `AuthCard` footer failure all over again - present in props, absent from markup), and
+  // the page waits rather than drawing a grid of session cards against no data. The disabled
+  // state is itself the correct one here: with no answer in hand the page does not know how
+  // many other sessions exist, and a bulk revoke offered from ignorance could end them all.
+  const activeSessionsHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/client/sessions/active']}>
+      <AntApp>
+        <ActiveSessionsPage sectionKey="nav.items.activeSessions" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  // Where the bulk button's own markup starts, found by walking back from its label: antd
+  // wraps the text in a `<span>`, so a regex that expects `>label` to follow the attributes
+  // directly would fail on a button that is perfectly correct. Everything between that
+  // `<button` and the label is the button's own opening tag plus its span - so a `disabled`
+  // found there belongs to this button and not to the retry one somewhere else on the page.
+  const bulkLabelAt = activeSessionsHtml.indexOf('End all other sessions')
+  const bulkButtonAt = activeSessionsHtml.lastIndexOf('<button', bulkLabelAt)
+  const bulkButtonTag = activeSessionsHtml.slice(bulkButtonAt, bulkLabelAt)
+  check(
+    'the active sessions page draws its heading and its bulk action before any cards arrive',
+    activeSessionsHtml.includes('Active sessions') &&
+      !activeSessionsHtml.includes('nav.items.activeSessions') &&
+      bulkLabelAt !== -1 &&
+      bulkButtonTag.includes('disabled') &&
+      activeSessionsHtml.includes('ant-spin') &&
+      !activeSessionsHtml.includes('This session'),
+    `rendered ${activeSessionsHtml.length} bytes with the list still being fetched, bulk tag: ${bulkButtonTag.slice(0, 160)}`,
   )
 
   // Two helpers the cells above are built from, asserted as functions rather than as markup.

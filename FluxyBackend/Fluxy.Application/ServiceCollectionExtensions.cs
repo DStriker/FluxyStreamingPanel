@@ -55,6 +55,13 @@ namespace Fluxy.Application
             // like every other scoped service here and shares the resolver the sign-in path uses.
             services.AddScoped<ISessionHistoryService, SessionHistoryService>();
 
+            // The same in every respect: one read of the account's own rows, with the same
+            // resolver placed over them. It is a separate service rather than a second method
+            // on the history one because the two answer opposite questions - one lists tokens
+            // so a rotation is visible, the other lists sessions so one can be ended - and a
+            // caller that wanted one should not be handed the other's shape to dig through.
+            services.AddScoped<IActiveSessionService, ActiveSessionService>();
+
             // The throttle counts attempts for every request that reaches an endpoint, so it is
             // shared. It holds no per-request state, which is what lets it live next to the redis
             // connection rather than in a scope.

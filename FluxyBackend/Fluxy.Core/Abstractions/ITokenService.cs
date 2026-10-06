@@ -73,5 +73,57 @@ namespace Fluxy.Core.Abstractions
         /// is what keeps a session alive.
         /// </remarks>
         Task<bool> RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Ends one session of the caller's own account, so that no refresh token in its chain
+        /// can be exchanged again.
+        /// </summary>
+        /// <param name="userId">
+        /// Account the session must belong to. A session of another account is never touched,
+        /// and the refusal is indistinguishable from a session that does not exist - the id is
+        /// a guessable value and a caller must not be able to probe for other accounts' rows
+        /// with it.
+        /// </param>
+        /// <param name="sessionId">Session to end, as carried by its access token.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>True when at least one live token of that session was revoked.</returns>
+        /// <remarks>
+        /// The ownership rule lives here rather than in the caller: every path that ends a
+        /// session on behalf of an account goes through this method, so a future endpoint
+        /// cannot end somebody else's session by forgetting a check. Ending the caller's own
+        /// session is refused by the transport, not here - this service does not know which
+        /// session a request arrived with, and a service that guessed would guess wrong.
+        /// </remarks>
+        Task<bool> RevokeUserSessionAsync(
+            Guid userId,
+            Guid sessionId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Ends every live session of an account except the one the request arrived with.
+        /// </summary>
+        /// <param name="userId">Account whose other sessions end.</param>
+        /// <param name="exceptSessionId">
+        /// Session to leave running - the one the caller is signed in with. A token that
+        /// carried no session claim must not reach this method: there would be nothing to
+        /// spare, and ending every session the account holds is a different act with a
+        /// different name.
+        /// </param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// How many sessions were ended. Zero when the account held only the one - not an
+        /// error, and the transport says so in its own sentence.
+        /// </returns>
+        /// <remarks>
+        /// The count is of sessions rather than of tokens: a session that never rotated still
+        /// holds one live row, and one that did holds exactly one as well - the rotation
+        /// revokes the row it replaces in the same save. So the two counts agree today, and
+        /// reporting sessions is the one that stays true if a chain ever holds more than one
+        /// live row for some reason the service does not currently produce.
+        /// </remarks>
+        Task<int> RevokeAllExceptCurrentAsync(
+            Guid userId,
+            Guid exceptSessionId,
+            CancellationToken cancellationToken = default);
     }
 }

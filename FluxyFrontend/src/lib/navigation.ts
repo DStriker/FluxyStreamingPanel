@@ -4,6 +4,7 @@ import {
   DashboardOutlined,
   HistoryOutlined,
   IdcardOutlined,
+  LaptopOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
   TeamOutlined,
@@ -126,6 +127,17 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           icon: HistoryOutlined,
           page: () => import('../pages/SessionsPage'),
         },
+        {
+          // The live sessions, next to the history that records them. Same reasoning as the
+          // entry above - a property of the account, identical under every role - and the
+          // two sit side by side because they answer opposite questions about the same rows:
+          // "what did this account do" and "what is still signed in".
+          key: 'activeSessions',
+          path: 'sessions/active',
+          labelKey: 'nav.items.activeSessions',
+          icon: LaptopOutlined,
+          page: () => import('../pages/ActiveSessionsPage'),
+        },
       ],
     },
   ],
@@ -170,6 +182,13 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.sessions',
           icon: HistoryOutlined,
           page: () => import('../pages/SessionsPage'),
+        },
+        {
+          key: 'activeSessions',
+          path: 'sessions/active',
+          labelKey: 'nav.items.activeSessions',
+          icon: LaptopOutlined,
+          page: () => import('../pages/ActiveSessionsPage'),
         },
       ],
     },
@@ -228,6 +247,13 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.sessions',
           icon: HistoryOutlined,
           page: () => import('../pages/SessionsPage'),
+        },
+        {
+          key: 'activeSessions',
+          path: 'sessions/active',
+          labelKey: 'nav.items.activeSessions',
+          icon: LaptopOutlined,
+          page: () => import('../pages/ActiveSessionsPage'),
         },
       ],
     },

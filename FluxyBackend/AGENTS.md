@@ -237,6 +237,88 @@ to its `total` with the same `total` reported on each; `sortBy=organisation`, `s
 are each refused with the field they broke named in `errors`; and all five parameters answer together
 on one request.
 
+## Active sessions: `GET /auth/active-sessions` and its two revokes
+
+The page at `/sessions/active` (all three areas) answers what the visit history above cannot:
+**what is still signed in right now, and how to end it.** One card = one session, built from
+the freshest live `refresh_tokens` row of that session. The history stays exactly as it was —
+token level, the opposite question.
+
+| Endpoint | Auth | CSRF | Answer |
+| --- | --- | --- | --- |
+| `GET /auth/active-sessions` | session | no | one row per live session, newest first |
+| `DELETE /auth/active-sessions/{sessionId:guid}` | session | yes | `session_revoked` |
+| `DELETE /auth/active-sessions/others` | session | yes | `other_sessions_revoked` + `revokedCount` |
+
+- **No table, no migration.** Live means `revoked_at IS NULL AND expires_at > now`. The second
+  half is the load-bearing one: `JwtTokenService.CleanupExpiredAsync` deletes expired rows only
+  *during issuance and rotation*, so a chain that quietly expired while nobody signed in
+  anywhere is still a row — and it can no longer be refreshed, which is the definition of not
+  active. The list therefore must not depend on when cleanup last ran (class remarks of
+  `ActiveSessionService` say the same at length).
+- **One row per session, the deliberate opposite of the history**: history lists every rotation
+  so a network change is visible; this lists what is still signed in. A rotation is not a
+  second session — between rotations exactly one live row per session exists, so the freshest
+  row *is* the session, and its address/user agent/`created_at` describe the card. GeoIP is
+  resolved at read time through `IGeoIpResolver` with a per-request memo keyed by address
+  (same as the history; no `.mmdb` → three nulls and a list that still reads).
+- **Refusals are the contract.** Blocked account → `403 account_not_active` on all three (the
+  service returns null when the account is not `Registered`; the two revokes gate on
+  `GetProfileAsync`). Current session → `400 cannot_revoke_current`, refused **before any
+  database work** — whether the caller may end this id is first a fact about the request, and
+  the session plainly exists, so 404 would contradict the disabled button on its own row.
+  Foreign, missing, already-revoked **and expired-only** ids → one answer `404
+  session_not_found`: the ownership check lives inside the revoke predicate itself, so four
+  situations cannot be told apart and the endpoint is no probe for other accounts' rows. A
+  path segment that is not a guid matches no route (`{sessionId:guid}`) → plain 404 with no
+  body; no session → `401 auth_required` before CSRF on the revokes; no `X-CSRF-Token` on
+  either DELETE → `400 csrf_invalid`.
+- **Both revoke predicates require `ExpiresAt > now`**, mirroring the read side. "Live" has to
+  mean the same thing in all three methods: without it a dead chain would answer 200 for an
+  ending that changes nothing (its id could not have come from the page — the list never shows
+  it), and `revokedCount` would name cards the reader never saw.
+- **Revoke is `ExecuteUpdateAsync` of `revoked_at` on live rows only — never a delete.** The
+  timestamp on a spent row is the record of when it was spent. Deleting is cleanup's job, and
+  cleanup runs globally during issuance: a planted one-day-old expired row is gone at the very
+  first sign-in of a run, before any list or revoke call was made.
+- No captcha, no attempt window (an index read costs what the page that asked for it costs;
+  ending sessions is what an alarmed person reaches for), no pagination or search (a handful of
+  sessions at most, and the bulk button revokes *by exclusion*, which needs the whole list in
+  one answer). `userId` and `sessionId` come only from token claims — there is no parameter
+  that could name another account.
+- An ended session's **access token keeps working until it expires** (≤ `Auth:AccessLifetime`,
+  5 minutes) — it is signed and self-contained. Ending a session ends what keeps it alive: no
+  refresh can be minted from that chain any more. Accepted limitation.
+- `revokedCount` counts **sessions**, not tokens, and reads the ids before the update for the
+  same reason the message on the button says "sessions".
+
+Layering follows the usual split: `ActiveSession` / `ActiveSessionList` in
+`Fluxy.Core/Models/Authentication/`, `IActiveSessionService` in `Fluxy.Core/Abstractions/`,
+`ActiveSessionService` in `Fluxy.Application/Services/Authentication/` (Scoped,
+`AddScoped<IActiveSessionService, ActiveSessionService>()`), `RevokeUserSessionAsync` /
+`RevokeAllExceptCurrentAsync` added to `ITokenService` and implemented in `JwtTokenService`,
+the contracts in `Fluxy.API/Contracts/ActiveSessionResponse.cs`, and the three actions on
+`ProfileController` beside the history.
+
+Verified by running against a live instance (throwaway accounts, planted expired row, both
+launch profiles auto-detected by the harness — 45 checks, all passing):
+
+| Scenario | Result |
+| --- | --- |
+| two sign-ins of one account, then `GET` | 200, exactly one row per session, newest first, `isCurrent` on exactly one |
+| planted expired-but-unrevoked row | not listed; already gone at the first sign-in — issuance cleanup, not the list |
+| `DELETE` a second session | 200 `session_revoked`, list shrinks, that session's own view stops containing it |
+| `DELETE` the current session | 400 `cannot_revoke_current`, still signed in, still listed |
+| foreign / unknown / expired-only id | the same 404 `session_not_found`, foreign session untouched |
+| non-guid segment | route 404, no body — `others` not shadowed by `{sessionId}` |
+| refresh rotation | still one row per session, now the newest |
+| `DELETE` without the header | 400 `csrf_invalid`, nothing ended |
+| no session (GET and `others` DELETE) | 401 `auth_required` |
+| blocked account (GET and `DELETE`) | 403 `account_not_active`, unblock restores 200 |
+| `DELETE .../others` | 200, `revokedCount` = live non-current only (expired chain *not* counted), only current survives, expired chain untouched, other account untouched |
+| `others` again | 200, `revokedCount` 0 |
+| the ended session's `POST /auth/refresh` | 401 `session_expired` — chain dead |
+
 ## PostgreSQL is wired up (EF Core 10, Npgsql provider)
 
 The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:

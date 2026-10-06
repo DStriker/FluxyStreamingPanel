@@ -339,6 +339,105 @@ namespace Fluxy.Application.Services.Authentication
             return updated > 0;
         }
 
+        /// <inheritdoc />
+        public async Task<bool> RevokeUserSessionAsync(
+            Guid userId,
+            Guid sessionId,
+            CancellationToken cancellationToken = default)
+        {
+            var now = _timeProvider.GetUtcNow();
+
+            // The ownership check is in the predicate rather than in a separate read: a row
+            // that does not belong to this account simply does not match, so the answer is
+            // "nothing was revoked" - the same answer a session that does not exist gets. The
+            // id is a guessable value, and a caller must not be able to tell a session that is
+            // gone from one that belongs to somebody else by the difference in the refusal.
+            //
+            // Only the live rows are touched, for the reason every revoke states: the timestamp
+            // on an already revoked row is the record of when it was spent, and overwriting it
+            // would destroy the one thing that tells a spent token from a stolen one. "Live"
+            // is the same word the list uses (see ActiveSessionService): not revoked *and* not
+            // expired. A chain whose only row has expired is a session that can no longer be
+            // refreshed - already dead - so it answers 404 like every other dead session
+            // rather than 200 for an ending that changes nothing, and the refusal vocabulary
+            // stays the one the page's id could have come from.
+            var updated = await _context.RefreshTokens
+                .Where(token =>
+                    token.UserId == userId &&
+                    token.SessionId == sessionId &&
+                    token.RevokedAt == null &&
+                    token.ExpiresAt > now)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(token => token.RevokedAt, now),
+                    cancellationToken);
+
+            if (updated > 0)
+            {
+                _logger.LogInformation(
+                    "Ended session {SessionId} of account {UserId} at the account's own request.",
+                    sessionId,
+                    userId);
+            }
+
+            return updated > 0;
+        }
+
+        /// <inheritdoc />
+        public async Task<int> RevokeAllExceptCurrentAsync(
+            Guid userId,
+            Guid exceptSessionId,
+            CancellationToken cancellationToken = default)
+        {
+            var now = _timeProvider.GetUtcNow();
+
+            // The sessions are read before they are revoked rather than counted from the
+            // update, because the number reported back is of sessions and the update touches
+            // tokens. The two agree today - a rotation revokes the row it replaces in the same
+            // save, so every chain holds exactly one live row - but reporting the distinct
+            // session ids keeps the answer true even if that ever stops being the case.
+            //
+            // `ExpiresAt > now` is here for the same reason the list has it: the count is read
+            // by the page as "how many cards does this button end", and a chain whose only row
+            // quietly expired is not on that page - so a session that cannot be refreshed any
+            // more must not be counted as ended, or the sentence would name a card the reader
+            // never saw. The update then spends only the rows this count admitted.
+            var sessions = await _context.RefreshTokens
+                .Where(token =>
+                    token.UserId == userId &&
+                    token.SessionId != exceptSessionId &&
+                    token.RevokedAt == null &&
+                    token.ExpiresAt > now)
+                .Select(token => token.SessionId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            if (sessions.Count == 0)
+            {
+                return 0;
+            }
+
+            // Only the live rows are touched, and only of the sessions just named - the spared
+            // one is excluded by the id list rather than by a second condition, because the
+            // list is already in hand and a condition the database could prune further buys
+            // nothing at this size. A named session holds one live row by construction, so
+            // this spends exactly the rows the count above counted.
+            await _context.RefreshTokens
+                .Where(token =>
+                    token.RevokedAt == null &&
+                    token.ExpiresAt > now &&
+                    sessions.Contains(token.SessionId))
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(token => token.RevokedAt, now),
+                    cancellationToken);
+
+            _logger.LogInformation(
+                "Ended {Count} session(s) of account {UserId} except its current one.",
+                sessions.Count,
+                userId);
+
+            return sessions.Count;
+        }
+
         /// <summary>
         /// Builds the signed part of a session: who the account is, what it may do, and which
         /// session and token this is.

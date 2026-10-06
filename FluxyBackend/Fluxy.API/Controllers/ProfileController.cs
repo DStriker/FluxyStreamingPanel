@@ -58,11 +58,31 @@ namespace Fluxy.API.Controllers
         /// <summary>Code reported when a client spent its confirmation attempts for this window.</summary>
         public const string ConfirmThrottledCode = "profile_confirmation_rate_limited";
 
+        /// <summary>
+        /// Code reported when the caller asked to end the session the request arrived with.
+        /// </summary>
+        public const string CannotRevokeCurrentCode = "cannot_revoke_current";
+
+        /// <summary>
+        /// Code reported when a session id names nothing the account holds - never, gone, or
+        /// belonging to somebody else. The three are one answer on purpose: a caller must not
+        /// be able to tell a session that is gone from one that was never theirs, because the
+        /// id is a guessable value and the difference would turn the endpoint into a probe.
+        /// </summary>
+        public const string SessionNotFoundCode = "session_not_found";
+
+        /// <summary>Code reported after a session was ended at the account's own request.</summary>
+        public const string SessionRevokedCode = "session_revoked";
+
+        /// <summary>Code reported after every session but the current one was ended.</summary>
+        public const string OtherSessionsRevokedCode = "other_sessions_revoked";
+
         private readonly IProfileService _profileService;
         private readonly IRecaptchaValidator _captchaValidator;
         private readonly ITokenService _tokenService;
         private readonly IGeoIpResolver _geoIpResolver;
         private readonly ISessionHistoryService _sessionHistory;
+        private readonly IActiveSessionService _activeSessions;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ProfileController"/> class.
@@ -72,6 +92,7 @@ namespace Fluxy.API.Controllers
         /// <param name="tokenService">Service that ends and reopens sessions after a change.</param>
         /// <param name="geoIpResolver">Resolver that places the caller on the map for the lookup.</param>
         /// <param name="sessionHistory">Reader of the account's stored sessions.</param>
+        /// <param name="activeSessions">Reader of the account's live sessions.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="throttle">Counter that limits how often one client may try.</param>
         /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
@@ -82,6 +103,7 @@ namespace Fluxy.API.Controllers
             ITokenService tokenService,
             IGeoIpResolver geoIpResolver,
             ISessionHistoryService sessionHistory,
+            IActiveSessionService activeSessions,
             IAntiforgery antiforgery,
             IAttemptThrottle throttle,
             IOptionsMonitor<RateLimitOptions> rateLimits,
@@ -93,6 +115,7 @@ namespace Fluxy.API.Controllers
             _tokenService = tokenService;
             _geoIpResolver = geoIpResolver;
             _sessionHistory = sessionHistory;
+            _activeSessions = activeSessions;
         }
 
         /// <summary>
@@ -235,17 +258,14 @@ namespace Fluxy.API.Controllers
             if (history is null)
             {
                 // The same refusal the profile gives a blocked account, with a sentence of its
-                // own: `Describe` words this code as a change that was refused, and nothing
-                // here was being changed. The code is the contract and stays identical, so a
-                // client branching on `account_not_active` behaves the same either way - but
-                // the English fallback a human reads should not claim an edit nobody attempted.
-                return StatusCode(
-                    ProfileResponses.StatusCodeOf(ProfileChangeStatus.AccountNotActive),
-                    new MessageResponse
-                    {
-                        Code = "account_not_active",
-                        Message = "This account is not active."
-                    });
+                // own: `ProfileResponses.Describe` words this code as a change that was
+                // refused, and nothing here was being changed. The code is the contract and
+                // stays identical, so a client branching on `account_not_active` behaves the
+                // same either way - but the English fallback a human reads should not claim an
+                // edit nobody attempted. One helper now answers for the history, the active
+                // sessions and the two revoke endpoints, so the sentence cannot drift between
+                // them.
+                return AccountNotActive();
             }
 
             return Ok(new SessionHistoryResponse
@@ -266,6 +286,230 @@ namespace Fluxy.API.Controllers
                 Total = history.Total,
                 Page = history.Page,
                 PageSize = history.PageSize
+            });
+        }
+
+        /// <summary>
+        /// Reports every session the account currently holds: one row per sign-in, described
+        /// by the freshest live refresh token of its chain.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>200 with the sessions, 401 and 403 through the shared result handler.</returns>
+        /// <remarks>
+        /// Read only, and guarded exactly like the visit history: no antiforgery pair (nothing
+        /// is changed), no captcha (no key derivation), no attempt window (an index read costs
+        /// about what the page that asked for it costs), and the session is the whole of the
+        /// authorization - the account comes from the token, so a caller can only ever read its
+        /// own sessions and no role separates one visitor from another here.
+        ///
+        /// No paging and no search parameters, unlike the history: an account holds a handful
+        /// of sessions at most, so a page number would be a parameter with nothing behind it -
+        /// and the "end all but this one" button revokes by exclusion, which needs the whole
+        /// list to exist in one answer.
+        ///
+        /// The rows are sessions rather than tokens, which is the deliberate opposite of the
+        /// history above it: that page lists every rotation so a network change is visible,
+        /// this one lists what is still signed in so a person can end what they do not
+        /// recognise. A rotation is not a second session; it is the same one still running,
+        /// now seen from wherever it refreshed from.
+        /// </remarks>
+        [HttpGet("active-sessions")]
+        [ProducesResponseType<ActiveSessionsResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetActiveSessions(CancellationToken cancellationToken)
+        {
+            if (ReadSubjectClaim() is not { } userId)
+            {
+                return Anonymous();
+            }
+
+            var list = await _activeSessions.GetActiveAsync(
+                userId,
+                ReadSessionClaim(),
+                cancellationToken);
+
+            if (list is null)
+            {
+                return AccountNotActive();
+            }
+
+            return Ok(new ActiveSessionsResponse
+            {
+                Items = list.Sessions
+                    .Select(session => new ActiveSessionResponse
+                    {
+                        Id = session.Id.ToString(),
+                        Ip = session.Ip,
+                        CountryCode = session.CountryCode,
+                        AutonomousSystemNumber = session.AutonomousSystemNumber,
+                        Organization = session.Organization,
+                        UserAgent = session.UserAgent,
+                        LastSeenAt = session.LastSeenAt,
+                        IsCurrent = session.IsCurrent
+                    })
+                    .ToArray()
+            });
+        }
+
+        /// <summary>
+        /// Ends every session of the account except the one this request arrived with.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 with how many sessions were ended (zero when the account held only this one),
+        /// 400 when the antiforgery token is missing or stale, 401 and 403 through the shared
+        /// result handler.
+        /// </summary>
+        /// <remarks>
+        /// CSRF-guarded like every write of this API, and nothing else: no captcha (the
+        /// expensive step this API protects on unauthenticated paths is key derivation, and a
+        /// signed-in caller proving a session already cleared that), no attempt window (ending
+        /// sessions is a security act a person reaches for when alarmed, and a window would
+        /// make the second alarm of the day a refusal), no password (the session is the proof
+        /// of ownership - the same rule sign-out follows, and a password here would mean an
+        /// attacker holding a session could not be locked out without typing a password they
+        /// may well know).
+        ///
+        /// The spared session comes from the token's own session claim, never from a
+        /// parameter: a body naming "which session to keep" would let a caller end the very
+        /// session the request is authenticated with, and the account would be signed out by
+        /// its own button in the middle of the click that pressed it. The route carries no id
+        /// for the same reason - this endpoint is one act, not one per session.
+        ///
+        /// The count is of sessions, not of refresh tokens: a session that never rotated holds
+        /// one live row, and so does one that did - the rotation revokes the row it replaces in
+        /// the same save. The two would agree even if the service reported the other number,
+        /// but "sessions ended" is the sentence the button on the page is already making.
+        /// </remarks>
+        [HttpDelete("active-sessions/others")]
+        [ProducesResponseType<RevokeOtherSessionsResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> RevokeOtherSessions(CancellationToken cancellationToken)
+        {
+            if (await RejectsCsrfAsync() is { } csrfFailure)
+            {
+                return csrfFailure;
+            }
+
+            if (ReadSubjectClaim() is not { } userId)
+            {
+                return Anonymous();
+            }
+
+            // Ending "every session but the current one" is undefined without a current one.
+            // A token this application minted always carries the claim, so reaching this with
+            // it missing is the same case `Anonymous` already answers: a token that is not
+            // this application's own.
+            if (ReadSessionClaim() is not { } currentSession)
+            {
+                return Anonymous();
+            }
+
+            if (await _profileService.GetProfileAsync(userId, cancellationToken) is null)
+            {
+                return AccountNotActive();
+            }
+
+            var revokedCount = await _tokenService.RevokeAllExceptCurrentAsync(
+                userId,
+                currentSession,
+                cancellationToken);
+
+            return Ok(new RevokeOtherSessionsResponse
+            {
+                Code = OtherSessionsRevokedCode,
+                Message = revokedCount == 0
+                    ? "This account held no other sessions."
+                    : "The other sessions of this account have been ended.",
+                RevokedCount = revokedCount
+            });
+        }
+
+        /// <summary>
+        /// Ends one session of the account, so that no refresh token in its chain can be
+        /// exchanged again.
+        /// </summary>
+        /// <param name="sessionId">Session to end, as listed by the active sessions page.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 with the session ended, 400 for the session this request arrived with or a
+        /// missing antiforgery token, 401 and 403 through the shared result handler, 404 when
+        /// the id names nothing this account holds.
+        /// </returns>
+        /// <remarks>
+        /// The current session is refused before any database work and before the ownership
+        /// question is asked: the caller named the very session the request is authenticated
+        /// with, and the answer to that is a fact about the request rather than about a row.
+        /// The refusal is 400 rather than 404 because the session plainly exists - it is the
+        /// one the caller is using - and a page whose own row says "cannot end this one" would
+        /// be contradicted by a 404 claiming otherwise. The button on the page is disabled for
+        /// this row; this refusal is what a direct call minding the UI does not get.
+        ///
+        /// Every other id that ends in 404 is one answer: unknown, already ended, expired, or
+        /// belonging to another account. The four are indistinguishable on purpose - the id is
+        /// a guessable value, and a difference in the refusal would turn this endpoint into a
+        /// probe for other accounts' session rows. The ownership check itself lives in the
+        /// token service's predicate rather than in a separate read, so a session of another
+        /// account simply matches nothing.
+        ///
+        /// The access token of an ended session cannot be recalled - it is signed and self
+        /// contained - so it keeps working until it expires, bounded by
+        /// <c>Auth:AccessLifetime</c>. Ending a session ends what keeps it alive: no refresh
+        /// can be minted from the chain any more.
+        /// </remarks>
+        [HttpDelete("active-sessions/{sessionId:guid}")]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> RevokeActiveSession(
+            Guid sessionId,
+            CancellationToken cancellationToken)
+        {
+            if (await RejectsCsrfAsync() is { } csrfFailure)
+            {
+                return csrfFailure;
+            }
+
+            if (ReadSubjectClaim() is not { } userId)
+            {
+                return Anonymous();
+            }
+
+            if (ReadSessionClaim() is { } currentSession && currentSession == sessionId)
+            {
+                return CannotRevokeCurrent();
+            }
+
+            if (await _profileService.GetProfileAsync(userId, cancellationToken) is null)
+            {
+                return AccountNotActive();
+            }
+
+            var revoked = await _tokenService.RevokeUserSessionAsync(
+                userId,
+                sessionId,
+                cancellationToken);
+
+            if (!revoked)
+            {
+                return StatusCode(
+                    StatusCodes.Status404NotFound,
+                    new MessageResponse
+                    {
+                        Code = SessionNotFoundCode,
+                        Message = "No such session on this account."
+                    });
+            }
+
+            return Ok(new MessageResponse
+            {
+                Code = SessionRevokedCode,
+                Message = "The session has been ended."
             });
         }
 
@@ -745,6 +989,37 @@ namespace Fluxy.API.Controllers
                 {
                     Code = "auth_required",
                     Message = "Your session has ended. Please sign in again."
+                });
+
+        /// <summary>
+        /// The refusal a blocked or missing account gets on every read and every session act
+        /// of this controller. The code is the one the profile change flow already answers
+        /// with, so a client branching on <c>account_not_active</c> behaves the same way for
+        /// an account that lost its standing here as it does on the profile - while the
+        /// sentence stays one about the account rather than about an edit nobody attempted.
+        /// </summary>
+        private IActionResult AccountNotActive()
+            => StatusCode(
+                ProfileResponses.StatusCodeOf(ProfileChangeStatus.AccountNotActive),
+                new MessageResponse
+                {
+                    Code = "account_not_active",
+                    Message = "This account is not active."
+                });
+
+        /// <summary>
+        /// The refusal for an attempt to end the session the request arrived with. The page
+        /// disables the button for its own row; this is what a direct call that ignored the UI
+        /// gets instead of a silent no-op, so "I pressed it and nothing happened" cannot be
+        /// the state a caller is left in.
+        /// </summary>
+        private IActionResult CannotRevokeCurrent()
+            => StatusCode(
+                StatusCodes.Status400BadRequest,
+                new MessageResponse
+                {
+                    Code = CannotRevokeCurrentCode,
+                    Message = "The session you are using cannot be ended from here. Sign out instead."
                 });
 
         private Guid? ReadSubjectClaim()

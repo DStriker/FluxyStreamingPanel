@@ -1,6 +1,7 @@
 import { apiFetch, apiGet } from './http'
 import { getCsrfToken } from './csrf'
 import type {
+  ActiveSessionList,
   GeoLookup,
   LoginGuardSettings,
   MessageResponse,
@@ -231,6 +232,69 @@ export const getSessionHistory = ({
 
   return apiGet<SessionHistoryResponse>(`/auth/sessions?${query.toString()}`)
 }
+
+/**
+ * The answer to "end all sessions but this one": the code every answer carries, plus how many
+ * sessions it ended.
+ *
+ * Its own interface rather than `MessageResponse` because the count is the whole reason the
+ * endpoint exists - the button on the page says "N sessions will be signed out" before it is
+ * pressed and the server's own number is what confirms it. Zero is a success, not a failure:
+ * the account held only this one session, and the page says so in its own sentence.
+ */
+export interface RevokeOtherSessionsResult extends MessageResponse {
+  /** How many sessions were ended. */
+  revokedCount: number
+}
+
+/**
+ * Every session this account currently holds, newest first.
+ *
+ * A plain GET behind the session, like the visit history: no antiforgery token (nothing is
+ * changed), and the account comes from the token rather than from a parameter, so a caller
+ * reads only its own list. The rows are sessions rather than tokens - a rotation does not add
+ * a row, it moves the one that exists.
+ */
+export const getActiveSessions = (): Promise<ActiveSessionList> =>
+  apiGet<ActiveSessionList>('/auth/active-sessions')
+
+/**
+ * Ends one session of this account, so no refresh token in its chain can be exchanged again.
+ *
+ * The endpoint refuses the session the request arrived with (`cannot_revoke_current`) and
+ * answers 404 for an id this account does not hold - unknown, gone and belonging to somebody
+ * else are one answer on purpose, so the id cannot be used to probe for other accounts'
+ * sessions. The antiforgery token is minted at call time, never cached: a token bound to an
+ * earlier identity is exactly what the server refuses with `csrf_invalid`.
+ */
+export const revokeActiveSession = ({
+  sessionId,
+  csrfToken,
+}: {
+  sessionId: string
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/auth/active-sessions/${encodeURIComponent(sessionId)}`, {
+    csrfToken,
+    method: 'DELETE',
+  })
+
+/**
+ * Ends every session of this account except the one this browser holds.
+ *
+ * No body and no id on purpose: the spared session comes from the token's own session claim,
+ * so a caller cannot name "which session to keep" and end the one the request is
+ * authenticated with. The id travels in the path of neither call for the same reason.
+ */
+export const revokeOtherActiveSessions = ({
+  csrfToken,
+}: {
+  csrfToken: string | null
+}): Promise<RevokeOtherSessionsResult> =>
+  apiFetch<RevokeOtherSessionsResult>('/auth/active-sessions/others', {
+    csrfToken,
+    method: 'DELETE',
+  })
 
 /**
  * Starts changing one of the three, and answers with the outcome.

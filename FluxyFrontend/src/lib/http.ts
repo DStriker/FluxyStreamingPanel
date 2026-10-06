@@ -58,7 +58,7 @@ interface RequestOptions {
 
 /** A request as `rawFetch` makes it: a `RequestOptions` plus the method. */
 interface RawOptions extends RequestOptions {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'DELETE'
 }
 
 /** Everything `ApiError` is constructed from. */
@@ -192,12 +192,12 @@ async function refreshSession(): Promise<boolean> {
  * the page should not know about it. The retry happens at most once per call, and only for
  * paths where a retry is meaningful.
  */
-export async function apiFetch(
+export async function apiFetch<T = MessageResponse>(
   path: string,
-  { body, csrfToken, captchaToken }: RequestOptions = {},
-): Promise<MessageResponse> {
+  { body, csrfToken, captchaToken, method }: RequestOptions & { method?: 'POST' | 'DELETE' } = {},
+): Promise<T> {
   try {
-    return await rawFetch<MessageResponse>(path, { body, csrfToken, captchaToken })
+    return await rawFetch<T>(path, { body, csrfToken, captchaToken, method })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
 
@@ -215,10 +215,11 @@ export async function apiFetch(
     // with its own cookie - but a token is minted again anyway, because the one the failed
     // call carried was minted under whatever identity was current then, and that is exactly
     // the kind of detail a retry must not inherit.
-    return rawFetch<MessageResponse>(path, {
+    return rawFetch<T>(path, {
       body,
       csrfToken: await getCsrfToken(),
       captchaToken,
+      method,
     })
   }
 }

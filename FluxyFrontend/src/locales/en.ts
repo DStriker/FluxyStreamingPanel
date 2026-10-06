@@ -90,6 +90,11 @@ const en = {
       // rows are tokens - a visitor reading the menu should be told they will see every
       // sign-in and every rotation, not one row per login.
       sessions: 'Sign-in history',
+      // The live sessions, next to the history that records them. Named for what it lists
+      // rather than for "sessions", for the reason the entry above gives from the other side:
+      // what this page holds is sessions - one per sign-in, still running - and a visitor
+      // should be told that before they open it, not after.
+      activeSessions: 'Active sessions',
     },
   },
   header: {
@@ -195,6 +200,33 @@ const en = {
       agent: 'User agent',
     },
   },
+  // The active sessions page. Everything here is copy the server does not send: it answers
+  // with rows of its own shape, and what the rows are called, what an unknown value looks
+  // like and what each button does are decisions this application makes.
+  activeSessions: {
+    // Shown when the account holds only the one session the page is being read with. The
+    // button for it is disabled and the list would otherwise be one card of "this is you",
+    // which the badge already says.
+    empty: 'This account holds no other sessions.',
+    current: 'This session',
+    lastSeen: 'Last seen',
+    end: 'End session',
+    // The tooltip on the disabled button of the current session's card: naming the way out
+    // rather than only the refusal, because "cannot end this one" without a "sign out
+    // instead" is a dead end on a page whose whole purpose is ending sessions.
+    endCurrentHint: 'The session you are reading with cannot be ended here. Sign out instead.',
+    endAll: 'End all other sessions',
+    endAllConfirmTitle: 'End all other sessions?',
+    endAllConfirmBody:
+      'Every session except this one will be signed out. Those devices will have to sign in again.',
+    endAllConfirmOk: 'End them',
+    revoked: 'The session has been ended.',
+    revokedOthers: 'Ended {{count}} other session(s).',
+    revokedOthersNone: 'This account held no other sessions.',
+    agentUnknown: 'Unknown client',
+    ipUnknown: 'Address not recorded',
+    networkUnknown: 'Network not determined',
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -224,6 +256,14 @@ const en = {
       registration_rate_limited: 'Too many registrations from your address. Please try again later.',
       confirmation_rate_limited: 'Too many attempts. Please try again later.',
       email_delivery_failed: 'The confirmation email could not be sent. Please try again later.',
+      // Ending sessions: the two success codes and the two refusals only the revoke
+      // endpoints can produce. `cannot_revoke_current` is refused before any database work,
+      // and `session_not_found` is one answer for unknown, gone and somebody else's - the id
+      // is guessable and the difference would turn the endpoint into a probe.
+      session_revoked: 'The session has been ended.',
+      other_sessions_revoked: 'Your other sessions have been ended.',
+      cannot_revoke_current: 'The session you are using cannot be ended from here. Sign out instead.',
+      session_not_found: 'No such session on this account.',
       // Profile changes: the same three shapes as registration (sent / applied / refused),
       // plus the two refusals only an authenticated caller can meet.
       profile_updated: 'Your profile has been updated.',
