@@ -21,6 +21,7 @@ import ResellerLoginPage from '../src/pages/ResellerLoginPage'
 import AdminLoginPage from '../src/pages/AdminLoginPage'
 import ForgotPasswordPage from '../src/pages/ForgotPasswordPage'
 import ProfilePage from '../src/pages/ProfilePage'
+import SessionsPage from '../src/pages/SessionsPage'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -203,6 +204,31 @@ async function main() {
     'the profile page waits for the server instead of rendering a form against nothing',
     profileHtml.includes('ant-spin') && !profileHtml.includes('auth-form__otp'),
     `rendered ${profileHtml.length} bytes with the profile still being fetched`,
+  )
+
+  // --- The visit history page ------------------------------------------------
+  //
+  // Its own props rather than the shared `render` helper, because the router is what
+  // supplies them: `routes.tsx` renders every section as
+  // `<Page sectionKey={item.labelKey} />` and the helper passes none, so calling it here
+  // would measure `t(undefined)` instead of the page. The state it lands in is the one
+  // before the first answer arrives - a spinner over an empty table - which is what
+  // proves it draws a table at all. The third condition is the i18n one: the nav key has
+  // to come back resolved, and a raw `nav.items.sessions` in the markup would mean the
+  // label was written in the menu and never defined in the locale files.
+  const sessionsHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/client/sessions']}>
+      <AntApp>
+        <SessionsPage sectionKey="nav.items.sessions" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the visit history page draws its heading and its table before any rows arrive',
+    sessionsHtml.includes('Sign-in history') &&
+      sessionsHtml.includes('ant-table') &&
+      !sessionsHtml.includes('nav.items.sessions'),
+    `rendered ${sessionsHtml.length} bytes with the history still being fetched`,
   )
 
   // The time zone card cannot be asserted through the page above: the page is a spinner

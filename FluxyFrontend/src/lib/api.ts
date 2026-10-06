@@ -7,6 +7,7 @@ import type {
   PasswordStatusResponse,
   ProfileResponse,
   Session,
+  SessionHistoryResponse,
 } from '../types'
 
 /**
@@ -174,6 +175,25 @@ export const currentSession = async (): Promise<Session | null> => {
  * so anything that has to show or verify the current address has to ask the row.
  */
 export const getProfile = (): Promise<ProfileResponse> => apiGet<ProfileResponse>('/auth/profile')
+
+/**
+ * One page of this account's visit history, newest first.
+ *
+ * The bounds are enforced by the server rather than here: a page number is read off the pager,
+ * and a pager that offered 500 rows would be refused with `validation_failed` on `pageSize`
+ * instead of silently receiving fewer than it asked for. Like every other GET this carries no
+ * antiforgery token - the call changes nothing, so there is no state for a cross-site submission
+ * to alter - and it reads only the caller's own history, because the account comes from the
+ * token rather than from a parameter.
+ */
+export const getSessionHistory = ({
+  page,
+  pageSize,
+}: {
+  page: number
+  pageSize: number
+}): Promise<SessionHistoryResponse> =>
+  apiGet<SessionHistoryResponse>(`/auth/sessions?page=${page}&pageSize=${pageSize}`)
 
 /**
  * Starts changing one of the three, and answers with the outcome.

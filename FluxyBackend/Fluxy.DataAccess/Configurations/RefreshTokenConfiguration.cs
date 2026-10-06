@@ -104,9 +104,15 @@ namespace Fluxy.DataAccess.Configurations
             // walks the session, so it is the second index that has to exist.
             builder.HasIndex(token => token.SessionId);
 
-            // Listing or purging the sessions of one account. Signing out everywhere, and any
-            // future cleanup, both need it.
-            builder.HasIndex(token => token.UserId);
+            // Listing or purging the sessions of one account, and reading them newest first.
+            //
+            // One composite index rather than this and a second one on the account alone: the
+            // leading column answers every lookup the single column one did - a prefix of a
+            // b-tree is itself a b-tree - so keeping both would pay for two index writes on
+            // every token issued to answer what one already answers. The trailing column is
+            // what the visit history page orders by, and without it that page finds the
+            // account's rows and then sorts all of them to keep twenty, on every page.
+            builder.HasIndex(token => new { token.UserId, token.CreatedAt });
 
             // No HasDefaultValue anywhere on purpose, for the reason it holds on every other
             // table: a value the database invents when the application forgot a column hides the

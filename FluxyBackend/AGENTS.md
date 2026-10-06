@@ -150,6 +150,60 @@ were exercised as `Unknown` and the address list carried the allow decisions):
 | `DELETE FROM users` | rules, refresh rows and pending rows of that account gone, other accounts untouched |
 | `POST /auth/admin-login` with the old `Test1234` after the rotation | 401 (the password printed during verification no longer works) |
 
+## The visit history: `GET /auth/sessions`
+
+One page of where an account's sessions came from, reachable from the `account` menu of all three
+areas (`/client/sessions`, `/reseller/sessions`, `/admin/sessions`). Read only, and everything
+about it follows from that.
+
+- **There is no table of visits.** The rows are `refresh_tokens` (`user_id`, `client_address`,
+  `user_agent`, `created_at`, `session_id`) — the same rows every sign-in and every rotation
+  already writes. A second table would be a second source for one fact, and the day the two
+  disagree the history is worth nothing. **A row is a token, not a session**: a browser that
+  refreshed from a different network appears twice, which is the point — "a sign-in I do not
+  recognise" and "a rotation I do not recognise" are the same alarm.
+- **Geo is resolved at read time, not stored.** `IGeoIpResolver` / `MaxMindGeoIpResolver`, memoized
+  per request in a `Dictionary` keyed by address (one page from a home connection is the same
+  address twenty times over). A missing `.mmdb` or a private address yields three nulls and a list
+  that still reads correctly — an unknown network is a fact to display, not a reason to fail.
+  Depth is whatever `cleanup` leaves behind (the ~30 day window documented in `JwtTokenService`).
+- **The bounds are refused, not clamped.** `page < 1` or `pageSize` outside `1..SessionHistoryLimits.MaxPageSize`
+  (default 20, max 100) answer `400 validation_failed` with `errors.page` / `errors.pageSize`.
+  Silently turning 500 rows into 100 would answer with a page whose items do not match the size
+  the caller was told it got. A non-numeric value never reaches the action — model binding
+  produces the same `validation_failed` through `InvalidModelStateResponseFactory`.
+- **No CSRF, no captcha, no attempt window.** Those guard the expensive step (key derivation) and
+  the state a POST can alter; this is a GET over an index, behind `[Authorize]`. The account comes
+  from the `sub` claim and there is **no `userId` parameter to pass** — adding `?userId=<someone>`
+  is ignored and answers the caller's own history. That was verified.
+- **A blocked account is handed nothing**: `SessionHistoryService` returns null and the controller
+  answers `403 account_not_active`, the same code the profile gives, with its own sentence —
+  `ProfileResponses.Describe` words it as a *change* that was refused, and nothing here was being
+  changed.
+- **`isCurrent`** compares the row's `session_id` with the access token's session claim.
+- **Arithmetic is done in `long`.** `page` comes from a query string, so `(page - 1) * pageSize`
+  can overflow `int` and reach EF Core as a negative `Skip`. `page=2000000000` was checked
+  against a running instance: `200` with an empty page.
+- **Migration `20261006083556_AddSessionHistoryIndex`** replaces `IX_refresh_tokens_user_id` with
+  `IX_refresh_tokens_user_id_created_at`. It is a replacement rather than an addition: a prefix of
+  a b-tree is itself a b-tree, so the leading column answers every lookup the single-column index
+  did (`RevokeAllSessionsAsync`, the account's row count) and keeping both would pay for two index
+  writes on every token issued to answer what one already answers. The order is
+  `created_at DESC, id DESC` — the identifier is the tie-break, because two tokens written in the
+  same transaction share a stamp and without it two pages could both show or both skip a row.
+
+Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` / `SessionHistoryLimits`
+in `Fluxy.Core/Models/Authentication/`, `ISessionHistoryService` in `Fluxy.Core/Abstractions/`,
+`SessionHistoryService` in `Fluxy.Application/Services/Authentication/` (Scoped, `AsNoTracking`),
+the contracts in `Fluxy.API/Contracts/SessionHistoryResponse.cs`, and the action on
+`ProfileController` — which is already the "read the signed-in account" controller, since it also
+holds `GET /auth/profile` and `GET /auth/geo/lookup`.
+
+Verified against a running instance with seeded rows of five ages, three roles and one blocked
+account: 200 for Client, Reseller and Admin alike; ordering `created_at DESC`; `total` 6 with
+`pageSize=2` giving 2/2/2/0 across four pages (page 4 empty but still carrying the true `total`);
+the four refusals above; and no SQL emitted at all after a `validation_failed`.
+
 ## PostgreSQL is wired up (EF Core 10, Npgsql provider)
 
 The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:

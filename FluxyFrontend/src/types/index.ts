@@ -16,6 +16,8 @@
 export type { Role } from './Role'
 export type { Session } from './Session'
 export type { SessionContextValue } from './SessionContextValue'
+export type { SessionVisit } from './SessionVisit'
+export type { SessionHistoryResponse } from './SessionHistoryResponse'
 export type { FieldErrors } from './FieldErrors'
 export type { MessageResponse } from './MessageResponse'
 export type { ProfileResponse } from './ProfileResponse'

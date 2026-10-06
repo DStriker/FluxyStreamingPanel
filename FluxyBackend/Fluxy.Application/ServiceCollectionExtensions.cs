@@ -51,6 +51,10 @@ namespace Fluxy.Application
             // reads the allow lists through, so it lives in a scope like the services it serves.
             services.AddScoped<ILoginGuardService, LoginGuardService>();
 
+            // Reads one page of the account's stored sessions, so it reads through the context
+            // like every other scoped service here and shares the resolver the sign-in path uses.
+            services.AddScoped<ISessionHistoryService, SessionHistoryService>();
+
             // The throttle counts attempts for every request that reaches an endpoint, so it is
             // shared. It holds no per-request state, which is what lets it live next to the redis
             // connection rather than in a scope.

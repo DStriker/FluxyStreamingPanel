@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   AppstoreOutlined,
   DashboardOutlined,
+  HistoryOutlined,
   IdcardOutlined,
   SettingOutlined,
   ShoppingCartOutlined,
@@ -113,6 +114,18 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           icon: IdcardOutlined,
           page: () => import('../pages/ProfilePage'),
         },
+        {
+          // Present under all three roles, and under `account` rather than a role's own
+          // category, because what it lists is a property of the account and not of the job:
+          // every one of them signs in, every one of them should be able to see from where.
+          // The item is identical in each table for the same reason `profile` is - one shared
+          // page, one shared address, three menus that would otherwise drift.
+          key: 'sessions',
+          path: 'sessions',
+          labelKey: 'nav.items.sessions',
+          icon: HistoryOutlined,
+          page: () => import('../pages/SessionsPage'),
+        },
       ],
     },
   ],
@@ -148,6 +161,15 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.profile',
           icon: IdcardOutlined,
           page: () => import('../pages/ProfilePage'),
+        },
+        {
+          // Same item, same page, same address under every role - see the note on the
+          // Client entry for why it lives here rather than in a category of its own.
+          key: 'sessions',
+          path: 'sessions',
+          labelKey: 'nav.items.sessions',
+          icon: HistoryOutlined,
+          page: () => import('../pages/SessionsPage'),
         },
       ],
     },
@@ -197,6 +219,15 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.profile',
           icon: IdcardOutlined,
           page: () => import('../pages/ProfilePage'),
+        },
+        {
+          // Same item, same page, same address under every role - see the note on the
+          // Client entry for why it lives here rather than in a category of its own.
+          key: 'sessions',
+          path: 'sessions',
+          labelKey: 'nav.items.sessions',
+          icon: HistoryOutlined,
+          page: () => import('../pages/SessionsPage'),
         },
       ],
     },

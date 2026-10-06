@@ -62,6 +62,7 @@ namespace Fluxy.API.Controllers
         private readonly IRecaptchaValidator _captchaValidator;
         private readonly ITokenService _tokenService;
         private readonly IGeoIpResolver _geoIpResolver;
+        private readonly ISessionHistoryService _sessionHistory;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ProfileController"/> class.
@@ -70,6 +71,7 @@ namespace Fluxy.API.Controllers
         /// <param name="captchaValidator">Check that a request came from a person.</param>
         /// <param name="tokenService">Service that ends and reopens sessions after a change.</param>
         /// <param name="geoIpResolver">Resolver that places the caller on the map for the lookup.</param>
+        /// <param name="sessionHistory">Reader of the account's stored sessions.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="throttle">Counter that limits how often one client may try.</param>
         /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
@@ -79,6 +81,7 @@ namespace Fluxy.API.Controllers
             IRecaptchaValidator captchaValidator,
             ITokenService tokenService,
             IGeoIpResolver geoIpResolver,
+            ISessionHistoryService sessionHistory,
             IAntiforgery antiforgery,
             IAttemptThrottle throttle,
             IOptionsMonitor<RateLimitOptions> rateLimits,
@@ -89,6 +92,7 @@ namespace Fluxy.API.Controllers
             _captchaValidator = captchaValidator;
             _tokenService = tokenService;
             _geoIpResolver = geoIpResolver;
+            _sessionHistory = sessionHistory;
         }
 
         /// <summary>
@@ -130,6 +134,124 @@ namespace Fluxy.API.Controllers
                 AllowedCountry = guard.AllowedCountry,
                 AllowedAutonomousSystemNumber = guard.AllowedAutonomousSystemNumber
             });
+        }
+
+        /// <summary>
+        /// Reports one page of the account's visit history: where its sessions came from, what
+        /// they arrived with, and when.
+        /// </summary>
+        /// <param name="page">One based page to read.</param>
+        /// <param name="pageSize">How many visits one page holds.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 with the page, 400 when a bound was not a number or is out of range, and 401/403
+        /// through the shared result handler.
+        /// </returns>
+        /// <remarks>
+        /// Read only, and that decides what it is not guarded by. There is no antiforgery pair
+        /// to present - the method changes nothing, so there is no state for a cross-site form
+        /// submission to alter; no captcha, because the expensive step this API protects is key
+        /// derivation and this path performs none; and no attempt window, because a page of rows
+        /// from an index costs about as much as rendering the page that asked for it. The
+        /// session is the whole of its authorization, and it is enough: the account identifier
+        /// comes from the token, so a caller can only ever read its own history and no role
+        /// separates one visitor from another here.
+        ///
+        /// The bounds are refused rather than clamped. Silently turning a request for 500 rows
+        /// into 100 would answer with a page whose items do not match the page size the caller
+        /// was told it got.
+        /// </remarks>
+        [HttpGet("sessions")]
+        [ProducesResponseType<SessionHistoryResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetSessions(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = SessionHistoryLimits.DefaultPageSize,
+            CancellationToken cancellationToken = default)
+        {
+            if (page < 1 || pageSize is < 1 or > SessionHistoryLimits.MaxPageSize)
+            {
+                return StatusCode(
+                    StatusCodes.Status400BadRequest,
+                    new MessageResponse
+                    {
+                        Code = "validation_failed",
+                        Message = "Some of the values you entered are not valid.",
+                        Errors = SessionHistoryErrors(page, pageSize)
+                    });
+            }
+
+            if (ReadSubjectClaim() is not { } userId)
+            {
+                return Anonymous();
+            }
+
+            var history = await _sessionHistory.GetHistoryAsync(
+                userId,
+                page,
+                pageSize,
+                ReadSessionClaim(),
+                cancellationToken);
+
+            if (history is null)
+            {
+                // The same refusal the profile gives a blocked account, with a sentence of its
+                // own: `Describe` words this code as a change that was refused, and nothing
+                // here was being changed. The code is the contract and stays identical, so a
+                // client branching on `account_not_active` behaves the same either way - but
+                // the English fallback a human reads should not claim an edit nobody attempted.
+                return StatusCode(
+                    ProfileResponses.StatusCodeOf(ProfileChangeStatus.AccountNotActive),
+                    new MessageResponse
+                    {
+                        Code = "account_not_active",
+                        Message = "This account is not active."
+                    });
+            }
+
+            return Ok(new SessionHistoryResponse
+            {
+                Items = history.Visits
+                    .Select(visit => new SessionVisitResponse
+                    {
+                        Id = visit.Id.ToString(),
+                        Ip = visit.Ip,
+                        CountryCode = visit.CountryCode,
+                        AutonomousSystemNumber = visit.AutonomousSystemNumber,
+                        Organization = visit.Organization,
+                        UserAgent = visit.UserAgent,
+                        VisitedAt = visit.VisitedAt,
+                        IsCurrent = visit.IsCurrent
+                    })
+                    .ToArray(),
+                Total = history.Total,
+                Page = history.Page,
+                PageSize = history.PageSize
+            });
+        }
+
+        /// <summary>
+        /// Which of the two bounds a request broke, keyed by the camelCase name of the query
+        /// parameter so the reason lands under the input a client would fix.
+        /// </summary>
+        private static Dictionary<string, string[]> SessionHistoryErrors(int page, int pageSize)
+        {
+            var errors = new Dictionary<string, string[]>();
+
+            if (page < 1)
+            {
+                errors["page"] = ["The page must be at least 1."];
+            }
+
+            if (pageSize is < 1 or > SessionHistoryLimits.MaxPageSize)
+            {
+                errors["pageSize"] =
+                [$"The page size must be between 1 and {SessionHistoryLimits.MaxPageSize}."];
+            }
+
+            return errors;
         }
 
         /// <summary>

@@ -67,6 +67,8 @@ const en = {
     change: 'Change',
     save: 'Save',
     cancel: 'Cancel',
+    // The only way out of a failed load on the pages that read the server for their rows.
+    retry: 'Try again',
   },
   nav: {
     // Categories are the sidebar's submenus; items are the routes beneath them. Both are
@@ -84,6 +86,10 @@ const en = {
       users: 'Users',
       settings: 'Settings',
       profile: 'Profile',
+      // The visit history. Named for what it lists rather than for "sessions", because the
+      // rows are tokens - a visitor reading the menu should be told they will see every
+      // sign-in and every rotation, not one row per login.
+      sessions: 'Sign-in history',
     },
   },
   header: {
@@ -156,6 +162,24 @@ const en = {
       Client: 'Client',
       Reseller: 'Reseller',
       Admin: 'Administrator',
+    },
+  },
+  // The visit history page. Everything here is copy the server does not send: it answers with
+  // rows and with `total`, and what the rows are called, what an unknown value looks like and
+  // what the page is for are decisions this application makes.
+  sessions: {
+    hint:
+      'Every sign-in and every refresh this account made, newest first. One row per token, so a device that changed network appears more than once.',
+    empty: 'This account has no recorded activity yet.',
+    // The pager's own sentence, which antd would otherwise write in its default locale.
+    range: '{{from}}–{{to}} of {{total}}',
+    current: 'This session',
+    columns: {
+      when: 'When',
+      ip: 'IP address',
+      country: 'Country',
+      network: 'Network',
+      agent: 'User agent',
     },
   },
   messages: {
