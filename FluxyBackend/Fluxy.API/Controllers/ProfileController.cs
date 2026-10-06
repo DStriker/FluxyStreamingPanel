@@ -142,10 +142,17 @@ namespace Fluxy.API.Controllers
         /// </summary>
         /// <param name="page">One based page to read.</param>
         /// <param name="pageSize">How many visits one page holds.</param>
+        /// <param name="search">
+        /// Optional text that must appear in the address or the user agent of a visit.
+        /// </param>
+        /// <param name="sortBy">What the page is ordered by; <c>visitedAt</c> by default.</param>
+        /// <param name="sortOrder">
+        /// <c>asc</c> or <c>desc</c>; <c>desc</c> by default.
+        /// </param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 with the page, 400 when a bound was not a number or is out of range, and 401/403
-        /// through the shared result handler.
+        /// 200 with the page, 400 when a bound was not a number, is out of range or does not name
+        /// a member of an enum, and 401/403 through the shared result handler.
         /// </returns>
         /// <remarks>
         /// Read only, and that decides what it is not guarded by. There is no antiforgery pair
@@ -159,7 +166,24 @@ namespace Fluxy.API.Controllers
         ///
         /// The bounds are refused rather than clamped. Silently turning a request for 500 rows
         /// into 100 would answer with a page whose items do not match the page size the caller
-        /// was told it got.
+        /// was told it got. The same rule covers the search term and the two sort parameters: a
+        /// nonsense <c>sortBy</c> is not quietly answered as <c>visitedAt</c>, because a caller
+        /// that asked to order by something should be told it does not exist rather than be
+        /// handed a different order than the one it asked for.
+        ///
+        /// Search and sort live here rather than in the browser for one reason: the pager shows
+        /// a <c>total</c>, and a filter applied after the rows have arrived would count what the
+        /// filter is about to remove. The result would be a pager offering four pages of five
+        /// rows when only one exists.
+        ///
+        /// <c>sortBy</c> and <c>sortOrder</c> are read as plain text rather than bound to the
+        /// enums, deliberately. Enum binding takes a member name spelled in full, so the
+        /// conventional <c>sortOrder=desc</c> would be refused as a bad value while
+        /// <c>sortOrder=Descending</c> would be accepted - an API that answers a request as
+        /// conventional as this one with a 400 teaches its callers to spell things oddly. They
+        /// are parsed below instead, which is also where the sentence naming the values a
+        /// client may send comes from; the framework's own message would say only that the
+        /// value was wrong, not what would have been right.
         /// </remarks>
         [HttpGet("sessions")]
         [ProducesResponseType<SessionHistoryResponse>(StatusCodes.Status200OK)]
@@ -169,9 +193,19 @@ namespace Fluxy.API.Controllers
         public async Task<IActionResult> GetSessions(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = SessionHistoryLimits.DefaultPageSize,
+            [FromQuery] string? search = null,
+            [FromQuery] string sortBy = "visitedAt",
+            [FromQuery] string sortOrder = "desc",
             CancellationToken cancellationToken = default)
         {
-            if (page < 1 || pageSize is < 1 or > SessionHistoryLimits.MaxPageSize)
+            var field = ParseSortField(sortBy);
+            var order = ParseSortOrder(sortOrder);
+
+            if (page < 1 ||
+                pageSize is < 1 or > SessionHistoryLimits.MaxPageSize ||
+                (search?.Length ?? 0) > SessionHistoryLimits.MaxSearchLength ||
+                field is null ||
+                order is null)
             {
                 return StatusCode(
                     StatusCodes.Status400BadRequest,
@@ -179,7 +213,7 @@ namespace Fluxy.API.Controllers
                     {
                         Code = "validation_failed",
                         Message = "Some of the values you entered are not valid.",
-                        Errors = SessionHistoryErrors(page, pageSize)
+                        Errors = SessionHistoryErrors(page, pageSize, search, field, order)
                     });
             }
 
@@ -192,6 +226,9 @@ namespace Fluxy.API.Controllers
                 userId,
                 page,
                 pageSize,
+                search,
+                field.Value,
+                order.Value,
                 ReadSessionClaim(),
                 cancellationToken);
 
@@ -233,10 +270,48 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// Which of the two bounds a request broke, keyed by the camelCase name of the query
+        /// Turns the text a client sent into the field it names, or nothing at all.
+        /// </summary>
+        /// <remarks>
+        /// Compared after lowering, so <c>IP</c> and <c>VisitedAt</c> are the same request as
+        /// their lowercase spelling - a parameter that is read case insensitively by every
+        /// conventional API should not be the one exception here. The accepted values are also
+        /// the only two the table can honestly order by, which is why the list is a switch and
+        /// not a fallback: the third column anybody would want to sort on, the country and the
+        /// provider, is resolved from GeoIP while the page is built and is not in the row at all.
+        /// </remarks>
+        private static SessionSortField? ParseSortField(string? value) =>
+            value?.Trim().ToLowerInvariant() switch
+            {
+                "visitedat" => SessionSortField.VisitedAt,
+                "ip" => SessionSortField.Ip,
+                _ => null
+            };
+
+        /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
+        private static SessionSortOrder? ParseSortOrder(string? value) =>
+            value?.Trim().ToLowerInvariant() switch
+            {
+                "asc" => SessionSortOrder.Ascending,
+                "desc" => SessionSortOrder.Descending,
+                _ => null
+            };
+
+        /// <summary>
+        /// Which of the bounds a request broke, keyed by the camelCase name of the query
         /// parameter so the reason lands under the input a client would fix.
         /// </summary>
-        private static Dictionary<string, string[]> SessionHistoryErrors(int page, int pageSize)
+        /// <remarks>
+        /// A parameter that named no value gets the sentence listing the values that exist
+        /// rather than a generic "not valid": the fastest way to fix a wrong <c>sortBy</c> is
+        /// being told which two names are accepted.
+        /// </remarks>
+        private static Dictionary<string, string[]> SessionHistoryErrors(
+            int page,
+            int pageSize,
+            string? search,
+            SessionSortField? field,
+            SessionSortOrder? order)
         {
             var errors = new Dictionary<string, string[]>();
 
@@ -249,6 +324,22 @@ namespace Fluxy.API.Controllers
             {
                 errors["pageSize"] =
                 [$"The page size must be between 1 and {SessionHistoryLimits.MaxPageSize}."];
+            }
+
+            if ((search?.Length ?? 0) > SessionHistoryLimits.MaxSearchLength)
+            {
+                errors["search"] =
+                [$"The search must be at most {SessionHistoryLimits.MaxSearchLength} characters."];
+            }
+
+            if (field is null)
+            {
+                errors["sortBy"] = ["Sort by must be 'visitedAt' or 'ip'."];
+            }
+
+            if (order is null)
+            {
+                errors["sortOrder"] = ["Sort order must be 'asc' or 'desc'."];
             }
 
             return errors;

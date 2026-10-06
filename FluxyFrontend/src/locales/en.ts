@@ -168,12 +168,18 @@ const en = {
   // rows and with `total`, and what the rows are called, what an unknown value looks like and
   // what the page is for are decisions this application makes.
   sessions: {
-    hint:
-      'Every sign-in and every refresh this account made, newest first. One row per token, so a device that changed network appears more than once.',
     empty: 'This account has no recorded activity yet.',
+    // Shown instead of `empty` while a search is running. The account does have history, it
+    // simply has none matching - and "no recorded activity" would be a claim the search box on
+    // the same card has just disproved.
+    noMatches: 'No visits match this search.',
     // The pager's own sentence, which antd would otherwise write in its default locale.
     range: '{{from}}–{{to}} of {{total}}',
     current: 'This session',
+    searchPlaceholder: 'Search by IP address or user agent',
+    // For the screen reader: a placeholder is not a label, and it disappears the moment
+    // anything is typed - which is exactly when the field needs naming.
+    searchLabel: 'Search visits',
     columns: {
       when: 'When',
       ip: 'IP address',

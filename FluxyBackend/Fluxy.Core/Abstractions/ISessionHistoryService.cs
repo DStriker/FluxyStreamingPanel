@@ -27,6 +27,15 @@ namespace Fluxy.Core.Abstractions
         /// value before this service sees it; the clamp is here so that a caller inside the
         /// application cannot ask for an unbounded read either.
         /// </param>
+        /// <param name="search">
+        /// Case-insensitive text that must appear in the address or the user agent of a visit.
+        /// Null or blank means every visit counts, so <see cref="SessionHistoryPage.Total"/> is
+        /// always the number of visits the search admits - a pager drawn from a count that
+        /// ignored the filter would offer pages the rows do not fill. The endpoint caps its
+        /// length before this service sees it.
+        /// </param>
+        /// <param name="sortBy">What the page is ordered by.</param>
+        /// <param name="sortOrder">Which way it runs.</param>
         /// <param name="currentSessionId">
         /// Session the caller is reading with, used to mark its own entries. Null when the token
         /// carried no session claim, which marks nothing rather than guessing.
@@ -41,6 +50,9 @@ namespace Fluxy.Core.Abstractions
             Guid userId,
             int page,
             int pageSize,
+            string? search,
+            SessionSortField sortBy,
+            SessionSortOrder sortOrder,
             Guid? currentSessionId,
             CancellationToken cancellationToken = default);
     }

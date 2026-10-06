@@ -177,7 +177,20 @@ export const currentSession = async (): Promise<Session | null> => {
 export const getProfile = (): Promise<ProfileResponse> => apiGet<ProfileResponse>('/auth/profile')
 
 /**
- * One page of this account's visit history, newest first.
+ * What a page of the visit history is ordered by, spelled the way the endpoint reads it.
+ *
+ * Only two values exist because only two columns do: the moment and the address. Country and
+ * provider are resolved from GeoIP while a page is being read rather than stored, so there is
+ * nothing for the server to sort on and a third option here would be a promise with no row
+ * behind it.
+ */
+export type SessionSortField = 'visitedAt' | 'ip'
+
+/** Which way a page runs. `desc` by default - the newest visit is what the page is for. */
+export type SessionSortOrder = 'asc' | 'desc'
+
+/**
+ * One page of this account's visit history, ordered and filtered by the server.
  *
  * The bounds are enforced by the server rather than here: a page number is read off the pager,
  * and a pager that offered 500 rows would be refused with `validation_failed` on `pageSize`
@@ -185,15 +198,39 @@ export const getProfile = (): Promise<ProfileResponse> => apiGet<ProfileResponse
  * antiforgery token - the call changes nothing, so there is no state for a cross-site submission
  * to alter - and it reads only the caller's own history, because the account comes from the
  * token rather than from a parameter.
+ *
+ * The search and the sort are parameters of the request rather than something the page does to
+ * the rows it already has. Filtering or ordering client side would apply to one page only while
+ * `total` still counted everything, so the pager would offer four pages of five rows when the
+ * filter admitted one - a list that contradicts its own pager is worse than one that does not
+ * filter at all. The term is only ever matched against what the row stores, the address and the
+ * user agent; see `SessionSortField` for why the geo fields are not offered.
  */
 export const getSessionHistory = ({
   page,
   pageSize,
+  search,
+  sortBy = 'visitedAt',
+  sortOrder = 'desc',
 }: {
   page: number
   pageSize: number
-}): Promise<SessionHistoryResponse> =>
-  apiGet<SessionHistoryResponse>(`/auth/sessions?page=${page}&pageSize=${pageSize}`)
+  search?: string
+  sortBy?: SessionSortField
+  sortOrder?: SessionSortOrder
+}): Promise<SessionHistoryResponse> => {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+
+  // Built as parameters rather than interpolated into the path: a space, a `+` or an `&` in
+  // what somebody typed looking for a user agent would otherwise change the meaning of the
+  // request instead of being part of the term.
+  if (search) query.set('search', search)
+
+  query.set('sortBy', sortBy)
+  query.set('sortOrder', sortOrder)
+
+  return apiGet<SessionHistoryResponse>(`/auth/sessions?${query.toString()}`)
+}
 
 /**
  * Starts changing one of the three, and answers with the outcome.

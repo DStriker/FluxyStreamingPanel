@@ -21,5 +21,16 @@ namespace Fluxy.Core.Models.Authentication
 
         /// <summary>Most visits one page may hold.</summary>
         public const int MaxPageSize = 100;
+
+        /// <summary>
+        /// Most characters one search may carry.
+        /// </summary>
+        /// <remarks>
+        /// A bound on a read rather than on a secret, and refused rather than truncated: a term
+        /// longer than this is a caller with a wrong idea of the endpoint, not somebody searching
+        /// for a very long user agent. It also keeps an oversized body from being copied straight
+        /// into a SQL parameter, which is the only reason the number is small rather than large.
+        /// </remarks>
+        public const int MaxSearchLength = 200;
     }
 }

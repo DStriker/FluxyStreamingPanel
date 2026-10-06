@@ -3,6 +3,7 @@ using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.GeoIp;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
+using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Authentication
@@ -49,6 +50,9 @@ namespace Fluxy.Application.Services.Authentication
             Guid userId,
             int page,
             int pageSize,
+            string? search,
+            SessionSortField sortBy,
+            SessionSortOrder sortOrder,
             Guid? currentSessionId,
             CancellationToken cancellationToken = default)
         {
@@ -69,9 +73,33 @@ namespace Fluxy.Application.Services.Authentication
                 return null;
             }
 
-            var total = await _context.RefreshTokens
+            var query = _context.RefreshTokens
                 .AsNoTracking()
-                .CountAsync(token => token.UserId == userId, cancellationToken);
+                .Where(token => token.UserId == userId);
+
+            // The filter is built before the count, and that ordering is the whole reason search
+            // is server side rather than a client-side trim of the rows already on screen. Counting
+            // everything and then filtering a page would answer a pager with 200 and then hand it
+            // five rows, three times over - a total that knows nothing about the filter is worse
+            // than no total, because the pager believes it.
+            //
+            // Only the stored columns are searched. Country and provider are resolved below while
+            // the page is built, so filtering on them here would mean resolving every row an
+            // account has before one page of them could be shown.
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                // Lowered on both sides rather than compared with a case-insensitive operator:
+                // this is one account's own rows, the needle is already short, and keeping the
+                // expression provider-neutral means this service does not have to know which
+                // database it is reading from.
+                var needle = search.Trim().ToLowerInvariant();
+
+                query = query.Where(token =>
+                    (token.ClientAddress != null && token.ClientAddress.ToLower().Contains(needle)) ||
+                    (token.UserAgent != null && token.UserAgent.ToLower().Contains(needle)));
+            }
+
+            var total = await query.CountAsync(cancellationToken);
 
             // Read as a long rather than an int: a page number taken from a query string can be
             // large enough that `(page - 1) * pageSize` overflows, and a negative offset would
@@ -83,15 +111,7 @@ namespace Fluxy.Application.Services.Authentication
 
             if (offset < total)
             {
-                var rows = await _context.RefreshTokens
-                    .AsNoTracking()
-                    .Where(token => token.UserId == userId)
-                    .OrderByDescending(token => token.CreatedAt)
-                    // Ties are possible in principle - two tokens written in the same
-                    // transaction share a stamp - and without a tie-break two pages could
-                    // both show or both skip the same row. The identifier is unique, which
-                    // is exactly what a stable order needs.
-                    .ThenByDescending(token => token.Id)
+                var rows = await Sort(query, sortBy, sortOrder)
                     .Skip((int)offset)
                     .Take(pageSize)
                     .Select(token => new StoredVisit
@@ -122,6 +142,43 @@ namespace Fluxy.Application.Services.Authentication
                 Page = page,
                 PageSize = pageSize
             };
+        }
+
+        /// <summary>
+        /// Orders an account's rows, with a tie-break that makes the order total.
+        /// </summary>
+        /// <remarks>
+        /// Every branch ends in a unique column, because without one two pages can disagree about
+        /// rows that compare equal: a row could be shown on both pages or on neither, and the
+        /// visitor would have no way to notice. For the moment that tie-break is the identifier -
+        /// two tokens written in one transaction share a stamp.
+        ///
+        /// The address branch puts a missing address last in <b>both</b> directions. Reversing the
+        /// comparison would reverse that too, and an account with no stored address on half its
+        /// rows would then open with a screenful of blanks - "unknown" is not a value, and a list
+        /// somebody is scanning for a network they recognise should not be led by its own holes.
+        /// </remarks>
+        private static IOrderedQueryable<RefreshTokenEntity> Sort(
+            IQueryable<RefreshTokenEntity> query,
+            SessionSortField sortBy,
+            SessionSortOrder sortOrder)
+        {
+            var descending = sortOrder == SessionSortOrder.Descending;
+
+            if (sortBy == SessionSortField.Ip)
+            {
+                return descending
+                    ? query.OrderBy(token => token.ClientAddress == null)
+                        .ThenByDescending(token => token.ClientAddress)
+                    : query.OrderBy(token => token.ClientAddress == null)
+                        .ThenBy(token => token.ClientAddress);
+            }
+
+            return descending
+                ? query.OrderByDescending(token => token.CreatedAt)
+                    .ThenByDescending(token => token.Id)
+                : query.OrderBy(token => token.CreatedAt)
+                    .ThenBy(token => token.Id);
         }
 
         /// <summary>

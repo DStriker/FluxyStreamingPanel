@@ -172,6 +172,28 @@ about it follows from that.
   Silently turning 500 rows into 100 would answer with a page whose items do not match the size
   the caller was told it got. A non-numeric value never reaches the action — model binding
   produces the same `validation_failed` through `InvalidModelStateResponseFactory`.
+- **`search`, `sortBy` and `sortOrder` exist, and they are server side for one reason: `total`.**
+  A filter or a sort applied in the browser to the rows already on screen would be applied to one
+  page while the pager still counted everything — four pages of five rows when the filter admitted
+  one, and an order that changed on every page turn. So both are built into the LINQ *before*
+  `CountAsync`, and both reset the pager.
+  - `search` is a case-insensitive substring of **`client_address` or `user_agent` only**, capped at
+    `SessionHistoryLimits.MaxSearchLength` (200) and refused above it with `errors.search`. Country
+    and provider are not columns — they are resolved while the page is built — so filtering on them
+    would mean resolving GeoIP for every row an account has before one page could be shown.
+  - `sortBy` is `visitedAt` (default) or `ip`; `sortOrder` is `desc` (default) or `asc`. A value that
+    names nothing is `400 validation_failed` with `errors.sortBy` / `errors.sortOrder` carrying the
+    names that do exist. They are parsed from plain text by `ProfileController.ParseSortField` /
+    `ParseSortOrder` rather than bound to the enums, deliberately: enum binding takes a member name
+    spelled in full, so the conventional `sortOrder=desc` would be refused while the unabbreviated
+    `sortOrder=Descending` was accepted, and an API that answers a request this conventional with a
+    400 teaches its callers to spell things oddly.
+  - **An address sorts as text**, so it is the database's own collation that decides what ascending
+    means: on this machine `::1` comes first because the locale drops the colons, and
+    `10.0.0.10` still precedes `10.0.0.2`. That is not a claim this code makes about addresses, it
+    is a claim about text. What the code does enforce is that a **null address sorts last in both
+    directions** — reversing the comparison would reverse that too, and an account whose older rows
+    have no address would open with a screenful of blanks.
 - **No CSRF, no captcha, no attempt window.** Those guard the expensive step (key derivation) and
   the state a POST can alter; this is a GET over an index, behind `[Authorize]`. The account comes
   from the `sub` claim and there is **no `userId` parameter to pass** — adding `?userId=<someone>`
@@ -192,8 +214,9 @@ about it follows from that.
   `created_at DESC, id DESC` — the identifier is the tie-break, because two tokens written in the
   same transaction share a stamp and without it two pages could both show or both skip a row.
 
-Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` / `SessionHistoryLimits`
-in `Fluxy.Core/Models/Authentication/`, `ISessionHistoryService` in `Fluxy.Core/Abstractions/`,
+Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` / `SessionHistoryLimits` /
+`SessionSortField` / `SessionSortOrder` in `Fluxy.Core/Models/Authentication/`,
+`ISessionHistoryService` in `Fluxy.Core/Abstractions/`,
 `SessionHistoryService` in `Fluxy.Application/Services/Authentication/` (Scoped, `AsNoTracking`),
 the contracts in `Fluxy.API/Contracts/SessionHistoryResponse.cs`, and the action on
 `ProfileController` — which is already the "read the signed-in account" controller, since it also
@@ -203,6 +226,16 @@ Verified against a running instance with seeded rows of five ages, three roles a
 account: 200 for Client, Reseller and Admin alike; ordering `created_at DESC`; `total` 6 with
 `pageSize=2` giving 2/2/2/0 across four pages (page 4 empty but still carrying the true `total`);
 the four refusals above; and no SQL emitted at all after a `validation_failed`.
+
+Verified again once search and sort existed, again against a running instance: `sortOrder=asc` runs
+oldest first and is the exact reverse of the default; `sortBy=ip` in both directions gives the same
+addresses mirrored, with a null address last in each; `sortBy=IP` and `sortorder=DESC` answer 200, so
+the parameter names are read case-insensitively; a search narrows the list, every returned row really
+matches, a search for nothing answers `total` 0 with an empty page, and pages of a filtered list sum
+to its `total` with the same `total` reported on each; `sortBy=organisation`, `sortOrder=downwards`,
+`sortBy=2` (a bare number that names no member), a 301-character `search`, `page=0` and `pageSize=500`
+are each refused with the field they broke named in `errors`; and all five parameters answer together
+on one request.
 
 ## PostgreSQL is wired up (EF Core 10, Npgsql provider)
 

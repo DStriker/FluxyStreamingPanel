@@ -231,6 +231,36 @@ async function main() {
     `rendered ${sessionsHtml.length} bytes with the history still being fetched`,
   )
 
+  // What keeps a long provider name from dragging the table sideways. A column with no width
+  // of its own grows to fit its widest cell, and the network column is the one with no natural
+  // bound - an organisation name is whatever the registry called the company, and can run to
+  // sixty characters. Fixed layout, a width on each of the five columns and a body that scrolls
+  // instead of stretching are three separate facts, and dropping any one of them lets the
+  // content set the width again. None of that is visible to typecheck, lint or the build.
+  const sessionsCols = [...sessionsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  check(
+    'the visit history table is fixed-layout with a width on each column',
+    /table-layout:\s*fixed/.test(sessionsHtml) &&
+      sessionsCols.length === 5 &&
+      ['300px', '170px', '110px', '240px', '280px'].every((w) =>
+        sessionsCols.some((col) => col.includes(`width:${w}`)),
+      ),
+    `${sessionsCols.length} columns: ${sessionsCols.join(' ')}`,
+  )
+
+  const sessionsContent = /<div[^>]*ant-table-content[^>]*>/.exec(sessionsHtml)?.[0] ?? ''
+  check(
+    'the visit history table scrolls inside its own box instead of widening the page',
+    sessionsContent.includes('overflow-x:auto'),
+    sessionsContent || 'no ant-table-content div in the markup',
+  )
+
+  check(
+    'the visit history page offers a search box rather than a sentence about the table',
+    sessionsHtml.includes('Search visits') && !sessionsHtml.includes('newest first'),
+    `rendered ${sessionsHtml.length} bytes`,
+  )
+
   // The time zone card cannot be asserted through the page above: the page is a spinner
   // until the server answers, and an effect never runs under `renderToStaticMarkup`, so
   // the loaded state that holds this card is unreachable from here. That is exactly why
