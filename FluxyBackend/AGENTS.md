@@ -485,7 +485,7 @@ Three endpoints exist now. They are the first thing in the API layer, and they f
 | Endpoint | Auth | Rate limit | Purpose |
 | --- | --- | --- | --- |
 | `GET /auth/csrf` | none | none | Issue the antiforgery token |
-| `POST /auth/registrations` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code (201 + `Location`) |
+| `POST /auth/registrations` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code (201, no `Location` — see below) |
 | `POST /auth/registrations/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
 
 **There is no `api` segment in any route, on purpose.** This process serves nothing but the API, so a prefix that distinguishes it from a website tells nobody anything, and it becomes one more thing to change when the API is moved behind a path of its own — which a reverse proxy or a gateway adds anyway. The route lives in one place, `[Route("auth")]` on `AuthController`; the frontend builds its paths from the same shape in `src/lib/api.js`. If a shared host ever needs the distinction back, put it in front of the application as a path prefix rather than in the controllers.
@@ -506,7 +506,7 @@ The controller owns transport: which check runs first, what HTTP status each out
 
 | Code | HTTP | When |
 | --- | --- | --- |
-| `registration_submitted` | 201 | Account stored, code mailed; `Location` names `/auth/profile` |
+| `registration_submitted` | 201 | Account stored, code mailed (deliberately no `Location` — the row has no URI the client can address yet) |
 | `registration_not_configured` | 503 | No SMTP settings on this server |
 | `validation_failed` | 400 | Field-level rejection (body or service) |
 | `user_already_exists` | 409 | Username or email is taken |
@@ -649,7 +649,7 @@ Every row below was produced against a live instance talking to the compose post
 | `GET /auth/csrf` | 200, both cookies written, `XSRF-TOKEN` readable, body token equals the cookie |
 | POST without `X-CSRF-Token` | 400 `csrf_invalid` **with** a body |
 | POST, no mail configured | 503 `registration_not_configured`, **no row written** |
-| POST valid | 201 `registration_submitted` + `Location: /auth/profile`, row inserted with `status = 0`, mail delivered |
+| POST valid | 201 `registration_submitted`, **no `Location` header** (re-checked after it was removed), row inserted with `status = 0`, mail delivered |
 | POST password too simple | 400 `validation_failed`, `errors.password`, **permit not spent** |
 | POST taken username | 409 `user_already_exists`, **permit not spent** |
 | POST again for the same `Unregistered` account | 200, `UPDATE` of password + code only, `created_at` untouched |
@@ -696,7 +696,8 @@ Deliberate, but worth writing down so nobody re-derives them:
 
 When designing a new endpoint, reach for REST first: **plural noun resources**, the method that
 describes the operation (`GET` read-only, `POST` create, `PATCH` partial update, `DELETE` remove),
-and the status code that describes the outcome (`201` on create with a `Location`, `204` where
+and the status code that describes the outcome (`201` on create — with a `Location` naming the new
+resource, when it has a URI the client can address right away — `204` where
 there is nothing to say back, `404` for a resource that is not there). A new route that reads as a
 verb (`/do-something`) is a smell — check whether it is really an operation on a resource before
 naming it that way.
@@ -718,8 +719,12 @@ recorded the same way — in the endpoint's remarks and in this file. The ones a
 
 The May 2026 REST pass collapsed the five `POST /auth/profile/*` change endpoints into a single
 `PATCH /auth/profile` and renamed `register`/`password` into the plural resources
-`registrations`/`password-resets`. `POST /auth/registrations` answers **201 with a `Location`
-naming `/auth/profile`** — the status a created resource asks for — and every private read
+`registrations`/`password-resets`. `POST /auth/registrations` answers **201 — deliberately
+without a `Location`**: `Location` names the URI of what was created, and this row has none a
+client can address yet — `/auth/profile` answers 401 for its own owner until the mailed code
+confirms it, and a pending-registration URI addressable by email would be the enumeration
+oracle the refusal policy exists to avoid (the reasoning is in the action's remarks; RFC 9110
+makes the header a SHOULD, and this is the case it leaves open). Every private read
 (`me`, `profile`, `sessions`, `active-sessions`, `geo/lookup`, `csrf`) carries
 `Cache-Control: no-store` through `AuthControllerBase.NoStore()`, because a shared cache that
 kept one of those bodies would hand one visitor's account to the next. Its rule — **exactly one
