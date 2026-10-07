@@ -140,6 +140,8 @@ namespace Fluxy.API.Controllers
         [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> Get(CancellationToken cancellationToken)
         {
+            NoStore();
+
             if (ReadSubjectClaim() is not { } userId)
             {
                 return Anonymous();
@@ -231,6 +233,8 @@ namespace Fluxy.API.Controllers
             [FromQuery] string sortOrder = "desc",
             CancellationToken cancellationToken = default)
         {
+            NoStore();
+
             var field = ParseSortField(sortBy);
             var order = ParseSortOrder(sortOrder);
 
@@ -329,6 +333,8 @@ namespace Fluxy.API.Controllers
         [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> GetActiveSessions(CancellationToken cancellationToken)
         {
+            NoStore();
+
             if (ReadSubjectClaim() is not { } userId)
             {
                 return Anonymous();
@@ -616,6 +622,8 @@ namespace Fluxy.API.Controllers
         [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> LookupGeo(CancellationToken cancellationToken)
         {
+            NoStore();
+
             var geo = await _geoIpResolver.ResolveAsync(ClientAddress, cancellationToken);
 
             return Ok(new GeoLookupResponse

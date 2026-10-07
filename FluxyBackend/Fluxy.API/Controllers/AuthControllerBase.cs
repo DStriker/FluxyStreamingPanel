@@ -176,6 +176,22 @@ namespace Fluxy.API.Controllers
                 });
 
         /// <summary>
+        /// Marks the answer as one no intermediary may keep: <c>Cache-Control: no-store</c>.
+        /// </summary>
+        /// <remarks>
+        /// For every read that answers about the caller — who the token belongs to, the
+        /// profile, the visit history, the live sessions, the network the request arrived
+        /// from — and for the antiforgery token itself. These bodies sit behind cookies a
+        /// shared cache has no business matching on, and a cached "who am I" would hand one
+        /// visitor's account to the next one through the same proxy. The writes are not
+        /// marked: a POST or a DELETE is not cached in the first place, and a header
+        /// promising something about a response nobody would store is noise on every one of
+        /// them.
+        /// </remarks>
+        protected void NoStore()
+            => Response.Headers.CacheControl = "no-store";
+
+        /// <summary>
         /// Refuses a client that has spent its window, and says for how long so that a caller can
         /// tell the visitor what to expect.
         /// </summary>

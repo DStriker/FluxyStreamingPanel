@@ -718,7 +718,12 @@ recorded the same way — in the endpoint's remarks and in this file. The ones a
 
 The May 2026 REST pass collapsed the five `POST /auth/profile/*` change endpoints into a single
 `PATCH /auth/profile` and renamed `register`/`password` into the plural resources
-`registrations`/`password-resets`. Its rule — **exactly one change kind per PATCH** — exists
+`registrations`/`password-resets`. `POST /auth/registrations` answers **201 with a `Location`
+naming `/auth/profile`** — the status a created resource asks for — and every private read
+(`me`, `profile`, `sessions`, `active-sessions`, `geo/lookup`, `csrf`) carries
+`Cache-Control: no-store` through `AuthControllerBase.NoStore()`, because a shared cache that
+kept one of those bodies would hand one visitor's account to the next. Its rule — **exactly one
+change kind per PATCH** — exists
 because the staged-confirmation flow holds one pending change at a time, and the time zone (which
 is applied at once, has no captcha and its own attempt window) must never share a request with a
 password change (which is mailed a code and revokes sessions): the endpoint refuses a body that

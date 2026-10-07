@@ -321,12 +321,16 @@ namespace Fluxy.API.Controllers
         [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         public IActionResult Me()
-            => Ok(new SessionResponse
+        {
+            NoStore();
+
+            return Ok(new SessionResponse
             {
                 UserId = ReadSubjectClaim(),
                 Username = ReadNameClaim(),
                 Role = ReadRoleClaim().ToString()
             });
+        }
 
         /// <summary>
         /// The body of every sign-in, whatever the role.

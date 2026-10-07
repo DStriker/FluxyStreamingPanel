@@ -124,6 +124,10 @@ namespace Fluxy.API.Controllers
         [ProducesResponseType<CsrfTokenResponse>(StatusCodes.Status200OK)]
         public IActionResult GetCsrfToken()
         {
+            // A minted token is never cached: the same proxy that would happily keep a body
+            // would be handing one visitor's antiforgery token to the next.
+            NoStore();
+
             // Also writes the framework's own cookie, which holds the secret half of the pair.
             var tokenSet = Antiforgery.GetAndStoreTokens(HttpContext);
 
