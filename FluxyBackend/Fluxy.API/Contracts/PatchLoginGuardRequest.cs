@@ -1,7 +1,8 @@
 namespace Fluxy.API.Contracts
 {
     /// <summary>
-    /// What a signed-in visitor submits to change the login guard of their account.
+    /// The login guard half of a <see cref="PatchProfileRequest"/>: the two switches and the
+    /// three allow lists, sent together or not at all.
     /// </summary>
     /// <remarks>
     /// The limits are the contract, not a hint: at most five addresses, one country, one
@@ -9,14 +10,13 @@ namespace Fluxy.API.Contracts
     /// checked, but a client that renders five address fields never has to guess the sixth
     /// one's fate.
     ///
-    /// The JSON spelling is the camelCase of the same names C# uses - one fact with two
-    /// spellings is a typo waiting to be read as a missing field.
+    /// The JSON spelling is the camelCase of the same names C# uses — one fact with two
+    /// spellings is a typo waiting to be read as a missing field. The password that authorizes
+    /// the change does not travel here: it belongs to the enclosing body, because it authorizes
+    /// the <c>PATCH</c> rather than any one of its fields.
     /// </remarks>
-    public sealed class ChangeLoginGuardRequest
+    public sealed class PatchLoginGuardRequest
     {
-        /// <summary>Password the account signs in with, proving the session is the owner's.</summary>
-        public string? CurrentPassword { get; init; }
-
         /// <summary>
         /// Whether a sign-in from a network that is not allowed is refused with the same
         /// answer a wrong password gets.

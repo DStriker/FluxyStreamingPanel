@@ -11,8 +11,8 @@ using Microsoft.Extensions.Options;
 namespace Fluxy.API.Controllers
 {
     /// <summary>
-    /// Reading the profile of a signed-in account, changing its username, email or password,
-    /// and setting the time zone it is displayed in.
+    /// Reading the profile of a signed-in account and changing it through a single PATCH:
+    /// username, email, password, login guard or display time zone.
     /// </summary>
     /// <remarks>
     /// The controller owns transport and nothing else: which check runs in which order, what
@@ -27,11 +27,21 @@ namespace Fluxy.API.Controllers
     /// turns a caller with no session into a 401 about the request rather than a 400 about a
     /// missing antiforgery token - the same reason <c>logout</c> carries it.
     ///
-    /// The three change endpoints share one attempt window rather than having one each. They
-    /// are the same act against the same account, and three separate windows would simply be
-    /// three times the guesses for a caller who is willing to rotate a path. The time zone
-    /// endpoint is the exception: it gets its own window, because it saves on selection and
-    /// would otherwise spend the permits the three changes are counting on.
+    /// The profile is edited through one <c>PATCH</c>, not one path per field. This is the REST
+    /// shape the repository now asks for (see AGENTS.md, "API design aims at REST"): a profile is
+    /// a single resource, so the body says which change is asked for — <c>username</c>,
+    /// <c>email</c>, <c>newPassword</c>, <c>loginGuard</c> or <c>timeZone</c> — and the endpoint
+    /// refuses a body that names none or more than one rather than guessing an order. One kind
+    /// per request is not a lack of PATCH semantics: the staged-confirmation flow holds exactly
+    /// one pending change at a time, so a body naming two would silently overwrite the first
+    /// staging before it was ever confirmed.
+    ///
+    /// The four changes that touch what the account <em>is</em> share one attempt window rather
+    /// than having one each. They are the same act against the same account, and separate
+    /// windows would simply be more guesses for a caller who is willing to rotate a field name.
+    /// The time zone is the exception: it gets its own window and skips the captcha, because it
+    /// saves on selection and would otherwise spend the permits the password change is counting
+    /// on — and it is applied at once, so nothing about it is worth a captcha check.
     ///
     /// The route carries no <c>api</c> segment, for the reason the registration controller
     /// gives, and stays under <c>auth</c> so the frontend's dev proxy reaches it without being
@@ -618,35 +628,66 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// Sets the display time zone of the account, or clears it.
+        /// Applies the one change a body names: a new login name, a new address, a new password,
+        /// a new login guard, or a display time zone.
         /// </summary>
-        /// <remarks>
-        /// The only endpoint here that applies at once: a time zone decides how dates are
-        /// shown to the person holding the session rather than what the account is, so there
-        /// is nothing an email code could prove that the session has not already. It is still
-        /// behind the antiforgery pair and behind an attempt window of its own - not the one
-        /// the three changes share, because a page that saves on selection would otherwise
-        /// spend the permits a password change is counting on, and the other way round.
-        ///
-        /// No captcha: it is called by a signed-in visitor from a form the application
-        /// rendered, and the cost of a refused request is a lookup rather than key
-        /// derivation, which is what the captcha on the other three exists for.
-        /// </remarks>
-        /// <param name="request">The IANA identifier, or nothing to return to the browser's own.</param>
+        /// <param name="request">The change, as exactly one field group.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 once the choice is on the account, 400 for an identifier this system does not
-        /// know, 403 when the account may not change itself, 429 once the attempts are spent.
+        /// 200 when the change is on the account or its code is on the way, 400 for a body naming
+        /// no change or more than one, a refused captcha, a wrong password or a value this system
+        /// does not know, 403 when the account may not change itself, 409 for a taken value, 429
+        /// once the attempts are spent, 502 when the code could not be mailed.
         /// </returns>
-        [HttpPost("profile/timezone")]
+        /// <remarks>
+        /// One endpoint rather than the five paths it replaced: a profile is one resource, and
+        /// REST asks for one method on it — see the class remarks for why exactly one change
+        /// kind may appear in a body and why the refusal for two names both rather than picking
+        /// an order.
+        ///
+        /// The two halves run under the rules they have always had, because the rules are about
+        /// what the change costs and what it proves, not about the path it arrived on. The four
+        /// sensitive changes go through <see cref="ChangeAsync"/>: CSRF, captcha, the shared
+        /// attempt window, then the service. The time zone keeps its own lighter path — CSRF and
+        /// its own window, no captcha — because it is applied at once and a session is the whole
+        /// of the proof it needs, and because it would otherwise spend the permits the password
+        /// change counts on. Which half runs is decided by the shape of the body alone.
+        /// </remarks>
+        [HttpPatch("profile")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
-        public async Task<IActionResult> ChangeTimeZone(
-            [FromBody] ChangeTimezoneRequest request,
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status502BadGateway)]
+        public async Task<IActionResult> Patch(
+            [FromBody] PatchProfileRequest request,
             CancellationToken cancellationToken)
         {
+            var errors = PatchShapeErrors(request);
+
+            if (errors.Count > 0)
+            {
+                return StatusCode(
+                    StatusCodes.Status400BadRequest,
+                    new MessageResponse
+                    {
+                        Code = "validation_failed",
+                        Message = "Some of the values you entered are not valid.",
+                        Errors = errors
+                    });
+            }
+
+            if (SensesTheAccount(request))
+            {
+                return await ChangeAsync(
+                    request.CurrentPassword ?? string.Empty,
+                    (userId, currentPassword) =>
+                        ApplyAsync(request, userId, currentPassword, cancellationToken),
+                    cancellationToken);
+            }
+
             var clientAddress = ClientAddress;
             var limits = RateLimits.CurrentValue;
             var policy = new AttemptPolicy(limits.PreferenceLimit, limits.PreferenceWindow);
@@ -684,127 +725,97 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// Starts changing the login name of the account.
+        /// Which of the two rules a body broke: it must name exactly one change, and every
+        /// change but the time zone must carry the password that authorizes it.
         /// </summary>
-        /// <param name="request">Current password and the new name.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>
-        /// 200 when the change is on the account or its code is on the way, 400 for a refused
-        /// captcha or a wrong password, 403 when the account may not change itself, 409 for a
-        /// taken value, 429 once the attempts are spent, 502 when the code could not be mailed.
-        /// </returns>
-        [HttpPost("profile/username")]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status502BadGateway)]
-        public Task<IActionResult> ChangeUsername(
-            [FromBody] ChangeUsernameRequest request,
-            CancellationToken cancellationToken)
-            => ChangeAsync(
-                request.CurrentPassword ?? string.Empty,
-                (userId, currentPassword) => _profileService.ChangeUsernameAsync(
-                    userId,
-                    currentPassword,
-                    request.Username ?? string.Empty,
-                    cancellationToken),
-                cancellationToken);
-
-        /// <summary>
-        /// Starts changing the email address of the account. The code goes to the new address,
-        /// because that is the one whose ownership the change has to prove.
-        /// </summary>
-        /// <param name="request">Current password and the new address.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>The same outcomes as <see cref="ChangeUsername"/>.</returns>
-        [HttpPost("profile/email")]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status502BadGateway)]
-        public Task<IActionResult> ChangeEmail(
-            [FromBody] ChangeEmailRequest request,
-            CancellationToken cancellationToken)
-            => ChangeAsync(
-                request.CurrentPassword ?? string.Empty,
-                (userId, currentPassword) => _profileService.ChangeEmailAsync(
-                    userId,
-                    currentPassword,
-                    request.Email ?? string.Empty,
-                    cancellationToken),
-                cancellationToken);
-
-        /// <summary>
-        /// Starts changing the password of the account. The new one replaces the old only when
-        /// the mailed code is entered, and doing so ends every session the account holds.
-        /// </summary>
-        /// <param name="request">Current password and the new one.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>The same outcomes as <see cref="ChangeUsername"/>.</returns>
-        [HttpPost("profile/password")]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status502BadGateway)]
-        public Task<IActionResult> ChangePassword(
-            [FromBody] ChangePasswordRequest request,
-            CancellationToken cancellationToken)
-            => ChangeAsync(
-                request.CurrentPassword ?? string.Empty,
-                (userId, currentPassword) => _profileService.ChangePasswordAsync(
-                    userId,
-                    currentPassword,
-                    request.NewPassword ?? string.Empty,
-                    cancellationToken),
-                cancellationToken);
-
-        /// <summary>
-        /// Starts changing the login guard of the account: the two switches and the three
-        /// allow lists. The new guard replaces the old one only when the mailed code is
-        /// entered, and it never touches the sessions the account holds.
-        /// </summary>
-        /// <param name="request">Current password and the requested guard.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>The same outcomes as <see cref="ChangeUsername"/>.</returns>
         /// <remarks>
-        /// Shares the attempt window of the other three changes: it is the same act against
-        /// the same account, and a separate window would be more guesses for a caller willing
-        /// to rotate a path. Unlike a password change it ends no session, because a guard
-        /// names networks rather than secrets - whoever holds a session keeps it until the
-        /// refresh path rechecks the network it arrives from.
+        /// Keyed by the camelCase name of the field a client would fix — <c>currentPassword</c>
+        /// for the missing password, so the refusal lands under the input that caused it — or by
+        /// <c>profile</c> for the shape itself, which belongs to no single input on the form.
+        /// The time zone is exempt from the password because it changes how dates are shown to
+        /// the person holding the session rather than what the account is; the same exemption
+        /// every one of its predecessors had.
         /// </remarks>
-        [HttpPost("profile/geo")]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status502BadGateway)]
-        public Task<IActionResult> ChangeLoginGuard(
-            [FromBody] ChangeLoginGuardRequest request,
+        private static Dictionary<string, string[]> PatchShapeErrors(PatchProfileRequest request)
+        {
+            var kinds = (request.Username is null ? 0 : 1)
+                + (request.Email is null ? 0 : 1)
+                + (request.NewPassword is null ? 0 : 1)
+                + (request.LoginGuard is null ? 0 : 1)
+                + (request.TimeZone is null ? 0 : 1);
+
+            var errors = new Dictionary<string, string[]>();
+
+            if (kinds != 1)
+            {
+                errors["profile"] =
+                    ["Send exactly one change: username, email, newPassword, loginGuard or timeZone."];
+            }
+
+            if (SensesTheAccount(request) && string.IsNullOrEmpty(request.CurrentPassword))
+            {
+                errors["currentPassword"] = ["A password is required to change the account."];
+            }
+
+            return errors;
+        }
+
+        /// <summary>Whether the body asks to change what the account is rather than how it renders.</summary>
+        private static bool SensesTheAccount(PatchProfileRequest request)
+            => request.Username is not null
+            || request.Email is not null
+            || request.NewPassword is not null
+            || request.LoginGuard is not null;
+
+        /// <summary>
+        /// Hands the named change to the service that owns its rules. Exactly one kind is
+        /// present by the time this runs — <see cref="PatchShapeErrors"/> has already refused
+        /// any other shape — so the first matching arm is the only arm that runs.
+        /// </summary>
+        private Task<ProfileChangeOutcome> ApplyAsync(
+            PatchProfileRequest request,
+            Guid userId,
+            string currentPassword,
             CancellationToken cancellationToken)
-            => ChangeAsync(
-                request.CurrentPassword ?? string.Empty,
-                (userId, currentPassword) => _profileService.ChangeLoginGuardAsync(
+            => request switch
+            {
+                { Username: { } username } => _profileService.ChangeUsernameAsync(
+                    userId,
+                    currentPassword,
+                    username,
+                    cancellationToken),
+
+                { Email: { } email } => _profileService.ChangeEmailAsync(
+                    userId,
+                    currentPassword,
+                    email,
+                    cancellationToken),
+
+                { NewPassword: { } newPassword } => _profileService.ChangePasswordAsync(
+                    userId,
+                    currentPassword,
+                    newPassword,
+                    cancellationToken),
+
+                { LoginGuard: { } guard } => _profileService.ChangeLoginGuardAsync(
                     userId,
                     currentPassword,
                     new LoginGuardSettings
                     {
-                        GeoProtectionEnabled = request.GeoProtectionEnabled,
-                        BindSessionToIp = request.BindSessionToIp,
-                        AllowedIps = request.AllowedIps ?? [],
-                        AllowedCountry = request.AllowedCountry,
-                        AllowedAutonomousSystemNumber = request.AllowedAutonomousSystemNumber
+                        GeoProtectionEnabled = guard.GeoProtectionEnabled,
+                        BindSessionToIp = guard.BindSessionToIp,
+                        AllowedIps = guard.AllowedIps ?? [],
+                        AllowedCountry = guard.AllowedCountry,
+                        AllowedAutonomousSystemNumber = guard.AllowedAutonomousSystemNumber
                     },
                     ClientAddress,
                     cancellationToken),
-                cancellationToken);
+
+                _ => throw new InvalidOperationException(
+                    "A profile PATCH on the sensitive path must name username, email, " +
+                    "newPassword or loginGuard.")
+            };
+
 
         /// <summary>
         /// Applies the change whose code was mailed to the account.
@@ -863,8 +874,8 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// The body every change endpoint runs: the three guards, then the service, then
-        /// whatever the outcome costs in session terms.
+        /// The body the sensitive half of <c>PATCH /auth/profile</c> runs: the three guards,
+        /// then the service, then whatever the outcome costs in session terms.
         /// </summary>
         /// <remarks>
         /// The order is the one <see cref="AuthControllerBase"/> states: antiforgery, captcha,

@@ -297,7 +297,27 @@ export const revokeOtherActiveSessions = ({
   })
 
 /**
- * Starts changing one of the three, and answers with the outcome.
+ * The one endpoint every profile edit goes through: `PATCH /auth/profile`.
+ *
+ * The backend collapsed the five `POST /auth/profile/*` paths into this single partial
+ * update (REST: a profile is one resource, so it is edited by one method on one path).
+ * The body names exactly one change — `username`, `email`, `newPassword`, `loginGuard`
+ * or `timeZone` — and the server refuses a body naming none or two rather than picking
+ * an order, because the staged-confirmation flow holds one pending change at a time.
+ *
+ * `body` is a record rather than a typed value shape because the five wrappers below
+ * each build their own single-change body; the shared parts (the method, the path, the
+ * two tokens) are what this helper exists to keep in one place.
+ */
+const patchProfile = ({
+  body,
+  csrfToken,
+  captchaToken,
+}: CallOptions & { body: Record<string, unknown> }): Promise<MessageResponse> =>
+  apiFetch('/auth/profile', { method: 'PATCH', body, csrfToken, captchaToken })
+
+/**
+ * Starts changing one of the four sensitive fields, and answers with the outcome.
  *
  * A 2xx means one of two things and the `code` says which: `profile_updated` when this
  * installation has no mail server and the change is already on the account, and
@@ -310,11 +330,7 @@ export const changeUsername = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { currentPassword: string; username: string }): Promise<MessageResponse> =>
-  apiFetch('/auth/profile/username', {
-    body: { currentPassword, username },
-    csrfToken,
-    captchaToken,
-  })
+  patchProfile({ body: { currentPassword, username }, csrfToken, captchaToken })
 
 /** The code for an address change is mailed to the new one, never to the old one. */
 export const changeEmail = ({
@@ -323,11 +339,7 @@ export const changeEmail = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { currentPassword: string; email: string }): Promise<MessageResponse> =>
-  apiFetch('/auth/profile/email', {
-    body: { currentPassword, email },
-    csrfToken,
-    captchaToken,
-  })
+  patchProfile({ body: { currentPassword, email }, csrfToken, captchaToken })
 
 /**
  * Starts changing the password. The new one replaces the old only once the mailed code is
@@ -340,11 +352,7 @@ export const changePassword = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { currentPassword: string; newPassword: string }): Promise<MessageResponse> =>
-  apiFetch('/auth/profile/password', {
-    body: { currentPassword, newPassword },
-    csrfToken,
-    captchaToken,
-  })
+  patchProfile({ body: { currentPassword, newPassword }, csrfToken, captchaToken })
 
 /**
  * Applies a pending profile change.
@@ -391,14 +399,16 @@ export const changeLoginGuard = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { currentPassword: string; guard: LoginGuardSettings }): Promise<MessageResponse> =>
-  apiFetch('/auth/profile/geo', {
+  patchProfile({
     body: {
       currentPassword,
-      geoProtectionEnabled: guard.geoProtectionEnabled,
-      bindSessionToIp: guard.bindSessionToIp,
-      allowedIps: guard.allowedIps,
-      allowedCountry: guard.allowedCountry,
-      allowedAutonomousSystemNumber: guard.allowedAutonomousSystemNumber,
+      loginGuard: {
+        geoProtectionEnabled: guard.geoProtectionEnabled,
+        bindSessionToIp: guard.bindSessionToIp,
+        allowedIps: guard.allowedIps,
+        allowedCountry: guard.allowedCountry,
+        allowedAutonomousSystemNumber: guard.allowedAutonomousSystemNumber,
+      },
     },
     csrfToken,
     captchaToken,
@@ -422,6 +432,11 @@ export const lookupGeo = (): Promise<GeoLookup> => apiGet<GeoLookup>('/auth/geo/
  * signed-in visitor saving a display preference), and a header the server does not read
  * would only suggest otherwise. The antiforgery token is still required - it is checked on
  * every write of this API, session or not.
+ *
+ * `null` is sent as an empty string, and that is the contract rather than a detail: on the
+ * merged `PATCH` an absent `timeZone` means "leave it alone" while an explicit empty string
+ * means "clear the preference", so a literal `null` in the body would be read as no change
+ * at all and the button would appear to do nothing.
  */
 export const updateTimezone = ({
   timeZone,
@@ -430,10 +445,7 @@ export const updateTimezone = ({
   timeZone: string | null
   csrfToken: string | null
 }): Promise<MessageResponse> =>
-  apiFetch('/auth/profile/timezone', {
-    body: { timeZone },
-    csrfToken,
-  })
+  patchProfile({ body: { timeZone: timeZone ?? '' }, csrfToken, captchaToken: null })
 
 /**
  * Whether this installation can send a code at all.

@@ -108,8 +108,9 @@ network, not a stored field.
   Development there is no bypass - a local address there is a misconfiguration, not the
   developer. `Microsoft.Extensions.Hosting` 10.0.12 is pinned in `Fluxy.Application.csproj`
   for `IHostEnvironment`, same MSB3277 reason as the other pins.
-- **Profile surface**: `GET /auth/profile` renders the guard fields, `POST /auth/profile/geo`
-  (`ChangeLoginGuardRequest`) changes them behind the current password plus the shared change
+- **Profile surface**: `GET /auth/profile` renders the guard fields, `PATCH /auth/profile`
+  (the `loginGuard` field of `PatchProfileRequest`) changes them behind the current password
+  plus the shared change
   attempt window, confirmed by the existing `POST /auth/profile/confirm` flow with the new
   `PendingChangeKind.ChangeLoginGuard = 5`. The staged guard travels as JSON in the new
   nullable `pending_changes.payload` column (five networks do not fit `target_value`), and a
@@ -149,6 +150,10 @@ were exercised as `Unknown` and the address list carried the allow decisions):
 | Missing `.mmdb` files | startup warning naming the `GeoIp` section, lookups `Unknown` |
 | `DELETE FROM users` | rules, refresh rows and pending rows of that account gone, other accounts untouched |
 | `POST /auth/admin-login` with the old `Test1234` after the rotation | 401 (the password printed during verification no longer works) |
+
+The four `POST /auth/profile/geo` rows record the run as it happened, before the May 2026 REST
+pass; the endpoint is now `PATCH /auth/profile` with the guard nested under `loginGuard`, the
+same body one level deeper, and the rules behind it did not change.
 
 ## The visit history: `GET /auth/sessions`
 
@@ -686,6 +691,40 @@ Deliberate, but worth writing down so nobody re-derives them:
 - **Failed registration attempts are free.** The permit is spent only when a row is actually persisted, so `validation_failed` and `user_already_exists` do not consume it. That was the requirement, and it keeps a user who mistypes their password from being locked out — but it means the registration endpoint has **no cap on its own failure rate**. Account enumeration is mitigated by anonymizing both conflicts into one `user_already_exists` answer, not by the limit. If enumeration ever matters more than the convenience, count failures too.
 - **The 6-digit code is only throttled per IP, with no per-account counter.** Ten guesses per window per address is cheap for one attacker with many addresses.
 - **A transient SMTP failure leaves the account `Unregistered`** with a pending code for the remainder of its 15 minutes. A new registration request replaces it, which is the intended recovery, but the window is spent until then.
+
+## API design aims at REST; every deviation is agreed explicitly
+
+When designing a new endpoint, reach for REST first: **plural noun resources**, the method that
+describes the operation (`GET` read-only, `POST` create, `PATCH` partial update, `DELETE` remove),
+and the status code that describes the outcome (`201` on create with a `Location`, `204` where
+there is nothing to say back, `404` for a resource that is not there). A new route that reads as a
+verb (`/do-something`) is a smell — check whether it is really an operation on a resource before
+naming it that way.
+
+**Any departure from that is a decision, not an accident, and the owner signs off on it before it
+is written.** The existing departures are all approved and each one carries its reason in the XML
+docs of the controller that owns it; a new one must be agreed with the owner first and then
+recorded the same way — in the endpoint's remarks and in this file. The ones already agreed:
+
+- **The three per-role sign-in paths** (`POST /auth/client-login|reseller-login|admin-login`) —
+  one path per entrance, so a stale URL cannot point at an audience it was not built for.
+- **RPC-style session actions** (`POST /auth/refresh`, `POST /auth/logout`, `GET /auth/csrf`,
+  `GET /auth/me`) — there is no resource to name: a refresh mints tokens, a logout ends state that
+  lives across two stores, `csrf` and `me` are questions rather than things.
+- **`GET /auth/me` beside `GET /auth/profile`** — two readings of "who am I": `me` is the cheap
+  session identity the guest guard polls on every navigation, `profile` is the full account row
+  with the login guard. Merging them would put the guest guard's round trip behind a database
+  read it does not need.
+
+The May 2026 REST pass collapsed the five `POST /auth/profile/*` change endpoints into a single
+`PATCH /auth/profile` and renamed `register`/`password` into the plural resources
+`registrations`/`password-resets`. Its rule — **exactly one change kind per PATCH** — exists
+because the staged-confirmation flow holds one pending change at a time, and the time zone (which
+is applied at once, has no captcha and its own attempt window) must never share a request with a
+password change (which is mailed a code and revokes sessions): the endpoint refuses a body that
+names two kinds with `validation_failed` rather than guessing an order. Contract shape:
+`{ currentPassword?, username? | email? | newPassword? | loginGuard? | timeZone? }`, where an
+absent property means "leave it alone" and an empty `timeZone` clears the preference.
 
 ## Conventions
 

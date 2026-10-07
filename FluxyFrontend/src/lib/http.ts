@@ -58,7 +58,7 @@ interface RequestOptions {
 
 /** A request as `rawFetch` makes it: a `RequestOptions` plus the method. */
 interface RawOptions extends RequestOptions {
-  method?: 'GET' | 'POST' | 'DELETE'
+  method?: 'GET' | 'POST' | 'DELETE' | 'PATCH'
 }
 
 /** Everything `ApiError` is constructed from. */
@@ -194,7 +194,12 @@ async function refreshSession(): Promise<boolean> {
  */
 export async function apiFetch<T = MessageResponse>(
   path: string,
-  { body, csrfToken, captchaToken, method }: RequestOptions & { method?: 'POST' | 'DELETE' } = {},
+  {
+    body,
+    csrfToken,
+    captchaToken,
+    method,
+  }: RequestOptions & { method?: 'POST' | 'DELETE' | 'PATCH' } = {},
 ): Promise<T> {
   try {
     return await rawFetch<T>(path, { body, csrfToken, captchaToken, method })
