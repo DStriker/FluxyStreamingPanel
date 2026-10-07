@@ -485,8 +485,8 @@ Three endpoints exist now. They are the first thing in the API layer, and they f
 | Endpoint | Auth | Rate limit | Purpose |
 | --- | --- | --- | --- |
 | `GET /auth/csrf` | none | none | Issue the antiforgery token |
-| `POST /auth/register` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code |
-| `POST /auth/register/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
+| `POST /auth/registrations` | CSRF + captcha | 1 per IP / 15 min | Create account, mail confirmation code (201 + `Location`) |
+| `POST /auth/registrations/confirm` | CSRF + captcha | 10 per IP / 15 min | Confirm account with the code |
 
 **There is no `api` segment in any route, on purpose.** This process serves nothing but the API, so a prefix that distinguishes it from a website tells nobody anything, and it becomes one more thing to change when the API is moved behind a path of its own — which a reverse proxy or a gateway adds anyway. The route lives in one place, `[Route("auth")]` on `AuthController`; the frontend builds its paths from the same shape in `src/lib/api.js`. If a shared host ever needs the distinction back, put it in front of the application as a path prefix rather than in the controllers.
 
@@ -506,7 +506,7 @@ The controller owns transport: which check runs first, what HTTP status each out
 
 | Code | HTTP | When |
 | --- | --- | --- |
-| `registration_submitted` | 200 | Account stored, code mailed |
+| `registration_submitted` | 201 | Account stored, code mailed; `Location` names `/auth/profile` |
 | `registration_not_configured` | 503 | No SMTP settings on this server |
 | `validation_failed` | 400 | Field-level rejection (body or service) |
 | `user_already_exists` | 409 | Username or email is taken |
@@ -567,7 +567,7 @@ It is **http only on purpose.** The dev certificate is `CN=localhost`, so an htt
 
 **CORS does not apply to these clients at all.** It is a browser mechanism: a browser refuses to hand a response to script that did not come from an allowed origin. `curl`, a native app and a server-to-server caller never consult it, which is why exposing the ports is enough for them and why the antiforgery cookies stay `SameSite=Lax` — the weakening a genuinely cross-site browser deployment would need is not required and has not been done.
 
-Verified over the LAN address: `GET /auth/csrf` → 200 with both cookies and no `secure` flag; `POST /auth/register` with the cookie and header → `captcha_invalid`, which is the next gate after CSRF; the same POST without the cookie → `csrf_invalid`.
+Verified over the LAN address: `GET /auth/csrf` → 200 with both cookies and no `secure` flag; `POST /auth/registrations` with the cookie and header → `captcha_invalid`, which is the next gate after CSRF; the same POST without the cookie → `csrf_invalid`.
 
 ### The `https` profile turns a same-origin call into a CORS failure
 
@@ -606,7 +606,7 @@ Verified on the `https` profile with the proxy: `/auth/csrf` → `200` JSON, bot
 
 ### reCAPTCHA v3 cannot be satisfied by a non-browser client
 
-reCAPTCHA v3 tokens are minted by Google's JavaScript **running in a page**. There is no server-side way to produce one: `siteverify` only checks a token a page has already obtained. So with `RECAPTCHA_SECRET_KEY` set, `POST /auth/register` and `POST /auth/register/confirm` are **browser-only by construction** — a native app, `curl` or a server-to-server caller gets `captcha_invalid` however correct its antiforgery pair is. Verified: a correct cookie and header over the LAN address advances past CSRF and is then refused at the captcha.
+reCAPTCHA v3 tokens are minted by Google's JavaScript **running in a page**. There is no server-side way to produce one: `siteverify` only checks a token a page has already obtained. So with `RECAPTCHA_SECRET_KEY` set, `POST /auth/registrations` and `POST /auth/registrations/confirm` are **browser-only by construction** — a native app, `curl` or a server-to-server caller gets `captcha_invalid` however correct its antiforgery pair is. Verified: a correct cookie and header over the LAN address advances past CSRF and is then refused at the captcha.
 
 This is a real conflict between two reasonable requirements and it has no clean code fix. Exempting non-browser callers would remove the protection from exactly the callers worth protecting, since an attacker impersonating a legitimate integration is the case the check exists for. The workable answer is deployment-shaped rather than code-shaped: **leave the key empty on a development machine and set it only on the instance meant to serve browsers.** An empty key bypasses the check, which is also why a production deployment that forgot it logs a warning instead of failing quietly.
 
@@ -614,7 +614,7 @@ This is a real conflict between two reasonable requirements and it has no clean 
 
 Bypassed when `Recaptcha:SecretKey` is empty. This keeps a dev machine usable and is the reason `getCaptchaToken()` can return `null` in DEV. **A startup warning is logged when the key is missing** so a production deployment that forgot it does not silently have no protection.
 
-The action is fixed per endpoint, not chosen by the caller: `register` for `POST /auth/register`, `register_confirm` for `POST /auth/register/confirm`. The frontend must call `getCaptchaToken('register')` to match.
+The action is fixed per endpoint, not chosen by the caller: `register` for `POST /auth/registrations`, `register_confirm` for `POST /auth/registrations/confirm`. The captcha action is a token property, not a path — its spelling did not move with the rename. The frontend must call `getCaptchaToken('register')` to match.
 
 ### Email
 
@@ -649,7 +649,7 @@ Every row below was produced against a live instance talking to the compose post
 | `GET /auth/csrf` | 200, both cookies written, `XSRF-TOKEN` readable, body token equals the cookie |
 | POST without `X-CSRF-Token` | 400 `csrf_invalid` **with** a body |
 | POST, no mail configured | 503 `registration_not_configured`, **no row written** |
-| POST valid | 200 `registration_submitted`, row inserted with `status = 0`, mail delivered |
+| POST valid | 201 `registration_submitted` + `Location: /auth/profile`, row inserted with `status = 0`, mail delivered |
 | POST password too simple | 400 `validation_failed`, `errors.password`, **permit not spent** |
 | POST taken username | 409 `user_already_exists`, **permit not spent** |
 | POST again for the same `Unregistered` account | 200, `UPDATE` of password + code only, `created_at` untouched |

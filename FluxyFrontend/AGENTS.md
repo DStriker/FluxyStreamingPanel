@@ -120,7 +120,7 @@ Two things about how it is written, both learned the hard way:
 
 The rate limits make repeated runs awkward, so the script reports a full window as a **SKIP** with the `redis-cli DEL` command to clear it, rather than as a failure. A 429 is the server working correctly and says nothing about the client; failing on it made the probe useless in an ordinary edit loop. Cleared windows: `fluxy:throttle:register:::1` and `fluxy:throttle:confirm:::1` (`::1` is the loopback client, and the colons belong to the IPv6 address).
 
-An enforced reCAPTCHA is skipped for the same reason. A v3 token is minted by Google's JavaScript in a page, so the script cannot produce one: with `RECAPTCHA_SECRET_KEY` set in the backend `.env`, both `POST /auth/register` and `POST /auth/register/confirm` answer `captcha_invalid` before doing anything measurable. That is the server working correctly, so it is a SKIP with the hint to leave the key empty, not a FAIL. Without this the probe is permanently red on any machine that has the key set, which is exactly the machine where someone would stop trusting it.
+An enforced reCAPTCHA is skipped for the same reason. A v3 token is minted by Google's JavaScript in a page, so the script cannot produce one: with `RECAPTCHA_SECRET_KEY` set in the backend `.env`, both `POST /auth/registrations` and `POST /auth/registrations/confirm` answer `captcha_invalid` before doing anything measurable. That is the server working correctly, so it is a SKIP with the hint to leave the key empty, not a FAIL. Without this the probe is permanently red on any machine that has the key set, which is exactly the machine where someone would stop trusting it.
 
 ### `npm run probe:session` — sign in, refresh, sign out
 

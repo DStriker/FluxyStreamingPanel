@@ -95,7 +95,7 @@ namespace Fluxy.API.Controllers
         /// it resolves to the same answer here and to the same refusal there.
         /// </remarks>
         /// <returns>200 with whether the reset flow is available.</returns>
-        [HttpGet("password/status")]
+        [HttpGet("password-resets/status")]
         [ProducesResponseType<PasswordStatusResponse>(StatusCodes.Status200OK)]
         public IActionResult Status()
             => Ok(new PasswordStatusResponse
@@ -114,7 +114,7 @@ namespace Fluxy.API.Controllers
         /// a value is invalid, 429 once the attempts are spent, 502 when the code could not be
         /// mailed, 503 on an installation with no mail server.
         /// </returns>
-        [HttpPost("password/forgot")]
+        [HttpPost("password-resets")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
@@ -184,7 +184,7 @@ namespace Fluxy.API.Controllers
         /// signed in anyway, and the devices that are signed in are the ones being defended
         /// against.
         /// </remarks>
-        [HttpPost("password/reset")]
+        [HttpPost("password-resets/confirm")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]

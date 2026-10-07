@@ -57,7 +57,7 @@ namespace Fluxy.API.Contracts
         private static Mapping Map(RegistrationStatus status) => status switch
         {
             RegistrationStatus.Submitted => new(
-                StatusCodes.Status200OK,
+                StatusCodes.Status201Created,
                 "registration_submitted",
                 "Registration submitted. Check your inbox for the confirmation code."),
 

@@ -96,8 +96,8 @@ const describe = (r) =>
 
 // ---------------------------------------------------------------- reachability
 
-console.log(`\nAPI base: ${config.API_BASE_URL}\nURL join: ${apiUrl('/auth/register')}\n`)
-record('apiUrl joins base + path', apiUrl('/auth/register') === `${BASE}/auth/register` ? 'ok' : 'MISMATCH')
+console.log(`\nAPI base: ${config.API_BASE_URL}\nURL join: ${apiUrl('/auth/registrations')}\n`)
+record('apiUrl joins base + path', apiUrl('/auth/registrations') === `${BASE}/auth/registrations` ? 'ok' : 'MISMATCH')
 
 // The regression this probe exists to catch: `csrf.js` once fetched a bare '/auth/csrf',
 // which the browser resolved against the page rather than the API. In dev that is the Vite
@@ -249,7 +249,7 @@ const wrong = await call(confirmRegistration, {
   email, code: '000000', csrfToken, captchaToken: null,
 })
 const confirmWindowFull = !wrong.ok && wrong.err.code === 'confirmation_rate_limited'
-// Same story as above, one endpoint further on: `/auth/register/confirm` enforces the captcha
+// Same story as above, one endpoint further on: `/auth/registrations/confirm` enforces the captcha
 // too, so an enforced key refuses this call before the code is ever compared.
 const confirmCaptchaEnforced = !wrong.ok && wrong.err.code === 'captcha_invalid'
 const confirmBlocked = confirmWindowFull || confirmCaptchaEnforced
@@ -258,7 +258,7 @@ if (confirmWindowFull) {
   console.log(`\nSKIP  confirmation window is full (429) - the remaining confirm checks cannot run.`)
   console.log(`      docker exec redis redis-cli --user fluxy -a <REDIS_PASSWORD> DEL 'fluxy:throttle:confirm:::1'`)
 } else if (confirmCaptchaEnforced) {
-  console.log(`\nSKIP  /auth/register/confirm is also captcha-gated - the remaining confirm checks cannot run.`)
+  console.log(`\nSKIP  /auth/registrations/confirm is also captcha-gated - the remaining confirm checks cannot run.`)
 } else {
   record('wrong code -> invalid_code', describe(wrong), !wrong.ok && wrong.err.code === 'invalid_code')
 

@@ -93,7 +93,7 @@ export const submitRegistration = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { values: RegistrationValues }): Promise<MessageResponse> =>
-  apiFetch('/auth/register', {
+  apiFetch('/auth/registrations', {
     body: { username: values.username, email: values.email, password: values.password },
     csrfToken,
     captchaToken,
@@ -106,7 +106,7 @@ export const confirmRegistration = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { email: string; code: string }): Promise<MessageResponse> =>
-  apiFetch('/auth/register/confirm', {
+  apiFetch('/auth/registrations/confirm', {
     body: { email, code },
     csrfToken,
     captchaToken,
@@ -456,7 +456,7 @@ export const updateTimezone = ({
  */
 export const passwordResetStatus = async (): Promise<boolean> => {
   try {
-    const result = await apiGet<PasswordStatusResponse>('/auth/password/status')
+    const result = await apiGet<PasswordStatusResponse>('/auth/password-resets/status')
     return result?.configured === true
   } catch {
     return false
@@ -476,7 +476,7 @@ export const requestPasswordReset = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { values: RegistrationValues }): Promise<MessageResponse> =>
-  apiFetch('/auth/password/forgot', {
+  apiFetch('/auth/password-resets', {
     body: { username: values.username, email: values.email, password: values.password },
     csrfToken,
     captchaToken,
@@ -494,7 +494,7 @@ export const confirmPasswordReset = ({
   csrfToken,
   captchaToken,
 }: CallOptions & { username: string; code: string }): Promise<MessageResponse> =>
-  apiFetch('/auth/password/reset', {
+  apiFetch('/auth/password-resets/confirm', {
     body: { username, code },
     csrfToken,
     captchaToken,

@@ -48,6 +48,13 @@ namespace Fluxy.API.Controllers
         /// </summary>
         public const string ConfirmCaptchaAction = "register_confirm";
 
+        /// <summary>
+        /// Where a created account becomes readable, sent as the <c>Location</c> of the 201 —
+        /// after the mailed code confirms it, which is why it names the profile rather than
+        /// something fetchable today.
+        /// </summary>
+        private const string CreatedProfilePath = "/auth/profile";
+
         /// <summary>Code reported when a client already spent its registration for this window.</summary>
         public const string RegisterThrottledCode = "registration_rate_limited";
 
@@ -154,12 +161,22 @@ namespace Fluxy.API.Controllers
         /// </param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 when the account was stored, 400 for a bad body or a refused captcha, 409 for a
+        /// 201 with a <c>Location</c> naming the profile this account becomes once confirmed,
+        /// 400 for a bad body or a refused captcha, 409 for a
         /// taken value, 502 when the code could not be mailed, and 503 on an installation that has
         /// no mail server.
         /// </returns>
-        [HttpPost("register")]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        /// <remarks>
+        /// 201 rather than 200 because something was created - REST asks for the status that
+        /// says so, and for the URI of what came into being. The profile is where this account
+        /// will be readable, but only after the mailed code confirms it: until then a GET of
+        /// that URI answers 401 for this very caller, which is the truth - the row exists, the
+        /// right to read it does not yet. Naming the destination anyway is what makes the
+        /// created resource explicit; the body carries the code and the next step, which is
+        /// what the visitor actually needs.
+        /// </remarks>
+        [HttpPost("registrations")]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
@@ -255,7 +272,7 @@ namespace Fluxy.API.Controllers
         /// The tokens are the same two cookies a sign-in writes, produced by the same service,
         /// so nothing downstream can tell a confirmed session from a signed-in one.
         /// </remarks>
-        [HttpPost("register/confirm")]
+        [HttpPost("registrations/confirm")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status429TooManyRequests)]
@@ -336,11 +353,26 @@ namespace Fluxy.API.Controllers
         /// Renders what a service reported, normalizing the field names on the way out so that a
         /// client sees one shape whatever rejected the request.
         /// </summary>
+        /// <remarks>
+        /// The created account also gets its <c>Location</c> here rather than at the call site:
+        /// <c>Respond</c> is the single place every registration outcome becomes a status, so
+        /// the one outcome that names a resource cannot be answered somewhere else without the
+        /// header going missing.
+        /// </remarks>
         private IActionResult Respond(RegistrationOutcome outcome)
-            => StatusCode(
+        {
+            var result = StatusCode(
                 RegistrationResponses.StatusCodeOf(outcome.Status),
                 RegistrationResponses.Describe(
                     outcome.Status,
                     FieldErrorKeys.FromPropertyNames(outcome.Errors)));
+
+            if (outcome.Status is RegistrationStatus.Submitted)
+            {
+                Response.Headers.Location = CreatedProfilePath;
+            }
+
+            return result;
+        }
     }
 }
