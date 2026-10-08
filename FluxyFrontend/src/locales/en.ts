@@ -248,6 +248,7 @@ const en = {
     // Under the password field while editing. An empty password means "keep the one that is
     // there" - the server's rule for that field, stated before the visitor wonders about it.
     passwordKeep: 'Leave empty to keep the current password',
+    generatePassword: 'Generate password ({{length}} letters and digits)',
     create: 'Create',
     backToList: 'Back to the list',
     // The table.

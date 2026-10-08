@@ -21,6 +21,8 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import {
   EMAIL_MAX,
+  GENERATED_PASSWORD_LENGTH,
+  generatePassword,
   meetsPasswordComplexity,
   PASSWORD_MAX,
   PASSWORD_MIN,
@@ -188,6 +190,10 @@ export default function UserFormPage(_props: UserFormPageProps) {
   // Bumped by the retry button rather than by anything the page navigated to, so a dropped
   // connection can be asked about again without leaving the address the visitor chose.
   const [attempt, setAttempt] = useState(0)
+  // The eye over the password, controlled from the first paint rather than switched to
+  // controlled later - an uncontrolled antd input becoming controlled is a warning about
+  // a state two places think they own. Opened by `handleGeneratePassword` below.
+  const [passwordVisible, setPasswordVisible] = useState(false)
 
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
@@ -277,6 +283,22 @@ export default function UserFormPage(_props: UserFormPageProps) {
       },
     },
   ]
+
+  /**
+   * Fills the password field and opens it at once.
+   *
+   * The value is meant to be handed to whoever will sign in with it, and a masked one
+   * cannot be handed over - so the eye opens with the generation and the visitor closes
+   * it afterwards if they want to. An explicit button rather than the browser's own
+   * offer alone, because that offer is a heuristic of the visitor's browser: absent in
+   * some, and it may file the value into the administrator's own vault instead of
+   * saying it out loud. Both modes get it - an account is created with a password on
+   * the add address just as often as it has one set on the edit address.
+   */
+  const handleGeneratePassword = () => {
+    form.setFields([{ name: 'password', value: generatePassword(), errors: [] }])
+    setPasswordVisible(true)
+  }
 
   const handleFinish = async (values: UserFormValues) => {
     setSubmitting(true)
@@ -451,7 +473,22 @@ export default function UserFormPage(_props: UserFormPageProps) {
             extra={isEdit ? t('users.passwordKeep') : undefined}
             rules={passwordRules}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              visibilityToggle={{
+                visible: passwordVisible,
+                onVisibleChange: setPasswordVisible,
+              }}
+            />
+          </Form.Item>
+
+          {/* The explicit way to get a strong password into the field, beside whatever the
+              browser offers for it. `marginTop` pulls it close enough to read as belonging
+              to the password rather than as a section of its own. */}
+          <Form.Item style={{ marginTop: -12 }}>
+            <Button disabled={submitting} onClick={handleGeneratePassword}>
+              {t('users.generatePassword', { length: GENERATED_PASSWORD_LENGTH })}
+            </Button>
           </Form.Item>
 
           <Form.Item name="role" label={t('users.columns.role')}>

@@ -38,6 +38,11 @@ import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
 import { countryName } from '../src/lib/countryName'
 import { describeUserAgent } from '../src/lib/userAgent'
+import {
+  GENERATED_PASSWORD_LENGTH,
+  generatePassword,
+  meetsPasswordComplexity,
+} from '../src/lib/policy'
 import { routePath } from '../src/config/index'
 
 const render = (Page, path) =>
@@ -510,6 +515,24 @@ async function main() {
   //   carrying neither the id row nor the edit-only password hint;
   // - the edit address is a spinner under the edit title rather than a form of empty
   //   fields pointed at an account that has not arrived.
+  // The generator is asserted as a function for the reason the two display helpers in the
+  // visit history are: no render reaches it, and every property it is sold on stays
+  // invisible until somebody clicks. Ten characters of letters and digits is the button's
+  // label, satisfying the complexity rule is the entire point of drawing from three
+  // classes, and two draws differing is the difference between a generator and a
+  // constant.
+  const [firstDraw, secondDraw] = [generatePassword(), generatePassword()]
+  check(
+    'the generated password is ten letters and digits that satisfy the complexity rule',
+    firstDraw.length === GENERATED_PASSWORD_LENGTH &&
+      /^[a-zA-Z0-9]+$/.test(firstDraw) &&
+      meetsPasswordComplexity(firstDraw) &&
+      secondDraw.length === GENERATED_PASSWORD_LENGTH &&
+      meetsPasswordComplexity(secondDraw) &&
+      firstDraw !== secondDraw,
+    `${firstDraw} and ${secondDraw}`,
+  )
+
   const usersHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/users']}>
       <AntApp>
@@ -620,6 +643,17 @@ async function main() {
         .filter((tag) => !tag.includes('type="password"'))
         .every((tag) => tag.includes('type="text"') && tag.includes('class="ant-select-input"')),
     `${newPasswordInputs.length} inputs claim new-password, one of them the password field`,
+  )
+
+  // The explicit button beside that offer, with the length interpolated rather than
+  // written twice: the label the visitor reads and the constant the generator obeys are
+  // built from the same number here, so one cannot drift from the other.
+  check(
+    'the add form offers the explicit generate button under the password field',
+    userFormHtml.includes(
+      `Generate password (${GENERATED_PASSWORD_LENGTH} letters and digits)`,
+    ),
+    `rendered ${userFormHtml.length} bytes of the add form`,
   )
 
   // The edit address needs a real route rather than a bare render: `useParams` reads the
