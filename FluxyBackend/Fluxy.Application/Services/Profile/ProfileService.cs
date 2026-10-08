@@ -101,49 +101,18 @@ namespace Fluxy.Application.Services.Profile
             };
         }
 
-        /// <summary>
-        /// Longest accepted identifier, matching the column width. Mirrored rather than
-        /// imported from <c>UserConfiguration</c> for the same reason the registration rules
-        /// keep their own copies: the limit belongs to the input being accepted, and the
-        /// column is what happens to agree with it.
-        /// </summary>
-        private const int TimeZoneMaxLength = 64;
-
         /// <inheritdoc />
         public async Task<ProfileChangeOutcome> UpdateTimeZoneAsync(
             Guid userId,
             string? timeZone,
             CancellationToken cancellationToken = default)
         {
-            var requested = timeZone?.Trim() ?? string.Empty;
-
-            if (requested.Length > TimeZoneMaxLength)
+            // One rule decides here and in the admin user form alike, so the same identifier
+            // cannot be refused by one and stored by the other. The rule itself explains why
+            // the check is a lookup rather than a pattern over the shape of the name.
+            if (!TimeZonePolicy.TryNormalize(timeZone, out var requested))
             {
                 return InvalidTimeZone();
-            }
-
-            // Empty means the visitor picked "auto", which is stored as NULL - the absence
-            // of the value is the state that says "read it from the browser", and it is
-            // written rather than skipped so that clearing a zone cannot leave the old one
-            // behind.
-            if (requested.Length > 0)
-            {
-                // An identifier this installation's clock cannot resolve is refused here
-                // rather than stored and discovered later by whatever tries to format a date
-                // with it. On Linux the same API reads IANA ids natively, so a name that
-                // passes this check works where the application runs.
-                try
-                {
-                    TimeZoneInfo.FindSystemTimeZoneById(requested);
-                }
-                catch (TimeZoneNotFoundException)
-                {
-                    return InvalidTimeZone();
-                }
-                catch (InvalidTimeZoneException)
-                {
-                    return InvalidTimeZone();
-                }
             }
 
             var user = await _context.Users
@@ -154,7 +123,10 @@ namespace Fluxy.Application.Services.Profile
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
 
-            user.TimeZone = requested.Length > 0 ? requested : null;
+            // A cleared zone is written rather than skipped, so that going back to "auto"
+            // cannot leave the old one behind: the absence of the value is the state that
+            // says "read it from the browser".
+            user.TimeZone = requested;
 
             // No unique index on this column, so unlike the three changes above a lost race
             // cannot happen and the save needs no interpretation of its failures.
@@ -225,7 +197,10 @@ namespace Fluxy.Application.Services.Profile
             string? clientAddress,
             CancellationToken cancellationToken = default)
         {
-            var staged = NormalizeGuard(settings);
+            // Normalized once, so the anti-lock check below, the staging and the confirmation
+            // all read the same values the database will hold. The rules themselves live
+            // beside the store that writes them, shared with the admin service.
+            var staged = LoginGuardNormalizer.Normalize(settings);
             if (staged.Errors.Count > 0)
             {
                 return new ProfileChangeOutcome
@@ -796,100 +771,12 @@ namespace Fluxy.Application.Services.Profile
                 StringComparison.Ordinal) == true;
 
         /// <summary>
-        /// The staged content of a <see cref="PendingChangeKind.ChangeLoginGuard"/> row, as JSON
-        /// in <see cref="PendingChangeEntity.Payload"/>. Values are canonical already - the
-        /// request normalized them - so the confirmation applies them without re-reading the
-        /// form.
-        /// </summary>
-        private sealed record StagedLoginGuard(
-            bool GeoProtectionEnabled,
-            bool BindSessionToIp,
-            string[] AllowedIps,
-            string? AllowedCountry,
-            int? AllowedAutonomousSystemNumber);
-
-        /// <summary>
-        /// Canonical form of a requested guard plus everything wrong with it. Normalization
-        /// happens once, here, so the anti-lock check, the staging and the confirmation all
-        /// read the same values the database will hold.
-        /// </summary>
-        private static (StagedLoginGuard Value, Dictionary<string, string[]> Errors) NormalizeGuard(
-            LoginGuardSettings settings)
-        {
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-            var ips = (settings.AllowedIps ?? [])
-                .Select(LoginGuardPolicy.NormalizeIpEntry)
-                .ToList();
-
-            if (ips.Any(entry => entry is null))
-            {
-                errors[nameof(LoginGuardSettings.AllowedIps)] =
-                [
-                    "Every address must be an IP address or a CIDR range, IPv4 or IPv6."
-                ];
-            }
-
-            var canonicalIps = ips
-                .Where(entry => entry is not null)
-                .Cast<string>()
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-
-            if (canonicalIps.Length > LoginGuardPolicy.MaxAllowedIps)
-            {
-                errors[nameof(LoginGuardSettings.AllowedIps)] =
-                [
-                    $"No more than {LoginGuardPolicy.MaxAllowedIps} addresses may be allowed."
-                ];
-            }
-
-            string? country = null;
-            if (!string.IsNullOrWhiteSpace(settings.AllowedCountry))
-            {
-                country = LoginGuardPolicy.NormalizeCountry(settings.AllowedCountry);
-                if (country is null)
-                {
-                    errors[nameof(LoginGuardSettings.AllowedCountry)] =
-                    [
-                        "The country must be an ISO 3166-1 alpha-2 code this system knows."
-                    ];
-                }
-            }
-
-            int? asn = null;
-            if (settings.AllowedAutonomousSystemNumber is { } requested)
-            {
-                if (!LoginGuardPolicy.IsAutonomousSystemNumber(requested))
-                {
-                    errors[nameof(LoginGuardSettings.AllowedAutonomousSystemNumber)] =
-                    [
-                        "The provider must be an autonomous system number greater than zero."
-                    ];
-                }
-                else
-                {
-                    asn = requested;
-                }
-            }
-
-            return (
-                new StagedLoginGuard(
-                    settings.GeoProtectionEnabled,
-                    settings.BindSessionToIp,
-                    canonicalIps,
-                    country,
-                    asn),
-                errors);
-        }
-
-        /// <summary>
         /// Stores the staged guard, replacing whatever this account was waiting for before.
         /// </summary>
         /// <returns>False when a concurrent request for the same account won the race.</returns>
         private async Task<bool> StageLoginGuardAsync(
             Guid userId,
-            StagedLoginGuard staged,
+            NormalizedLoginGuard staged,
             string code,
             DateTimeOffset expiresAt,
             CancellationToken cancellationToken)
@@ -938,10 +825,10 @@ namespace Fluxy.Application.Services.Profile
             PendingChangeEntity pending,
             CancellationToken cancellationToken)
         {
-            StagedLoginGuard? staged = null;
+            NormalizedLoginGuard? staged = null;
             try
             {
-                staged = JsonSerializer.Deserialize<StagedLoginGuard>(pending.Payload ?? string.Empty);
+                staged = JsonSerializer.Deserialize<NormalizedLoginGuard>(pending.Payload ?? string.Empty);
             }
             catch (JsonException)
             {
@@ -990,52 +877,18 @@ namespace Fluxy.Application.Services.Profile
         }
 
         /// <summary>
-        /// Writes the switches and replaces the rules. The old lists are deleted first, so a
-        /// guard that drops a network does not keep it beside the new one.
+        /// Writes the switches and replaces the rules. The old lists are deleted by the shared
+        /// store, so a guard that drops a network does not keep it beside the new one.
         /// </summary>
         private async Task ApplyLoginGuardAsync(
             UserEntity user,
-            StagedLoginGuard staged,
+            NormalizedLoginGuard staged,
             CancellationToken cancellationToken)
         {
             user.GeoProtectionEnabled = staged.GeoProtectionEnabled;
             user.BindSessionToIp = staged.BindSessionToIp;
 
-            await _context.LoginGuardRules
-                .Where(rule => rule.UserId == user.Id)
-                .ExecuteDeleteAsync(cancellationToken);
-
-            foreach (var ip in staged.AllowedIps)
-            {
-                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
-                {
-                    UserId = user.Id,
-                    Kind = LoginGuardRuleKind.IpAddress,
-                    Value = ip
-                });
-            }
-
-            if (staged.AllowedCountry is { } country)
-            {
-                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
-                {
-                    UserId = user.Id,
-                    Kind = LoginGuardRuleKind.Country,
-                    Value = country
-                });
-            }
-
-            if (staged.AllowedAutonomousSystemNumber is { } asn)
-            {
-                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
-                {
-                    UserId = user.Id,
-                    Kind = LoginGuardRuleKind.AutonomousSystem,
-                    Value = asn.ToString(CultureInfo.InvariantCulture)
-                });
-            }
-
-            await _context.SaveChangesAsync(cancellationToken);
+            await LoginGuardStore.ReplaceRulesAsync(_context, user.Id, staged, cancellationToken);
 
             _logger.LogInformation(
                 "Set the login guard of {Username}: protection {Protection}, session binding " +

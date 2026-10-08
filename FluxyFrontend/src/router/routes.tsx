@@ -33,6 +33,22 @@ const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 const SectionPage = lazy(() => import('../pages/SectionPage'))
 
 /**
+ * The edit form, loaded here rather than through `NAVIGATION`.
+ *
+ * `/admin/users/{id}` is a section of the admin area with **no menu item beside it**: the
+ * sidebar offers the two addresses you can decide to open (add a user, look at the users),
+ * while this one is only ever reached by choosing a row to edit, and a third entry saying
+ * "edit" would be a page that is empty until you tell it *which*.
+ *
+ * It is a second `lazy()` over the same module as the `users/add` item, and that is
+ * deliberate rather than an oversight. The bundler resolves both imports to one chunk, so
+ * nothing is fetched twice; what differs is the component *type*, and two types is what
+ * makes a move between the two addresses remount the form instead of carrying a half-filled
+ * one across - which is what you want when the id underneath it just changed.
+ */
+const UserFormPage = lazy(() => import('../pages/UserFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -105,14 +121,29 @@ const sectionRoutes = (role: Role, homeRoute: string): RouteObject[] =>
     return path === '' ? { index: true, element } : { path, element }
   })
 
-const area = (role: Role, homeRoute: string, titleKey: string): RouteObject => ({
+/**
+ * One area: the role's guard and shell, every section of it, and any address that belongs
+ * to the area but not to the menu.
+ *
+ * `extra` is for exactly that second kind - a route react-router must answer which no
+ * sidebar item may point at. It is appended rather than merged so that a menu-driven
+ * section can never be shadowed by one of these: react-router ranks a static segment above
+ * a dynamic one anyway (`users/add` beats `users/:id`), but keeping the two sources
+ * separate means nobody has to know that to add a page.
+ */
+const area = (
+  role: Role,
+  homeRoute: string,
+  titleKey: string,
+  extra: RouteObject[] = [],
+): RouteObject => ({
   path: routePath(areaOf(homeRoute)),
   element: (
     <RequireAuth role={role}>
       <AccountLayout titleKey={titleKey} />
     </RequireAuth>
   ),
-  children: sectionRoutes(role, homeRoute),
+  children: [...sectionRoutes(role, homeRoute), ...extra],
 })
 
 /**
@@ -171,7 +202,12 @@ export const routes: RouteObject[] = [
   },
   area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea'),
   area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea'),
-  area('Admin', config.ADMIN_HOME_ROUTE, 'titles.adminArea'),
+  area('Admin', config.ADMIN_HOME_ROUTE, 'titles.adminArea', [
+    {
+      path: 'users/:id',
+      element: <UserFormPage sectionKey="nav.items.usersAdd" />,
+    },
+  ]),
   {
     path: '*',
     element: (

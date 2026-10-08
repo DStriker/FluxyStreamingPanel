@@ -7,6 +7,7 @@ using Fluxy.Application.Services.Profile;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
 using Fluxy.Application.Services.Throttling;
+using Fluxy.Application.Services.Users;
 using Fluxy.Core.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,6 +41,11 @@ namespace Fluxy.Application
             // context is: a DbContext is not safe to share between requests.
             services.AddScoped<IProfileService, ProfileService>();
             services.AddScoped<IPasswordResetService, PasswordResetService>();
+
+            // The admin's view of the same rows: it reads and writes through the context like
+            // every scoped service here, and ends sessions through the token service because a
+            // blocked account or a changed password takes them with it.
+            services.AddScoped<IUserAdminService, UserAdminService>();
 
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it

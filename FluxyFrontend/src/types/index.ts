@@ -14,12 +14,16 @@
  */
 
 export type { Role } from './Role'
+export type { UserStatus } from './UserStatus'
 export type { Session } from './Session'
 export type { SessionContextValue } from './SessionContextValue'
 export type { SessionVisit } from './SessionVisit'
 export type { SessionHistoryResponse } from './SessionHistoryResponse'
 export type { ActiveSession } from './ActiveSession'
 export type { ActiveSessionList } from './ActiveSessionList'
+export type { AdminUser } from './AdminUser'
+export type { AdminUserList } from './AdminUserList'
+export type { AdminUserDetail } from './AdminUserDetail'
 export type { FieldErrors } from './FieldErrors'
 export type { MessageResponse } from './MessageResponse'
 export type { ProfileResponse } from './ProfileResponse'

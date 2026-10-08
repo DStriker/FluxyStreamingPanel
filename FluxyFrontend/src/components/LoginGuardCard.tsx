@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Card, Form, Input, InputNumber, Select, Switch, Typography } from 'antd'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { App, Button, Card, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { ProfileChangeCaptchaAction, lookupGeo } from '../lib/api'
 import type { CallOptions, LoginGuardValues } from '../lib/api'
-import { countryOptions, isCountryCode } from '../lib/countries'
-import { isIpOrCidr } from '../lib/ip'
+import { isCountryCode } from '../lib/countries'
 import { LOGIN_GUARD_MAX_IPS } from '../lib/policy'
+import LoginGuardFields from './LoginGuardFields'
+import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
+import type { GuardFieldValues } from '../lib/loginGuardForm'
 import type { LoginGuardSettings } from '../types'
 
 /** The code that means a confirmation code is on its way to the account's address. */
@@ -18,14 +20,13 @@ const Submitted = 'profile_change_submitted'
  * What the guard form collects. The guard fields spell exactly what the server may
  * reject - `allowedIps`, not `ips` - because a rejection the form has no input for
  * arrives as a bare toast instead of a reason under the input.
+ *
+ * The five guard fields themselves are `LoginGuardFields` and its shared
+ * `GuardFieldValues`; this adds the one that belongs to the profile's confirmation step
+ * alone - the current password that authorizes the change.
  */
-interface LoginGuardFormValues {
+interface LoginGuardFormValues extends GuardFieldValues {
   currentPassword: string
-  geoProtectionEnabled: boolean
-  bindSessionToIp: boolean
-  allowedIps: string[]
-  allowedCountry: string
-  allowedAutonomousSystemNumber: number | null
 }
 
 interface LoginGuardCardProps {
@@ -43,23 +44,14 @@ interface LoginGuardCardProps {
 }
 
 /**
- * The form's spelling of the guard: `null` where the contract has `null`, and the empty
- * string where a field has nothing in it yet - neither an `Input` nor a `Select` can hold
- * `null`, so the translation happens on the way in and back on the way out, in exactly
- * these two places.
- *
- * The country is upper-cased on the way in for the same reason the selector below can
- * only draw what its options list: a stored `ru` has no option, and a `Select` asked for
- * a value with no option shows *nothing selected* - which reads as "no country is set"
- * over an account that has one, until a save writes `null` over it.
+ * The stored guard plus the empty password this form starts with. The five guard fields
+ * are spelled by `guardToFormValues` in `LoginGuardFields` - one place where "stored"
+ * becomes "shown", shared with the administrator's form - and this adds the single field
+ * only this card collects.
  */
 const toFormValues = (value: LoginGuardSettings): LoginGuardFormValues => ({
   currentPassword: '',
-  geoProtectionEnabled: value.geoProtectionEnabled,
-  bindSessionToIp: value.bindSessionToIp,
-  allowedIps: value.allowedIps,
-  allowedCountry: (value.allowedCountry ?? '').toUpperCase(),
-  allowedAutonomousSystemNumber: value.allowedAutonomousSystemNumber,
+  ...guardToFormValues(value),
 })
 
 /**
@@ -95,13 +87,21 @@ const fingerprint = (guard: LoginGuardSettings): string =>
  * is how the probe asserts it draws at all: the profile page itself is a spinner until
  * the server answers, and an effect never runs under `renderToStaticMarkup`.
  *
+ * The five fields themselves are `LoginGuardFields`, shared with the administrator's
+ * add/edit user form - two flows that edit the same five values under the same rules, and
+ * would drift apart the moment their copies did. What stays here is everything only the
+ * profile's change flow has: the form, the current password, the two tokens, the
+ * confirmation step, and the button that fills the lists from the visitor's own network -
+ * which the admin form deliberately does not offer, because the caller's address is the
+ * wrong network for an account that is not theirs.
+ *
  * Like `ConfirmCodeForm`, the card owns its form, its tokens and its field errors, and
  * the page owns what happens next: `onSubmitted` swaps in the confirmation step and
  * `onApplied` re-reads the account. A reason the card cannot place - a refusal about
  * nothing on the form - still reaches the visitor as a toast rather than as silence.
  */
 export default function LoginGuardCard({ value, onSubmit, onSubmitted, onApplied }: LoginGuardCardProps) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { message } = App.useApp()
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
@@ -146,13 +146,6 @@ export default function LoginGuardCard({ value, onSubmit, onSubmitted, onApplied
   const geoProtectionEnabled: boolean =
     Form.useWatch('geoProtectionEnabled', form) ?? value.geoProtectionEnabled
 
-  /**
-   * The country names for the language in use - the codes underneath never change, only
-   * how they are written. Memoised on the language alone: this list is built once per
-   * language, and the form re-renders on every keystroke of every other field.
-   */
-  const countryList = useMemo(() => countryOptions(i18n.language), [i18n.language])
-
   const handleFinish = async (values: LoginGuardFormValues) => {
     setSubmitting(true)
     form.setFields(
@@ -173,13 +166,7 @@ export default function LoginGuardCard({ value, onSubmit, onSubmitted, onApplied
       ])
       const result = await onSubmit({
         currentPassword: values.currentPassword,
-        guard: {
-          geoProtectionEnabled: values.geoProtectionEnabled,
-          bindSessionToIp: values.bindSessionToIp,
-          allowedIps: (values.allowedIps ?? []).map((entry) => entry.trim()).filter((entry) => entry !== ''),
-          allowedCountry: values.allowedCountry?.trim() ? values.allowedCountry.trim().toUpperCase() : null,
-          allowedAutonomousSystemNumber: values.allowedAutonomousSystemNumber ?? null,
-        },
+        guard: formValuesToGuard(values),
         csrfToken,
         captchaToken,
       })
@@ -256,102 +243,19 @@ export default function LoginGuardCard({ value, onSubmit, onSubmitted, onApplied
         onFinish={handleFinish}
         initialValues={toFormValues(value)}
       >
-        <Form.Item
-          name="geoProtectionEnabled"
-          label={t('profile.guardProtection')}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-
-        <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-          {t('profile.guardProtectionHint')}
-        </Typography.Paragraph>
-
-        <Form.Item>
-          {/* Off with the lists it fills: a button that writes into three greyed-out
-              inputs reports success over changes the visitor cannot see. */}
-          <Button
-            onClick={handleFillCurrent}
-            loading={lookingUp}
-            disabled={submitting || !geoProtectionEnabled}
-          >
-            {t('profile.guardUseCurrent')}
-          </Button>
-        </Form.Item>
-
-        <Form.Item
-          name="allowedIps"
-          label={t('profile.guardIps', { max: LOGIN_GUARD_MAX_IPS })}
-          rules={[
-            {
-              // Named rather than generic: the message carries the entry that broke the
-              // rule, and a tags input has no other way to say which of its tags it was.
-              validator: (_: unknown, ips: string[]) => {
-                const invalid = (ips ?? []).find((entry) => !isIpOrCidr(entry.trim()))
-                return invalid
-                  ? Promise.reject(new Error(t('profile.guardIpsInvalid', { entry: invalid })))
-                  : Promise.resolve()
-              },
-            },
-          ]}
-        >
-          <Select
-            mode="tags"
-            tokenSeparators={[',', ' ', ';']}
-            maxCount={LOGIN_GUARD_MAX_IPS}
-            placeholder={t('profile.guardIpsPlaceholder')}
-            aria-label={t('profile.guardIps', { max: LOGIN_GUARD_MAX_IPS })}
-            disabled={!geoProtectionEnabled}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="allowedCountry"
-          label={t('profile.guardCountry')}
-        >
-          {/* A selector rather than two typed letters, so the visitor picks a country
-              the server can act on instead of guessing a code - and clears it to "no
-              restriction", which is what an empty value means on the contract. No rule:
-              a `Select` offers no value that is not already one of the options. */}
-          <Select
-            showSearch
-            allowClear
-            options={countryList}
-            // Names, not codes: searching a code only was what the field did by hand,
-            // and a name is what a visitor knows how to type.
-            optionFilterProp="label"
-            placeholder={t('profile.guardCountryPlaceholder')}
-            aria-label={t('profile.guardCountry')}
-            style={{ width: '100%', maxWidth: 320 }}
-            disabled={!geoProtectionEnabled}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="allowedAutonomousSystemNumber"
-          label={t('profile.guardAsn')}
-        >
-          <InputNumber
-            min={1}
-            precision={0}
-            placeholder="AS12345"
-            style={{ width: '100%', maxWidth: 220 }}
-            disabled={!geoProtectionEnabled}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="bindSessionToIp"
-          label={t('profile.guardBind')}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-
-        <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-          {t('profile.guardBindHint')}
-        </Typography.Paragraph>
+        {/* The five guard fields are `LoginGuardFields`: the same component the
+            administrator's user form renders, so the disabled-while-off rule, the
+            country's uppercase trip through the option list and the address validator
+            exist once. The card keeps the field that is only its own - the password
+            below - and the button that fills the lists from the visitor's own network. */}
+        <LoginGuardFields
+          protectionEnabled={geoProtectionEnabled}
+          fillCurrent={{
+            onClick: handleFillCurrent,
+            lookingUp,
+            disabled: submitting,
+          }}
+        />
 
         <Form.Item
           name="currentPassword"

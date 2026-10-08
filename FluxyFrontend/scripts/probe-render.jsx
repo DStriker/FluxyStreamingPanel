@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { matchRoutes, MemoryRouter } from 'react-router-dom'
+import { matchRoutes, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { App as AntApp, ConfigProvider } from 'antd'
 import i18n from '../src/i18n'
 import RegisterPage from '../src/pages/RegisterPage'
@@ -23,6 +23,8 @@ import ForgotPasswordPage from '../src/pages/ForgotPasswordPage'
 import ProfilePage from '../src/pages/ProfilePage'
 import SessionsPage from '../src/pages/SessionsPage'
 import ActiveSessionsPage from '../src/pages/ActiveSessionsPage'
+import UsersPage from '../src/pages/UsersPage'
+import UserFormPage from '../src/pages/UserFormPage'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -263,7 +265,7 @@ async function main() {
   // labelled "When" and "IP address" while the other three said "Resize the Country column",
   // and the table was perfectly well formed and named two of its handles wrong. Only the
   // rendered markup shows that; the types are satisfied either way.
-  const sessionHandles = [...sessionsHtml.matchAll(/<span[^>]*sessions-col-resizer[^>]*>/g)].map(
+  const sessionHandles = [...sessionsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
     (m) => m[0],
   )
   check(
@@ -485,6 +487,151 @@ async function main() {
       : 'THE LISTS DISAPPEARED FROM THE CARD',
   )
 
+  // --- The admin's users pages -----------------------------------------------
+  //
+  // Both pages land in the state before their first answer, like every render in this
+  // script: `renderToStaticMarkup` never runs an effect, so what is measured here is what a
+  // visitor sees while the page is still fetching - and the facts below are the ones all
+  // three build checks are satisfied by while broken:
+  //
+  // - the table draws its heading, its toolbar and the table itself before any row exists,
+  //   and all eight columns keep their own width *in order*: the sum of 1230px is the
+  //   deliberate total that keeps the action buttons at the far right inside one Full HD
+  //   viewport beside the sidebar, and the three content columns (200/180/130) are narrow
+  //   *because* their cells truncate into tooltips - the next person to widen one should
+  //   learn here what the widening costs;
+  // - every column carries a keyboard-reachable resize handle named for resizing, and a
+  //   sortable header keeps its own cell access - the same two `ResizableHeaderCell`
+  //   facts the visit history asserts, now asserted over a *second* table, because two
+  //   tables disagreeing about either would be two places for one rule to be wrong;
+  // - the add form draws its fields at once under the add title with the shared
+  //   `LoginGuardFields` present (the extraction below the DOM is invisible to every
+  //   checker here - a form that rendered without the guard would still compile), while
+  //   carrying neither the id row nor the edit-only password hint;
+  // - the edit address is a spinner under the edit title rather than a form of empty
+  //   fields pointed at an account that has not arrived.
+  const usersHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users']}>
+      <AntApp>
+        <UsersPage sectionKey="nav.items.usersManage" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+
+  check(
+    'the users table draws its heading and its table before any rows arrive',
+    usersHtml.includes('Manage users') &&
+      usersHtml.includes('ant-table') &&
+      !usersHtml.includes('nav.items.usersManage'),
+    `rendered ${usersHtml.length} bytes with the list still being fetched`,
+  )
+
+  check(
+    'the users toolbar offers the search, both filters, the width reset and the way to add',
+    usersHtml.includes('Search by username or email') &&
+      usersHtml.includes('Any role') &&
+      usersHtml.includes('Any status') &&
+      usersHtml.includes('Reset widths') &&
+      usersHtml.includes('Add user'),
+    usersHtml.includes('Any role') ? `rendered ${usersHtml.length} bytes` : 'a filter lost its "any" choice',
+  )
+
+  const usersCols = [...usersHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const usersWidths = usersCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  check(
+    'the users table is fixed-layout with its eight deliberate widths, in order',
+    /table-layout:\s*fixed/.test(usersHtml) &&
+      usersWidths.join(',') === '120,170,200,130,150,180,130,150',
+    `${usersCols.length} columns: [${usersWidths.join(', ')}]`,
+  )
+
+  const usersHandles = [...usersHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  check(
+    'every users column carries a keyboard-reachable resize handle, named for resizing',
+    usersHandles.length === 8 &&
+      usersHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('aria-orientation="vertical"') &&
+          handle.includes('tabindex="0"') &&
+          handle.includes('aria-label="Resize the '),
+      ),
+    `${usersHandles.length} handles: ${usersHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'}`,
+  )
+
+  const usersHeaderCells = [...usersHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'a sortable users header keeps its own access to sorting',
+    usersHeaderCells.some(
+      (th) => th.includes('aria-label="Username"') && th.includes('tabindex="0"'),
+    ),
+    `${usersHeaderCells.length} header cells, sortable one: ${
+      usersHeaderCells.find((th) => th.includes('aria-label="Username"'))?.slice(0, 220) ??
+      'none'
+    }`,
+  )
+
+  const userFormHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users/add']}>
+      <AntApp>
+        <UserFormPage />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the add form draws its fields at once, under the add title, with the shared guard',
+    userFormHtml.includes('Add user') &&
+      userFormHtml.includes('Create') &&
+      userFormHtml.includes('Sign-in protection') &&
+      !userFormHtml.includes('Edit user') &&
+      // The id row is the one field-shaped thing the add address must not draw, and it is
+      // recognisable by the copy affordance rather than by its text: the edit form's id is
+      // `Typography.Text copyable`, and nothing else on either form copies anything.
+      !userFormHtml.includes('anticon-copy') &&
+      // The edit-only password hint is the other half of that split - present exactly when
+      // "keep the current password" is a rule the form is following.
+      !userFormHtml.includes('Leave empty to keep the current password'),
+    `rendered ${userFormHtml.length} bytes of the add form`,
+  )
+
+  // The edit address needs a real route rather than a bare render: `useParams` reads the
+  // router's match, and without one there is no `:id` to be found - the page would quietly
+  // render its *add* mode at a URL whose whole meaning is "this one, by id".
+  const userEditHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users/11111111-1111-1111-1111-111111111111']}>
+      <AntApp>
+        <Routes>
+          <Route path="/admin/users/:id" element={<UserFormPage />} />
+        </Routes>
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the edit address waits for the account instead of drawing fields against nothing',
+    userEditHtml.includes('Edit user') &&
+      userEditHtml.includes('ant-spin') &&
+      !userEditHtml.includes('Create'),
+    `rendered ${userEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // The same failure the profile item's check below exists for: `sectionRoutes` falls back
+  // to `SectionPage` when an item carries no `page`, so a loader dropped from either of
+  // these two items would open the placeholder while the menu, lint and the build all
+  // stayed green.
+  const [usersAddModule, usersManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'usersAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'usersManage')?.page?.(),
+  ])
+  check(
+    'the admin menu points its two users items at the real pages rather than the placeholder',
+    usersAddModule?.default === UserFormPage && usersManageModule?.default === UsersPage,
+    `usersAdd opens ${usersAddModule?.default?.name ?? 'nothing'}, usersManage opens ${
+      usersManageModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`
   // when an item carries no `page`, so a profile menu entry with the loader dropped from it
   // would render the placeholder, lint would pass, the build would pass, and the only sign
@@ -557,8 +704,14 @@ async function main() {
     if (!route) continue
 
     const root = routePath(route.path)
+    // A parameterised child is a page the menu deliberately does not name - `users/:id`
+    // is the edit form, addressed from a row of the table the menu *does* offer, and
+    // listing it here would demand a second menu entry for the page that adds one account
+    // with the id of another. Only the children a visitor could click to are compared.
     const fromRoutes = new Set(
-      (route.children ?? []).map((child) => (child.index ? root : `${root}/${child.path}`)),
+      (route.children ?? [])
+        .filter((child) => !child.path?.includes(':'))
+        .map((child) => (child.index ? root : `${root}/${child.path}`)),
     )
     const fromMenu = new Set(
       flatItems(role).map((item) =>

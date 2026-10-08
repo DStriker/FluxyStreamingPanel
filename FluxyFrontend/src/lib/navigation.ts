@@ -5,11 +5,11 @@ import {
   HistoryOutlined,
   IdcardOutlined,
   LaptopOutlined,
-  SettingOutlined,
   ShoppingCartOutlined,
+  TableOutlined,
   TeamOutlined,
+  UserAddOutlined,
   UserOutlined,
-  UsergroupAddOutlined,
 } from '@ant-design/icons'
 import type { Role } from '../types'
 
@@ -50,7 +50,7 @@ interface NavItem {
   page?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
 }
 
-/** A category of items - `overview`, `management`, `account`. */
+/** A category of items - `overview`, `users`, `account`. */
 interface NavGroup {
   key: string
   labelKey: string
@@ -209,21 +209,32 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
-      key: 'management',
-      labelKey: 'nav.groups.management',
-      icon: SettingOutlined,
+      // The admin's own section: two addresses behind one heading. It replaces the old
+      // `management` group, whose `users` entry was a placeholder pointing at nothing -
+      // `SectionPage` saying the section was unfinished - and whose `settings` entry went
+      // with it, because the two of them described a control panel this application does
+      // not have. What is here instead is the pair of pages that answer the same need:
+      // making an account and seeing the ones that exist.
+      //
+      // The order is deliberate and follows how the work goes: you add before you manage,
+      // and a stranger reading the rail meets the two in that order.
+      key: 'users',
+      labelKey: 'nav.groups.users',
+      icon: TeamOutlined,
       items: [
         {
-          key: 'users',
-          path: 'users',
-          labelKey: 'nav.items.users',
-          icon: UsergroupAddOutlined,
+          key: 'usersAdd',
+          path: 'users/add',
+          labelKey: 'nav.items.usersAdd',
+          icon: UserAddOutlined,
+          page: () => import('../pages/UserFormPage'),
         },
         {
-          key: 'settings',
-          path: 'settings',
-          labelKey: 'nav.items.settings',
-          icon: SettingOutlined,
+          key: 'usersManage',
+          path: 'users',
+          labelKey: 'nav.items.usersManage',
+          icon: TableOutlined,
+          page: () => import('../pages/UsersPage'),
         },
       ],
     },

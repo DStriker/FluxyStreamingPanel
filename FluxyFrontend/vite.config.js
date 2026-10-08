@@ -33,7 +33,26 @@ export default defineConfig(({ mode }) => {
   // and a **200**, so `res.ok` is true, the JSON parse yields null and the call reads as a
   // successful empty answer rather than as a miss. Nothing reports it. When a controller
   // lands outside `/auth`, add its prefix here in the same commit.
-  const backendPaths = ['/auth']
+  const backendPaths = ['/auth', '/admin']
+
+  // `/admin` is the one prefix that names something on both sides: the backend's admin API
+  // (`/admin/users`, `/admin/users/{id}`, ...) and this SPA's own area - `/admin/dashboard`,
+  // `/admin/profile`, and the three `/admin/users*` pages. A proxy routes by prefix, so
+  // without a rule the admin area either stops loading (everything forwarded) or the API
+  // answers with the SPA shell (nothing forwarded), and in production the same ambiguity
+  // would need an order-dependent special case forever.
+  //
+  // The `Accept` header separates the two kinds of client exactly. A browser navigation
+  // always asks for `text/html`; `apiFetch` and `csrf.ts` send no `Accept` at all, which
+  // makes them `*/*`. So a request that wants a document is answered by Vite's own HTML
+  // fallback - a string returned from `bypass` rewrites the URL and calls `next()`, which
+  // is precisely "do not proxy this" - and everything else goes to the backend.
+  //
+  // The test must stay this way round: `*/*` is what every `fetch` sends, so reading "no
+  // `text/html` means document" would hand HTML to the API and JSON to the router, silently
+  // and in the worst possible direction. A deployment serving both from one origin has to
+  // make the same split in its reverse proxy: `Accept: text/html` → the SPA, else → the app.
+  const wantsDocument = (req) => (req.headers.accept ?? '').includes('text/html')
 
   const proxy = Object.fromEntries(
     backendPaths.map((path) => [
@@ -41,6 +60,7 @@ export default defineConfig(({ mode }) => {
       {
         target,
         headers: { 'X-Forwarded-Proto': 'https' },
+        bypass: (req) => (wantsDocument(req) ? req.url ?? '/' : undefined),
       },
     ]),
   )

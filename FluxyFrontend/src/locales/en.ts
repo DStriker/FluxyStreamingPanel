@@ -76,15 +76,19 @@ const en = {
     // label added here and nothing else shows up nowhere.
     groups: {
       overview: 'Overview',
-      management: 'Management',
+      // The admin's own category, holding the two pages that make and mind accounts.
+      users: 'Users',
       account: 'Account',
     },
     items: {
       dashboard: 'Dashboard',
       orders: 'Orders',
       clients: 'Clients',
-      users: 'Users',
-      settings: 'Settings',
+      // The two halves of the category above, named for what each one does rather than for
+      // what it shows: the first is a form that makes an account, the second is the table
+      // of the ones that exist, and a visitor scanning the rail decides by the verb.
+      usersAdd: 'Add user',
+      usersManage: 'Manage users',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -227,6 +231,92 @@ const en = {
     ipUnknown: 'Address not recorded',
     networkUnknown: 'Network not determined',
   },
+  // The administrator's two pages over the accounts: the table and the form that adds and
+  // edits one. Everything here is copy the server does not send - it answers with rows, with
+  // codes and with `errors`, and what a column is called, what an account that has never
+  // signed in looks like and what a destructive button warns about are decisions this
+  // application makes.
+  users: {
+    // The form's heading. One component serves both addresses, so the title is chosen here
+    // rather than read from `sectionKey`: the same page is this at `users/add` and the edit
+    // title at `users/{id}`, and a key naming only the first would title the second a lie.
+    addTitle: 'Add user',
+    editTitle: 'Edit user',
+    // The id is drawn as static text, never as a field: it is not editable and it is not
+    // sent back, and an input the visitor cannot change reads as a form that is broken.
+    idLabel: 'ID',
+    // Under the password field while editing. An empty password means "keep the one that is
+    // there" - the server's rule for that field, stated before the visitor wonders about it.
+    passwordKeep: 'Leave empty to keep the current password',
+    create: 'Create',
+    backToList: 'Back to the list',
+    // The table.
+    searchPlaceholder: 'Search by username or email',
+    // For the screen reader: a placeholder is not a label, and it disappears the moment
+    // anything is typed - which is exactly when the field needs naming.
+    searchLabel: 'Search users',
+    empty: 'No accounts yet.',
+    // Shown instead of `empty` when a search or a filter is on. The accounts do exist, they
+    // simply are not in this answer - and "no accounts" would be a claim the toolbar above
+    // the table has just disproved.
+    noMatches: 'No accounts match this search.',
+    // The pager's own sentence, which antd would otherwise write in its default locale.
+    range: '{{from}}–{{to}} of {{total}}',
+    // The handle at the right edge of every column header, which the visitor drags to change
+    // the width. `{{column}}` is that column's own name - a separator a screen reader cannot
+    // name is a separator it can only find by tabbing into it blindly.
+    resizeColumn: 'Resize the {{column}} column',
+    // Puts every column back to the widths they ship with. Offered next to the toolbar
+    // rather than in a menu, because the widths it undoes are set by hand in the first place.
+    resetWidths: 'Reset widths',
+    // The two filters, as the choice they offer when nothing is chosen. The labels are the
+    // column headers beside them - one name for one thing, however it is drawn.
+    filterAnyRole: 'Any role',
+    filterAnyStatus: 'Any status',
+    columns: {
+      id: 'ID',
+      username: 'Username',
+      email: 'Email',
+      role: 'Role',
+      status: 'Status',
+      // `lastSeenAt` rather than `lastSeen` because the column's key *is* the server's own
+      // sort field: a header click then hands its key straight to `getUsers`, and there is
+      // no mapping table between the two that could get one name wrong. The label stays
+      // what a reader sees; the key is what the endpoint is asked to order by.
+      lastSeenAt: 'Last visit',
+      ip: 'IP address',
+      actions: 'Actions',
+    },
+    // The three states, as the server spells them - the enum member names are what comes
+    // back, and this is where they become words. `UserStatus` is not an ordered scale, so
+    // these are names rather than levels: nothing here compares one to another.
+    statuses: {
+      Unregistered: 'Unregistered',
+      Registered: 'Registered',
+      Blocked: 'Blocked',
+    },
+    // The four row actions, as tooltips. The icons carry no text of their own, so the name
+    // each one gets here is the only thing that says what pressing it does.
+    actions: {
+      edit: 'Edit',
+      confirm: 'Confirm registration',
+      block: 'Block',
+      unblock: 'Unblock',
+      delete: 'Delete',
+    },
+    // Why the block and delete buttons on *your own* row are disabled. The server refuses
+    // those two anyway (`cannot_block_self`, `cannot_delete_self`), so the disabled control
+    // is the same fact told before the click - the pattern the current session's button
+    // follows on the active sessions page.
+    selfProtected: 'You cannot do this to the account you are signed in with.',
+    // The one action that asks first. Only deletion is irreversible - blocking is an
+    // unblock away and confirmation is a state the row can be put back into - so a
+    // confirmation here is a question and not a habit.
+    deleteConfirmTitle: 'Delete this account?',
+    deleteConfirmBody:
+      'The account "{{name}}" and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -280,6 +370,25 @@ const en = {
       credentials_mismatch: 'That username and email address do not belong to the same account.',
       password_reset_rate_limited: 'Too many attempts. Please try again later.',
       password_reset_confirmation_rate_limited: 'Too many attempts. Please try again later.',
+      // The administrator's user endpoints: five successes, the absence of a row, and three
+      // refusals that exist only because an administrator can otherwise reach their own
+      // account with an action meant for somebody else's. Each is a state change the table
+      // shows a row for, so the sentence names what happened to which kind of thing rather
+      // than what the request was.
+      user_created: 'The account has been created.',
+      user_updated: 'The account has been updated.',
+      user_deleted: 'The account has been deleted.',
+      user_blocked: 'The account has been blocked.',
+      user_unblocked: 'The account has been unblocked.',
+      user_not_found: 'There is no such account.',
+      // 409 rather than a silent no-op: `block` is idempotent by design, but confirming a
+      // registration that is not waiting for one and unblocking an account that is not
+      // blocked are contradictions between what the page shows and what the row holds, and
+      // answering "done" would leave the table describing something that did not happen.
+      invalid_status: 'That account is not in the state this action needs.',
+      cannot_delete_self: 'You cannot delete the account you are signed in with.',
+      cannot_block_self: 'You cannot block the account you are signed in with.',
+      cannot_demote_self: 'You cannot lower the access level of the account you are signed in with.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',

@@ -225,7 +225,7 @@ body {
    The tick is `currentColor` so it reads as a faint grey line on a light theme and a faint
    light one on a dark theme without naming either; antd's own injected styles are not
    reachable from here by any specificity this file would want to write. */
-.sessions-col-resizer {
+.table-col-resizer {
   position: absolute;
   inset: 0 0 0 auto;
   width: 10px;
@@ -235,7 +235,7 @@ body {
   touch-action: none;
 }
 
-.sessions-col-resizer::after {
+.table-col-resizer::after {
   content: '';
   position: absolute;
   top: 25%;
@@ -247,15 +247,15 @@ body {
   transition: opacity 0.15s;
 }
 
-.sessions-col-resizer:hover::after,
-.sessions-col-resizer:focus-visible::after {
+.table-col-resizer:hover::after,
+.table-col-resizer:focus-visible::after {
   background: #3983dc;
   opacity: 1;
 }
 
 /* The keyboard's view of the same handle. A pointer has a hover to say "this is grabbable";
    focus is all a keyboard has, and an invisible focusable element is one it cannot find. */
-.sessions-col-resizer:focus-visible {
+.table-col-resizer:focus-visible {
   outline: 2px solid #3983dc;
   outline-offset: -2px;
 }
@@ -264,7 +264,7 @@ body {
    reverts to an arrow the moment it leaves the ten-pixel handle, which is the moment the drag
    becomes unusable. The selection is the other half - the handle sits over the column's title,
    and dragging across it would otherwise highlight that word on the way past. */
-body.sessions-col-resizing {
+body.table-col-resizing {
   cursor: col-resize;
   user-select: none;
 }

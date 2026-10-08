@@ -1,19 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
-  ReactNode,
-  TdHTMLAttributes,
-} from 'react'
-import { Alert, Button, Card, Input, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { useEffect, useState } from 'react'
+import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType, TableProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { getSessionHistory, getProfile } from '../lib/api'
 import type { SessionSortField, SessionSortOrder } from '../lib/api'
 import { messageForError } from '../lib/http'
 import { countryName } from '../lib/countryName'
+import { formatTimestamp } from '../lib/dateFormat'
 import { describeUserAgent } from '../lib/userAgent'
+import ResizableHeaderCell from '../components/ResizableHeaderCell'
+import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import TruncatedCell from '../components/TruncatedCell'
+import { useColumnWidths } from '../hooks/useColumnWidths'
 import type { SessionHistoryResponse, SessionVisit } from '../types'
 
 /**
@@ -42,8 +40,8 @@ const COLUMN_KEYS: readonly SessionColumnKey[] = ['when', 'ip', 'country', 'netw
  *
  * These are *starting* widths, not the answer - the visitor may move them, and the sum of
  * whatever they are is what the table asks the card to be able to scroll (`tableWidth` below).
- * What the visitor may never do is remove one, which is what the floor in `clampColumnWidth`
- * is for.
+ * What the visitor may never do is remove one, which is what the floor inside
+ * `useColumnWidths` clamps to.
  *
  * The country column used to be 110 for a code; it is 150 because the cell now carries a name.
  */
@@ -56,17 +54,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<SessionColumnKey, number> = {
 }
 
 /**
- * How far a column may be dragged.
- *
- * The floor is a header width rather than zero: a column narrowed to nothing is a column whose
- * resize handle can no longer be reached to widen it again, and the handle lives at the right
- * edge of the cell. The ceiling exists so a drag cannot produce a table wider than any screen
- * could show - 1200 per column is already past that.
- */
-const MIN_COLUMN_WIDTH = 90
-const MAX_COLUMN_WIDTH = 1200
-
-/**
  * Where the widths are remembered between visits.
  *
  * Only here. Resizing is a preference about how one person reads one table, and it is worth
@@ -75,209 +62,6 @@ const MAX_COLUMN_WIDTH = 1200
  * be a claim about what is on the server, which is not true just because the browser says so.
  */
 const COLUMN_WIDTHS_KEY = 'fluxy.sessions.columnWidths'
-
-type ColumnWidths = Record<SessionColumnKey, number>
-
-const clampColumnWidth = (value: number): number =>
-  Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, value))
-
-const sameWidths = (one: ColumnWidths, other: ColumnWidths): boolean =>
-  COLUMN_KEYS.every((key) => one[key] === other[key])
-
-/**
- * The remembered widths, or the defaults when there are none to remember.
- *
- * Everything that can go wrong falls back to the defaults rather than to nothing: a browser in
- * private mode refuses storage, a corrupted entry is not JSON, a value that is a string is not
- * a width, and the probes render this under Node, where `localStorage` does not exist at all
- * and reaching for it is a `ReferenceError`. None of those is a reason for the table not to
- * draw, and the last one is why the whole body sits in a `try` rather than behind a
- * `typeof` guard the compiler would then be entitled to call unnecessary.
- */
-function readColumnWidths(): ColumnWidths {
-  const widths: ColumnWidths = { ...DEFAULT_COLUMN_WIDTHS }
-
-  try {
-    const stored = localStorage.getItem(COLUMN_WIDTHS_KEY)
-    if (!stored) return widths
-
-    const parsed: unknown = JSON.parse(stored)
-    if (typeof parsed !== 'object' || parsed === null) return widths
-
-    for (const key of COLUMN_KEYS) {
-      const value = (parsed as Record<string, unknown>)[key]
-      if (typeof value === 'number' && Number.isFinite(value)) widths[key] = clampColumnWidth(value)
-    }
-  } catch {
-    return { ...DEFAULT_COLUMN_WIDTHS }
-  }
-
-  return widths
-}
-
-/**
- * A cell whose whole value does not fit, with the rest of it on hover.
- *
- * Three columns need this: a user agent is a sentence, a provider name is whatever the registry
- * called the company, and an IPv6 address is thirty-nine characters. None of them can be
- * allowed to widen its column, and none of them may be silently cut off either - the point of
- * the page is to read what is there.
- *
- * `full` is a separate value rather than always the text, because the network column shows one
- * line while the cell may hold both a name and an AS number. It is deliberately not antd's own
- * cell tooltip: that one takes the value it was given and an ellipsised cell has been cut
- * before the browser ever builds a `title`.
- */
-function TruncatedCell({ text, full }: { text: string; full?: string | null }) {
-  if (!full) return <>{text}</>
-
-  return (
-    <Tooltip
-      title={full}
-      styles={{ container: { maxWidth: 560, whiteSpace: 'normal', wordBreak: 'break-word' } }}
-    >
-      <span>{text}</span>
-    </Tooltip>
-  )
-}
-
-/**
- * A table header cell that carries a resize handle at its right edge.
- *
- * The handle is a sibling of the header's own content rather than part of it, and that is the
- * point of going through `components.header.cell` at all. For a sortable column antd wraps the
- * title in a `<button>`; a handle inside that button would be a focusable element nested in a
- * button, and pressing it would sort the column as well as resize it. Sibling and absolutely
- * positioned, it takes the pointer itself and the button never sees the click.
- *
- * **Everything antd owns stays on the cell, and that split is the whole difficulty.**
- * `useSorter.js` does not add to what `onHeaderCell` returned - it *overwrites* it: `aria-label`
- * becomes the column title unconditionally (line 184), `tabIndex` becomes 0 (line 186),
- * `className` and `title` are merged, `onClick` is replaced by the sorter, and `onKeyDown` is
- * wrapped so that Enter sorts before the original handler is called at all. So the props are
- * dismantled here rather than forwarded wholesale: the cell keeps its `tabIndex`, its
- * `aria-label`, its click and its key handler, because a sortable header that lost them would
- * be a header a keyboard could no longer sort by - and the handle keeps the separator's own
- * role, bounds and pointer handlers, plus a `resizeLabel` that is not an ARIA attribute of the
- * DOM at all but the one channel antd does not write through.
- *
- * Two tab stops on a sortable column is therefore deliberate, not a duplication: the cell is
- * named "When" and sorts on Enter, the handle is named "Resize the When column" and moves on
- * the arrow keys, and neither name describes the other's job.
- *
- * `position: relative` is set inline rather than in the stylesheet because it is this cell's
- * own containing block - the handle positions against it and `overflow: hidden` clips to it.
- * Without it the nearest positioned ancestor inside antd's header is nowhere, and the handle
- * would end up against the table. Both boxes are the same box: a cell has no border, so the
- * padding box the handle is positioned against ends exactly where the column does - which is
- * also why the handle can sit at `right: 0` and still be visible under `overflow: hidden`,
- * since anything *past* that edge is what would be cut.
- */
-type ResizableHeaderCellProps = Omit<
-  TdHTMLAttributes<HTMLTableCellElement>,
-  'onPointerDown' | 'onDoubleClick'
-> & {
-  children?: ReactNode
-  /**
-   * The handle's own name.
-   *
-   * Not spelled `aria-label` on purpose: antd writes `aria-label` onto a sortable header cell
-   * itself, after this, with the column title - so it would arrive here already replaced and
-   * would be handed to whichever element the component gave it to, which is how the first
-   * version of this file ended up naming its handles "When" on the two sortable columns and
-   * "Resize the Country column" on the other three. This key is the component's own, and it is
-   * a plain `string` so the return type still satisfies `React.TdHTMLAttributes` without a cast.
-   */
-  resizeLabel?: string
-  /** Widened to `Element` because these are bound to the handle, not to the cell. */
-  onPointerDown?: (event: ReactPointerEvent<Element>) => void
-  onDoubleClick?: (event: ReactMouseEvent<Element>) => void
-}
-
-function ResizableHeaderCell(props: ResizableHeaderCellProps) {
-  const {
-    children,
-    className,
-    style,
-    role,
-    'aria-orientation': orientation,
-    'aria-valuenow': valueNow,
-    'aria-valuemin': valueMin,
-    'aria-valuemax': valueMax,
-    resizeLabel,
-    onPointerDown,
-    onDoubleClick,
-    ...cellProps
-  } = props
-
-  return (
-    <th {...cellProps} className={className} style={{ ...style, position: 'relative' }}>
-      {children}
-      {resizeLabel === undefined ? null : (
-        <span
-          className="sessions-col-resizer"
-          role={role}
-          aria-orientation={orientation}
-          aria-label={resizeLabel}
-          aria-valuenow={valueNow}
-          aria-valuemin={valueMin}
-          aria-valuemax={valueMax}
-          /* The handle's own tab stop, and not the cell's. For a sortable column the cell's
-             `tabIndex` - which stays in `cellProps` above - belongs to antd's Enter-to-sort, so
-             taking it here would leave the header unfocusable and the keyboard with no way to
-             sort at all. Two stops, two names: the cell says "When" and sorts, this says
-             "Resize the When column" and moves. */
-          tabIndex={0}
-          onPointerDown={onPointerDown}
-          onDoubleClick={onDoubleClick}
-          /* A sortable header sorts on any click that bubbles to it, and a click on the handle
-             sorted nothing. `preventDefault` on `pointerdown` is deliberately *not* relied on
-             for this - whether it suppresses the compatibility mouse events is left to the
-             implementation - and suppressing those events would also cost the double-click that
-             restores this one column. Stopping propagation here is the guarantee instead. */
-          onClick={(event) => event.stopPropagation()}
-        />
-      )}
-    </th>
-  )
-}
-
-/**
- * Dates, by locale and zone, remembered.
- *
- * Building an `Intl.DateTimeFormat` is the expensive part - eight milliseconds for a hundred
- * rows on this machine, which is half of a frame once the table repaints on every step of a
- * column drag. Looking a date up in an existing one is two orders of magnitude cheaper, so the
- * expensive half happens once per locale and zone instead of once per cell per frame.
- *
- * `null` is a remembered *refusal* as much as a formatter is a remembered answer: a zone this
- * ICU build does not carry would otherwise be re-discovered by every row of every repaint.
- */
-const dateFormatters = new Map<string, Intl.DateTimeFormat | null>()
-
-function dateFormatterFor(locale: string, timeZone: string | undefined): Intl.DateTimeFormat | null {
-  const key = `${locale}|${timeZone ?? ''}`
-  const cached = dateFormatters.get(key)
-  if (cached !== undefined) return cached
-
-  let formatter: Intl.DateTimeFormat | null = null
-
-  try {
-    formatter = new Intl.DateTimeFormat(locale, {
-      dateStyle: 'medium',
-      timeStyle: 'medium',
-      ...(timeZone ? { timeZone } : {}),
-    })
-  } catch {
-    // Not decoration: a zone stored by an older build, or a zone this ICU build does not
-    // carry, makes `Intl.DateTimeFormat` throw before it returns anything - and an exception
-    // thrown while rendering a row would take the whole page down over one timestamp.
-    formatter = null
-  }
-
-  dateFormatters.set(key, formatter)
-  return formatter
-}
 
 /**
  * The account's visit history: one read-only row per token the account ever held.
@@ -335,7 +119,20 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   // Bumped by the retry button rather than by the page changing, so a failed load can be asked
   // for again without pretending the visitor navigated somewhere else.
   const [attempt, setAttempt] = useState(0)
-  const [columnWidths, setColumnWidths] = useState<ColumnWidths>(readColumnWidths)
+
+  /**
+   * The five widths: their state, their memory between visits, and the drag that changes
+   * them. All of that lives in `useColumnWidths`, which the admin's user table calls too -
+   * the handle, the listeners and the clamp are the part of this page that reads as if it
+   * were simple and is not, and two copies of those rules would be two places for one of
+   * them to be quietly wrong where nothing in `typecheck`, `lint` or the build can tell.
+   */
+  const { widths, tableWidth, atDefaults, reset, resizer: handleFor } =
+    useColumnWidths<SessionColumnKey>({
+      keys: COLUMN_KEYS,
+      defaults: DEFAULT_COLUMN_WIDTHS,
+      storageKey: COLUMN_WIDTHS_KEY,
+    })
 
   /**
    * `resolvedLanguage` rather than `language`: the two differ whenever the requested language
@@ -344,29 +141,6 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * exactly that disagreement, made visible in one cell.
    */
   const locale = i18n.resolvedLanguage ?? i18n.language
-
-  // The drag that is in progress, if any, so that leaving the page mid-drag still ends it.
-  // The listeners live on `window` and would otherwise outlive this component until the next
-  // pointerup, and the class on `body` - which is what keeps the cursor a resize cursor while
-  // the pointer is over the table rather than over the handle - would outlive them both.
-  const endResizeRef = useRef<(() => void) | null>(null)
-
-  useEffect(() => {
-    return () => {
-      endResizeRef.current?.()
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      if (sameWidths(columnWidths, DEFAULT_COLUMN_WIDTHS)) localStorage.removeItem(COLUMN_WIDTHS_KEY)
-      else localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(columnWidths))
-    } catch {
-      // The widths are still in state and the table is still resizable; only the memory of
-      // them between visits is lost, which is worth failing silently over. Storage is
-      // unavailable under the render probe and in a private window, so this is not a rare path.
-    }
-  }, [columnWidths])
 
   useEffect(() => {
     // The zone is read for the dates below, not for this page's own state: a failure here leaves
@@ -475,16 +249,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * A date as this account's own zone and the page's own language show it, falling back to the
    * browser's zone when the stored one is absent or is one this ICU build refuses to format in.
    */
-  const formatMoment = (value: string): string => {
-    const date = new Date(value)
-
-    if (Number.isNaN(date.getTime())) return '—'
-
-    const formatter =
-      dateFormatterFor(locale, timeZone ?? undefined) ?? dateFormatterFor(locale, undefined)
-
-    return formatter ? formatter.format(date) : '—'
-  }
+  const formatMoment = (value: string): string => formatTimestamp(value, locale, timeZone)
 
   /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
   const orDash = (value: string | number | null | undefined): string =>
@@ -501,117 +266,21 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   const orderOf = (key: SessionSortField) =>
     sortBy === key ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null
 
-  const setColumnWidth = (key: SessionColumnKey, next: number) =>
-    setColumnWidths((previous) => ({ ...previous, [key]: clampColumnWidth(next) }))
-
   /**
-   * Starts a drag, from the handle to `window`.
+   * One column's resize handle, with this page's name for the column.
    *
-   * The listeners go on `window` rather than on the handle because a drag outlives the thing
-   * it started on: at any useful speed the pointer leaves the ten-pixel handle immediately,
-   * and without capture it would stop receiving moves. `window` is always there, and removing
-   * the listeners on the way out - through `endResizeRef`, so an unmount ends the drag too - is
-   * what keeps a half-finished one from writing widths into a table that no longer exists.
-   *
-   * Text selection is stopped by the class on `body` rather than by `preventDefault()`. This
-   * handler runs before the `mousedown` that would begin a selection, so `user-select: none`
-   * is already in force by the time the browser asks; and unlike cancelling `pointerdown`, it
-   * changes nothing else about what follows. Cancelling is the conventional one-liner and is
-   * the wrong trade here: whether it suppresses the compatibility `mousedown` - and with it the
-   * `click`, the `dblclick` that restores this one column and the focus that makes the arrow
-   * keys work - is left to the implementation rather than promised by the specification. The
-   * class also holds the cursor a resize cursor over the whole table, not only over the ten
-   * pixels of the handle itself.
+   * The hook owns the drag, the clamp and the stored widths, but only the page knows that a
+   * column is called "When": the handle's accessible name is built here and handed over as an
+   * argument, because a translation key is not something a generic hook can hold.
    */
-  const beginResize = (key: SessionColumnKey, event: ReactPointerEvent<Element>) => {
-    // The primary button only: a right-click or a middle-click on the handle is not a drag.
-    if (event.button !== 0) return
-
-    const startX = event.clientX
-    const startWidth = columnWidths[key]
-
-    const onMove = (move: PointerEvent) => {
-      // Always from the width the drag *began* at, never from the last one written: an
-      // accumulator would compound the delta and the column would run away from the pointer.
-      setColumnWidth(key, startWidth + (move.clientX - startX))
-    }
-
-    const finish = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', finish)
-      window.removeEventListener('pointercancel', finish)
-      document.body.classList.remove('sessions-col-resizing')
-      endResizeRef.current = null
-    }
-
-    document.body.classList.add('sessions-col-resizing')
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', finish)
-    window.addEventListener('pointercancel', finish)
-    endResizeRef.current = finish
-  }
-
-  /**
-   * The keyboard half of the same action, on the handle that `role="separator"` makes
-   * focusable. Sixteen pixels a step - the same as a line of text at this scale - and `shift`
-   * for four of them at a time. `Home` puts the column back, which is the keyboard's half of
-   * the double-click; `Enter` is deliberately absent, because for a sortable column antd has
-   * already wrapped this handler and sorts the column *before* calling it, so a reset that
-   * answered `Enter` would move the width and turn the sort arrow at the same time. The
-   * card-level reset button reaches the same result for a keyboard user and says what it does.
-   *
-   * The handler is on the cell rather than on the handle: for a sortable column antd wraps it
-   * and puts the wrapper there, and for the other three nothing else is listening either way.
-   * A key pressed on the handle bubbles to it, so both arrangements end up here.
-   */
-  const nudgeColumn = (key: SessionColumnKey, event: ReactKeyboardEvent<HTMLTableCellElement>) => {
-    const step = event.shiftKey ? 64 : 16
-
-    if (event.key === 'ArrowLeft') setColumnWidth(key, columnWidths[key] - step)
-    else if (event.key === 'ArrowRight') setColumnWidth(key, columnWidths[key] + step)
-    else if (event.key === 'Home') setColumnWidth(key, DEFAULT_COLUMN_WIDTHS[key])
-    else return
-
-    // Both so the table does not scroll sideways under the arrow keys and so the handle does
-    // not follow them: the point of the key press is the width, not the scroll position.
-    event.preventDefault()
-  }
-
-  /**
-   * The props one column's resize handle carries, from `onHeaderCell`.
-   *
-   * Called with the key rather than reading it off the column, because `ColumnType['key']` is
-   * optional and this way the compiler is the thing that notices a column with no key instead
-   * of a handle that quietly resizes nothing.
-   *
-   * What is *not* here matters more than what is: no `aria-label`, no `tabIndex`, no `onClick`
-   * and no `title`. `useSorter` writes all four onto a sortable header cell itself, after
-   * this, so all four belong to the cell - and a handle that asked for any of them would get
-   * the column's own name and would compete with the header for them. The handle's name goes
-   * through `resizeLabel`, the component's own channel, and it hardcodes the `tabIndex` it
-   * needs. The rest are plain `React.TdHTMLAttributes` keys, which is why the return type needs
-   * no cast.
-   */
-  const resizer = (key: SessionColumnKey): ResizableHeaderCellProps => ({
-    role: 'separator',
-    'aria-orientation': 'vertical',
-    'aria-valuenow': columnWidths[key],
-    'aria-valuemin': MIN_COLUMN_WIDTH,
-    'aria-valuemax': MAX_COLUMN_WIDTH,
-    resizeLabel: t('sessions.resizeColumn', { column: t(`sessions.columns.${key}`) }),
-    onPointerDown: (event) => beginResize(key, event),
-    onDoubleClick: () => setColumnWidth(key, DEFAULT_COLUMN_WIDTHS[key]),
-    onKeyDown: (event) => nudgeColumn(key, event),
-  })
-
-  /** Whatever the five widths add up to, and so the width the table has before it scrolls. */
-  const tableWidth = COLUMN_KEYS.reduce((total, key) => total + columnWidths[key], 0)
+  const resizer = (key: SessionColumnKey): ResizableHeaderCellProps =>
+    handleFor(key, t('sessions.resizeColumn', { column: t(`sessions.columns.${key}`) }))
 
   const columns: TableColumnsType<SessionVisit> = [
     {
       title: t('sessions.columns.when'),
       key: 'when',
-      width: columnWidths.when,
+      width: widths.when,
       sorter: true,
       sortOrder: orderOf('visitedAt'),
       onHeaderCell: () => resizer('when'),
@@ -630,7 +299,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       title: t('sessions.columns.ip'),
       dataIndex: 'ip',
       key: 'ip',
-      width: columnWidths.ip,
+      width: widths.ip,
       sorter: true,
       sortOrder: orderOf('ip'),
       ellipsis: { showTitle: false },
@@ -652,7 +321,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       title: t('sessions.columns.country'),
       dataIndex: 'countryCode',
       key: 'country',
-      width: columnWidths.country,
+      width: widths.country,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('country'),
       render: (value: string | null) => {
@@ -667,7 +336,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       // truncation below are what keep the answer to that in this cell and nowhere else.
       title: t('sessions.columns.network'),
       key: 'network',
-      width: columnWidths.network,
+      width: widths.network,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('network'),
       render: (_, visit) => {
@@ -694,7 +363,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       title: t('sessions.columns.agent'),
       dataIndex: 'userAgent',
       key: 'agent',
-      width: columnWidths.agent,
+      width: widths.agent,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('agent'),
       render: (value: string | null) => {
@@ -729,8 +398,8 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
               that appears and disappears reads as a broken one, and there is nothing to undo
               until somebody has actually dragged something. */}
           <Button
-            disabled={sameWidths(columnWidths, DEFAULT_COLUMN_WIDTHS)}
-            onClick={() => setColumnWidths({ ...DEFAULT_COLUMN_WIDTHS })}
+            disabled={atDefaults}
+            onClick={() => reset()}
           >
             {t('sessions.resetWidths')}
           </Button>
