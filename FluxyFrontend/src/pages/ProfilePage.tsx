@@ -445,7 +445,11 @@ export default function ProfilePage() {
             }}
           />
 
-          <Form form={form} layout="vertical" onFinish={handleFinish}>
+          {/* The same `on` the guest forms get from `AuthCard` (see UserFormPage): this
+              form holds the change-password fields, and without it antd renders the
+              `<form>` with no `autocomplete` attribute for the browser to weigh before
+              offering to generate a strong one. */}
+          <Form form={form} layout="vertical" onFinish={handleFinish} autoComplete="on">
             <Form.Item
               name="currentPassword"
               label={t('fields.currentPassword')}

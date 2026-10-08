@@ -596,6 +596,32 @@ async function main() {
     `rendered ${userFormHtml.length} bytes of the add form`,
   )
 
+  // The browser's "generate a strong password" offer is a DOM fact and nothing else: the
+  // form says `autoComplete="on"` - antd renders no attribute at all unless told, and
+  // `AuthCard` (the registration form that demonstrably triggers the offer) passes exactly
+  // this - and the one password input says `new-password`. Both had to be found out the
+  // hard way: the form's attribute was simply missing here, and rc-select turned out to
+  // hardcode `new-password` on every hidden combobox input with no prop that reaches it
+  // (`autoComplete || 'new-password'` in `@rc-component/select` `SelectInput/Input.js`;
+  // the Select's own `autoComplete` lands on the wrapper div). So the five extra
+  // `new-password` attributes on this form are unavoidable, and the last condition pins
+  // what makes them inert rather than trusting it: they sit on `ant-select-input`
+  // combobox text inputs - never password-type fields, which is what a password manager
+  // counts when it classifies a form. An input of ours picking up `new-password` would
+  // be a claim nobody meant to make, and this is what notices.
+  const newPasswordInputs = [...userFormHtml.matchAll(/<input[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => tag.includes('autoComplete="new-password"'))
+  check(
+    'the add form is one the browser will offer to generate a password for',
+    /<form[^>]*autoComplete="on"/.test(userFormHtml) &&
+      newPasswordInputs.some((tag) => tag.includes('type="password"')) &&
+      newPasswordInputs
+        .filter((tag) => !tag.includes('type="password"'))
+        .every((tag) => tag.includes('type="text"') && tag.includes('class="ant-select-input"')),
+    `${newPasswordInputs.length} inputs claim new-password, one of them the password field`,
+  )
+
   // The edit address needs a real route rather than a bare render: `useParams` reads the
   // router's match, and without one there is no `:id` to be found - the page would quietly
   // render its *add* mode at a URL whose whole meaning is "this one, by id".

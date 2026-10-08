@@ -391,6 +391,17 @@ export default function UserFormPage(_props: UserFormPageProps) {
           initialValues={CREATE_VALUES}
           onFinish={handleFinish}
           style={{ maxWidth: 640 }}
+          // The `on` every guest form already gets from `AuthCard` - this page renders its
+          // own `Form` and had none, which means antd 6 draws the `<form>` with no
+          // `autocomplete` attribute at all. Together with the password input's
+          // `new-password` below this is the pair a browser weighs before offering to
+          // generate a strong password, and it is exactly what the registration form that
+          // demonstrably triggers that offer states. The two identity fields opt out
+          // individually instead: autofilling the administrator's own saved username or
+          // address into somebody else's account is the browser answering the wrong
+          // question, and a per-field `off` on a text input is honoured while the offer
+          // on the password field survives.
+          autoComplete="on"
         >
           {detail && (
             <Form.Item label={t('users.idLabel')}>
@@ -449,6 +460,16 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 three - so there is no state for the rule to catch. The server still has the
                 last word on a change it refuses (`cannot_demote_self` for an administrator
                 demoting this account, which is this account if the id above is their own). */}
+            {/* rc-select's hidden combobox input claims `new-password` for itself
+                (`autoComplete || 'new-password'` in its `SelectInput/Input.js`), so this
+                form shows several inputs saying "new password" while holding exactly one
+                password - and no prop can change that: the Select's own `autoComplete`
+                reaches only the wrapper div, never the input (verified in the rendered
+                markup). The two signals that actually decide whether the browser offers to
+                generate a strong password are still both stated here - the form's `on`
+                above and the password field's `new-password` below. Those combobox inputs
+                are `type="text"` and never password-type fields, which is not what a
+                password manager counts when it classifies a form. */}
             <Select options={roleOptions} />
           </Form.Item>
 
