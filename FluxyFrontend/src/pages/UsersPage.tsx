@@ -141,7 +141,8 @@ const hinted = (title: string, button: ReactNode): ReactElement => (
 )
 
 /**
- * The administrator's account list - the page behind `nav.items.usersManage`.
+ * The administrator's account list - the page behind `nav.items.usersManage`, headed by
+ * `users.listTitle` rather than by that item's name (the props below say why).
  *
  * Filtering, sorting and paging are all **server side**, and `total` is the reason: a filter
  * applied in the browser to the rows already on screen would narrow one page while the pager
@@ -169,7 +170,18 @@ const hinted = (title: string, button: ReactNode): ReactElement => (
  * state an unblock returns to - so each is a request and a re-read rather than a status
  * edited here. Only deletion asks first, because only deletion cannot be undone.
  */
-export default function UsersPage({ sectionKey }: { sectionKey: string }) {
+interface UsersPageProps {
+  /**
+   * The menu key every section route carries, passed here for the reason it is passed to
+   * every other section page and deliberately unread: the heading is this page's own
+   * (`users.listTitle`), because a card repeating the menu item's name in large letters
+   * would say the menu again instead of naming the page. The locale files say the same
+   * above `users.listTitle`.
+   */
+  sectionKey: string
+}
+
+export default function UsersPage(_props: UsersPageProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const { message, modal } = App.useApp()
@@ -649,7 +661,7 @@ export default function UsersPage({ sectionKey }: { sectionKey: string }) {
 
   return (
     <Card
-      title={t(sectionKey)}
+      title={t('users.listTitle')}
       extra={
         <Space wrap>
           <Input.Search

@@ -499,6 +499,9 @@ async function main() {
   // visitor sees while the page is still fetching - and the facts below are the ones all
   // three build checks are satisfied by while broken:
   //
+  // - the heading is the page's own title rather than the menu item's name - the two used
+  //   to be the same word, which is exactly the echo of its own menu entry the page
+  //   stopped making;
   // - the table draws its heading, its toolbar and the table itself before any row exists,
   //   and all eight columns keep their own width *in order*: the sum of 1230px is the
   //   deliberate total that keeps the action buttons at the far right inside one Full HD
@@ -541,9 +544,13 @@ async function main() {
     </MemoryRouter>,
   )
 
+  // The heading is the page's own title, not the menu item's name: "Manage users" says
+  // how the visitor got here, and a card repeating it would say the menu again. The
+  // absence is the half that fails if a future edit goes back to `t(sectionKey)`.
   check(
     'the users table draws its heading and its table before any rows arrive',
-    usersHtml.includes('Manage users') &&
+    usersHtml.includes('>Users<') &&
+      !usersHtml.includes('Manage users') &&
       usersHtml.includes('ant-table') &&
       !usersHtml.includes('nav.items.usersManage'),
     `rendered ${usersHtml.length} bytes with the list still being fetched`,

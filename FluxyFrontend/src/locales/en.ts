@@ -237,6 +237,11 @@ const en = {
   // signed in looks like and what a destructive button warns about are decisions this
   // application makes.
   users: {
+    // The list page's heading. Deliberately not `sectionKey`, which would take the menu
+    // item's name: a page must not repeat in large letters what the menu already says
+    // beside it - "Manage users" is how the visitor got here, the heading names the
+    // subject. Sharing the group's name ("Users") is accepted: the page is that group.
+    listTitle: 'Users',
     // The form's heading. One component serves both addresses, so the title is chosen here
     // rather than read from `sectionKey`: the same page is this at `users/add` and the edit
     // title at `users/{id}`, and a key naming only the first would title the second a lie.
