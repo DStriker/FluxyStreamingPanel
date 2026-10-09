@@ -38,6 +38,18 @@ namespace Fluxy.API.Configuration
         /// <summary>Name of the policy that accepts a client and nothing else.</summary>
         public const string ClientPolicy = "ClientOnly";
 
+        /// <summary>Policy that accepts an operator who may read the accounts list.</summary>
+        public const string ViewUsersPolicy = "Permission.ViewUsers";
+
+        /// <summary>Policy that accepts an operator who may change the accounts.</summary>
+        public const string EditUsersPolicy = "Permission.EditUsers";
+
+        /// <summary>Policy that accepts an operator who may read the groups list.</summary>
+        public const string ViewUserGroupsPolicy = "Permission.ViewUserGroups";
+
+        /// <summary>Policy that accepts an operator who may change the groups.</summary>
+        public const string EditUserGroupsPolicy = "Permission.EditUserGroups";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -86,12 +98,50 @@ namespace Fluxy.API.Configuration
                     .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Reseller)))
                 .AddPolicy(ClientPolicy, policy => policy
                     .RequireAuthenticatedUser()
-                    .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Client)));
+                    .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Client)))
+
+                // The permission policies. Each one carries *both* requirements, and that is
+                // the whole design: the role stays the base gate, so an endpoint behind one of
+                // these still refuses an account of the wrong level even if the permission it
+                // was granted somehow says otherwise - and a controller that adds a permission
+                // policy on top of the class's role policy gets the two merged into a single
+                // evaluation, which is what keeps "two checks" from meaning two answers.
+                //
+                // The role named here is the role that owns the permission in
+                // <c>UserPermissionCatalog</c>, which is why all four say Admin today: a
+                // permission only exists for the role that owns it, so a policy for a
+                // permission of another role names that role instead.
+                .AddPolicy(ViewUsersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewUsers)))
+                .AddPolicy(EditUsersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUsers)))
+                .AddPolicy(ViewUserGroupsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewUserGroups)))
+                .AddPolicy(EditUserGroupsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUserGroups)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped
             // validation failure, and there is no state worth keeping for the lifetime of the app.
             services.AddScoped<IAuthorizationHandler, RoleRequirementHandler>();
+            services.AddScoped<IAuthorizationHandler, PermissionRequirementHandler>();
+
+            // The shared read of the account, scoped so that one request's answer is never
+            // another request's - and so the result handler can ask the same question again
+            // without paying for it a second time.
+            services.AddScoped<RequestStandingReader>();
 
             // Every authorization outcome comes back as the documented body rather than as the
             // framework's bare 401 with a WWW-Authenticate header, which a browser would
@@ -247,6 +297,36 @@ namespace Fluxy.API.Configuration
     }
 
     /// <summary>
+    /// Demands that the account behind a token holds one permission key in its group.
+    /// </summary>
+    /// <remarks>
+    /// The second, finer gate - the role decides which area of the application a caller is in,
+    /// and a permission decides what they may do once there. The two are deliberately separate
+    /// rather than one folded into the other: a role is an audience and is checked on every
+    /// request of that area, while a permission is an operation and grows over time without
+    /// needing a new role or a new policy for every addition.
+    ///
+    /// It is checked against the account's current row for exactly the reason
+    /// <see cref="RoleRequirement"/> is: the permission a token was minted under is not a claim
+    /// the token even carries, and a grant withdrawn a second ago has to be gone now rather
+    /// than in five minutes.
+    /// </remarks>
+    public sealed class PermissionRequirement : IAuthorizationRequirement
+    {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PermissionRequirement"/> class.
+        /// </summary>
+        /// <param name="permission">Permission the endpoint demands.</param>
+        public PermissionRequirement(Fluxy.Core.Models.Users.UserPermission permission)
+        {
+            Permission = permission;
+        }
+
+        /// <summary>Permission the endpoint demands.</summary>
+        public Fluxy.Core.Models.Users.UserPermission Permission { get; }
+    }
+
+    /// <summary>
     /// Decides a <see cref="RoleRequirement"/> against the account's current row, not against
     /// the token.
     /// </summary>
@@ -264,19 +344,19 @@ namespace Fluxy.API.Configuration
     /// </remarks>
     public sealed class RoleRequirementHandler : AuthorizationHandler<RoleRequirement>
     {
-        private readonly IAccessChecker _accessChecker;
+        private readonly RequestStandingReader _standing;
         private readonly ILogger<RoleRequirementHandler> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RoleRequirementHandler"/> class.
         /// </summary>
-        /// <param name="accessChecker">Reader of the current state of an account.</param>
+        /// <param name="standing">Reader of the current state of an account, once per request.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public RoleRequirementHandler(
-            IAccessChecker accessChecker,
+            RequestStandingReader standing,
             ILogger<RoleRequirementHandler> logger)
         {
-            _accessChecker = accessChecker;
+            _standing = standing;
             _logger = logger;
         }
 
@@ -293,18 +373,12 @@ namespace Fluxy.API.Configuration
                 return;
             }
 
-            var subject = context.User.FindFirst(TokenClaimTypes.Subject)?.Value
-                ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
-            if (!Guid.TryParse(subject, out var userId))
+            if (await _standing.ReadAsync(context.User) is not { } found)
             {
-                _logger.LogWarning(
-                    "A token carried no usable account identifier, so the request was refused.");
-
                 return;
             }
 
-            var standing = await _accessChecker.GetStandingAsync(userId);
+            var (userId, standing) = found;
 
             if (!standing.IsActive)
             {
@@ -371,6 +445,174 @@ namespace Fluxy.API.Configuration
                 && Enum.IsDefined(typeof(Fluxy.Core.Models.Users.UserRole), role)
                 ? (Fluxy.Core.Models.Users.UserRole)role
                 : null;
+        }
+    }
+
+    /// <summary>
+    /// Decides a <see cref="PermissionRequirement"/> against the account's current row.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as <see cref="RoleRequirementHandler"/> on purpose: one read of the
+    /// account and its group, no caching, and a refusal that is logged rather than explained to
+    /// the caller - what the caller is told is decided in <c>ApiAuthorizationResultHandler</c>,
+    /// which is the one place that knows which of the requirements of a merged policy failed.
+    ///
+    /// It re-checks <c>IsActive</c> as well, even though every permission policy also carries a
+    /// <see cref="RoleRequirement"/> that would refuse the same request for the same reason. The
+    /// two handlers may run in either order, and a permission of a blocked account must not
+    /// succeed on the strength of a check that has not run yet.
+    /// </remarks>
+    public sealed class PermissionRequirementHandler : AuthorizationHandler<PermissionRequirement>
+    {
+        private readonly RequestStandingReader _standing;
+        private readonly ILogger<PermissionRequirementHandler> _logger;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PermissionRequirementHandler"/> class.
+        /// </summary>
+        /// <param name="standing">Reader of the current state of an account, once per request.</param>
+        /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
+        public PermissionRequirementHandler(
+            RequestStandingReader standing,
+            ILogger<PermissionRequirementHandler> logger)
+        {
+            _standing = standing;
+            _logger = logger;
+        }
+
+        /// <inheritdoc />
+        protected override async Task HandleRequirementAsync(
+            AuthorizationHandlerContext context,
+            PermissionRequirement requirement)
+        {
+            if (context.User.Identity?.IsAuthenticated != true)
+            {
+                return;
+            }
+
+            if (await _standing.ReadAsync(context.User) is not { } found)
+            {
+                return;
+            }
+
+            var (userId, standing) = found;
+
+            if (!standing.IsActive)
+            {
+                _logger.LogInformation(
+                    "Refused a request from account {UserId}: it is {Status}.",
+                    userId,
+                    standing.Status?.ToString() ?? "missing");
+
+                return;
+            }
+
+            if (!standing.Grants(requirement.Permission))
+            {
+                _logger.LogInformation(
+                    "Refused a request from account {UserId} in role {Role}: its group does not " +
+                    "grant {Permission}.",
+                    userId,
+                    standing.Role,
+                    Fluxy.Core.Models.Users.UserPermissionCatalog.NameOf(requirement.Permission));
+
+                return;
+            }
+
+            context.Succeed(requirement);
+        }
+    }
+
+    /// <summary>
+    /// The account behind the request, read at most once however many requirements its policy
+    /// carries.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A permission policy holds two requirements and both of them need the same answer, so the
+    /// first handler to ask reads it and the second one reads what the first was told. Without
+    /// this the two handlers would issue two identical queries per authorized request, and the
+    /// guarantee the whole mechanism rests on - one indexed read, never cached beyond the
+    /// request - would quietly become two.
+    /// </para>
+    /// <para>
+    /// Scoped rather than static, because two independent requests must never share an answer:
+    /// the lifetime of this object is the lifetime of one request, which is exactly as long as
+    /// an answer about one account may be trusted. It is also the boundary the three consumers
+    /// share - the role handler, the permission handler and the result handler, which asks the
+    /// same question again only to word the refusal correctly and gets the first read back.
+    /// </para>
+    /// <para>
+    /// The answer is remembered even when it is "there is no such account". A refusal this
+    /// handlers reached independently should be logged once, not twice, and a caller must not
+    /// be able to tell the two cases apart by counting queries.
+    /// </para>
+    /// </remarks>
+    public sealed class RequestStandingReader
+    {
+        private readonly IAccessChecker _accessChecker;
+        private readonly ILogger<RequestStandingReader> _logger;
+
+        private bool _resolved;
+        private Guid _userId = Guid.Empty;
+        private AccountStanding? _standing;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RequestStandingReader"/> class.
+        /// </summary>
+        /// <param name="accessChecker">Reader of the current state of an account.</param>
+        /// <param name="logger">Where a refusal worth remembering is reported to.</param>
+        public RequestStandingReader(
+            IAccessChecker accessChecker,
+            ILogger<RequestStandingReader> logger)
+        {
+            _accessChecker = accessChecker;
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Reads the account behind <paramref name="user"/>, from this request's own slot when
+        /// something already read it and from the database when nothing did.
+        /// </summary>
+        /// <param name="user">The claims of the request being authorized.</param>
+        /// <returns>
+        /// The account and its standing, or null when neither could be established - a token
+        /// that named no usable account, or an account that is not there.
+        /// </returns>
+        public async Task<(Guid UserId, AccountStanding Standing)?> ReadAsync(
+            System.Security.Claims.ClaimsPrincipal user)
+        {
+            if (_resolved)
+            {
+                return _standing is { } known ? (_userId, known) : null;
+            }
+
+            var subject = user.FindFirst(TokenClaimTypes.Subject)?.Value
+                ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (!Guid.TryParse(subject, out var userId))
+            {
+                _logger.LogWarning(
+                    "A token carried no usable account identifier, so the request was refused.");
+
+                Remember(Guid.Empty, null);
+
+                return null;
+            }
+
+            var standing = await _accessChecker.GetStandingAsync(userId);
+
+            Remember(userId, standing);
+
+            return standing.Status is null ? null : (userId, standing);
+        }
+
+        /// <summary>Writes the answer down, including the ones that are an absence.</summary>
+        private void Remember(Guid userId, AccountStanding? standing)
+        {
+            _resolved = true;
+            _userId = userId;
+            _standing = standing;
         }
     }
 }

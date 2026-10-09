@@ -137,7 +137,11 @@ namespace Fluxy.Application.Services.Registration
                 Username = username,
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                Role = UserRole.Client,
+
+                // The base clients group, not a level: a fresh account arrives with the
+                // group every client belongs to, and everything about what it may do follows
+                // from the group rather than from anything written on this row.
+                GroupId = BaseUserGroups.Clients,
                 Status = UserStatus.Unregistered,
                 RegistrationCodeHash = codeHash,
                 RegistrationCodeExpiresAt = now.Add(options.CodeLifetime)
@@ -172,6 +176,7 @@ namespace Fluxy.Application.Services.Registration
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Email == normalized, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Unregistered

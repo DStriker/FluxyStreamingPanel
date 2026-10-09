@@ -817,6 +817,101 @@ clearing it; block → `200` twice (idempotent) → the victim's own `POST /auth
 anonymous; a rotated password signing in while the old one is refused; and every fixture deleted
 with no orphaned guard rules left behind.
 
+## The user groups API: `admin/user-groups`
+
+Groups are what a role turned into: a row carrying **one** of the three roles plus the
+permissions its members inherit. `users.role` was **dropped** by `AddUserGroups` — the role a
+caller holds is read through `Include(Group)` from the group the account names, and the
+permission gates below are the second, independent check that sits on top of it. A group is
+therefore the thing the admin area manages and the account merely points at.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/user-groups` | `Permission.ViewUserGroups` | page: `page`, `pageSize`, `search`, `role`, `status`, `sortBy`, `sortOrder` |
+| `GET /admin/user-groups/{id}` | `Permission.ViewUserGroups` | one group with `permissions` and `members`; `404 user_group_not_found` |
+| `POST /admin/user-groups` | `Permission.EditUserGroups` | `201 user_group_created` + relative `Location` |
+| `PATCH /admin/user-groups/{id}` | `Permission.EditUserGroups` | `200 user_group_updated` |
+| `DELETE /admin/user-groups/{id}` | `Permission.EditUserGroups` | `200 user_group_deleted` |
+
+The class still carries `[Authorize(Policy = AdminPolicy)]`. **Role and permission are two
+separate requirements, not one**: the four policies (`Permission.ViewUsers`, `.EditUsers`,
+`.ViewUserGroups`, `.EditUserGroups`, the constants on `AuthenticationExtensions`) each demand
+*both* `RoleRequirement(Admin)` and their `PermissionRequirement`. That is deliberate — a
+permission key on its own would be checkable by any signed-in account that somehow held it,
+and a role on its own is what the API already had. **Reads demand the view permission, writes
+the edit one**, so an operator who may see the group list still gets `403 permission_denied`
+from a `PATCH`.
+
+- **Three base groups, always.** Their identifiers are constants in `BaseUserGroups`
+  (`…0001` Clients, `…0002` Resellers, `…0003` Administrators) rather than values the database
+  invents, because three different places must name the same rows without having seen each
+  other: the migration that backfills accounts, the startup seeder, and the service that
+  refuses to delete them. **Base-ness is the identifier** — `BaseUserGroups.IsBase(id)` — which
+  is why renaming a base group cannot un-base it.
+- **A base group accepts `name` and nothing else.** `UserGroupService` refuses a `PATCH` that
+  carries `Role`, `Status` *or* `Permissions` on one with `409 user_group_immutable`, and
+  refuses to delete one the same way. Rename is the whole of what the form offers, and the
+  controls are drawn disabled rather than hidden so the visitor is told before the click.
+- **`409 user_group_in_use`** for any group that still has a member (`users.group_id` is
+  `RESTRICT`, so the database would refuse it anyway — the service checks first to answer with
+  a code instead of a `DbUpdateException`). Delete on an empty group of one's own is the only
+  group that goes.
+- **The permission catalog is role-scoped, and the two failure modes are different on
+  purpose.** A name that does not exist (`viewEverything`) is **refused** with
+  `validation_failed` and the list that does — a client wrong about the contract is told so. A
+  *valid* permission the chosen role does not own (`viewUsers` on a Client group) is **dropped**
+  — that is a client describing a group, and the server already knows what a Client group may
+  hold. The catalog is `[Flags]` powers of two (`ViewUsers=1, EditUsers=2, ViewUserGroups=4,
+  EditUserGroups=8`), stored as `smallint` in `user_group_permissions`; all four are owned by
+  `Admin` today, so `permissionsForRole` on the frontend answers an empty set for Client and
+  Reseller and their form shows a note instead of four boxes.
+- **The seeder reconciles the base groups at startup**: role and permissions are restored to
+  what the catalog says, `name` is left alone (an installation may have renamed them, and that
+  is allowed), and permissions are reconciled in both directions so a grant removed from the
+  catalog does not linger on the Administrators row.
+- **Effective status is the most restrictive of the account's and its group's**
+  (`UserStatusComposition.Combine`: `Blocked` > `Unregistered` > `Registered`). The accounts
+  list draws that effective value; the detail shows the row's own `Status` beside a read-only
+  `EffectiveStatus`. The same composition is copied to `src/lib/userStatus.ts` on the frontend,
+  with its `RESTRICTIVENESS` map written out because the `UserStatus` enum's *numbers* are in
+  the wrong order for this question.
+- **No captcha, no attempt window** — the same recorded departure as `admin/users`: every write
+  is behind an `AdminOnly` session plus a fresh antiforgery token, and reCAPTCHA cannot be
+  minted outside a page. `RejectsCsrfAsync()` runs first, before any body is read.
+
+**Codes:** `user_group_created|updated|deleted|not_found|already_exists|immutable|in_use`,
+plus `validation_failed` and `permission_denied` — all translated in both locale bundles (the
+probe imports `en.ts`/`ru.ts` and looks each one up).
+
+**Migration `20261009130702_AddUserGroups` is hand-written**, and its order is the point: create
+`user_groups` → insert the three base groups → insert the four admin permission rows → add
+`users.group_id` nullable → three `UPDATE … WHERE role = n` backfilling every existing account
+onto its matching base group → `SET NOT NULL` → drop `users.role` → index and FK. No `CASE`
+fallback for an account that matches no base group: on this installation every account did,
+and a fallback would have hidden a row the backfill had missed instead of surfacing it.
+
+Layering follows the usual split: `UserGroup` / `UserGroupListItem` / `UserGroupPage` /
+`UserGroupDetail` / `NewUserGroup` / `UserGroupPatch` / `UserGroupOutcome` / `UserGroupAction` /
+`UserGroupSortField` / `UserGroupSortOrder` / `UserGroupListLimits` / `UserPermission` /
+`UserPermissionCatalog` / `BaseUserGroups` / `UserStatusComposition` in
+`Fluxy.Core/Models/Users/`, `IUserGroupService` in `Fluxy.Core/Abstractions/`,
+`UserGroupService` in `Fluxy.Application/Services/Users/` (registered Scoped), the entities and
+their two configurations in `Fluxy.DataAccess/`, and the contracts in
+`Fluxy.API/Contracts/AdminUserGroup*` + `CreateUserGroupRequest`/`UpdateUserGroupRequest` +
+`UserGroupResponses`.
+
+Verified against a running instance by `npm run probe:groups` in the frontend (**28/28**, which
+drives the app's own modules rather than `curl`), the load-bearing rows being: the three base
+groups present and only those flagged; the Admin base group granting four and the Client one
+granting **zero**; a duplicate name → `409 user_group_already_exists`; the unknown-vs-wrong-role
+asymmetry above, with the row re-read to prove nothing was stored; rename → `200` while role,
+permissions and deletion of a base group each → `409 user_group_immutable`; a populated group →
+`409 user_group_in_use`; an unused id → `404 user_group_not_found`; a write with no antiforgery
+token → `400 csrf_invalid` (so the CSRF check runs *before* the rules, not after — it must not
+come back as a 409 wearing a different hat); `GET /admin/users?groupId=` returning only that
+group's accounts; and a second account holding only `viewUsers`+`editUsers` still reading
+accounts while every group endpoint answers `403 permission_denied`.
+
 ## Conventions
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.

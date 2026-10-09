@@ -26,10 +26,16 @@ namespace Fluxy.Core.Models.Users
         /// <summary>Email address of the owner, stored normalized.</summary>
         public required string Email { get; init; }
 
-        /// <summary>Access level of the account.</summary>
+        /// <summary>Access level of the account, inherited from its group.</summary>
         public required UserRole Role { get; init; }
 
-        /// <summary>Current state of the account.</summary>
+        /// <summary>Identifier of the group the account belongs to.</summary>
+        public required Guid GroupId { get; init; }
+
+        /// <summary>Display name of that group, which is what the column shows.</summary>
+        public required string GroupName { get; init; }
+
+        /// <summary>Current state of the account, combining its own row with its group's.</summary>
         public required UserStatus Status { get; init; }
 
         /// <summary>

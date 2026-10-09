@@ -190,9 +190,15 @@ namespace Fluxy.Application.Services.Authentication
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == stored.UserId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            // Read once, and read as the model: what matters here is the account's effective
+            // status, which is its own row combined with its group's. A blocked group ends the
+            // session for the same reason a blocked account does.
+            var account = user?.ToModel();
+
+            if (account is null || account.Status is not UserStatus.Registered)
             {
                 // The account stopped being usable while the session was open - blocked, or
                 // gone. The chain is closed rather than left waiting for the account to come
@@ -203,7 +209,7 @@ namespace Fluxy.Application.Services.Authentication
                     "A refresh for account {UserId} was refused because the account is {Status}, " +
                     "and its session was revoked.",
                     stored.UserId,
-                    user?.Status.ToString() ?? "missing");
+                    account?.Status.ToString() ?? "missing");
 
                 return new RefreshOutcome { Status = RefreshStatus.SessionRevoked };
             }
@@ -215,7 +221,12 @@ namespace Fluxy.Application.Services.Authentication
             // on the presented token is the last one the session was seen at, so a different one
             // now means the session moved. Compared as addresses rather than as text, because one
             // IPv6 peer has many spellings and a session must not end over formatting.
-            if (user.BindSessionToIp && !LoginGuardPolicy.AddressesEqual(stored.ClientAddress, clientAddress))
+            // Read from the model rather than from the row: the block above already returned on
+            // a missing account, so `account` is the one that has been proved to exist - while
+            // `user`, the row it was built from, is only ever a step on the way here. Going
+            // through the model is also the honest reading of what is being asked, since the
+            // effective status that decided the block came from the same place.
+            if (account.BindSessionToIp && !LoginGuardPolicy.AddressesEqual(stored.ClientAddress, clientAddress))
             {
                 await RevokeSessionAsync(stored.SessionId, cancellationToken);
 
@@ -234,11 +245,14 @@ namespace Fluxy.Application.Services.Authentication
             // the network it was opened from, and a stolen refresh token is worthless if the
             // thief's network is not allowed. Revoked rather than merely refused, like a
             // blocked account - the session must not survive its own network.
-            if (user.GeoProtectionEnabled && !BypassesGuard(clientAddress))
+            //
+            // Through the model again, for the reason the block above gives: it is the one
+            // value here that has already been proved to exist.
+            if (account.GeoProtectionEnabled && !BypassesGuard(clientAddress))
             {
                 var geo = await _geoIp.ResolveAsync(clientAddress, cancellationToken);
 
-                if (!await _guard.IsAllowedAsync(user.Id, geo, cancellationToken))
+                if (!await _guard.IsAllowedAsync(account.Id, geo, cancellationToken))
                 {
                     await RevokeSessionAsync(stored.SessionId, cancellationToken);
 
@@ -252,8 +266,9 @@ namespace Fluxy.Application.Services.Authentication
             }
 
             // Mapped to the model rather than passed as the entity, because the token service
-            // deals in accounts and has no business knowing how one is stored.
-            var account = user.ToModel();
+            // deals in accounts and has no business knowing how one is stored. Done above: the
+            // refresh refuses an account that is not Registered, and that refusal is read from
+            // the model because the state it refuses with is the effective one.
 
             var replacement = new RefreshTokenEntity
             {
@@ -276,8 +291,8 @@ namespace Fluxy.Application.Services.Authentication
             return new RefreshOutcome
             {
                 Status = RefreshStatus.Refreshed,
-                UserId = user.Id,
-                Role = user.Role,
+                UserId = account.Id,
+                Role = account.Role,
                 Tokens = new IssuedTokens
                 {
                     AccessToken = CreateAccessToken(account, stored.SessionId, now, options),

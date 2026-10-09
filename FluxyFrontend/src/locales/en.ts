@@ -76,7 +76,8 @@ const en = {
     // label added here and nothing else shows up nowhere.
     groups: {
       overview: 'Overview',
-      // The admin's own category, holding the two pages that make and mind accounts.
+      // The admin's own category, holding the three pages that make, mind and group
+      // accounts.
       users: 'Users',
       account: 'Account',
     },
@@ -84,11 +85,16 @@ const en = {
       dashboard: 'Dashboard',
       orders: 'Orders',
       clients: 'Clients',
-      // The two halves of the category above, named for what each one does rather than for
-      // what it shows: the first is a form that makes an account, the second is the table
-      // of the ones that exist, and a visitor scanning the rail decides by the verb.
+      // The first two entries of the category above, named for what each one does rather
+      // than for what it shows: the first is a form that makes an account, the second is the
+      // table of the ones that exist, and a visitor scanning the rail decides by the verb.
       usersAdd: 'Add user',
       usersManage: 'Manage users',
+      // The third, named for what it holds rather than for the verb: groups are not an
+      // action to take but a list to read, and "Groups" beside "Manage users" is the one
+      // word that says which table opens. It has no "add" sibling in the rail - the add
+      // button lives above its own table, where the visitor already is.
+      userGroups: 'Groups',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -250,6 +256,18 @@ const en = {
     // The id is drawn as static text, never as a field: it is not editable and it is not
     // sent back, and an input the visitor cannot change reads as a form that is broken.
     idLabel: 'ID',
+    // Under the group field of the form. The level is the fact being decided and the
+    // select's label only says "Group", so this is where the two are joined: what the
+    // visitor is choosing, named as what it does.
+    groupRequired: 'Choose a group for this account',
+    groupLevel: 'Access level: {{role}}',
+    // The note beside the status field: the account's own row and its group's, most
+    // restrictive winning. It says *where* the restriction comes from, because the row the
+    // form is editing may read `Registered` while the account nobody can sign in to is
+    // being held by the group - and an "Unblock" pressed against that comes back
+    // `409 user_blocked_by_group`, naming a control this form does not have.
+    blockedByGroup: 'Blocked by the group {{group}}. The account stays blocked until that group is unblocked.',
+    effectiveStatus: 'Its group makes this account {{status}} right now.',
     // Under the password field while editing. An empty password means "keep the one that is
     // there" - the server's rule for that field, stated before the visitor wonders about it.
     passwordKeep: 'Leave empty to keep the current password',
@@ -276,14 +294,20 @@ const en = {
     // rather than in a menu, because the widths it undoes are set by hand in the first place.
     resetWidths: 'Reset widths',
     // The two filters, as the choice they offer when nothing is chosen. The labels are the
-    // column headers beside them - one name for one thing, however it is drawn.
-    filterAnyRole: 'Any role',
+    // column headers beside them - one name for one thing, however it is drawn. The group
+    // filter replaced the level filter when the level stopped being a property of the
+    // account: an identifier is the only thing that can name "the accounts of *that* group",
+    // since a level filter would admit every group holding it at once.
+    filterAnyGroup: 'Any group',
     filterAnyStatus: 'Any status',
     columns: {
       id: 'ID',
       username: 'Username',
       email: 'Email',
-      role: 'Role',
+      // The group rather than the level it grants - and a name the form uses as well as the
+      // table, so "Group" means the same thing in both places and there is one word for one
+      // thing rather than a header and a label that could drift apart.
+      group: 'Group',
       status: 'Status',
       // `lastSeenAt` rather than `lastSeen` because the column's key *is* the server's own
       // sort field: a header click then hands its key straight to `getUsers`, and there is
@@ -321,6 +345,123 @@ const en = {
     deleteConfirmTitle: 'Delete this account?',
     deleteConfirmBody:
       'The account "{{name}}" and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The four permission keys, exactly as the catalog spells them. These strings are the
+  // labels of the checkboxes on the group form and the values `src/lib/permissions.ts`
+  // mirrors from the backend - one name for one thing, spelled the same way in both, so a
+  // permission added on the server becomes a box an operator can tick without a translation
+  // step in between.
+  permissions: {
+    viewUsers: 'View users',
+    editUsers: 'Edit users',
+    viewUserGroups: 'View groups',
+    editUserGroups: 'Edit groups',
+  },
+  // The admin's group table and its form. Its own block rather than more keys under `users`,
+  // because the two are behind different permissions (`viewUsers` vs. `viewUserGroups`) and
+  // a page that fails must name which of the two it was asking for.
+  userGroups: {
+    // The list page's heading. Deliberately *not* `nav.items.userGroups`: a card repeating
+    // the menu item's name in large letters would say the menu again instead of naming the
+    // page. The pair here is `Groups` beside `User groups` - one naming how the visitor got
+    // there, one naming what they are looking at.
+    listTitle: 'User groups',
+    // The form's heading. One component serves both addresses, so the title is chosen here
+    // rather than read from `sectionKey`: the same page is this at `user-groups/add` and the
+    // edit title at `user-groups/{id}`, and a key naming only the first would title the
+    // second a lie. The add button above the table reuses the same key, because a button
+    // reading "Groups" over the groups would say what the visitor is already looking at.
+    addTitle: 'Add group',
+    editTitle: 'Edit group',
+    // The id is drawn as static text, never as a field: it is not editable and it is not
+    // sent back, and an input the visitor cannot change reads as a form that is broken.
+    idLabel: 'ID',
+    nameRequired: 'Enter a group name',
+    // The member count on the edit form, where the row is already loaded. The sentence the
+    // delete dialog tells is the one this number is the evidence for.
+    membersLabel: 'Members',
+    members: '{{count}} accounts in this group',
+    create: 'Create',
+    backToList: 'Back to the list',
+    // The table.
+    searchPlaceholder: 'Search by group name',
+    // For the screen reader: a placeholder is not a label, and it disappears the moment
+    // anything is typed - which is exactly when the field needs naming.
+    searchLabel: 'Search groups',
+    empty: 'No groups yet.',
+    // Shown instead of `empty` when a search or a filter is on: the groups exist, they are
+    // just not in this answer - and "there are no groups" would be contradicted by the
+    // filter panel right above the table.
+    noMatches: 'No groups match this search.',
+    // The pager's own row, which antd would otherwise write in its default language.
+    range: '{{from}}–{{to}} of {{total}}',
+    // The handle at the right edge of each header: it is dragged to change the width.
+    // `{{column}}` is the column's own name - a separator a screen reader cannot name is one
+    // it can only find by tabbing blindly through six headers.
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    filterAnyRole: 'Any role',
+    filterAnyStatus: 'Any status',
+    columns: {
+      id: 'ID',
+      name: 'Name',
+      // The level a group grants, as the same word the rest of the application uses for it.
+      // It is drawn from the enum member the server sent, and this header hands its own key
+      // to the sorter - `role` is both what the column says and what the endpoint orders by.
+      role: 'Role',
+      status: 'Status',
+      // "Permissions" rather than "permission count": the header is read before the figures
+      // under it are, and what a reader wants to know from the column is how much this
+      // group can do - which the number answers.
+      permissionsCount: 'Permissions',
+      actions: 'Actions',
+    },
+    // The four row actions, as tooltips. The icons carry no text of their own, so the name
+    // each one gets here is the only thing that says what pressing it does. Block and
+    // unblock are one button meaning the opposite depending on the row's own state, exactly
+    // as on the accounts table.
+    actions: {
+      edit: 'Edit',
+      // The read among the four. It opens the accounts list with this group already on it -
+      // the filter lives in the address, so there is nothing to hand over and the page that
+      // comes out can be reloaded or sent to somebody else and still show the same list.
+      showAccounts: 'Show accounts',
+      block: 'Block',
+      unblock: 'Unblock',
+      delete: 'Delete',
+    },
+    // Why two of the four buttons are disabled on the three base groups. Each states what
+    // the server would answer (`409 user_group_immutable`) as a rule rather than as an
+    // error, because the visitor is being told before the click, not after it.
+    baseImmutable: 'A base group can only be renamed.',
+    baseUndeletable: 'The base groups cannot be deleted.',
+    // The one sentence the edit form puts above three disabled controls, naming the whole
+    // row rather than any one field: what a base group is, and which of the four properties
+    // still belongs to whoever is editing it.
+    baseLocked:
+      'This is one of the three base groups. Only the name can be changed - its role, status and permissions are what this installation was set up with.',
+    // The permission section of the form.
+    permissionsTitle: 'Permissions',
+    // Stated under the checkboxes rather than left to be discovered: a permission belongs to
+    // exactly one role, and offering one the role does not own would be offering a choice
+    // the server throws away on the way in.
+    permissionsHint:
+      'A permission decides what an account may do inside its role. A permission the role does not own cannot be granted.',
+    // The section for a role that owns none of them - which, on this installation, is every
+    // role but Admin. An empty space would read as a section that failed to load.
+    permissionsNone: 'This role owns no permissions of its own, so there is nothing to grant here.',
+    // The two bulk moves beside that hint. Four permissions is four clicks; forty is the
+    // point where a form that offered only the boxes starts producing groups that are
+    // nearly right, which is worse than a form that offered nothing. Both act on what the
+    // chosen level may grant and never on the whole catalog - see the buttons' own comments.
+    permissionsSelectAll: 'Select all',
+    permissionsClear: 'Clear',
+    // The one action that asks first. Only deletion is irreversible - a blocked group is an
+    // unblock away - so a confirmation here is a question and not a habit.
+    deleteConfirmTitle: 'Delete this group?',
+    deleteConfirmBody:
+      'The group "{{name}}" will be removed. Accounts in it are not deleted - the deletion is refused while any account still belongs to it.',
     deleteConfirmOk: 'Delete',
   },
   messages: {
@@ -395,6 +536,22 @@ const en = {
       cannot_delete_self: 'You cannot delete the account you are signed in with.',
       cannot_block_self: 'You cannot block the account you are signed in with.',
       cannot_demote_self: 'You cannot lower the access level of the account you are signed in with.',
+      // The row itself is not blocked - its group is - so `user_blocked` would name a state
+      // the table does not show. The account cannot come back until the group does, and this
+      // is the only place that says where the block actually lives.
+      user_blocked_by_group: 'That account is blocked by the group it belongs to. Unblock the group instead.',
+      // The group resource: the same three shapes as the accounts above (created / updated /
+      // deleted), plus four refusals that only a group can produce. `immutable` and `in_use`
+      // are facts about the installation rather than mistakes in the request, which is why
+      // they are 409s with their own sentences instead of field errors.
+      user_group_created: 'The group has been created.',
+      user_group_updated: 'The group has been updated.',
+      user_group_deleted: 'The group has been deleted.',
+      user_group_not_found: 'There is no group with that identifier.',
+      user_group_already_exists: 'That group name is already taken.',
+      user_group_immutable:
+        'The three groups this installation is built from may only be renamed. Create a group of your own for anything else.',
+      user_group_in_use: 'Accounts still belong to this group. Move them somewhere else first.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',
@@ -405,6 +562,9 @@ const en = {
       session_expired: 'Your session has ended. Please sign in again.',
       auth_required: 'Please sign in to continue.',
       auth_role_changed: 'Your access level has changed. Please sign in again.',
+      // Signed in, right area, wrong grant. Deliberately not `auth_role_changed`: signing in
+      // again would produce the same refusal, so the sentence must not send anybody to do it.
+      permission_denied: 'Your account does not have permission for this.',
       signed_out: 'You have signed out.',
     },
   },

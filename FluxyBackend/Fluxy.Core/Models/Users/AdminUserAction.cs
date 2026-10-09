@@ -55,6 +55,20 @@ namespace Fluxy.Core.Models.Users
         CannotBlockSelf,
 
         /// <summary>The account asked to take its own access level down.</summary>
-        CannotDemoteSelf
+        CannotDemoteSelf,
+
+        /// <summary>
+        /// The account looks blocked only because the group it belongs to is blocked, so
+        /// there is nothing on the row for an unblock to clear.
+        /// </summary>
+        /// <remarks>
+        /// Not the same as <see cref="InvalidStatus"/>, which says the row is not blocked -
+        /// and here the row genuinely is not, while the account on the screen plainly is.
+        /// Answering with <see cref="InvalidStatus"/> would tell an operator who read
+        /// "Blocked" in the list that they misread it. The honest answer names what is
+        /// actually blocking the account: the group, whose own row is where the button that
+        /// helps lives.
+        /// </remarks>
+        BlockedByGroup
     }
 }

@@ -24,8 +24,14 @@ namespace Fluxy.API.Contracts
         /// <summary>Email address of the owner, stored normalized.</summary>
         public required string Email { get; init; }
 
-        /// <summary>Access level, as the name of the enum member.</summary>
+        /// <summary>Access level, as the name of the enum member. Inherited from the group.</summary>
         public required string Role { get; init; }
+
+        /// <summary>Identifier of the group the account belongs to, as text.</summary>
+        public required string GroupId { get; init; }
+
+        /// <summary>Display name of that group, which is what the column draws.</summary>
+        public required string GroupName { get; init; }
 
         /// <summary>State of the account, as the name of the enum member.</summary>
         public required string Status { get; init; }

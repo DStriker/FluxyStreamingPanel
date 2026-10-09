@@ -27,6 +27,18 @@ namespace Fluxy.DataAccess.Context
         public DbSet<UserEntity> Users => Set<UserEntity>();
 
         /// <summary>
+        /// Groups of accounts: the place where the level a member holds and the permissions it
+        /// is granted are stored together.
+        /// </summary>
+        public DbSet<UserGroupEntity> UserGroups => Set<UserGroupEntity>();
+
+        /// <summary>
+        /// One row per permission one group grants. The set a group holds is the set of rows
+        /// it has.
+        /// </summary>
+        public DbSet<UserGroupPermissionEntity> GroupPermissions => Set<UserGroupPermissionEntity>();
+
+        /// <summary>
         /// Issued refresh tokens. One row per token ever issued, kept after it is spent so that
         /// presenting it twice is recognisable as such.
         /// </summary>

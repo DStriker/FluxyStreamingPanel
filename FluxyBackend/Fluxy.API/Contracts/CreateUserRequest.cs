@@ -29,10 +29,11 @@ namespace Fluxy.API.Contracts
         public string? Password { get; init; }
 
         /// <summary>
-        /// Access level the account starts at, as the name of the enum member. Required: an
-        /// account with no level would be one every role check has to guess about.
+        /// Group the account joins, as a uuid. Required: an account with no group would be one
+        /// whose level nobody could answer for, because the level is the group's role rather
+        /// than a column on the account.
         /// </summary>
-        public string? Role { get; init; }
+        public string? GroupId { get; init; }
 
         /// <summary>
         /// State the account starts in, as the name of the enum member. Required for the same

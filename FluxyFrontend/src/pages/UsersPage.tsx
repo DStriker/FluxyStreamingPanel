@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ReactElement, ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   App,
@@ -11,7 +10,6 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd'
 import type { TableColumnsType, TableProps } from 'antd'
@@ -25,15 +23,18 @@ import {
   UnlockOutlined,
 } from '@ant-design/icons'
 import {
+  ALL_GROUPS_PAGE_SIZE,
   confirmUserRegistration,
   deleteUser,
   getProfile,
+  getUserGroups,
   getUsers,
   setUserBlocked,
   setUserUnblocked,
 } from '../lib/api'
 import type { AdminUserSortField, AdminUserSortOrder } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
+import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
@@ -42,7 +43,7 @@ import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
-import type { AdminUser, AdminUserList, MessageResponse, Role, UserStatus } from '../types'
+import type { AdminUser, AdminUserList, MessageResponse, UserStatus } from '../types'
 
 /**
  * How many accounts one page holds. The server's own default, kept in step by hand because
@@ -60,7 +61,7 @@ type UsersColumnKey =
   | 'id'
   | 'username'
   | 'email'
-  | 'role'
+  | 'group'
   | 'status'
   | 'lastSeenAt'
   | 'ip'
@@ -70,7 +71,7 @@ const COLUMN_KEYS: readonly UsersColumnKey[] = [
   'id',
   'username',
   'email',
-  'role',
+  'group',
   'status',
   'lastSeenAt',
   'ip',
@@ -91,12 +92,17 @@ const COLUMN_KEYS: readonly UsersColumnKey[] = [
  * without the action buttons at the far right falling outside the viewport. What those
  * columns lose in room they keep in their tooltips: an address or a visit is never *cut*,
  * only shown shortened until you look at it.
+ *
+ * The identifier column is the narrowest of the eight at 100 rather than the 130 it started
+ * at: it draws nine characters (eight of the GUID and an ellipsis) and nothing else, and the
+ * twenty it gave up are what let `group` show `Administrators` whole. Widening one costs
+ * visible table room; shrinking one that only ever prints nine characters does not.
  */
 const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
-  id: 120,
+  id: 100,
   username: 170,
   email: 200,
-  role: 130,
+  group: 150,
   status: 150,
   lastSeenAt: 180,
   ip: 130,
@@ -106,9 +112,19 @@ const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.users.columnWidths'
 
-/** The three roles and three states, in the order the server declares them - the two filters read from these. */
-const ROLES: Role[] = ['Client', 'Reseller', 'Admin']
+/** The three states, in the order the server declares them - the status filter reads from these. */
 const STATUSES: UserStatus[] = ['Unregistered', 'Registered', 'Blocked']
+
+/**
+ * One entry of the group filter: the identifier the query string needs and the name the
+ * visitor reads. Both are kept here rather than derived at each render, because the value
+ * and the label come from the same row and splitting them would be a second place for the
+ * two to drift apart.
+ */
+interface GroupOption {
+  value: string
+  label: string
+}
 
 /**
  * The three states as colours.
@@ -123,22 +139,6 @@ const STATUS_COLOR: Record<UserStatus, 'default' | 'success' | 'error'> = {
   Registered: 'success',
   Blocked: 'error',
 }
-
-/**
- * A tooltip around a row action that also works while the button is disabled.
- *
- * A native `<button disabled>` swallows the pointer events a tooltip listens for, and two of
- * these buttons are disabled *on purpose* - the ones this server refuses for the account the
- * page is signed in with (`cannot_block_self`, `cannot_delete_self`). The span is what keeps
- * the reason reachable: a greyed button that says nothing is a dead control, and the whole
- * point of disabling it rather than letting the refusal arrive as a toast was to say why
- * before the click.
- */
-const hinted = (title: string, button: ReactNode): ReactElement => (
-  <Tooltip title={title}>
-    <span style={{ display: 'inline-flex' }}>{button}</span>
-  </Tooltip>
-)
 
 /**
  * The administrator's account list - the page behind `nav.items.usersManage`, headed by
@@ -198,8 +198,30 @@ export default function UsersPage(_props: UsersPageProps) {
   // the first nine would arrive after the tenth and put a stale page on screen.
   const [searchText, setSearchText] = useState('')
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<Role | null>(null)
+  /**
+   * The group filter, which lives in the address rather than in this component's state.
+   *
+   * `?groupId=` is how the groups table sends a visitor over here (its "show accounts"
+   * button), and a filter that only existed in memory would be gone by the time the page
+   * mounted - the button would land on the unfiltered list and look like it had done
+   * nothing. Making the query string the single source rather than seeding state from it
+   * also means the address is shareable and a reload keeps the filter, with no effect
+   * anywhere keeping the two in step.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const groupFilter = searchParams.get('groupId')
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
+  /**
+   * The groups the filter may name, read once on mount rather than with every page of
+   * accounts.
+   *
+   * Kept out of the accounts request on purpose: this is a **different** permission
+   * (`viewUserGroups`, not `viewUsers`), so an administrator whose group may read accounts
+   * but not groups would have the whole accounts page fail with `403 permission_denied` if
+   * the two shared one call. As it is, that visitor's filter simply offers nothing to pick,
+   * which is the truth - a group they may not see is not one they could have filtered by.
+   */
+  const [groupOptions, setGroupOptions] = useState<GroupOption[]>([])
   const [sortBy, setSortBy] = useState<AdminUserSortField>('username')
   const [sortOrder, setSortOrder] = useState<AdminUserSortOrder>('asc')
   // The row whose action is in flight - its buttons show a spinner and refuse a second
@@ -261,6 +283,33 @@ export default function UsersPage(_props: UsersPageProps) {
   }, [])
 
   useEffect(() => {
+    // The filter's own options, read once and deliberately failing alone: no error banner,
+    // no retry button, no effect on the accounts below. Everything this call can get wrong
+    // is a fact about the *group* permission rather than about the page, and an alert
+    // saying "you may not list groups" on the accounts screen would be naming a limitation
+    // the visitor can do nothing about, in the place where it matters least.
+    //
+    // One page of the ceiling rather than a second unpaged route - see `getUserGroups` for
+    // why the picker and the table ask the same endpoint for the same thing.
+    let cancelled = false
+
+    getUserGroups({ page: 1, pageSize: ALL_GROUPS_PAGE_SIZE })
+      .then((answer) => {
+        if (cancelled) return
+        setGroupOptions(answer.items.map((group) => ({ value: group.id, label: group.name })))
+      })
+      .catch(() => {
+        // Nothing to filter by, which is exactly what an administrator without
+        // `viewUserGroups` should be offered. The accounts list is untouched.
+        if (!cancelled) setGroupOptions([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     // A generation of one per effect run rather than one shared counter: an answer from the
     // page the visitor just left must not overwrite the page they moved to, and an effect
     // that is torn down mid-flight must not write into a table that has drawn its next row.
@@ -272,7 +321,7 @@ export default function UsersPage(_props: UsersPageProps) {
       page,
       pageSize,
       search,
-      role: roleFilter,
+      groupId: groupFilter,
       status: statusFilter,
       sortBy,
       sortOrder,
@@ -294,7 +343,7 @@ export default function UsersPage(_props: UsersPageProps) {
     return () => {
       cancelled = true
     }
-  }, [page, pageSize, search, roleFilter, statusFilter, sortBy, sortOrder, attempt])
+  }, [page, pageSize, search, groupFilter, statusFilter, sortBy, sortOrder, attempt])
 
   /**
    * Applies what is in the search box, from the field itself rather than from a button, so
@@ -314,9 +363,18 @@ export default function UsersPage(_props: UsersPageProps) {
    * The two filters, each starting the pager over: a different list is a different pager,
    * and leaving the visitor on page 3 of a filter that admits one page would show them an
    * empty table while `total` above it said 1.
+   *
+   * The group one writes to the address rather than to state, and with `replace`: it is a
+   * change to what is being looked at rather than a step worth a history entry, so the back
+   * button takes the visitor off the page instead of back through every group they tried.
    */
-  const chooseRole = (value: Role | undefined) => {
-    setRoleFilter(value ?? null)
+  const chooseGroup = (value: string | undefined) => {
+    const next = new URLSearchParams(searchParams)
+
+    if (value) next.set('groupId', value)
+    else next.delete('groupId')
+
+    setSearchParams(next, { replace: true })
     setPage(1)
   }
 
@@ -509,14 +567,20 @@ export default function UsersPage(_props: UsersPageProps) {
       render: (value: string) => <TruncatedCell text={value} full={value} />,
     },
     {
-      title: t('users.columns.role'),
-      dataIndex: 'role',
-      key: 'role',
-      width: widths.role,
+      // The group rather than the level it grants. The level *is* the group's, so a column
+      // drawing `Admin` beside a row whose group is named `Administrators` would be two
+      // renderings of one fact - and this header hands its own key to the sorter, so the
+      // column and the order it asks for stay the same thing (`sortBy=group`) instead of
+      // sorting names under a heading that reads as levels.
+      title: t('users.columns.group'),
+      dataIndex: 'groupName',
+      key: 'group',
+      width: widths.group,
       sorter: true,
-      sortOrder: orderOf('role'),
-      onHeaderCell: () => resizer('role'),
-      render: (value: Role) => t(`profile.roles.${value}`),
+      sortOrder: orderOf('group'),
+      ellipsis: { showTitle: false },
+      onHeaderCell: () => resizer('group'),
+      render: (value: string) => <TruncatedCell text={value} full={value} />,
     },
     {
       // A tag rather than coloured text: three states of one account read as three labels
@@ -649,11 +713,6 @@ export default function UsersPage(_props: UsersPageProps) {
     },
   ]
 
-  const roleOptions = useMemo(
-    () => ROLES.map((role) => ({ value: role, label: t(`profile.roles.${role}`) })),
-    [t],
-  )
-
   const statusOptions = useMemo(
     () => STATUSES.map((status) => ({ value: status, label: t(`users.statuses.${status}`) })),
     [t],
@@ -682,12 +741,14 @@ export default function UsersPage(_props: UsersPageProps) {
           />
           <Select
             allowClear
-            aria-label={t('users.columns.role')}
-            style={{ width: 150 }}
-            value={roleFilter ?? undefined}
-            options={roleOptions}
-            placeholder={t('users.filterAnyRole')}
-            onChange={chooseRole}
+            showSearch
+            aria-label={t('users.columns.group')}
+            style={{ width: 180 }}
+            value={groupFilter ?? undefined}
+            options={groupOptions}
+            placeholder={t('users.filterAnyGroup')}
+            optionFilterProp="label"
+            onChange={chooseGroup}
           />
           <Select
             allowClear
@@ -745,7 +806,7 @@ export default function UsersPage(_props: UsersPageProps) {
           onChange={handleTableChange}
           locale={{
             emptyText: t(
-              roleFilter || statusFilter || search ? 'users.noMatches' : 'users.empty',
+              groupFilter || statusFilter || search ? 'users.noMatches' : 'users.empty',
             ),
           }}
           pagination={{

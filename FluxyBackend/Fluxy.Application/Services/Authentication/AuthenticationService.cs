@@ -95,6 +95,7 @@ namespace Fluxy.Application.Services.Authentication
 
             var user = await _context.Users
                 .AsNoTracking()
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Username == username, cancellationToken);
 
             if (user is null)
@@ -116,12 +117,18 @@ namespace Fluxy.Application.Services.Authentication
                 return Refused();
             }
 
-            if (user.Status is not UserStatus.Registered)
+            // The level and the state are both facts about the account's group as much as
+            // about the row, so both are read from the model, where the two halves have
+            // already been combined - a blocked group blocks its members here for exactly the
+            // same reason a blocked row does, and there is one rule rather than two.
+            var account = user.ToModel();
+
+            if (account.Status is not UserStatus.Registered)
             {
                 _logger.LogInformation(
                     "Refused a sign-in for {Username}: the account is {Status}.",
                     username,
-                    user.Status);
+                    account.Status);
 
                 return Refused();
             }
@@ -131,13 +138,13 @@ namespace Fluxy.Application.Services.Authentication
             // token may do - but the wrong one here. Each form is an entrance, and an operator
             // signing in at the reseller form would be a cross-level sign-in, which is not
             // something this installation offers.
-            if (user.Role != credentials.RequiredRole)
+            if (account.Role != credentials.RequiredRole)
             {
                 _logger.LogInformation(
                     "Refused a sign-in for {Username}: the account is {Role} and that form accepts " +
                     "{RequiredRole}.",
                     username,
-                    user.Role,
+                    account.Role,
                     credentials.RequiredRole);
 
                 return Refused();
@@ -163,7 +170,7 @@ namespace Fluxy.Application.Services.Authentication
             }
 
             var tokens = await _tokenService.IssueAsync(
-                user.ToModel(),
+                account,
                 credentials.ClientAddress,
                 credentials.UserAgent,
                 cancellationToken);
@@ -173,7 +180,7 @@ namespace Fluxy.Application.Services.Authentication
                 Status = AuthenticationStatus.Authenticated,
                 UserId = user.Id,
                 Username = user.Username,
-                Role = user.Role,
+                Role = account.Role,
                 Tokens = tokens
             };
         }

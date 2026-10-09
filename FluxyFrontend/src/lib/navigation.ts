@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import {
+  ApartmentOutlined,
   AppstoreOutlined,
   DashboardOutlined,
   HistoryOutlined,
@@ -209,15 +210,19 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
-      // The admin's own section: two addresses behind one heading. It replaces the old
+      // The admin's own section: three addresses behind one heading. It replaces the old
       // `management` group, whose `users` entry was a placeholder pointing at nothing -
       // `SectionPage` saying the section was unfinished - and whose `settings` entry went
       // with it, because the two of them described a control panel this application does
-      // not have. What is here instead is the pair of pages that answer the same need:
-      // making an account and seeing the ones that exist.
+      // not have. What is here instead is the set of pages that answer one need from three
+      // sides: making an account, seeing the ones that exist, and deciding what a *kind* of
+      // account may do.
       //
       // The order is deliberate and follows how the work goes: you add before you manage,
-      // and a stranger reading the rail meets the two in that order.
+      // and a stranger reading the rail meets them in that order. Groups come last because
+      // they are the layer above the two - an administrator who never opens this list still
+      // has the three base groups doing their work - and a page reached second must not
+      // describe a thing the first page has not introduced.
       key: 'users',
       labelKey: 'nav.groups.users',
       icon: TeamOutlined,
@@ -235,6 +240,13 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.usersManage',
           icon: TableOutlined,
           page: () => import('../pages/UsersPage'),
+        },
+        {
+          key: 'userGroups',
+          path: 'user-groups',
+          labelKey: 'nav.items.userGroups',
+          icon: ApartmentOutlined,
+          page: () => import('../pages/UserGroupsPage'),
         },
       ],
     },

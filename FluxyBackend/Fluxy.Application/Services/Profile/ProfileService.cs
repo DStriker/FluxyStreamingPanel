@@ -85,9 +85,20 @@ namespace Fluxy.Application.Services.Profile
         {
             var user = await _context.Users
                 .AsNoTracking()
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (user is null)
+            {
+                return null;
+            }
+
+            // The effective status rather than the row's own: a blocked group blocks its
+            // members everywhere, and the profile endpoint answers with "no such active
+            // account" for exactly the accounts a sign-in would refuse.
+            var account = user.ToModel();
+
+            if (account.Status is not UserStatus.Registered)
             {
                 return null;
             }
@@ -96,7 +107,7 @@ namespace Fluxy.Application.Services.Profile
             {
                 Username = user.Username,
                 Email = user.Email,
-                Role = user.Role,
+                Role = account.Role,
                 TimeZone = user.TimeZone
             };
         }
@@ -116,6 +127,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Registered)
@@ -159,6 +171,7 @@ namespace Fluxy.Application.Services.Profile
         {
             var user = await _context.Users
                 .AsNoTracking()
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Registered)
@@ -211,6 +224,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Registered)
@@ -434,6 +448,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Registered)
@@ -524,6 +539,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null || user.Status is not UserStatus.Registered)

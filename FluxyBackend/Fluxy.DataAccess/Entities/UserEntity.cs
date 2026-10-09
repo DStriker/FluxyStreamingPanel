@@ -5,8 +5,16 @@ namespace Fluxy.DataAccess.Entities
 {
     /// <summary>
     /// Database representation of a user account. It is mutable, has no behaviour beyond
-    /// mapping to and from <see cref="User"/>, and knows nothing about HTTP.
+    /// mapping to <see cref="User"/>, and knows nothing about HTTP.
     /// </summary>
+    /// <remarks>
+    /// The row stores a group, not a level. <see cref="Role"/> is gone from the column list
+    /// and survives as a read of <see cref="Group"/>'s role, which is why every load that ends
+    /// in <see cref="ToModel"/> has to include it: an account without its group cannot say
+    /// what level it holds or what state it is in, and the alternative - a level column kept
+    /// beside the reference in step - is exactly the second copy of one fact that having a
+    /// group exists to avoid.
+    /// </remarks>
     public sealed class UserEntity : AuditableEntity
     {
         /// <summary>
@@ -14,19 +22,6 @@ namespace Fluxy.DataAccess.Entities
         /// is about to be inserted. The identifier and both audit timestamps are generated.
         /// </summary>
         public UserEntity()
-        {
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="UserEntity"/> class from an existing
-        /// row. Only <see cref="FromModel(User)"/> uses it, which keeps the audit values of the
-        /// account it was built from.
-        /// </summary>
-        /// <param name="id">Primary key of the stored row.</param>
-        /// <param name="createdAt">Creation timestamp of the stored row.</param>
-        /// <param name="updatedAt">Last modification timestamp of the stored row.</param>
-        private UserEntity(Guid id, DateTimeOffset createdAt, DateTimeOffset updatedAt)
-            : base(id, createdAt, updatedAt)
         {
         }
 
@@ -39,10 +34,29 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>BCrypt hash of the password.</summary>
         public string PasswordHash { get; set; } = string.Empty;
 
-        /// <summary>Access level of the account.</summary>
-        public UserRole Role { get; set; } = UserRole.Client;
+        /// <summary>
+        /// Group the account belongs to, and therefore where its level, its permissions and
+        /// the group half of its status all come from.
+        /// </summary>
+        /// <remarks>
+        /// Required rather than nullable: a row without a group would be an account whose
+        /// level nobody can answer for. The foreign key is <c>RESTRICT</c> rather than
+        /// cascade for the same reason a group with members is refused at the service - the
+        /// database is the last line of a rule that says an account's group is never taken
+        /// away from under it.
+        /// </remarks>
+        public Guid GroupId { get; set; }
 
-        /// <summary>Current state of the account.</summary>
+        /// <summary>
+        /// Navigation to that group. Null when the query did not ask for it, which is the
+        /// state <see cref="ToModel"/> refuses rather than guesses its way around.
+        /// </summary>
+        public UserGroupEntity? Group { get; set; }
+
+        /// <summary>
+        /// Current state of <b>this row alone</b>. The state an account is read with elsewhere
+        /// combines it with its group's; see <see cref="UserStatusComposition"/>.
+        /// </summary>
         public UserStatus Status { get; set; } = UserStatus.Unregistered;
 
         /// <summary>BCrypt hash of the pending one-time registration code, if any.</summary>
@@ -71,18 +85,30 @@ namespace Fluxy.DataAccess.Entities
         public bool BindSessionToIp { get; set; }
 
         /// <summary>
-        /// Builds the business model out of this row.
+        /// Builds the business model out of this row and the group it belongs to.
         /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The query did not include <see cref="Group"/>. Guessing a level or a status for an
+        /// account whose group nobody read would be an answer made up rather than a fact, so
+        /// the miss is refused loudly and the message names the fix.
+        /// </exception>
         public User ToModel()
         {
+            var group = Group ?? throw new InvalidOperationException(
+                $"UserEntity '{Id}' was mapped without its group. Include(u => u.Group) in " +
+                "the query that loads an account: an account's role, permissions and " +
+                "effective status all come from its group.");
+
             return new User
             {
                 Id = Id,
                 Username = Username,
                 Email = Email,
                 PasswordHash = PasswordHash,
-                Role = Role,
-                Status = Status,
+                GroupId = group.Id,
+                GroupName = group.Name,
+                Role = group.Role,
+                Status = UserStatusComposition.Combine(Status, group.Status),
                 RegistrationCodeHash = RegistrationCodeHash,
                 RegistrationCodeExpiresAt = RegistrationCodeExpiresAt,
                 RegisteredAt = RegisteredAt,
@@ -91,29 +117,6 @@ namespace Fluxy.DataAccess.Entities
                 BindSessionToIp = BindSessionToIp,
                 CreatedAt = CreatedAt,
                 UpdatedAt = UpdatedAt
-            };
-        }
-
-        /// <summary>
-        /// Builds an entity out of a business model, keeping the identifier and both audit
-        /// timestamps, so that re-saving the result does not look like a new row.
-        /// </summary>
-        /// <param name="model">Business model to map.</param>
-        public static UserEntity FromModel(User model)
-        {
-            return new UserEntity(model.Id, model.CreatedAt, model.UpdatedAt)
-            {
-                Username = model.Username,
-                Email = model.Email,
-                PasswordHash = model.PasswordHash,
-                Role = model.Role,
-                Status = model.Status,
-                RegistrationCodeHash = model.RegistrationCodeHash,
-                RegistrationCodeExpiresAt = model.RegistrationCodeExpiresAt,
-                RegisteredAt = model.RegisteredAt,
-                TimeZone = model.TimeZone,
-                GeoProtectionEnabled = model.GeoProtectionEnabled,
-                BindSessionToIp = model.BindSessionToIp
             };
         }
     }

@@ -27,7 +27,19 @@ namespace Fluxy.Core.Models.Users
         /// <summary>Email address, stored already normalized.</summary>
         Email,
 
-        /// <summary>Access level: Client &lt; Reseller &lt; Admin.</summary>
+        /// <summary>
+        /// The group's display name, which is what the column draws now that the level comes
+        /// from the group: an order on a level nobody sees anymore would order an invisible
+        /// value beside a visible one.
+        /// </summary>
+        Group,
+
+        /// <summary>
+        /// Access level: Client &lt; Reseller &lt; Admin. It has no column of its own any
+        /// more - the level is the group's role - but it is still the order a caller wants
+        /// when the question is "all the administrators first", which is a different page
+        /// from "groups in alphabetical order" and cannot be derived from it.
+        /// </summary>
         Role,
 
         /// <summary>

@@ -162,6 +162,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("geo_protection_enabled");
 
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -180,10 +184,6 @@ namespace Fluxy.DataAccess.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("registration_code_hash");
-
-                    b.Property<short>("Role")
-                        .HasColumnType("smallint")
-                        .HasColumnName("role");
 
                     b.Property<short>("Status")
                         .HasColumnType("smallint")
@@ -209,6 +209,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
+                    b.HasIndex("GroupId");
+
                     b.HasIndex("Username")
                         .IsUnique();
 
@@ -216,6 +218,74 @@ namespace Fluxy.DataAccess.Migrations
                         {
                             t.HasCheckConstraint("ck_users_registered_at_status", "registered_at IS NULL OR status <> 0");
                         });
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<short>("Role")
+                        .HasColumnType("smallint")
+                        .HasColumnName("role");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Role");
+
+                    b.ToTable("user_groups", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupPermissionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("Permission")
+                        .HasColumnType("smallint")
+                        .HasColumnName("permission");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_group_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserGroupId", "Permission")
+                        .IsUnique();
+
+                    b.ToTable("user_group_permissions", (string)null);
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLoginGuardRuleEntity", b =>
@@ -274,6 +344,26 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserGroupEntity", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupPermissionEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserGroupEntity", null)
+                        .WithMany("Permissions")
+                        .HasForeignKey("UserGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLoginGuardRuleEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
@@ -281,6 +371,11 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>
+                {
+                    b.Navigation("Permissions");
                 });
 #pragma warning restore 612, 618
         }

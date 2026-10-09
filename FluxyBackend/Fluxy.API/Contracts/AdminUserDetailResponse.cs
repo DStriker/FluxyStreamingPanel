@@ -53,11 +53,29 @@ namespace Fluxy.API.Contracts
         /// <summary>Email address of the owner, stored normalized.</summary>
         public required string Email { get; init; }
 
-        /// <summary>Access level, as the name of the enum member.</summary>
+        /// <summary>Access level, as the name of the enum member. Inherited from the group.</summary>
         public required string Role { get; init; }
 
-        /// <summary>State of the account, as the name of the enum member.</summary>
+        /// <summary>Identifier of the group the account belongs to, as text.</summary>
+        public required string GroupId { get; init; }
+
+        /// <summary>Display name of that group.</summary>
+        public required string GroupName { get; init; }
+
+        /// <summary>
+        /// The state written on the account's own row, which is what the form's status control
+        /// edits.
+        /// </summary>
         public required string Status { get; init; }
+
+        /// <summary>
+        /// What the account actually is right now: <see cref="Status"/> combined with its
+        /// group's state. Display only - a request never writes it. It differs from
+        /// <see cref="Status"/> whenever the group is what blocks the account, and the form
+        /// states the difference rather than appearing to contradict the table the operator
+        /// just came from.
+        /// </summary>
+        public required string EffectiveStatus { get; init; }
 
         /// <summary>
         /// IANA identifier of the chosen display time zone, or null when the account has not

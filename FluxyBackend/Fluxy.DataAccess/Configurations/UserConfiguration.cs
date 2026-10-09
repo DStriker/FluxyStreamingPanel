@@ -71,13 +71,16 @@ namespace Fluxy.DataAccess.Configurations
                 .HasMaxLength(PasswordHashMaxLength)
                 .IsRequired();
 
-            // Both enums are stored as smallint, which is what HasConversion<short> maps to in
-            // PostgreSQL. Their numeric order is not a permission order - see the enums.
-            builder.Property(user => user.Role)
-                .HasColumnName("role")
-                .HasConversion<short>()
+            // The level an account holds has no column of its own: it is the role of the
+            // group named by user_id below, read through that join. Storing it here as well
+            // would be a second copy of a fact that a group rename or a role change would
+            // have to be remembered in two places.
+            builder.Property(user => user.GroupId)
+                .HasColumnName("group_id")
                 .IsRequired();
 
+            // Stored as smallint, which is what HasConversion<short> maps to in PostgreSQL.
+            // The numeric order is not a permission order - see the enum.
             builder.Property(user => user.Status)
                 .HasColumnName("status")
                 .HasConversion<short>()
@@ -126,6 +129,20 @@ namespace Fluxy.DataAccess.Configurations
 
             builder.HasIndex(user => user.Email)
                 .IsUnique();
+
+            // An account's group is read on every authorized request and on every page of
+            // the accounts list, so the join column carries its own index rather than relying
+            // on the primary key to answer it.
+            builder.HasIndex(user => user.GroupId);
+
+            // RESTRICT rather than cascade: the group half of an account is not something the
+            // account may lose because somebody deleted the group. The service refuses a
+            // group with members first (group_in_use), so this is the line underneath that
+            // one rather than a second path to the same answer.
+            builder.HasOne(user => user.Group)
+                .WithMany()
+                .HasForeignKey(user => user.GroupId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

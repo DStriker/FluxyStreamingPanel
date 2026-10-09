@@ -12,6 +12,9 @@ import type {
   Role,
   Session,
   SessionHistoryResponse,
+  UserGroupDetail,
+  UserGroupList,
+  UserPermission,
   UserStatus,
 } from '../types'
 
@@ -507,13 +510,26 @@ export const confirmPasswordReset = ({
 /**
  * Which column the admin's user table is ordered by.
  *
- * Six exist because the server can order by six: `username` (the default), `email`, `role`,
- * `status`, `lastSeenAt` and `ip`. The last two are correlated subqueries over the freshest
- * refresh token rather than columns of the row, and a value no server can sort on would be a
- * header that flips its arrow and changes nothing - so this list is the endpoint's, not the
- * page's idea of what is sortable.
+ * Seven exist because the server can order by seven: `username` (the default), `email`,
+ * `group`, `role`, `status`, `lastSeenAt` and `ip`. The last two are correlated subqueries
+ * over the freshest refresh token rather than columns of the row, and a value no server can
+ * sort on would be a header that flips its arrow and changes nothing - so this list is the
+ * endpoint's, not the page's idea of what is sortable.
+ *
+ * `group` and `role` are both here and neither replaces the other. The first is an order on
+ * names the table draws (`Clients`, `Resellers`), the second is an order on levels
+ * (Client &lt; Reseller &lt; Admin) - "all the administrators first" is a different question
+ * from "groups in alphabetical order" and cannot be derived from it, so a caller who wants
+ * either says which.
  */
-export type AdminUserSortField = 'username' | 'email' | 'role' | 'status' | 'lastSeenAt' | 'ip'
+export type AdminUserSortField =
+  | 'username'
+  | 'email'
+  | 'group'
+  | 'role'
+  | 'status'
+  | 'lastSeenAt'
+  | 'ip'
 
 /** Which way a page of accounts runs. `asc` by default - the list starts at A. */
 export type AdminUserSortOrder = 'asc' | 'desc'
@@ -528,10 +544,14 @@ export type AdminUserSortOrder = 'asc' | 'desc'
  * typed looking for a username would otherwise change the meaning of the request instead of
  * being part of the term.
  *
- * `role` and `status` are `null` for "no filter" rather than an empty string, because the
- * server distinguishes neither from an absent parameter and a filter the page has cleared
- * has no business appearing in the query at all. When present they are the name of the enum
- * member - `Admin`, `Blocked` - which is the spelling every contract on both sides uses.
+ * `groupId` and `status` are `null` for "no filter" rather than an empty string, because
+ * the server distinguishes neither from an absent parameter and a filter the page has
+ * cleared has no business appearing in the query at all. `groupId` is an identifier rather
+ * than an enum member name for the reason the account picker sends one: the level is the
+ * group's, so the only thing that can name "the accounts of *that* group" is the group's
+ * own id - a level filter would return every group of that level at once, which is a
+ * different and much broader question. `status`, when present, is still the name of the enum
+ * member - `Blocked` - which is the spelling every contract on both sides uses.
  *
  * `total` comes back with the rows and is counted under the same filters, before the page
  * is cut: a pager computed in the browser over one page would offer four pages of five rows
@@ -541,7 +561,7 @@ export const getUsers = ({
   page,
   pageSize,
   search,
-  role,
+  groupId,
   status,
   sortBy,
   sortOrder,
@@ -549,7 +569,8 @@ export const getUsers = ({
   page: number
   pageSize: number
   search?: string
-  role?: Role | null
+  /** Group to keep, or null to keep every group. */
+  groupId?: string | null
   status?: UserStatus | null
   sortBy?: AdminUserSortField
   sortOrder?: AdminUserSortOrder
@@ -557,7 +578,7 @@ export const getUsers = ({
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
 
   if (search) query.set('search', search)
-  if (role) query.set('role', role)
+  if (groupId) query.set('groupId', groupId)
   if (status) query.set('status', status)
   query.set('sortBy', sortBy ?? 'username')
   query.set('sortOrder', sortOrder ?? 'asc')
@@ -583,16 +604,23 @@ export const getUser = (id: string): Promise<AdminUserDetail> =>
  * only be able to disagree with the first). `password` travels in clear text exactly once,
  * from here to the service that hashes it, and is never part of a response.
  *
- * `role` and `status` are required values rather than defaults on this side: an account
- * with no level is one every role check has to guess about, and `Unregistered` and
- * `Registered` are not the same account. The form always knows both, so neither is ever
- * left for the server to invent - a default is a decision about somebody else's account.
+ * `groupId` and `status` are required values rather than defaults on this side: an account
+ * with no group is one every role check has to guess about - the level *is* the group's -
+ * and `Unregistered` and `Registered` are not the same account. The form always knows both,
+ * so neither is ever left for the server to invent - a default is a decision about somebody
+ * else's account.
+ *
+ * There is deliberately no `role` here. The level is not a field of the account at all: it
+ * is read back out of whichever group `groupId` names, so a body claiming both would be a
+ * body that could contradict itself, and the server would have to decide which of the two
+ * to believe.
  */
 export interface NewUserValues {
   username: string
   email: string
   password: string
-  role: Role
+  /** Group the account joins. Its level, and therefore the area it may reach, follows from this. */
+  groupId: string
   status: UserStatus
   /** IANA identifier, or null when the browser should decide for this account. */
   timeZone: string | null
@@ -625,7 +653,7 @@ export const createUser = ({
       username: values.username,
       email: values.email,
       password: values.password,
-      role: values.role,
+      groupId: values.groupId,
       status: values.status,
       timeZone: values.timeZone,
       loginGuard: values.loginGuard,
@@ -649,7 +677,8 @@ export interface UserPatch {
   username?: string
   email?: string
   password?: string | null
-  role?: Role
+  /** New group. Moving an account between groups moves its level with it - that is the point of both. */
+  groupId?: string
   status?: UserStatus
   timeZone?: string | null
   /** Replacement guard, sent whole when sent at all - a half a caller never speaks about would be a guard nobody can read. */
@@ -660,10 +689,13 @@ export interface UserPatch {
  * Changes an account: `PATCH /admin/users/{id}`, answered with `200 user_updated`.
  *
  * The same rules as creation on every field they share, and the same 409 with the field
- * named when a username or address is taken by another account. `role` and `status` travel
- * as enum member names like everything else, and a status change is a state transition the
- * server owns - `RegisteredAt` is stamped and cleared by it, sessions are revoked by it,
- * and none of that is something the page could do correctly on its own.
+ * named when a username or address is taken by another account. `status` travels as an enum
+ * member name like everything else, `groupId` as the identifier of a group that exists - and
+ * a status change is a state transition the server owns: `RegisteredAt` is stamped and
+ * cleared by it, sessions are revoked by it, and none of that is something the page could do
+ * correctly on its own. Changing the group is the same kind of move for the same reason: the
+ * level, the effective status and every permission the account may use are all read out of
+ * wherever it lands.
  */
 export const updateUser = ({
   id,
@@ -743,6 +775,201 @@ export const deleteUser = ({
   csrfToken: string | null
 }): Promise<MessageResponse> =>
   apiFetch(`/admin/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    csrfToken,
+  })
+
+/**
+ * Which column of the group table a caller asked to order by: `GET /admin/user-groups`.
+ *
+ * Five exist because the server can order by five - `name` (the default), `role`, `status`,
+ * `permissionsCount` and `createdAt`. A value no server can sort on would be a header that
+ * flips its arrow and changes nothing, so this list is the endpoint's idea of what is
+ * sortable rather than the page's. The identifier is deliberately absent on both sides: a
+ * random uuid is an order nobody asked for.
+ */
+export type UserGroupSortField = 'name' | 'role' | 'status' | 'permissionsCount' | 'createdAt'
+
+/** Which way a page of groups runs. `asc` by default - the list starts at A. */
+export type UserGroupSortOrder = 'asc' | 'desc'
+
+/**
+ * The page size a page uses when it wants **every** group rather than a page of them: the
+ * server's own ceiling (`UserGroupListLimits.MaxPageSize`).
+ *
+ * One constant because there is one answer - both the accounts table's group filter and the
+ * account form's group picker ask for the same thing, and two copies of `100` in two files
+ * is one of them eventually not being 100. Groups are few by construction: an installation
+ * has three it cannot operate without plus whatever an operator adds, and the whole point of
+ * a group is that it is a *kind* of account rather than a per-account record. So a page this
+ * size is the entire list in every realistic case, and the alternative - a search box inside
+ * a picker - would be asking the visitor to guess at a name they came here not to have to
+ * know.
+ *
+ * It is a page size rather than a promise: past this many groups the filter and the picker
+ * show what they were given, and both would need a search box before they would show less
+ * truthfully.
+ */
+export const ALL_GROUPS_PAGE_SIZE = 100
+
+/**
+ * One page of groups, ordered and filtered by the server: `GET /admin/user-groups`.
+ *
+ * A plain GET behind the admin session, so no antiforgery token - nothing is changed. The
+ * query string is built with `URLSearchParams` for the reason the accounts page builds its
+ * own: a `+`, an `&` or a space in what somebody typed looking for a group name would
+ * otherwise change the meaning of the request instead of being part of the term.
+ *
+ * `role` and `status` are `null` for "no filter" rather than an empty string - a filter the
+ * page has cleared has no business appearing in the query at all - and when present they are
+ * the name of the enum member (`Admin`, `Blocked`), which the server parses case
+ * insensitively but which is spelled here the way every other contract spells it. A filter
+ * naming no member is refused rather than ignored, so a typo answers `400` instead of
+ * quietly returning every group, which reads exactly like a filter that matched everything.
+ *
+ * The group picker asks for this same endpoint with `pageSize: ALL_GROUPS_PAGE_SIZE` - the
+ * server's ceiling (`UserGroupListLimits.MaxPageSize`) - rather than a second unpaged route
+ * existing for it. The count a picker would ignore is the same number the table needs, and
+ * one route is one thing to keep correct.
+ */
+export const getUserGroups = ({
+  page,
+  pageSize,
+  search,
+  role,
+  status,
+  sortBy,
+  sortOrder,
+}: {
+  page: number
+  pageSize: number
+  search?: string
+  role?: Role | null
+  status?: UserStatus | null
+  sortBy?: UserGroupSortField
+  sortOrder?: UserGroupSortOrder
+}): Promise<UserGroupList> => {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+
+  if (search) query.set('search', search)
+  if (role) query.set('role', role)
+  if (status) query.set('status', status)
+  query.set('sortBy', sortBy ?? 'name')
+  query.set('sortOrder', sortOrder ?? 'asc')
+
+  return apiGet<UserGroupList>(`/admin/user-groups?${query.toString()}`)
+}
+
+/**
+ * One group in full, for the edit form: `GET /admin/user-groups/{id}`.
+ *
+ * A plain GET like the list. The identifier travels in the path rather than the body, and a
+ * group that does not exist is `404 user_group_not_found`, so the endpoint is no probe for
+ * anything else.
+ *
+ * The permissions come back as individual keys rather than as a bitmask number: a client
+ * that had to decode `15` would be one that has to know which bit the system set next,
+ * which is the thing a permission catalog exists to keep stable.
+ */
+export const getUserGroup = (id: string): Promise<UserGroupDetail> =>
+  apiGet<UserGroupDetail>(`/admin/user-groups/${encodeURIComponent(id)}`)
+
+/**
+ * What the create form sends to make a group in one request.
+ *
+ * All four values are required rather than defaulted: a group with no level would be one
+ * whose members hold nothing anybody could answer for, and a group with no state would be
+ * neither registered nor blocked. The form always knows all four, so neither is left for the
+ * server to invent - a default is a decision about somebody else's group.
+ *
+ * `permissions` is the whole set, because a set of which half the caller never speaks is a
+ * set nobody can read. A grant the role does not own is dropped by the server rather than
+ * refused; a name that does not exist at all is refused with the list that does.
+ */
+export interface NewUserGroupValues {
+  name: string
+  role: Role
+  status: UserStatus
+  permissions: UserPermission[]
+}
+
+/** Creates a group: `POST /admin/user-groups`, answered with `201 user_group_created` and a `Location` naming it. */
+export const createUserGroup = ({
+  values,
+  csrfToken,
+}: {
+  values: NewUserGroupValues
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch('/admin/user-groups', {
+    method: 'POST',
+    body: {
+      name: values.name,
+      role: values.role,
+      status: values.status,
+      permissions: values.permissions,
+    },
+    csrfToken,
+  })
+
+/**
+ * What the edit form may change: every property is optional and an absent one means "leave
+ * it alone", which is what stops a request from clearing a value simply because it forgot
+ * to include it.
+ *
+ * `permissions` is the one field where absence is not enough: an **empty** list clears every
+ * grant and a **missing** one changes none, and that difference is the only way a body can
+ * say either. The form therefore always sends the set it holds - `[]` for a group that
+ * grants nothing - rather than omitting it when nothing is ticked.
+ *
+ * A base group accepts `name` and nothing else; anything more is `409 user_group_immutable`.
+ * The form disables those controls rather than discovering this afterwards, and the refusal
+ * is what an endpoint that forgot to disable them gets.
+ */
+export interface UserGroupPatch {
+  name?: string
+  role?: Role
+  status?: UserStatus
+  /** The whole set the group will grant. `[]` clears; omit to leave untouched. */
+  permissions?: UserPermission[]
+}
+
+/** Changes a group: `PATCH /admin/user-groups/{id}`, answered with `200 user_group_updated`. */
+export const updateUserGroup = ({
+  id,
+  patch,
+  csrfToken,
+}: {
+  id: string
+  patch: UserGroupPatch
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/admin/user-groups/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: patch,
+    csrfToken,
+  })
+
+/**
+ * Deletes a group: `DELETE /admin/user-groups/{id}`, answered with `200 user_group_deleted`.
+ *
+ * The only action on this page that asks first, because it is the only one that cannot be
+ * undone - and because the refusal it is most likely to meet (`409 user_group_in_use`) is
+ * also the one worth reading *before* the click. Accounts still belonging to the group are
+ * refused by the server before any write; the form additionally shows the member count on
+ * the detail so the answer is not a surprise.
+ *
+ * A base group is refused with `409 user_group_immutable` however it is reached, which is
+ * why its row draws no delete button at all.
+ */
+export const deleteUserGroup = ({
+  id,
+  csrfToken,
+}: {
+  id: string
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/admin/user-groups/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     csrfToken,
   })

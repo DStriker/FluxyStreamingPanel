@@ -47,6 +47,12 @@ namespace Fluxy.Application
             // blocked account or a changed password takes them with it.
             services.AddScoped<IUserAdminService, UserAdminService>();
 
+            // The groups those accounts belong to are their own resource, with rules that have
+            // no counterpart on an account row - a base group that may only be renamed, a group
+            // with members that may not be deleted - so they are their own service rather than
+            // extra methods on the one above.
+            services.AddScoped<IUserGroupService, UserGroupService>();
+
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it
             // writes a row per issued token.

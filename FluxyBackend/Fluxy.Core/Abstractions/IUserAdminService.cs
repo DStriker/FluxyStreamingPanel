@@ -33,7 +33,7 @@ namespace Fluxy.Core.Abstractions
         /// Case-insensitive substring matched against the username or the email address, or
         /// null when the whole list is wanted.
         /// </param>
-        /// <param name="role">Access level to keep, or null to keep every level.</param>
+        /// <param name="groupId">Group to keep, or null to keep every group.</param>
         /// <param name="status">State to keep, or null to keep every state.</param>
         /// <param name="sortBy">Column to order by.</param>
         /// <param name="sortOrder">Which way to run it.</param>
@@ -47,7 +47,7 @@ namespace Fluxy.Core.Abstractions
             int page,
             int pageSize,
             string? search,
-            UserRole? role,
+            Guid? groupId,
             UserStatus? status,
             AdminUserSortField sortBy,
             AdminUserSortOrder sortOrder,

@@ -58,6 +58,16 @@ namespace Fluxy.API.Contracts
         /// </summary>
         public const string RoleChangedCode = "auth_role_changed";
 
+        /// <summary>
+        /// Code reported when the session is genuine and its account holds the right level for
+        /// the area, but its group does not grant this particular operation. Kept apart from
+        /// <see cref="RoleChangedCode"/> because the two say different things to the reader:
+        /// one is "you are in the wrong place", the other is "you are in the right place and
+        /// this one button is not yours" - and a client that showed the first for the second
+        /// would send somebody looking for a sign-in that would not help them.
+        /// </summary>
+        public const string PermissionDeniedCode = "permission_denied";
+
         /// <summary>Code reported after a session was ended. Not an error.</summary>
         public const string SignedOutCode = "signed_out";
 

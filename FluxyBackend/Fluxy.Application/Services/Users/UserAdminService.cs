@@ -74,7 +74,7 @@ namespace Fluxy.Application.Services.Users
             int page,
             int pageSize,
             string? search,
-            UserRole? role,
+            Guid? groupId,
             UserStatus? status,
             AdminUserSortField sortBy,
             AdminUserSortOrder sortOrder,
@@ -82,14 +82,14 @@ namespace Fluxy.Application.Services.Users
         {
             var query = _context.Users.AsNoTracking();
 
-            if (role is { } wantedRole)
+            if (groupId is { } wantedGroup)
             {
-                query = query.Where(entry => entry.Role == wantedRole);
+                query = query.Where(entry => entry.GroupId == wantedGroup);
             }
 
             if (status is { } wantedStatus)
             {
-                query = query.Where(entry => entry.Status == wantedStatus);
+                query = query.Where(EffectiveStatusIs(wantedStatus));
             }
 
             // Folded before the comparison rather than with a collation, the same way the visit
@@ -116,8 +116,20 @@ namespace Fluxy.Application.Services.Users
                     Id = entry.Id,
                     Username = entry.Username,
                     Email = entry.Email,
-                    Role = entry.Role,
-                    Status = entry.Status
+                    GroupId = entry.GroupId,
+
+                    // The join on the group is inner - its key is NOT NULL and RESTRICT - so
+                    // no row of this page can arrive without one. The navigation is declared
+                    // nullable because a query that did not include it genuinely has nothing
+                    // there; this projection includes it, and says so.
+                    GroupName = entry.Group!.Name,
+                    Role = entry.Group!.Role,
+                    // Both halves travel and are combined in memory below: the rule that
+                    // combines them is <see cref="UserStatusComposition"/>, and a second copy
+                    // of it written as SQL would be a second source of truth about what an
+                    // account's status is.
+                    OwnStatus = entry.Status,
+                    GroupStatus = entry.Group.Status
                 })
                 // Widening to long before the cast: a page number comes off a query string, and
                 // `(page - 1) * pageSize` on a huge one overflows int into a negative OFFSET,
@@ -140,6 +152,7 @@ namespace Fluxy.Application.Services.Users
         {
             var user = await _context.Users
                 .AsNoTracking()
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
@@ -157,13 +170,24 @@ namespace Fluxy.Application.Services.Users
 
             var visit = await LatestVisitAsync(user.Id, cancellationToken);
 
+            var group = user.Group!;
+
             return new AdminUserDetail
             {
                 Id = user.Id,
                 Username = user.Username,
                 Email = user.Email,
-                Role = user.Role,
+                Role = group.Role,
+                GroupId = group.Id,
+                GroupName = group.Name,
+
+                // The row's own state, because that is what the form edits: an effective
+                // status written back through the form would stamp Blocked onto a row that
+                // only looks blocked while its group is. The effective one travels beside it
+                // as <see cref="AdminUserDetail.EffectiveStatus"/> so the difference between
+                // the two is stated rather than left for the operator to wonder about.
                 Status = user.Status,
+                EffectiveStatus = UserStatusComposition.Combine(user.Status, group.Status),
                 TimeZone = user.TimeZone,
                 RegisteredAt = user.RegisteredAt,
                 CreatedAt = user.CreatedAt,
@@ -197,6 +221,18 @@ namespace Fluxy.Application.Services.Users
             var errors = Validate(username, email, user.Password, user.TimeZone);
             Merge(errors, user.LoginGuard, out var guard);
 
+            var group = await _context.UserGroups
+                .AsNoTracking()
+                .FirstOrDefaultAsync(entry => entry.Id == user.GroupId, cancellationToken);
+
+            if (group is null)
+            {
+                // Refused rather than defaulted: falling back to the clients group would
+                // create an account somewhere the operator did not ask for, and a level the
+                // form never showed anybody.
+                errors[nameof(NewUser.GroupId)] = ["No group with that identifier."];
+            }
+
             if (errors.Count > 0)
             {
                 return new AdminUserOutcome
@@ -221,7 +257,13 @@ namespace Fluxy.Application.Services.Users
                 Username = username,
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.Password),
-                Role = user.Role,
+
+                // The null check above reports a missing group as an error rather than
+                // returning at once, so that one answer can name every bad field - and any
+                // error at all returns just below. `group` therefore cannot be null here,
+                // but the compiler cannot follow that chain, so the assertion is written
+                // down beside the only place the group is read.
+                GroupId = group!.Id,
                 Status = user.Status,
 
                 // A row handed over already activated carries the stamp from the start: the
@@ -256,10 +298,12 @@ namespace Fluxy.Application.Services.Users
             }
 
             _logger.LogInformation(
-                "Created the account {Username} ({Email}) at level {Role}, state {State}.",
+                "Created the account {Username} ({Email}) in group {Group} at level {Role}, " +
+                "state {State}.",
                 entity.Username,
                 entity.Email,
-                entity.Role,
+                group.Name,
+                group.Role,
                 entity.Status);
 
             return new AdminUserOutcome
@@ -277,12 +321,15 @@ namespace Fluxy.Application.Services.Users
             CancellationToken cancellationToken = default)
         {
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
+
+            var groupBefore = user.Group!;
 
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -320,6 +367,30 @@ namespace Fluxy.Application.Services.Users
 
             Merge(errors, patch.LoginGuard, out var guard);
 
+            // The group has to exist before any of the rules below can ask what level the
+            // account is moving to, and it is read once: the level of the *new* group is
+            // what the self-demotion refusal compares against, and the level of the old one
+            // is already on the row through groupBefore.
+            var groupAfter = groupBefore;
+            if (patch.GroupId is { } wantedGroup)
+            {
+                var movedTo = await _context.UserGroups
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(entry => entry.Id == wantedGroup, cancellationToken);
+
+                if (movedTo is null)
+                {
+                    // Refused rather than defaulted: an identifier naming no group is a
+                    // request to move the account somewhere that is not there, and keeping
+                    // the current group would answer a different question.
+                    errors[nameof(UserPatch.GroupId)] = ["No group with that identifier."];
+                }
+                else
+                {
+                    groupAfter = movedTo;
+                }
+            }
+
             if (errors.Count > 0)
             {
                 return new AdminUserOutcome
@@ -332,7 +403,7 @@ namespace Fluxy.Application.Services.Users
             // The two refusals that are about the caller rather than about the row. They run
             // before anything is written, so a request that mixes one with a valid change
             // changes nothing at all.
-            if (patch.Role is { } newRole && userId == actingUserId && newRole < user.Role)
+            if (user.GroupId != groupAfter.Id && userId == actingUserId && groupAfter.Role < groupBefore.Role)
             {
                 return new AdminUserOutcome { Action = AdminUserAction.CannotDemoteSelf };
             }
@@ -346,6 +417,11 @@ namespace Fluxy.Application.Services.Users
             {
                 return taken;
             }
+
+            // What the account is *now*, before the group moves under it: the effective
+            // status is what decides whether a session outlives this request, and it can
+            // change without a single column on the row changing.
+            var effectiveBefore = UserStatusComposition.Combine(user.Status, groupBefore.Status);
 
             // Hashed only now rather than during validation: bcrypt is the expensive step, and
             // a request refused for a taken username should not have paid for it.
@@ -372,9 +448,10 @@ namespace Fluxy.Application.Services.Users
                 user.TimeZone = zone;
             }
 
-            if (patch.Role is { } role)
+            var groupChanged = user.GroupId != groupAfter.Id;
+            if (groupChanged)
             {
-                user.Role = role;
+                user.GroupId = groupAfter.Id;
             }
 
             var statusChanged = false;
@@ -422,8 +499,16 @@ namespace Fluxy.Application.Services.Users
             // the old one may be holding a session minted with it. Unregistered joins them
             // because it withdraws the right to sign in at all - a session outliving the
             // withdrawal is the same contradiction a blocked one is.
+            //
+            // The third clause is the group: moving an account into a blocked group withdraws
+            // the same right without a single column on the account changing, so the state
+            // that decides is the effective one, before and after the write.
+            var effectiveAfter = UserStatusComposition.Combine(user.Status, groupAfter.Status);
+
             var endsSessions = passwordHash is not null
-                || (statusChanged && user.Status is UserStatus.Blocked or UserStatus.Unregistered);
+                || (statusChanged && user.Status is UserStatus.Blocked or UserStatus.Unregistered)
+                || (effectiveAfter != effectiveBefore
+                    && effectiveAfter is UserStatus.Blocked or UserStatus.Unregistered);
 
             if (endsSessions)
             {
@@ -431,9 +516,10 @@ namespace Fluxy.Application.Services.Users
             }
 
             _logger.LogInformation(
-                "Updated {Username}{StatusPart}{PasswordPart}.",
+                "Updated {Username}{StatusPart}{GroupPart}{PasswordPart}.",
                 user.Username,
                 statusChanged ? $" -> {user.Status}" : string.Empty,
+                groupChanged ? $" (moved to group {groupAfter.Name})" : string.Empty,
                 passwordHash is not null ? " (password changed, sessions revoked)" : string.Empty);
 
             return new AdminUserOutcome
@@ -503,12 +589,15 @@ namespace Fluxy.Application.Services.Users
             }
 
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
+
+            var group = user.Group!;
 
             if (blocked)
             {
@@ -552,7 +641,23 @@ namespace Fluxy.Application.Services.Users
                 // Refused rather than answered like the block above: where an unblock goes
                 // depends on where the account came from, so an account that is not blocked
                 // has no answer to give. The caller is expected to re-read the list.
-                return InvalidStatus(user.Id);
+                //
+                // Except when the *group* is what blocks it. The list drew "Blocked" for this
+                // row because the account is blocked - the fact is on the screen - and
+                // answering "the account is not blocked" would be answering a question the
+                // operator did not ask. The row has nothing to clear; the group does.
+                return group.Status is UserStatus.Blocked
+                    ? new AdminUserOutcome
+                    {
+                        Action = AdminUserAction.BlockedByGroup,
+                        UserId = user.Id,
+                        Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                        {
+                            [nameof(UserPatch.Status)] =
+                                [$"The account is blocked by the group it belongs to ({group.Name})."]
+                        }
+                    }
+                    : InvalidStatus(user.Id);
             }
 
             // The inverse of the block, not of "set the status to Registered": an account that
@@ -806,6 +911,62 @@ namespace Fluxy.Application.Services.Users
                 StringComparison.Ordinal) == true;
 
         /// <summary>
+        /// A predicate over the accounts of the page for one <i>effective</i> status - the
+        /// state an account is in once its own row and its group's row are combined, which is
+        /// the state the column shows and the state everything else reads it with.
+        /// </summary>
+        /// <remarks>
+        /// The predicate is generated by asking <see cref="UserStatusComposition.Combine"/>
+        /// which pairs of the two raw states produce the wanted one, and OR-ing those pairs
+        /// together, rather than being written out. It is generated for the reason the type
+        /// itself gives: a second copy of the rule - one in C# and one written as SQL - would
+        /// be a second source of truth about what an account's status is, and the day the two
+        /// disagree the answer would depend on whether the operator arrived through this list
+        /// or the account arrived through a sign-in.
+        ///
+        /// Nine pairs at most and every one of them a constant, so the database sees a chain
+        /// of <c>AND</c>s and <c>OR</c>s over two columns - nothing it would have to evaluate
+        /// or fail to translate.
+        /// </remarks>
+        /// <param name="wanted">Effective status to keep.</param>
+        /// <returns>
+        /// A predicate matching exactly the accounts whose combination equals
+        /// <paramref name="wanted"/>. Never empty: every state is the combination of some
+        /// pair, and an empty predicate would silently match everything instead of nothing.
+        /// </returns>
+        private static Expression<Func<UserEntity, bool>> EffectiveStatusIs(UserStatus wanted)
+        {
+            var entry = Expression.Parameter(typeof(UserEntity), "entry");
+            var own = Expression.Property(entry, nameof(UserEntity.Status));
+            var group = Expression.Property(
+                Expression.Property(entry, nameof(UserEntity.Group)),
+                nameof(UserGroupEntity.Status));
+
+            Expression? body = null;
+
+            foreach (var userStatus in UserStatusComposition.All)
+            {
+                foreach (var groupStatus in UserStatusComposition.All)
+                {
+                    if (UserStatusComposition.Combine(userStatus, groupStatus) != wanted)
+                    {
+                        continue;
+                    }
+
+                    var pair = Expression.AndAlso(
+                        Expression.Equal(own, Expression.Constant(userStatus, typeof(UserStatus))),
+                        Expression.Equal(group, Expression.Constant(groupStatus, typeof(UserStatus))));
+
+                    body = body is null ? pair : Expression.OrElse(body, pair);
+                }
+            }
+
+            return Expression.Lambda<Func<UserEntity, bool>>(
+                body ?? Expression.Constant(false),
+                entry);
+        }
+
+        /// <summary>
         /// Puts the page in the order the caller asked for.
         /// </summary>
         /// <remarks>
@@ -830,8 +991,14 @@ namespace Fluxy.Application.Services.Users
                 AdminUserSortField.Email => Chain(
                     query, entry => entry.Email, entry => entry.Username, descending),
 
+                // Ordering is done in SQL, so these are expressions the provider translates
+                // rather than delegates it calls - and the join the group brings in is inner,
+                // for the reason the projection above gives.
+                AdminUserSortField.Group => Chain(
+                    query, entry => entry.Group!.Name, entry => entry.Username, descending),
+
                 AdminUserSortField.Role => Chain(
-                    query, entry => entry.Role, entry => entry.Username, descending),
+                    query, entry => entry.Group!.Role, entry => entry.Username, descending),
 
                 AdminUserSortField.Status => Chain(
                     query, entry => entry.Status, entry => entry.Username, descending),
@@ -951,8 +1118,10 @@ namespace Fluxy.Application.Services.Users
                     Id = row.Id,
                     Username = row.Username,
                     Email = row.Email,
+                    GroupId = row.GroupId,
+                    GroupName = row.GroupName,
                     Role = row.Role,
-                    Status = row.Status
+                    Status = UserStatusComposition.Combine(row.OwnStatus, row.GroupStatus)
                 })
                 .ToList();
 
@@ -1031,8 +1200,15 @@ namespace Fluxy.Application.Services.Users
             public Guid Id { get; init; } = Guid.Empty;
             public string Username { get; init; } = string.Empty;
             public string Email { get; init; } = string.Empty;
+            public Guid GroupId { get; init; } = Guid.Empty;
+            public string GroupName { get; init; } = string.Empty;
             public UserRole Role { get; init; }
-            public UserStatus Status { get; init; }
+
+            /// <summary>The row's own state, before the group's state is laid over it.</summary>
+            public UserStatus OwnStatus { get; init; }
+
+            /// <summary>The group's state at the moment the page was read.</summary>
+            public UserStatus GroupStatus { get; init; }
         }
     }
 }

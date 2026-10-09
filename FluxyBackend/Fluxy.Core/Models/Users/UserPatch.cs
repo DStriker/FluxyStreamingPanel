@@ -30,8 +30,12 @@ namespace Fluxy.Core.Models.Users
         /// <summary>New password in clear text, or null / empty to keep the current one.</summary>
         public string? Password { get; init; }
 
-        /// <summary>New access level, or null to keep the current one.</summary>
-        public UserRole? Role { get; init; }
+        /// <summary>
+        /// New group, or null to keep the current one. Moving an account to another group
+        /// changes its level, its permissions and - through the state of that group - what it
+        /// is allowed to do at all, which is the whole reason the reference lives here.
+        /// </summary>
+        public Guid? GroupId { get; init; }
 
         /// <summary>New state, or null to keep the current one. See the remarks above.</summary>
         public UserStatus? Status { get; init; }

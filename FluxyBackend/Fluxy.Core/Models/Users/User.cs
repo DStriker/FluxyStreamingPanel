@@ -23,10 +23,37 @@ namespace Fluxy.Core.Models.Users
         /// <summary>BCrypt hash of the password. Never returned to a client.</summary>
         public required string PasswordHash { get; init; }
 
-        /// <summary>Access level of the account.</summary>
+        /// <summary>
+        /// Identifier of the group the account belongs to, and therefore the fact that
+        /// replaces a role column on the row.
+        /// </summary>
+        /// <remarks>
+        /// Every account is in exactly one group, and every account that has left the
+        /// installation through registration has been given one, so this is required rather
+        /// than nullable: a row without a group would be an account whose level and
+        /// permissions nobody can answer for.
+        /// </remarks>
+        public required Guid GroupId { get; init; }
+
+        /// <summary>
+        /// Name of that group, for the one place that shows an account's own group beside it.
+        /// </summary>
+        public required string GroupName { get; init; }
+
+        /// <summary>
+        /// Access level the account holds <b>now</b>, inherited from
+        /// <see cref="GroupId"/>'s role rather than stored on the account.
+        /// </summary>
+        /// <remarks>
+        /// The column it used to live on is gone. Anything that writes this property is
+        /// wrong - the account stores a group, and the level is a fact about the group.
+        /// </remarks>
         public UserRole Role { get; init; } = UserRole.Client;
 
-        /// <summary>Current state of the account.</summary>
+        /// <summary>
+        /// Current state of the account, combining its own row with its group's; see
+        /// <see cref="UserStatusComposition"/>.
+        /// </summary>
         public UserStatus Status { get; init; } = UserStatus.Unregistered;
 
         /// <summary>

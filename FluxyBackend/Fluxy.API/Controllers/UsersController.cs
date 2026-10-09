@@ -20,6 +20,15 @@ namespace Fluxy.API.Controllers
     /// runs before anything inside an action does, which turns a caller with no admin session
     /// into a 401 or 403 about the request rather than a 400 about a missing antiforgery token.
     ///
+    /// <b>Each action then names the permission it needs on top of that.</b> The class policy
+    /// is the role gate and stays where it is; the per-action policy is the finer one, and
+    /// the two are merged by the framework into a single evaluation, so an endpoint is never
+    /// checked twice by two round trips. Reads demand <c>viewUsers</c>, writes demand
+    /// <c>editUsers</c> - which means the account gate a later action defaults to is the role
+    /// one, and it has to be widened deliberately by naming the permission it wants. That is
+    /// the direction a mistake should fail in: an action that forgot its permission is
+    /// readable by every administrator, not writable by every administrator.
+    ///
     /// <b>No captcha and no attempt window</b>, and both are absent for one reason: they exist
     /// to protect a request that has *no session* - the captcha guards the expensive step (key
     /// derivation) and the window caps how often an anonymous caller may reach it. Everything
@@ -61,17 +70,17 @@ namespace Fluxy.API.Controllers
     [Produces("application/json")]
     public sealed class UsersController : AuthControllerBase
     {
-        /// <summary>Sentence a filter that names no known level gets.</summary>
-        private const string RoleHint =
-            "Role must be 'client', 'reseller' or 'admin'.";
-
         /// <summary>Sentence a filter that names no known state gets.</summary>
         private const string StatusHint =
             "Status must be 'unregistered', 'registered' or 'blocked'.";
 
         /// <summary>Sentence a sort that names no column gets.</summary>
         private const string SortFieldHint =
-            "Sort by must be 'username', 'email', 'role', 'status', 'lastSeenAt' or 'ip'.";
+            "Sort by must be 'username', 'email', 'group', 'role', 'status', 'lastSeenAt' or 'ip'.";
+
+        /// <summary>Sentence a group that is not an identifier gets.</summary>
+        private const string GroupIdHint =
+            "The group must be the identifier of a group, as a uuid.";
 
         private readonly IUserAdminService _users;
 
@@ -107,7 +116,9 @@ namespace Fluxy.API.Controllers
         /// <param name="search">
         /// Case-insensitive substring matched against the username or the email address.
         /// </param>
-        /// <param name="role">Access level to keep, or nothing to keep every level.</param>
+        /// <param name="groupId">
+        /// Group to keep, as a uuid, or nothing to keep every group.
+        /// </param>
         /// <param name="status">State to keep, or nothing to keep every state.</param>
         /// <param name="sortBy">What the page is ordered by; <c>username</c> by default.</param>
         /// <param name="sortOrder"><c>asc</c> or <c>desc</c>; <c>asc</c> by default.</param>
@@ -130,27 +141,31 @@ namespace Fluxy.API.Controllers
         /// a caller that asked to order by something should be told it does not exist rather
         /// than be handed a different order than the one it asked for.
         ///
-        /// <c>role</c>, <c>status</c>, <c>sortBy</c> and <c>sortOrder</c> are read as plain
+        /// <c>groupId</c>, <c>status</c>, <c>sortBy</c> and <c>sortOrder</c> are read as plain
         /// text rather than bound to the enums, deliberately. Enum binding takes a member name
         /// spelled in full, so the conventional <c>sortOrder=desc</c> would be refused while
         /// <c>sortOrder=Descending</c> was accepted - an API that answers a request this
         /// conventional with a 400 teaches its callers to spell things oddly. The four are
         /// parsed below case insensitively, which is also where the sentence naming the values
         /// a client may send comes from; the framework's own message would say only that the
-        /// value was wrong, not what would have been right.
+        /// value was wrong, not what would have been right. <c>groupId</c> is a uuid rather than
+        /// a name for the same reason it is a uuid in the edit body: a name can be changed by
+        /// the very button this filter sits next to, and a filter that stopped matching the
+        /// moment somebody was renamed would be a filter with a lie in its total.
         ///
         /// No antiforgery pair: the method changes nothing, so there is no state for a
         /// cross-site submission to alter. No captcha and no attempt window for the reason the
         /// class gives.
         /// </remarks>
         [HttpGet]
+        [Authorize(Policy = AuthenticationExtensions.ViewUsersPolicy)]
         [ProducesResponseType<AdminUserListResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetUsers(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = AdminUserListLimits.DefaultPageSize,
             [FromQuery] string? search = null,
-            [FromQuery] string? role = null,
+            [FromQuery] string? groupId = null,
             [FromQuery] string? status = null,
             [FromQuery] string? sortBy = "username",
             [FromQuery] string? sortOrder = "asc",
@@ -163,11 +178,18 @@ namespace Fluxy.API.Controllers
 
             // A filter that was not asked for and a filter that asked for nonsense are two
             // different answers, so the value and whether it was understood are read apart:
-            // null here means "keep every level", while a value that names no level is a
+            // null here means "keep every group", while a value that names no group is a
             // parameter worth refusing.
-            var wantedRole = ParseRoleOrNull(role);
+            Guid? wantedGroup = null;
+            var groupOk = true;
+
+            if (!string.IsNullOrWhiteSpace(groupId))
+            {
+                groupOk = Guid.TryParse(groupId, out var parsedGroup);
+                wantedGroup = groupOk ? parsedGroup : null;
+            }
+
             var wantedStatus = ParseStatusOrNull(status);
-            var roleOk = wantedRole is not null || string.IsNullOrWhiteSpace(role);
             var statusOk = wantedStatus is not null || string.IsNullOrWhiteSpace(status);
 
             if (page < 1 ||
@@ -175,17 +197,17 @@ namespace Fluxy.API.Controllers
                 (search?.Length ?? 0) > AdminUserListLimits.MaxSearchLength ||
                 field is null ||
                 order is null ||
-                !roleOk ||
+                !groupOk ||
                 !statusOk)
             {
-                return Invalid(ListErrors(page, pageSize, search, field, order, roleOk, statusOk));
+                return Invalid(ListErrors(page, pageSize, search, field, order, groupOk, statusOk));
             }
 
             var list = await _users.GetPageAsync(
                 page,
                 pageSize,
                 search,
-                wantedRole,
+                wantedGroup,
                 wantedStatus,
                 field.Value,
                 order.Value,
@@ -216,6 +238,7 @@ namespace Fluxy.API.Controllers
         /// but blank invites a client to treat it as a value.
         /// </remarks>
         [HttpGet("{id:guid}")]
+        [Authorize(Policy = AuthenticationExtensions.ViewUsersPolicy)]
         [ProducesResponseType<AdminUserDetailResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetUser(
@@ -259,6 +282,7 @@ namespace Fluxy.API.Controllers
         /// without ever reaching the antiforgery check.
         /// </remarks>
         [HttpPost]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
@@ -288,13 +312,14 @@ namespace Fluxy.API.Controllers
                 errors[nameof(CreateUserRequest.Password)] = ["A password is required."];
             }
 
-            // An account with no level would be one every role check has to guess about, and
+            // An account with no group would be one whose level nobody could answer for, and
             // an account with no state would be neither registered nor waiting - both are
             // decided here rather than defaulted, because a default is a decision about
-            // somebody else's account.
-            if (!TryParseRole(request.Role, out var role))
+            // somebody else's account. Whether the group *exists* is the service's answer,
+            // because that is a fact about the database rather than about the body.
+            if (!Guid.TryParse(request.GroupId, out var groupId))
             {
-                errors[nameof(CreateUserRequest.Role)] = [RoleHint];
+                errors[nameof(CreateUserRequest.GroupId)] = [GroupIdHint];
             }
 
             if (!TryParseStatus(request.Status, out var status))
@@ -313,7 +338,7 @@ namespace Fluxy.API.Controllers
                     Username = request.Username ?? string.Empty,
                     Email = request.Email ?? string.Empty,
                     Password = request.Password ?? string.Empty,
-                    Role = role,
+                    GroupId = groupId,
                     Status = status,
                     TimeZone = request.TimeZone,
                     LoginGuard = ToSettings(request.LoginGuard)
@@ -354,6 +379,7 @@ namespace Fluxy.API.Controllers
         /// it, and the honest reading of that is to assume they do.
         /// </remarks>
         [HttpPatch("{id:guid}")]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
@@ -380,16 +406,16 @@ namespace Fluxy.API.Controllers
             // nothing with it would hide the bug that made it empty.
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-            UserRole? role = null;
-            if (request.Role is { } roleText)
+            Guid? groupId = null;
+            if (request.GroupId is { } groupText)
             {
-                if (TryParseRole(roleText, out var parsedRole))
+                if (Guid.TryParse(groupText, out var parsedGroup))
                 {
-                    role = parsedRole;
+                    groupId = parsedGroup;
                 }
                 else
                 {
-                    errors[nameof(UpdateUserRequest.Role)] = [RoleHint];
+                    errors[nameof(UpdateUserRequest.GroupId)] = [GroupIdHint];
                 }
             }
 
@@ -418,7 +444,7 @@ namespace Fluxy.API.Controllers
                     Username = request.Username,
                     Email = request.Email,
                     Password = request.Password,
-                    Role = role,
+                    GroupId = groupId,
                     Status = status,
                     TimeZone = request.TimeZone,
                     LoginGuard = ToSettings(request.LoginGuard)
@@ -449,6 +475,7 @@ namespace Fluxy.API.Controllers
         /// somebody else already confirmed.
         /// </remarks>
         [HttpPost("{id:guid}/confirm-registration")]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
@@ -483,6 +510,7 @@ namespace Fluxy.API.Controllers
         /// cancellation of the registration.
         /// </remarks>
         [HttpPost("{id:guid}/block")]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
@@ -523,6 +551,7 @@ namespace Fluxy.API.Controllers
         /// change that did not happen, and the caller is expected to re-read the list.
         /// </remarks>
         [HttpPost("{id:guid}/unblock")]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
@@ -563,6 +592,7 @@ namespace Fluxy.API.Controllers
         /// its account is a credential for nobody.
         /// </remarks>
         [HttpDelete("{id:guid}")]
+        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
@@ -626,6 +656,7 @@ namespace Fluxy.API.Controllers
             {
                 "username" => AdminUserSortField.Username,
                 "email" => AdminUserSortField.Email,
+                "group" => AdminUserSortField.Group,
                 "role" => AdminUserSortField.Role,
                 "status" => AdminUserSortField.Status,
                 "lastseenat" => AdminUserSortField.LastSeenAt,
@@ -641,55 +672,6 @@ namespace Fluxy.API.Controllers
                 "desc" => AdminUserSortOrder.Descending,
                 _ => null
             };
-
-        /// <summary>
-        /// Turns the text of a filter into the level it names, or null when it names none.
-        /// </summary>
-        /// <remarks>
-        /// Compared after lowering, so <c>Admin</c> and <c>admin</c> are the same request - a
-        /// value read case insensitively by every conventional API should not be the one
-        /// exception. Absent and blank come back null as well, which means "no level"; whether
-        /// that is a filter nobody asked for or a field nobody filled in is for the caller to
-        /// say, and it is the caller that decides which of the two it accepts.
-        /// </remarks>
-        private static UserRole? ParseRoleOrNull(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "client" => UserRole.Client,
-                "reseller" => UserRole.Reseller,
-                "admin" => UserRole.Admin,
-                _ => null
-            };
-
-        /// <summary>
-        /// Turns the text a body named into the level it is.
-        /// </summary>
-        /// <param name="value">The value the body carried, or null when it carried none.</param>
-        /// <param name="role">
-        /// The level, or <see cref="UserRole.Client"/> when the answer is false - assigned
-        /// because an <c>out</c> parameter has to be assigned, and never read, because every
-        /// caller returns on a false.
-        /// </param>
-        /// <returns>
-        /// False when the value is absent or names no level that exists. Absent is a failure
-        /// here rather than "no filter": the body named the field, and a body that named it
-        /// without saying what it is has a bug worth reporting rather than a default worth
-        /// guessing - a role left at a default would be a decision about somebody else's
-        /// account.
-        /// </returns>
-        private static bool TryParseRole(string? value, out UserRole role)
-        {
-            if (ParseRoleOrNull(value) is { } parsed)
-            {
-                role = parsed;
-
-                return true;
-            }
-
-            role = default;
-
-            return false;
-        }
 
         /// <summary>
         /// Turns the text of a filter into the state it names, or null when it names none.
@@ -737,9 +719,9 @@ namespace Fluxy.API.Controllers
         /// </summary>
         /// <remarks>
         /// A parameter that names no value gets the sentence listing the values that exist,
-        /// which is the same sentence <c>TryParseRole</c>, <c>TryParseStatus</c> and
-        /// <c>ParseSortField</c> would have given - collected here so that one request with
-        /// three mistakes is told about all three rather than one per round trip.
+        /// which is the same sentence <c>TryParseStatus</c> and <c>ParseSortField</c> would
+        /// have given - collected here so that one request with three mistakes is told about
+        /// all three rather than one per round trip.
         /// </remarks>
         private static Dictionary<string, string[]> ListErrors(
             int page,
@@ -747,7 +729,7 @@ namespace Fluxy.API.Controllers
             string? search,
             AdminUserSortField? field,
             AdminUserSortOrder? order,
-            bool roleOk,
+            bool groupOk,
             bool statusOk)
         {
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
@@ -773,9 +755,9 @@ namespace Fluxy.API.Controllers
                 ];
             }
 
-            if (!roleOk)
+            if (!groupOk)
             {
-                errors["role"] = [RoleHint];
+                errors["groupId"] = [GroupIdHint];
             }
 
             if (!statusOk)
@@ -815,6 +797,8 @@ namespace Fluxy.API.Controllers
             Username = item.Username,
             Email = item.Email,
             Role = item.Role.ToString(),
+            GroupId = item.GroupId.ToString(),
+            GroupName = item.GroupName,
             Status = item.Status.ToString(),
             LastSeenAt = item.LastSeenAt,
             LastIp = item.LastIp
@@ -826,7 +810,10 @@ namespace Fluxy.API.Controllers
             Username = detail.Username,
             Email = detail.Email,
             Role = detail.Role.ToString(),
+            GroupId = detail.GroupId.ToString(),
+            GroupName = detail.GroupName,
             Status = detail.Status.ToString(),
+            EffectiveStatus = detail.EffectiveStatus.ToString(),
             TimeZone = detail.TimeZone,
             RegisteredAt = detail.RegisteredAt,
             CreatedAt = detail.CreatedAt,

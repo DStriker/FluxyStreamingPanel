@@ -56,6 +56,12 @@ namespace Fluxy.API.Contracts
         /// <summary>Code reported for an attempt to take one's own access level down.</summary>
         public const string CannotDemoteSelfCode = "cannot_demote_self";
 
+        /// <summary>
+        /// Code reported for an unblock of an account that is blocked by its group rather than
+        /// by its own row, so there is nothing on the row for an unblock to clear.
+        /// </summary>
+        public const string BlockedByGroupCode = "user_blocked_by_group";
+
         /// <summary>Answer describing <paramref name="outcome"/>.</summary>
         /// <param name="outcome">What the service reported.</param>
         /// <returns>The status, the body, and the rejected fields when the input was the problem.</returns>
@@ -115,6 +121,12 @@ namespace Fluxy.API.Contracts
                     (StatusCodes.Status400BadRequest,
                         CannotDemoteSelfCode,
                         "You cannot lower your own access level. Ask another administrator."),
+
+                AdminUserAction.BlockedByGroup =>
+                    (StatusCodes.Status409Conflict,
+                        BlockedByGroupCode,
+                        "That account is blocked by the group it belongs to. " +
+                        "Unblock the group instead."),
 
                 // Unreachable: the service reports nothing outside this enum. Thrown rather
                 // than answered as a 200, because a code a client has never seen with a status

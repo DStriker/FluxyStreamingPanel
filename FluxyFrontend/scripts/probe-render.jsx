@@ -25,6 +25,8 @@ import SessionsPage from '../src/pages/SessionsPage'
 import ActiveSessionsPage from '../src/pages/ActiveSessionsPage'
 import UsersPage from '../src/pages/UsersPage'
 import UserFormPage from '../src/pages/UserFormPage'
+import UserGroupsPage from '../src/pages/UserGroupsPage'
+import UserGroupFormPage from '../src/pages/UserGroupFormPage'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -38,6 +40,7 @@ import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
 import { countryName } from '../src/lib/countryName'
 import { describeUserAgent } from '../src/lib/userAgent'
+import { ALL_PERMISSIONS, permissionsForRole } from '../src/lib/permissions'
 import {
   GENERATED_PASSWORD_LENGTH,
   generatePassword,
@@ -556,14 +559,19 @@ async function main() {
     `rendered ${usersHtml.length} bytes with the list still being fetched`,
   )
 
+  // The second filter used to read "Any role" - accounts were filtered by the column their
+  // row carried directly. They are filtered by group now, because a row no longer *has* a
+  // role of its own: the group is what the server joins to answer one, and a filter over a
+  // field that is no longer in the query would be a control the endpoint silently ignores.
+  // Asserted as text rather than as a key so a filter that quietly disappears fails here.
   check(
     'the users toolbar offers the search, both filters, the width reset and the way to add',
     usersHtml.includes('Search by username or email') &&
-      usersHtml.includes('Any role') &&
+      usersHtml.includes('Any group') &&
       usersHtml.includes('Any status') &&
       usersHtml.includes('Reset widths') &&
       usersHtml.includes('Add user'),
-    usersHtml.includes('Any role') ? `rendered ${usersHtml.length} bytes` : 'a filter lost its "any" choice',
+    usersHtml.includes('Any group') ? `rendered ${usersHtml.length} bytes` : 'a filter lost its "any" choice',
   )
 
   const usersCols = [...usersHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
@@ -571,7 +579,7 @@ async function main() {
   check(
     'the users table is fixed-layout with its eight deliberate widths, in order',
     /table-layout:\s*fixed/.test(usersHtml) &&
-      usersWidths.join(',') === '120,170,200,130,150,180,130,150',
+      usersWidths.join(',') === '100,170,200,150,150,180,130,150',
     `${usersCols.length} columns: [${usersWidths.join(', ')}]`,
   )
 
@@ -683,20 +691,187 @@ async function main() {
     `rendered ${userEditHtml.length} bytes under the edit title with the spinner up`,
   )
 
-  // The same failure the profile item's check below exists for: `sectionRoutes` falls back
-  // to `SectionPage` when an item carries no `page`, so a loader dropped from either of
-  // these two items would open the placeholder while the menu, lint and the build all
+  // The group table, which is the accounts table's twin by design and its own page in
+  // every other respect: it hangs off a different permission (`viewUserGroups` rather than
+  // `viewUsers`), so a page that rendered the wrong one would be a page answering a
+  // question the visitor never asked and would keep answering it while every check above
   // stayed green.
-  const [usersAddModule, usersManageModule] = await Promise.all([
+  const groupsHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/user-groups']}>
+      <AntApp>
+        <UserGroupsPage sectionKey="nav.items.userGroups" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+
+  // The heading is the page's own title rather than the menu item's name, for the reason
+  // the users table's is: `Groups` says how the visitor got there, `User groups` says what
+  // they are looking at. Both halves are asserted, because a card that went back to
+  // `t(sectionKey)` would still show a sensible-looking sentence.
+  check(
+    'the groups table draws its own heading and its table before any rows arrive',
+    groupsHtml.includes('>User groups<') &&
+      !groupsHtml.includes('>Groups<') &&
+      groupsHtml.includes('ant-table') &&
+      !groupsHtml.includes('nav.items.userGroups'),
+    `rendered ${groupsHtml.length} bytes with the list still being fetched`,
+  )
+
+  check(
+    'the groups toolbar offers the search, both filters, the width reset and the way to add',
+    groupsHtml.includes('Search by group name') &&
+      groupsHtml.includes('Any role') &&
+      groupsHtml.includes('Any status') &&
+      groupsHtml.includes('Reset widths') &&
+      groupsHtml.includes('Add group'),
+    groupsHtml.includes('Add group')
+      ? `rendered ${groupsHtml.length} bytes`
+      : 'the way to add a group is missing from the toolbar',
+  )
+
+  // Six columns, and the same 1230px the accounts table holds on one Full HD screen: the
+  // two tables sit under one sidebar and a visitor who can see one of them whole should be
+  // able to see the other. The widths differ because the content does - the name column is
+  // 400 rather than 170 because a group name is the one thing on this page nobody truncates
+  // into a tooltip, and `id` gives back the room by staying at 110.
+  const groupsCols = [...groupsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const groupsWidths = groupsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const groupsTotal = groupsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the groups table is fixed-layout with its six deliberate widths, in order',
+    /table-layout:\s*fixed/.test(groupsHtml) &&
+      groupsWidths.join(',') === '110,400,180,200,140,200' &&
+      groupsTotal === 1230,
+    `${groupsCols.length} columns: [${groupsWidths.join(', ')}] = ${groupsTotal}px`,
+  )
+
+  // `id` and `actions` are the two columns that must never produce a sorter event - the
+  // server's `UserGroupSortField` has no member for either, and a header that offered one
+  // would answer with `validation_failed`. Four sortable headers is the number that has to
+  // come out of this, and the handles are the same six the accounts table draws.
+  const groupsHandles = [...groupsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  const groupsHeaderCells = [...groupsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'every groups column carries a handle, and four of the six headers sort',
+    groupsHandles.length === 6 &&
+      groupsHeaderCells.filter((th) => th.includes('aria-description="sortable"')).length === 4 &&
+      groupsHeaderCells.some(
+        (th) => th.includes('aria-label="Name"') && th.includes('tabindex="0"'),
+      ),
+    `${groupsHandles.length} handles, ${groupsHeaderCells.filter((th) => th.includes('aria-description="sortable"')).length} sortable headers`,
+  )
+
+  const groupFormHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/user-groups/add']}>
+      <AntApp>
+        <UserGroupFormPage sectionKey="nav.items.userGroups" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+
+  // The add form opens at the least privileged level on purpose, and the visible
+  // consequence is asserted rather than reasoned about: a `Client` group owns no
+  // permissions at all, so the permission section draws its explanation instead of four
+  // boxes that would all be refused - and the two bulk buttons go with the boxes, since
+  // "select all" over nothing is a control that cannot be obeyed. A default that had crept
+  // up to `Admin` would show up here as checkboxes, and a bulk row that stayed behind them
+  // going away would show up here too.
+  check(
+    'the group add form draws its fields at once, and starts with nothing granted',
+    groupFormHtml.includes('Add group') &&
+      groupFormHtml.includes('Create') &&
+      groupFormHtml.includes('Permissions') &&
+      groupFormHtml.includes('owns no permissions') &&
+      !groupFormHtml.includes('Edit group') &&
+      // No id row and no copy affordance: the identifier does not exist until the row does.
+      !groupFormHtml.includes('anticon-copy') &&
+      // No base-group notice either - that sentence is a fact about a row, and this form
+      // has not made one.
+      !groupFormHtml.includes('one of the three base groups') &&
+      !groupFormHtml.includes('ant-checkbox-wrapper') &&
+      !groupFormHtml.includes('Select all'),
+    `rendered ${groupFormHtml.length} bytes of the add form`,
+  )
+
+  // The group filter arrives in the address (`?groupId=`), which is how the groups table's
+  // "show accounts" button sends a visitor over. Asserted because a filter kept in the
+  // component's state instead would be gone by the time this page mounted, and the button
+  // would land on the unfiltered list looking like it had done nothing - which no other
+  // check here could see, since every render of this page also arrives with no rows.
+  const groupArrivalHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users?groupId=22222222-2222-2222-2222-222222222222']}>
+      <AntApp>
+        <UsersPage sectionKey="nav.items.usersManage" />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the accounts page picks its group filter up from the address it was opened at',
+    groupArrivalHtml.includes('22222222-2222-2222-2222-222222222222'),
+    groupArrivalHtml.includes('22222222-2222-2222-2222-222222222222')
+      ? `the arriving group is on the filter of ${groupArrivalHtml.length} bytes`
+      : 'THE ARRIVING GROUP WAS DROPPED - the button would open an unfiltered list',
+  )
+
+  // The two bulk buttons are drawn exactly when the checkbox group is, which means they are
+  // unreachable in every state this probe can render: the add form opens at `Client`, and
+  // `renderToStaticMarkup` never runs the click that would move it to `Admin`. So the
+  // precondition is asserted as a function instead - the same reasoning the two display
+  // helpers in the visit history and the password generator above rest on. Without it, a
+  // `permissionsForRole` that answered `[]` for every level would leave a perfectly tidy
+  // form with no boxes and no bulk row anywhere in the application, and every check above
+  // would still pass.
+  check(
+    'a level that owns permissions offers all of them, and the others none',
+    permissionsForRole('Admin').length === ALL_PERMISSIONS.length &&
+      permissionsForRole('Client').length === 0 &&
+      permissionsForRole('Reseller').length === 0,
+    `Admin ${permissionsForRole('Admin').length}/${ALL_PERMISSIONS.length}, Client ${permissionsForRole('Client').length}, Reseller ${permissionsForRole('Reseller').length}`,
+  )
+
+  // The edit address of a group, with the same rule the accounts edit address follows: it
+  // waits. `useParams` needs a real route match, so this one is rendered inside `Routes`.
+  const groupEditHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/user-groups/11111111-1111-1111-1111-111111111111']}>
+      <AntApp>
+        <Routes>
+          <Route
+            path="/admin/user-groups/:id"
+            element={<UserGroupFormPage sectionKey="nav.items.userGroups" />}
+          />
+        </Routes>
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'the group edit address waits for the group instead of drawing fields against nothing',
+    groupEditHtml.includes('Edit group') &&
+      groupEditHtml.includes('ant-spin') &&
+      !groupEditHtml.includes('Create'),
+    `rendered ${groupEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // The same failure the profile item's check below exists for: `sectionRoutes` falls back
+  // to `SectionPage` when an item carries no `page`, so a loader dropped from any of these
+  // three items would open the placeholder while the menu, lint and the build all stayed
+  // green. Three rather than two since the group table arrived, and the group item is the
+  // one worth watching: it is the newest, and it is the only one of the three whose page
+  // the menu cannot also reach by any other route.
+  const [usersAddModule, usersManageModule, userGroupsModule] = await Promise.all([
     flatItems('Admin').find((item) => item.key === 'usersAdd')?.page?.(),
     flatItems('Admin').find((item) => item.key === 'usersManage')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'userGroups')?.page?.(),
   ])
   check(
-    'the admin menu points its two users items at the real pages rather than the placeholder',
-    usersAddModule?.default === UserFormPage && usersManageModule?.default === UsersPage,
+    'the admin menu points its three users-group items at the real pages rather than the placeholder',
+    usersAddModule?.default === UserFormPage &&
+      usersManageModule?.default === UsersPage &&
+      userGroupsModule?.default === UserGroupsPage,
     `usersAdd opens ${usersAddModule?.default?.name ?? 'nothing'}, usersManage opens ${
       usersManageModule?.default?.name ?? 'nothing'
-    }`,
+    }, userGroups opens ${userGroupsModule?.default?.name ?? 'nothing'}`,
   )
 
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`
@@ -772,12 +947,16 @@ async function main() {
 
     const root = routePath(route.path)
     // A parameterised child is a page the menu deliberately does not name - `users/:id`
-    // is the edit form, addressed from a row of the table the menu *does* offer, and
-    // listing it here would demand a second menu entry for the page that adds one account
-    // with the id of another. Only the children a visitor could click to are compared.
+    // and `user-groups/:id` are the edit forms, addressed from a row of the table the menu
+    // *does* offer, and listing them would demand a second menu entry for a page that edits
+    // the row you just picked. `user-groups/add` is the same exception in its other shape:
+    // it has no `:` in it, but it is reached the same way - from the add button above the
+    // group table - and a menu item for it would be a second way to open a form the "Add
+    // group" button already opens. Only the children a visitor could click to are compared.
+    const EXTRA_ROUTES = ['user-groups/add']
     const fromRoutes = new Set(
       (route.children ?? [])
-        .filter((child) => !child.path?.includes(':'))
+        .filter((child) => !child.path?.includes(':') && !EXTRA_ROUTES.includes(child.path ?? ''))
         .map((child) => (child.index ? root : `${root}/${child.path}`)),
     )
     const fromMenu = new Set(
@@ -824,6 +1003,28 @@ async function main() {
         : `${keys.length} addresses resolved`,
     )
   }
+
+  // The three addresses the admin area answers without a menu item beside them. The loops
+  // above deliberately exclude them, which leaves them unchecked by anything: a typo in
+  // `user-groups/add` would break the button that navigates to it and every other check in
+  // this file would stay green. So they are resolved here the same way, with the catch-all
+  // named as the one answer that must not come back.
+  const EXTRA_ADMIN_ADDRESSES = [
+    `/admin/users/11111111-1111-1111-1111-111111111111`,
+    `/admin/user-groups/add`,
+    `/admin/user-groups/11111111-1111-1111-1111-111111111111`,
+  ]
+  const extraLandedOnNotFound = EXTRA_ADMIN_ADDRESSES.filter((address) => {
+    const matched = matchRoutes(routeTable, address)?.[0]?.route
+    return !matched || matched.path === '*'
+  })
+  check(
+    'every address the admin area answers without a menu item still lands on its own page',
+    extraLandedOnNotFound.length === 0,
+    extraLandedOnNotFound.length
+      ? `would open the 404: ${extraLandedOnNotFound.join(', ')}`
+      : `${EXTRA_ADMIN_ADDRESSES.length} extra addresses resolved`,
+  )
 
   // Keys the shell reads, in both languages. i18next falls back to `en`, so a string
   // added to one file only fails here and not in the build - and the raw key then shows on

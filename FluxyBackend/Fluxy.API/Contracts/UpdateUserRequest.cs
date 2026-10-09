@@ -33,8 +33,13 @@ namespace Fluxy.API.Contracts
         /// <summary>New password in clear text, or null / empty to keep the current one.</summary>
         public string? Password { get; init; }
 
-        /// <summary>New access level, as the name of the enum member, or null to keep it.</summary>
-        public string? Role { get; init; }
+        /// <summary>
+        /// New group, as a uuid, or null to keep the current one. Moving an account to another
+        /// group changes its level, its permissions and - through that group's state - what it
+        /// may do at all, which is why the value is an identifier rather than a level: the
+        /// level is one of the things being changed, not the way it is named.
+        /// </summary>
+        public string? GroupId { get; init; }
 
         /// <summary>New state, as the name of the enum member, or null to keep it.</summary>
         public string? Status { get; init; }

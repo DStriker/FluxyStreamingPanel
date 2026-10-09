@@ -90,18 +90,90 @@ namespace Fluxy.API.Configuration
             var userId = context.User.FindFirst(TokenClaimTypes.Subject)?.Value
                 ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
+            var code = await ExplainAsync(context, policy);
+
             _logger.LogInformation(
                 "Refused a request from {Path} to account {UserId}: the token is valid but does not " +
-                "grant this endpoint.",
+                "grant this endpoint ({Code}).",
                 context.Request.Path,
-                userId ?? "an unidentified account");
+                userId ?? "an unidentified account",
+                code);
 
+            // A permission refusal does not send anybody to the sign-in page. The visitor is
+            // signed in and signing in again would change nothing - what they are missing is a
+            // grant on their group, and the page they asked for is where that message belongs.
+            // The role refusal keeps the redirect, because it is the one that may mean the
+            // session belongs to an account whose area has moved out from under it.
             await WriteAsync(
                 context,
                 StatusCodes.Status403Forbidden,
-                Contracts.AuthenticationResponses.RoleChangedCode,
-                "Your account does not have access to this area.",
-                clientLoginPath: true);
+                code,
+                code == Contracts.AuthenticationResponses.PermissionDeniedCode
+                    ? "Your account does not have permission for this."
+                    : "Your account does not have access to this area.",
+                clientLoginPath: code != Contracts.AuthenticationResponses.PermissionDeniedCode);
+        }
+
+        /// <summary>
+        /// Which of the two refusals this one is, re-derived from the policy and the account.
+        /// </summary>
+        /// <remarks>
+        /// Re-derived rather than reported by the handlers because the framework hands this
+        /// class nothing but "it failed" - a <c>PolicyAuthorizationResult</c> carries no list of
+        /// which requirements went unsatisfied, and neither does the authorization context by
+        /// the time it gets here. So the question is asked again of the account, on a path that
+        /// only runs when something was already refused - and the reader it asks is the same
+        /// scoped one both handlers used, so this costs no read at all.
+        ///
+        /// Every branch that is not a missing permission answers
+        /// <see cref="AuthenticationResponses.RoleChangedCode"/>, which is the refusal this API
+        /// gave before permissions existed - a wrong level, an inactive account, a stale token
+        /// claim. Those are all the same thing to a client: this account is not welcome here.
+        /// </remarks>
+        /// <param name="context">Request being refused.</param>
+        /// <param name="policy">Policy whose requirements did not succeed.</param>
+        /// <returns>The code the body carries.</returns>
+        private async Task<string> ExplainAsync(HttpContext context, AuthorizationPolicy policy)
+        {
+            var demanded = policy.Requirements
+                .OfType<PermissionRequirement>()
+                .FirstOrDefault();
+
+            if (demanded is null)
+            {
+                return Contracts.AuthenticationResponses.RoleChangedCode;
+            }
+
+            if (await context.RequestServices
+                    .GetRequiredService<RequestStandingReader>()
+                    .ReadAsync(context.User) is not { } found)
+            {
+                return Contracts.AuthenticationResponses.RoleChangedCode;
+            }
+
+            var (userId, standing) = found;
+
+            if (!standing.IsActive)
+            {
+                return Contracts.AuthenticationResponses.RoleChangedCode;
+            }
+
+            var requiredRole = policy.Requirements
+                .OfType<RoleRequirement>()
+                .FirstOrDefault();
+
+            if (requiredRole is not null && standing.Role != requiredRole.Role)
+            {
+                return Contracts.AuthenticationResponses.RoleChangedCode;
+            }
+
+            // A permission of a group the account is not in any more reaches this line, and so
+            // does a grant withdrawn while the token was still good. Both are the answer the
+            // reader is after; neither is the same as "you are in the wrong area", which is why
+            // the two codes are different.
+            return standing.Grants(demanded.Permission)
+                ? Contracts.AuthenticationResponses.RoleChangedCode
+                : Contracts.AuthenticationResponses.PermissionDeniedCode;
         }
 
         private async Task WriteAsync(

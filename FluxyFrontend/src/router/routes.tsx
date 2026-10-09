@@ -49,6 +49,26 @@ const SectionPage = lazy(() => import('../pages/SectionPage'))
 const UserFormPage = lazy(() => import('../pages/UserFormPage'))
 
 /**
+ * The group form, for the same reason and with the same two-address shape as the one above.
+ *
+ * `/admin/user-groups/add` and `/admin/user-groups/{id}` are both sections of the admin
+ * area with **no menu item beside them**: the rail offers one entry, the table itself, and
+ * both forms are reached by choosing a button on it - a third entry saying "add a group"
+ * would be a page whose only content is the button that brought you here, and a fourth
+ * saying "edit" would be empty until you said *which*.
+ *
+ * The add address is an `extra` route rather than a menu item because of exactly that: the
+ * accounts section has one (`usersAdd`, whose label is the verb a visitor scans for), and
+ * the groups section's button already sits on the page the visitor is reading. Two of them
+ * would be one list reachable from two places and one form reachable from a third.
+ *
+ * A second `lazy()` over the same module, so a move between the two addresses remounts the
+ * form instead of carrying a half-filled one across - which is what you want when the id
+ * underneath it just changed.
+ */
+const UserGroupFormPage = lazy(() => import('../pages/UserGroupFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -206,6 +226,18 @@ export const routes: RouteObject[] = [
     {
       path: 'users/:id',
       element: <UserFormPage sectionKey="nav.items.usersAdd" />,
+    },
+    // The group form's two addresses. `add` is written first and is a static segment, so
+    // react-router ranks it above `:id` - the same reason `users/add` can be a menu item
+    // while `users/:id` is not. Neither has a menu item: the rail offers the table alone,
+    // and both forms are reached from buttons on it (see the loader above for why).
+    {
+      path: 'user-groups/add',
+      element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
+    },
+    {
+      path: 'user-groups/:id',
+      element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
     },
   ]),
   {

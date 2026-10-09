@@ -14,11 +14,12 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { createUser, getUser, updateUser } from '../lib/api'
+import { ALL_GROUPS_PAGE_SIZE, createUser, getUser, getUserGroups, updateUser } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
+import { combineStatus } from '../lib/userStatus'
 import {
   EMAIL_MAX,
   GENERATED_PASSWORD_LENGTH,
@@ -33,7 +34,7 @@ import { AutoTimeZone, knownZones } from '../lib/timeZones'
 import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
-import type { AdminUserDetail, LoginGuardSettings, Role, UserStatus } from '../types'
+import type { AdminUserDetail, LoginGuardSettings, UserGroup, UserStatus } from '../types'
 
 /**
  * What the form collects.
@@ -53,7 +54,17 @@ interface UserFormValues extends GuardFieldValues {
   email: string
   /** Blank at the start of every attempt: see the note on the PATCH body in `handleFinish`. */
   password: string
-  role: Role
+  /**
+   * Group the account joins, and therefore the level it holds.
+   *
+   * There is deliberately no `role` field: the level is not a property of the account at
+   * all, it is read out of whichever group this names, so a form collecting both would be a
+   * form that could contradict itself and the server would have to pick a winner. Empty on
+   * the add form until the group list arrives - the base `Clients` group fills it then (see
+   * the effect below) - and required before submit, because an account with no group is one
+   * every role check has to guess about.
+   */
+  groupId: string
   status: UserStatus
   timeZone: string
 }
@@ -68,8 +79,7 @@ interface UserFormPageProps {
   sectionKey: string
 }
 
-/** The three roles and three states, in the order the server declares them. */
-const ROLES: Role[] = ['Client', 'Reseller', 'Admin']
+/** The three states, in the order the server declares them. */
 const STATUSES: UserStatus[] = ['Unregistered', 'Registered', 'Blocked']
 
 /** An account with no guard yet - what the add form starts from. */
@@ -85,17 +95,25 @@ const EMPTY_GUARD: LoginGuardSettings = {
  * The add form's starting content, and the shape the edit form is painted over once its
  * account arrives.
  *
- * Role `Client` and status `Registered` rather than the row a self-service registration
- * would start with: an account made by hand here has its password typed in below and exists
- * to be signed in with right away, so `Unregistered` - the state that waits for a mailed
- * code nobody asked for on this path - would leave it unable to do the one thing the
- * administrator opened this form to make.
+ * Status `Registered` rather than the row a self-service registration would start with: an
+ * account made by hand here has its password typed in below and exists to be signed in with
+ * right away, so `Unregistered` - the state that waits for a mailed code nobody asked for on
+ * this path - would leave it unable to do the one thing the administrator opened this form
+ * to make.
+ *
+ * `groupId` starts empty rather than at a literal identifier. The base `Clients` group's id
+ * *is* fixed on the backend (`BaseUserGroups.ClientsId`), but copying a GUID out of one
+ * repository into a page that only wants it as a default would mean two places that have to
+ * agree about a value neither of them owns - and the id is meaningless on an installation
+ * where the row was seeded differently. So the effect below asks the server which groups
+ * exist and fills this in with the base group of the lowest level, read from the very list
+ * the picker draws.
  */
 const CREATE_VALUES: UserFormValues = {
   username: '',
   email: '',
   password: '',
-  role: 'Client',
+  groupId: '',
   status: 'Registered',
   timeZone: AutoTimeZone,
   ...guardToFormValues(EMPTY_GUARD),
@@ -115,7 +133,7 @@ const FIELD_NAMES: readonly (keyof UserFormValues)[] = [
   'username',
   'email',
   'password',
-  'role',
+  'groupId',
   'status',
   'timeZone',
   'geoProtectionEnabled',
@@ -132,7 +150,10 @@ const detailToFormValues = (detail: AdminUserDetail): UserFormValues => ({
   // Always blank: there is no password to show back, and the field below reads a blank
   // password as "keep the one that is there" - which is what the PATCH body says too.
   password: '',
-  role: detail.role,
+  groupId: detail.groupId,
+  // The row's own state, not the effective one: this field is what `PATCH` writes, and the
+  // effective state is derived from it plus the group's - see the note under the status
+  // select for how the two are shown side by side.
   status: detail.status,
   timeZone: detail.timeZone ?? AutoTimeZone,
   ...guardToFormValues(detail.loginGuard),
@@ -194,6 +215,14 @@ export default function UserFormPage(_props: UserFormPageProps) {
   // controlled later - an uncontrolled antd input becoming controlled is a warning about
   // a state two places think they own. Opened by `handleGeneratePassword` below.
   const [passwordVisible, setPasswordVisible] = useState(false)
+  // The groups the picker draws, read once on both addresses, plus the reason it could not
+  // read them. Not an `alert` over the whole form: the rest of the account is editable
+  // without knowing which groups exist, and a page that stopped working because one of its
+  // lookups failed would be reporting a limitation as a breakdown. The message is the
+  // server's own (`permission_denied` reads as a permission sentence, a dead connection as
+  // a connection one), so it is worth showing rather than swallowing.
+  const [groups, setGroups] = useState<UserGroup[]>([])
+  const [groupsError, setGroupsError] = useState<string | null>(null)
 
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
@@ -231,6 +260,46 @@ export default function UserFormPage(_props: UserFormPageProps) {
     }
   }, [id, form, attempt])
 
+  useEffect(() => {
+    // The picker's own options. One page of the ceiling rather than a second unpaged route
+    // - see `getUserGroups` for why the account form and the accounts table ask the same
+    // endpoint for the same thing.
+    //
+    // It fails on its own, without a retry button: the only reason this can fail that is
+    // worth repeating is a dropped connection, and the one reason it will not heal on its
+    // own - the account's group holding `viewUsers` but not `viewUserGroups` - is not
+    // something another click would change. Either way the message goes under the field it
+    // blocks, where it explains exactly what could not be offered.
+    let cancelled = false
+
+    getUserGroups({ page: 1, pageSize: ALL_GROUPS_PAGE_SIZE })
+      .then((answer) => {
+        if (cancelled) return
+        setGroups(answer.items)
+        setGroupsError(null)
+
+        // The add form's default, read from the list rather than written into this file:
+        // the base group of the lowest level is where an account made by hand belongs until
+        // the administrator says otherwise. Written only when nothing is chosen yet, so a
+        // back button into a half-filled form keeps whatever was already picked - and never
+        // in edit mode, where the account's own group is what the answer painted above.
+        if (isEdit) return
+        if (form.getFieldValue('groupId')) return
+
+        const base = answer.items.find((group) => group.isBase && group.role === 'Client')
+        if (base) form.setFieldsValue({ groupId: base.id })
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setGroups([])
+        setGroupsError(messageForError(error))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [form, isEdit])
+
   /**
    * Whether the guard's allow lists are enforced right now - the value `LoginGuardFields`
    * disables them by while the switch is off. The watch is taken here rather than inside
@@ -243,9 +312,33 @@ export default function UserFormPage(_props: UserFormPageProps) {
     Form.useWatch('geoProtectionEnabled', form) ??
     (detail?.loginGuard.geoProtectionEnabled ?? false)
 
-  const roleOptions = useMemo(
-    () => ROLES.map((role) => ({ value: role, label: t(`profile.roles.${role}`) })),
-    [t],
+  /**
+   * What the account is **actually** in right now, and the group it is heading for.
+   *
+   * Both halves are watched rather than read from `detail`, because the note this feeds has
+   * to keep telling the truth while the visitor is still choosing: pick a blocked group and
+   * the account becomes blocked on the spot, and the `409 user_blocked_by_group` an unblock
+   * would come back with is worth seeing *before* the save rather than after it. The
+   * arithmetic is `combineStatus`, the frontend's copy of the server's own rule - the
+   * server's `effectiveStatus` on arrival is what the same two inputs must reproduce, and
+   * every refusal about them still comes from the server.
+   *
+   * The fallbacks are the states of a form with nothing in it yet: a static render, a
+   * spinner, or a group list that has not arrived - none of which the note is drawn in, and
+   * all of which must produce a *value* rather than `undefined` because a comparison
+   * against `undefined` would decide a branch instead of leaving it alone.
+   */
+  const ownStatus: UserStatus = Form.useWatch('status', form) ?? detail?.status ?? 'Registered'
+  const chosenGroupId: string = Form.useWatch('groupId', form) ?? detail?.groupId ?? ''
+  const chosenGroup = groups.find((group) => group.id === chosenGroupId)
+  const effectiveStatus: UserStatus =
+    chosenGroup !== undefined
+      ? combineStatus(ownStatus, chosenGroup.status)
+      : (detail?.effectiveStatus ?? ownStatus)
+
+  const groupOptions = useMemo(
+    () => groups.map((group) => ({ value: group.id, label: group.name })),
+    [groups],
   )
 
   const statusOptions = useMemo(
@@ -322,7 +415,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 // Blank stays blank: on this endpoint `null` is "keep the current password",
                 // and the field only ever sends something the visitor typed into it.
                 password: values.password || null,
-                role: values.role,
+                groupId: values.groupId,
                 status: values.status,
                 // `''` clears the zone so the account goes back to following its own
                 // browser; `null` would mean "leave it alone", and this form always says
@@ -337,7 +430,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 username: values.username,
                 email: values.email,
                 password: values.password,
-                role: values.role,
+                groupId: values.groupId,
                 status: values.status,
                 // On create the same "automatic" travels as `null`: there is no stored zone
                 // to preserve, so "keep" would be an answer to a question never asked.
@@ -491,12 +584,28 @@ export default function UserFormPage(_props: UserFormPageProps) {
             </Button>
           </Form.Item>
 
-          <Form.Item name="role" label={t('users.columns.role')}>
-            {/* No `allowClear` and no required rule: an account with no level is one every
-                role check has to guess about, and this select can only ever hold one of the
-                three - so there is no state for the rule to catch. The server still has the
-                last word on a change it refuses (`cannot_demote_self` for an administrator
-                demoting this account, which is this account if the id above is their own). */}
+          <Form.Item
+            name="groupId"
+            label={t('users.columns.group')}
+            // Required, unlike the three-valued selects below: there is no "no group" state
+            // for an account to be in. The level, the effective status and every permission
+            // the account may use are all read out of wherever this lands, so an empty one
+            // is not a blank to be filled in later - it is a row nothing could answer for.
+            rules={[{ required: true, message: t('users.groupRequired') }]}
+            // What the choice *is*, rather than what it is called: the label above says
+            // "Group" and the visitor is choosing between names, and the level is the fact
+            // they are actually deciding. Drawn from the group on hand rather than from a
+            // second request, so the sentence cannot disagree with the row it describes.
+            extra={
+              chosenGroup !== undefined
+                ? t('users.groupLevel', { role: t(`profile.roles.${chosenGroup.role}`) })
+                : undefined
+            }
+          >
+            {/* No `allowClear`: an account with no group is one every role check has to
+                guess about, so there is no state for the visitor to clear their way into.
+                Search rather than a plain dropdown, because the whole list is here (one page
+                of the ceiling) and a name is what somebody came to this field knowing. */}
             {/* rc-select's hidden combobox input claims `new-password` for itself
                 (`autoComplete || 'new-password'` in its `SelectInput/Input.js`), so this
                 form shows several inputs saying "new password" while holding exactly one
@@ -507,8 +616,21 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 above and the password field's `new-password` below. Those combobox inputs
                 are `type="text"` and never password-type fields, which is not what a
                 password manager counts when it classifies a form. */}
-            <Select options={roleOptions} />
+            <Select
+              showSearch
+              options={groupOptions}
+              optionFilterProp="label"
+              placeholder={t('users.groupRequired')}
+            />
           </Form.Item>
+
+          {groupsError && (
+            // Under the field it blocks and nowhere else: the rest of the form still works,
+            // and an alert across the top of the card would be reporting one unavailable
+            // lookup as a broken page. The sentence is the server's own, so a missing
+            // permission reads as one and a dead connection as one.
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={groupsError} />
+          )}
 
           <Form.Item name="status" label={t('users.columns.status')}>
             {/* Also always one of the three. Changing it here moves the row through the same
@@ -518,6 +640,28 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 decides how to get there, exactly as the dedicated actions do. */}
             <Select options={statusOptions} />
           </Form.Item>
+
+          {effectiveStatus !== ownStatus && (
+            // The one thing on this form the row above it does not say: what the account is
+            // *actually* in once the group is counted. It appears while the visitor is
+            // still choosing rather than after the save, because the two refusals it
+            // pre-empts (`409 user_blocked_by_group` on an unblock, and an account that
+            // looks registered and cannot be signed in to) are both cheaper to read here.
+            // Shown only when the group is what moves the outcome - when the two halves
+            // agree there is nothing the status field is not already saying.
+            <Alert
+              type={effectiveStatus === 'Blocked' ? 'warning' : 'info'}
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={
+                effectiveStatus === 'Blocked'
+                  ? t('users.blockedByGroup', { group: chosenGroup?.name ?? detail?.groupName ?? '' })
+                  : t('users.effectiveStatus', {
+                      status: t(`users.statuses.${effectiveStatus}`),
+                    })
+              }
+            />
+          )}
 
           <Form.Item name="timeZone" label={t('profile.timezoneTitle')}>
             {/* The profile's own list, down to the sentinel: "automatic" here means this
