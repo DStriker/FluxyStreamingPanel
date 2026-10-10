@@ -33,6 +33,16 @@ config.API_BASE_URL = BASE
 
 const results = []
 const record = (name, detail, ok = true) => {
+  // A swapped verdict and detail is silent: a non-empty string is truthy, so
+  // `record(name, <verdict>, <detail>)` prints PASS for a check that just failed. Twelve of
+  // `probe-groups.mjs`'s checks were in that order before this guard existed. See the note
+  // there for the whole story; the short version is that a missing check and a passing one
+  // look identical in the total.
+  if (typeof ok !== 'boolean') {
+    throw new TypeError(
+      `record(): the third argument must be the verdict, got ${typeof ok} (${JSON.stringify(ok)}) - "${name}"`,
+    )
+  }
   results.push({ name, detail, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}\n      ${detail}`)
 }
@@ -97,7 +107,16 @@ const describe = (r) =>
 // ---------------------------------------------------------------- reachability
 
 console.log(`\nAPI base: ${config.API_BASE_URL}\nURL join: ${apiUrl('/auth/registrations')}\n`)
-record('apiUrl joins base + path', apiUrl('/auth/registrations') === `${BASE}/auth/registrations` ? 'ok' : 'MISMATCH')
+// The verdict is its own argument here rather than folded into the detail: a ternary that
+// ends in `'MISMATCH'` is a *message*, and as the second argument it was the detail of a
+// check whose verdict defaulted to `true` - so this one printed PASS even while it was
+// describing a mismatch.
+const joined = apiUrl('/auth/registrations')
+record(
+  'apiUrl joins base + path',
+  `${joined} vs ${BASE}/auth/registrations`,
+  joined === `${BASE}/auth/registrations`,
+)
 
 // The regression this probe exists to catch: `csrf.js` once fetched a bare '/auth/csrf',
 // which the browser resolved against the page rather than the API. In dev that is the Vite
@@ -119,7 +138,14 @@ record(
 )
 
 const csrfBody = await primeCsrf()
-record('GET /auth/csrf returns a token', typeof csrfToken === 'string' && csrfToken.length > 20 ? `token length ${csrfToken.length}` : 'NO TOKEN')
+// Same shape as the check above: `'NO TOKEN'` is the detail, not the verdict, and leaving the
+// verdict out made this one print PASS on a missing token - the exact failure the probe
+// exists to catch.
+record(
+  'GET /auth/csrf returns a token',
+  typeof csrfToken === 'string' ? `token length ${csrfToken.length}` : 'NO TOKEN',
+  typeof csrfToken === 'string' && csrfToken.length > 20,
+)
 
 // ---------------------------------------------------------------- codes and text
 

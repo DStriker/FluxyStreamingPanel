@@ -25,6 +25,15 @@ namespace Fluxy.Application.Services.Users
     /// itself, block itself or take its own level down. They live here rather than in the
     /// controller so that a second endpoint reaching the same action cannot forget them.
     ///
+    /// A fourth refusal protects neither and is about the target instead: every method is
+    /// handed the permissions the caller's group holds and refuses an account whose role is
+    /// outside them. The coarse policy on the endpoint has already settled that this caller
+    /// may read or write *some* accounts at all - which of the installation's roles they may
+    /// reach is decided here, because the role of the target is a fact about the row and the
+    /// row is what this service is for. The list is the one place where the same question is
+    /// not a refusal: it filters, and counts after filtering, because a page whose rows were
+    /// never going to be shown is a worse answer than an empty one.
+    ///
     /// Nothing here knows about HTTP. Which <see cref="AdminUserAction"/> becomes a 201 and
     /// which becomes a 409 is the transport layer's business.
     /// </remarks>
@@ -78,9 +87,18 @@ namespace Fluxy.Application.Services.Users
             UserStatus? status,
             AdminUserSortField sortBy,
             AdminUserSortOrder sortOrder,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
             var query = _context.Users.AsNoTracking();
+
+            // Which accounts this operator may see is decided before the count rather than
+            // after the rows, because the pager shows the count: a total taken over every row
+            // would advertise pages whose rows the caller was never going to be shown. The
+            // coarse policy has already refused a caller holding no view permission at all, so
+            // this set is not empty by the time it reaches here.
+            var visible = UserPermissionCatalog.VisibleRoles(granted);
+            query = query.Where(entry => visible.Contains(entry.Group!.Role));
 
             if (groupId is { } wantedGroup)
             {
@@ -148,7 +166,10 @@ namespace Fluxy.Application.Services.Users
         }
 
         /// <inheritdoc />
-        public async Task<AdminUserDetail?> GetAsync(Guid userId, CancellationToken cancellationToken = default)
+        public async Task<AdminUserReadResult> GetAsync(
+            Guid userId,
+            IReadOnlySet<UserPermission> granted,
+            CancellationToken cancellationToken = default)
         {
             var user = await _context.Users
                 .AsNoTracking()
@@ -157,7 +178,17 @@ namespace Fluxy.Application.Services.Users
 
             if (user is null)
             {
-                return null;
+                return AdminUserReadResult.Refused(AdminUserAction.NotFound);
+            }
+
+            if (!UserPermissionCatalog.CanView(granted, user.Group!.Role))
+            {
+                // A different answer from "no such account" on purpose: the row is there and
+                // the operator is being told what is standing between them and it. The
+                // identifier is a uuid, so confirming that an account of another role exists
+                // tells an attacker nothing they could act on, while a 404 would tell the
+                // operator looking at their own list that the list was lying.
+                return AdminUserReadResult.Refused(AdminUserAction.PermissionDenied);
             }
 
             var rules = await _context.LoginGuardRules
@@ -172,7 +203,7 @@ namespace Fluxy.Application.Services.Users
 
             var group = user.Group!;
 
-            return new AdminUserDetail
+            var detail = new AdminUserDetail
             {
                 Id = user.Id,
                 Username = user.Username,
@@ -208,11 +239,14 @@ namespace Fluxy.Application.Services.Users
                         && int.TryParse(provider.Value, out var asn) ? asn : null
                 }
             };
+
+            return AdminUserReadResult.Found(detail);
         }
 
         /// <inheritdoc />
         public async Task<AdminUserOutcome> CreateAsync(
             NewUser user,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
             var username = user.Username.Trim();
@@ -231,6 +265,14 @@ namespace Fluxy.Application.Services.Users
                 // create an account somewhere the operator did not ask for, and a level the
                 // form never showed anybody.
                 errors[nameof(NewUser.GroupId)] = ["No group with that identifier."];
+            }
+            else if (!UserPermissionCatalog.CanEdit(granted, group.Role))
+            {
+                // The earliest this can be decided, because the role of the target is the
+                // role of the group being joined. Before the field errors and well before the
+                // uniqueness check: an operator who may not create accounts of this role has
+                // no business learning whether the name they typed is already taken.
+                return Denied();
             }
 
             if (errors.Count > 0)
@@ -318,6 +360,7 @@ namespace Fluxy.Application.Services.Users
             Guid userId,
             UserPatch patch,
             Guid actingUserId,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
             var user = await _context.Users
@@ -398,6 +441,16 @@ namespace Fluxy.Application.Services.Users
                     Action = AdminUserAction.InvalidInput,
                     Errors = errors
                 };
+            }
+
+            // The row may only be touched by an operator whose group holds the grant for its
+            // role - and a move has to satisfy the grant for the role it arrives in as well,
+            // or a group allowed to run the clients would be a staircase into the
+            // administrators.
+            if (!UserPermissionCatalog.CanEdit(granted, groupBefore.Role) ||
+                !UserPermissionCatalog.CanEdit(granted, groupAfter.Role))
+            {
+                return Denied();
             }
 
             // The two refusals that are about the caller rather than about the row. They run
@@ -532,14 +585,24 @@ namespace Fluxy.Application.Services.Users
         /// <inheritdoc />
         public async Task<AdminUserOutcome> ConfirmRegistrationAsync(
             Guid userId,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
+            // The group is loaded for the permission check rather than for the write: the
+            // role of the account decides which grant this call needs, and a query that did
+            // not carry it would have to ask a second time.
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
+            }
+
+            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            {
+                return Denied();
             }
 
             if (user.Status is not UserStatus.Unregistered)
@@ -578,6 +641,7 @@ namespace Fluxy.Application.Services.Users
             Guid userId,
             bool blocked,
             Guid actingUserId,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
             // Before the row is even read: whether the caller may end this account is a fact
@@ -595,6 +659,11 @@ namespace Fluxy.Application.Services.Users
             if (user is null)
             {
                 return NotFound();
+            }
+
+            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            {
+                return Denied();
             }
 
             var group = user.Group!;
@@ -685,19 +754,30 @@ namespace Fluxy.Application.Services.Users
         public async Task<AdminUserOutcome> DeleteAsync(
             Guid userId,
             Guid actingUserId,
+            IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
+            // Before the row is even read, for the same reason the block refuses itself first:
+            // deleting the caller's own account is a request that must not reach the row.
             if (userId == actingUserId)
             {
                 return new AdminUserOutcome { Action = AdminUserAction.CannotDeleteSelf };
             }
 
+            // The group travels only so that the permission check can ask the role; nothing
+            // about it is written or deleted here.
             var user = await _context.Users
+                .Include(entry => entry.Group)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
+            }
+
+            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            {
+                return Denied();
             }
 
             var username = user.Username;
@@ -728,6 +808,89 @@ namespace Fluxy.Application.Services.Users
                 Action = AdminUserAction.Removed,
                 UserId = userId
             };
+        }
+
+        /// <inheritdoc />
+        public async Task<BulkUserOutcome> BulkAsync(
+            BulkUserOperation operation,
+            Guid actingUserId,
+            IReadOnlySet<UserPermission> granted,
+            CancellationToken cancellationToken = default)
+        {
+            // A move with no destination is not a move. The transport refuses it with a 400
+            // before any row is reached; if one ever arrives here, every account is answered
+            // with the field that was missing rather than each of them being left where it
+            // was. A patch whose GroupId is absent means "leave the group alone", so the
+            // alternative is an operation that reports success over a hundred accounts and
+            // changes none of them - the single worst answer this service can give.
+            if (operation.Action is BulkUserAction.AssignGroup && operation.GroupId is null)
+            {
+                return new BulkUserOutcome
+                {
+                    Action = operation.Action,
+                    Items = operation.UserIds
+                        .Select(userId => new BulkUserItemResult
+                        {
+                            UserId = userId,
+                            Action = AdminUserAction.InvalidInput,
+                            Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                            {
+                                [nameof(BulkUserOperation.GroupId)] =
+                                    ["A bulk move needs the group to move the accounts to."]
+                            }
+                        })
+                        .ToList()
+                };
+            }
+
+            var items = new List<BulkUserItemResult>(operation.UserIds.Count);
+
+            foreach (var userId in operation.UserIds)
+            {
+                // Every entry comes from the single-account method of the same name, so the
+                // refusals and the side effects are the ones those methods already have rather
+                // than a copy of them - the reason this is an orchestration and not a second
+                // implementation is written at length on IUserAdminService.BulkAsync.
+                var outcome = operation.Action switch
+                {
+                    BulkUserAction.Block => await SetBlockedAsync(
+                        userId, true, actingUserId, granted, cancellationToken),
+
+                    BulkUserAction.Unblock => await SetBlockedAsync(
+                        userId, false, actingUserId, granted, cancellationToken),
+
+                    BulkUserAction.Delete => await DeleteAsync(
+                        userId, actingUserId, granted, cancellationToken),
+
+                    BulkUserAction.ConfirmRegistration => await ConfirmRegistrationAsync(
+                        userId, granted, cancellationToken),
+
+                    BulkUserAction.AssignGroup => await UpdateAsync(
+                        userId,
+                        new UserPatch { GroupId = operation.GroupId },
+                        actingUserId,
+                        granted,
+                        cancellationToken),
+
+                    // Unreachable: the enum holds no other member and the transport refuses a
+                    // name that maps to none. Thrown rather than skipped, because an entry
+                    // missing from the answer is an account the client believes it acted on
+                    // and the server never mentioned.
+                    _ => throw new ArgumentOutOfRangeException(
+                        nameof(operation),
+                        operation.Action,
+                        "Unknown bulk user action.")
+                };
+
+                items.Add(new BulkUserItemResult
+                {
+                    UserId = userId,
+                    Action = outcome.Action,
+                    Errors = outcome.Errors
+                });
+            }
+
+            return new BulkUserOutcome { Action = operation.Action, Items = items };
         }
 
         /// <summary>
@@ -878,6 +1041,20 @@ namespace Fluxy.Application.Services.Users
 
         private static AdminUserOutcome InvalidStatus(Guid userId)
             => new() { Action = AdminUserAction.InvalidStatus, UserId = userId };
+
+        /// <summary>
+        /// The refusal the two-layer gate produces: the request was well formed, the account is
+        /// there, and this operator's group may not reach accounts of its role.
+        /// </summary>
+        /// <remarks>
+        /// A named helper rather than a literal at each of the six call sites so that every one
+        /// of them produces exactly the same action - the client branches on this word, and a
+        /// refusal spelled two ways would be two answers to the same question. It carries no
+        /// user identifier, so a caller cannot read the account they were refused out of the
+        /// response body.
+        /// </remarks>
+        private static AdminUserOutcome Denied()
+            => new() { Action = AdminUserAction.PermissionDenied };
 
         /// <summary>
         /// Writes whatever has been staged on the row, interpreting the one failure that is

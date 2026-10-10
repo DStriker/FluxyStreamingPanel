@@ -23,11 +23,28 @@ namespace Fluxy.API.Controllers
     /// <b>Each action then names the permission it needs on top of that.</b> The class policy
     /// is the role gate and stays where it is; the per-action policy is the finer one, and
     /// the two are merged by the framework into a single evaluation, so an endpoint is never
-    /// checked twice by two round trips. Reads demand <c>viewUsers</c>, writes demand
-    /// <c>editUsers</c> - which means the account gate a later action defaults to is the role
-    /// one, and it has to be widened deliberately by naming the permission it wants. That is
-    /// the direction a mistake should fail in: an action that forgot its permission is
+    /// checked twice by two round trips. Reads demand <c>ViewAnyUsersPolicy</c>, writes demand
+    /// <c>EditAnyUsersPolicy</c> - which means the account gate a later action defaults to is
+    /// the role one, and it has to be widened deliberately by naming the permission it wants.
+    /// That is the direction a mistake should fail in: an action that forgot its permission is
     /// readable by every administrator, not writable by every administrator.
+    ///
+    /// <b>The per-action policy is deliberately coarse, and the target is checked inside the
+    /// service.</b> One endpoint here serves clients, resellers and administrators alike, and
+    /// which role a request is about is a fact about the row - not knowable when the attribute
+    /// is read. So the two account policies accept any of the three <c>view*</c> (or
+    /// <c>edit*</c>) permissions and settle only "may this caller read or write some accounts
+    /// at all"; <see cref="IUserAdminService"/> then refuses an account whose role is outside
+    /// what the caller's group may reach, and does so for all six methods rather than letting
+    /// each endpoint remember. The layering is what keeps the failure honest in both
+    /// directions: an action that forgot the fine check is wrong for one role rather than
+    /// right for all of them, and an operator who holds no account permission at all is
+    /// refused by the policy before the action is entered. Both halves answer with the same
+    /// word, <c>permission_denied</c>.
+    ///
+    /// The list is the one place where this is not a refusal: <see cref="GetUsers"/> counts
+    /// after filtering, so an operator who may see only the clients is shown the clients and a
+    /// total that agrees with them.
     ///
     /// <b>No captcha and no attempt window</b>, and both are absent for one reason: they exist
     /// to protect a request that has *no session* - the captcha guards the expensive step (key
@@ -82,12 +99,40 @@ namespace Fluxy.API.Controllers
         private const string GroupIdHint =
             "The group must be the identifier of a group, as a uuid.";
 
+        /// <summary>Names the operations a bulk body may ask for, for the sentence that lists them.</summary>
+        private const string BulkActionHint =
+            "The action must be 'block', 'unblock', 'delete', 'confirm-registration' " +
+            "or 'assign-group'.";
+
+        /// <summary>Sentence a set of identifiers that is not all uuids gets.</summary>
+        private const string IdsHint = "Every identifier must be the uuid of an account.";
+
         private readonly IUserAdminService _users;
+
+        /// <summary>
+        /// Reader of this request's account, shared with the authorization handlers that ran
+        /// on their way into the action.
+        /// </summary>
+        private readonly RequestStandingReader _standing;
+
+        /// <summary>
+        /// An empty grant set, returned when the account behind the request could not be read.
+        /// Refuses everything, which is the safe reading of "we do not know who this is" -
+        /// the policy on the action would already have refused such a request before it got
+        /// here, so this is a default rather than a branch anybody should be able to reach.
+        /// </summary>
+        private static readonly IReadOnlySet<UserPermission> NoGrants = new HashSet<UserPermission>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UsersController"/> class.
         /// </summary>
         /// <param name="users">Service that reads and changes the accounts.</param>
+        /// <param name="standing">
+        /// Reader of the account behind the request, for the permissions its group holds.
+        /// Scoped and memoizing, so the policy already answered through it on the way in and
+        /// asking here costs no second query - which is the whole reason it exists as one
+        /// object rather than two.
+        /// </param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="throttle">
         /// Counter shared with the rest of the authentication surface. It is not spent by any
@@ -98,6 +143,7 @@ namespace Fluxy.API.Controllers
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public UsersController(
             IUserAdminService users,
+            RequestStandingReader standing,
             IAntiforgery antiforgery,
             IAttemptThrottle throttle,
             IOptionsMonitor<RateLimitOptions> rateLimits,
@@ -105,6 +151,29 @@ namespace Fluxy.API.Controllers
             : base(antiforgery, throttle, rateLimits, logger)
         {
             _users = users;
+            _standing = standing;
+        }
+
+        /// <summary>
+        /// The permissions the account behind this request holds, for the service's per-target
+        /// check.
+        /// </summary>
+        /// <remarks>
+        /// Read here rather than in each action because it is the same question the policies on
+        /// this controller already asked, answered once per request by
+        /// <see cref="RequestStandingReader"/>: the coarse gate settled that the caller may act
+        /// on some accounts, and this is the same fact taken to the row that says which. An
+        /// account whose standing could not be established is granted nothing rather than
+        /// everything - see <see cref="NoGrants"/>.
+        /// </remarks>
+        private async Task<IReadOnlySet<UserPermission>> GrantedAsync()
+        {
+            if (await _standing.ReadAsync(User) is { } found)
+            {
+                return found.Standing.Permissions;
+            }
+
+            return NoGrants;
         }
 
         /// <summary>
@@ -158,7 +227,7 @@ namespace Fluxy.API.Controllers
         /// class gives.
         /// </remarks>
         [HttpGet]
-        [Authorize(Policy = AuthenticationExtensions.ViewUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.ViewAnyUsersPolicy)]
         [ProducesResponseType<AdminUserListResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetUsers(
@@ -211,6 +280,7 @@ namespace Fluxy.API.Controllers
                 wantedStatus,
                 field.Value,
                 order.Value,
+                await GrantedAsync(),
                 cancellationToken);
 
             return Ok(new AdminUserListResponse
@@ -227,19 +297,30 @@ namespace Fluxy.API.Controllers
         /// </summary>
         /// <param name="id">Identifier of the account.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>200 with the account, or 404 when no account answers to that identifier.</returns>
+        /// <returns>
+        /// 200 with the account, 404 when no account answers to that identifier, 403
+        /// <c>permission_denied</c> when there is one whose role this operator's group may not
+        /// read.
+        /// </returns>
         /// <remarks>
         /// A missing account and an identifier belonging to nobody are the same answer, and both
         /// are the same 404: the identifier is a uuid, so "not found" is the only thing that can
         /// be wrong with it and there is nothing to learn by splitting it further.
+        ///
+        /// A third case is deliberately *not* folded into that one. An account that is there and
+        /// belongs to a role this operator may not read answers 403, because the operator is
+        /// looking at a list that does not contain it and a 404 would be the API calling them a
+        /// liar. The uuid carries nothing to guess at either - confirming that some administrator
+        /// exists is not news to somebody who already holds an administrator's session.
         ///
         /// The password and the pending confirmation code are absent rather than empty. The
         /// first cannot be shown back, the second is a credential, and a field that is present
         /// but blank invites a client to treat it as a value.
         /// </remarks>
         [HttpGet("{id:guid}")]
-        [Authorize(Policy = AuthenticationExtensions.ViewUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.ViewAnyUsersPolicy)]
         [ProducesResponseType<AdminUserDetailResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetUser(
             [FromRoute] Guid id,
@@ -247,12 +328,17 @@ namespace Fluxy.API.Controllers
         {
             NoStore();
 
-            var detail = await _users.GetAsync(id, cancellationToken);
+            var result = await _users.GetAsync(id, await GrantedAsync(), cancellationToken);
 
-            return detail is null
-                ? NotFound(UserAdminResponses.Describe(
-                    new AdminUserOutcome { Action = AdminUserAction.NotFound }).Body)
-                : Ok(ToDetail(detail));
+            if (result.Detail is not { } detail)
+            {
+                var (status, body) = UserAdminResponses.Describe(
+                    new AdminUserOutcome { Action = result.Action });
+
+                return StatusCode(status, body);
+            }
+
+            return Ok(ToDetail(detail));
         }
 
         /// <summary>
@@ -262,8 +348,10 @@ namespace Fluxy.API.Controllers
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
         /// 201 with a <c>Location</c> naming the new account, 400 with the rejected fields,
-        /// 409 when another account holds that username or address, 400 <c>csrf_invalid</c>
-        /// without the antiforgery pair.
+        /// 409 when another account holds that username or address, 403
+        /// <c>permission_denied</c> when the group named belongs to a role this operator's
+        /// group may not write accounts of, 400 <c>csrf_invalid</c> without the antiforgery
+        /// pair.
         /// </returns>
         /// <remarks>
         /// Unlike the registration endpoint, this 201 carries a <c>Location</c>. There the row
@@ -282,9 +370,10 @@ namespace Fluxy.API.Controllers
         /// without ever reaching the antiforgery check.
         /// </remarks>
         [HttpPost]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateUser(
             [FromBody] CreateUserRequest request,
@@ -343,6 +432,7 @@ namespace Fluxy.API.Controllers
                     TimeZone = request.TimeZone,
                     LoginGuard = ToSettings(request.LoginGuard)
                 },
+                await GrantedAsync(),
                 cancellationToken);
 
             var (statusCode, body) = UserAdminResponses.Describe(outcome);
@@ -362,10 +452,12 @@ namespace Fluxy.API.Controllers
         /// <param name="request">The fields to change. An absent field is left alone.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 when it was written, 400 with the rejected fields, 404 when there is no such
-        /// account, 409 for a taken value or a state that makes the change meaningless, 409
-        /// <c>cannot_demote_self</c> / <c>cannot_block_self</c> for a change that would take
-        /// the caller's own access away.
+        /// 200 when it was written, 400 with the rejected fields, 403
+        /// <c>permission_denied</c> when the account's role - or the role it is being moved
+        /// into - is one this operator's group may not write accounts of, 404 when there is no
+        /// such account, 409 for a taken value or a state that makes the change meaningless,
+        /// 409 <c>cannot_demote_self</c> / <c>cannot_block_self</c> for a change that would
+        /// take the caller's own access away.
         /// </returns>
         /// <remarks>
         /// The identifier travels in the path and never in the body. A form that posted its own
@@ -373,15 +465,23 @@ namespace Fluxy.API.Controllers
         /// the honest statement of *which* account is meant - a body naming a different one
         /// would be answered as a conflict nobody could explain.
         ///
+        /// A move has to satisfy the permission for the role being left *and* the one being
+        /// arrived in. Neither alone is enough: without the first an operator could touch a row
+        /// they may not see, and without the second a group allowed to run the clients would be
+        /// a staircase into the administrators. The service decides both, because only it knows
+        /// the two roles - the body carries a group identifier and nothing about what that group
+        /// holds.
+        ///
         /// Two side effects follow a change and are part of it rather than separate steps the
         /// client could forget: a status of Blocked ends every session the account holds, and a
         /// new password ends them too - whoever held the old password may hold a session with
         /// it, and the honest reading of that is to assume they do.
         /// </remarks>
         [HttpPatch("{id:guid}")]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> UpdateUser(
@@ -450,6 +550,7 @@ namespace Fluxy.API.Controllers
                     LoginGuard = ToSettings(request.LoginGuard)
                 },
                 actingUserId,
+                await GrantedAsync(),
                 cancellationToken);
 
             return Answer(outcome);
@@ -461,8 +562,10 @@ namespace Fluxy.API.Controllers
         /// <param name="id">Identifier of the account.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 <c>registration_confirmed</c>, 404 when there is no such account, 409
-        /// <c>invalid_status</c> when the account is not waiting for a confirmation.
+        /// 200 <c>registration_confirmed</c>, 403 <c>permission_denied</c> when the account
+        /// belongs to a role this operator's group may not write accounts of, 404 when there is
+        /// no such account, 409 <c>invalid_status</c> when the account is not waiting for a
+        /// confirmation.
         /// </returns>
         /// <remarks>
         /// Refused rather than reported as a success when the account has already left
@@ -475,8 +578,9 @@ namespace Fluxy.API.Controllers
         /// somebody else already confirmed.
         /// </remarks>
         [HttpPost("{id:guid}/confirm-registration")]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> ConfirmRegistration(
@@ -488,7 +592,10 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            return Answer(await _users.ConfirmRegistrationAsync(id, cancellationToken));
+            return Answer(await _users.ConfirmRegistrationAsync(
+                id,
+                await GrantedAsync(),
+                cancellationToken));
         }
 
         /// <summary>
@@ -497,8 +604,9 @@ namespace Fluxy.API.Controllers
         /// <param name="id">Identifier of the account.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 <c>user_blocked</c>, 404 when there is no such account, 400
-        /// <c>cannot_block_self</c> for the caller's own account.
+        /// 200 <c>user_blocked</c>, 403 <c>permission_denied</c> when the account belongs to a
+        /// role this operator's group may not write accounts of, 404 when there is no such
+        /// account, 400 <c>cannot_block_self</c> for the caller's own account.
         /// </returns>
         /// <remarks>
         /// Idempotent on purpose: the answer does not depend on where the block started, so a
@@ -510,9 +618,10 @@ namespace Fluxy.API.Controllers
         /// cancellation of the registration.
         /// </remarks>
         [HttpPost("{id:guid}/block")]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> BlockUser(
             [FromRoute] Guid id,
@@ -528,7 +637,12 @@ namespace Fluxy.API.Controllers
                 return Anonymous();
             }
 
-            return Answer(await _users.SetBlockedAsync(id, true, actingUserId, cancellationToken));
+            return Answer(await _users.SetBlockedAsync(
+                id,
+                true,
+                actingUserId,
+                await GrantedAsync(),
+                cancellationToken));
         }
 
         /// <summary>
@@ -537,8 +651,9 @@ namespace Fluxy.API.Controllers
         /// <param name="id">Identifier of the account.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 <c>user_unblocked</c>, 404 when there is no such account, 409
-        /// <c>invalid_status</c> when the account is not blocked.
+        /// 200 <c>user_unblocked</c>, 403 <c>permission_denied</c> when the account belongs to
+        /// a role this operator's group may not write accounts of, 404 when there is no such
+        /// account, 409 <c>invalid_status</c> when the account is not blocked.
         /// </returns>
         /// <remarks>
         /// The inverse of the block and not of "set the status to Registered": an account that
@@ -551,9 +666,10 @@ namespace Fluxy.API.Controllers
         /// change that did not happen, and the caller is expected to re-read the list.
         /// </remarks>
         [HttpPost("{id:guid}/unblock")]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> UnblockUser(
@@ -570,7 +686,12 @@ namespace Fluxy.API.Controllers
                 return Anonymous();
             }
 
-            return Answer(await _users.SetBlockedAsync(id, false, actingUserId, cancellationToken));
+            return Answer(await _users.SetBlockedAsync(
+                id,
+                false,
+                actingUserId,
+                await GrantedAsync(),
+                cancellationToken));
         }
 
         /// <summary>
@@ -579,8 +700,9 @@ namespace Fluxy.API.Controllers
         /// <param name="id">Identifier of the account to delete.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 <c>user_deleted</c>, 404 when there is no such account, 400
-        /// <c>cannot_delete_self</c> for the caller's own account.
+        /// 200 <c>user_deleted</c>, 403 <c>permission_denied</c> when the account belongs to a
+        /// role this operator's group may not write accounts of, 404 when there is no such
+        /// account, 400 <c>cannot_delete_self</c> for the caller's own account.
         /// </returns>
         /// <remarks>
         /// A <c>DELETE</c> that answers 200 rather than 204, because it has something to say:
@@ -590,11 +712,17 @@ namespace Fluxy.API.Controllers
         /// The refresh tokens, the pending changes and the guard rules go with the row through
         /// foreign keys that are <c>ON DELETE CASCADE</c> - a session or a code that outlives
         /// its account is a credential for nobody.
+        ///
+        /// The permission is checked before the row is removed, so a caller holding no grant for
+        /// this account's role leaves every one of those rows exactly where they were. That is
+        /// the load-bearing order: a check that ran after <c>Remove</c> would be a check that
+        /// discovers the answer by having already deleted the thing it was supposed to protect.
         /// </remarks>
         [HttpDelete("{id:guid}")]
-        [Authorize(Policy = AuthenticationExtensions.EditUsersPolicy)]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteUser(
             [FromRoute] Guid id,
@@ -610,7 +738,203 @@ namespace Fluxy.API.Controllers
                 return Anonymous();
             }
 
-            return Answer(await _users.DeleteAsync(id, actingUserId, cancellationToken));
+            return Answer(await _users.DeleteAsync(
+                id,
+                actingUserId,
+                await GrantedAsync(),
+                cancellationToken));
+        }
+
+        /// <summary>
+        /// Applies one operation to every account the request names, and reports how each one
+        /// ended.
+        /// </summary>
+        /// <param name="request">Which operation, over which accounts, and where to move them.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 with one entry per identifier, 400 when the body broke a rule on itself (an
+        /// unknown operation, no identifiers, more identifiers than one page holds, or a move
+        /// that names no group), 403 from the coarse policy on the way in, and 400
+        /// <c>csrf_invalid</c> without the antiforgery pair.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>A recorded departure from the REST shape of the rest of this controller</b>, and
+        /// the same one the session surface records for <c>/auth/refresh</c>: the path carries
+        /// a verb because the resource it would otherwise name does not exist. "These twenty
+        /// accounts" is a set the table on screen assembled in the browser, not a row with an
+        /// address of its own, so there is no noun to put after the slash - and both
+        /// alternatives were worse: five routes (<c>bulk/block</c>, <c>bulk/delete</c>, ...)
+        /// would repeat the antiforgery check, the permission policy and the identifier
+        /// parsing five times over, while a client wanting six operations would have to know
+        /// which five exist.
+        /// </para>
+        /// <para>
+        /// <b>The 200 describes the run, not every row in it.</b> What happened to a particular
+        /// account is stated in its own entry with the same code the one-row endpoint gives,
+        /// because the refusals that protect the caller are about that account and about
+        /// nothing else: an operator who selected their own row among twenty is told so, and
+        /// the other nineteen are still blocked. A status code can only describe the request as
+        /// a whole, and the request as a whole *was* answered - every identifier it named came
+        /// back with a verdict. Filling that one code with the worst verdict in the set would
+        /// make "nine blocked, one was mine" indistinguishable from "nothing happened", and a
+        /// client would be unable to redraw the list without guessing.
+        /// </para>
+        /// <para>
+        /// No captcha and no attempt window, for the reason the rest of this controller gives:
+        /// both exist to guard a request with no session at all, and everything here is behind
+        /// an admin session, the edit permission and a fresh antiforgery pair. The identifiers
+        /// are capped at the size of one page rather than accepted without bound, so the work
+        /// one request can cause is the work one page of rows can cause.
+        /// </para>
+        /// </remarks>
+        [HttpPost("bulk")]
+        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
+        [ProducesResponseType<BulkOperationResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> BulkUsers(
+            [FromBody] BulkUsersRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (await RejectsCsrfAsync() is { } csrfFailure)
+            {
+                return csrfFailure;
+            }
+
+            if (ReadSubjectClaim() is not { } actingUserId)
+            {
+                return Anonymous();
+            }
+
+            // Everything the body can be wrong about is read first, so one answer names every
+            // mistake rather than one per round trip - and so that no row is touched by a
+            // request that is about to be refused for another reason.
+            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+            var action = ParseBulkAction(request.Action);
+            if (action is null)
+            {
+                errors[nameof(BulkUsersRequest.Action)] = [BulkActionHint];
+            }
+
+            var ids = ParseIds(request.Ids, errors);
+
+            Guid? groupId = null;
+
+            if (string.IsNullOrWhiteSpace(request.GroupId))
+            {
+                // Absent is fine for four of the five operations and is not fine for the one
+                // that has somewhere to go. Refused here rather than by treating an absent
+                // group as "leave it alone", which is what a patch means by absent - an
+                // operation that answered success over twenty accounts and moved none of them
+                // would be the worst thing this endpoint could say.
+                if (action is BulkUserAction.AssignGroup)
+                {
+                    errors[nameof(BulkUsersRequest.GroupId)] = [GroupIdHint];
+                }
+            }
+            else if (Guid.TryParse(request.GroupId, out var parsedGroup))
+            {
+                groupId = parsedGroup;
+            }
+            else
+            {
+                errors[nameof(BulkUsersRequest.GroupId)] = [GroupIdHint];
+            }
+
+            if (errors.Count > 0)
+            {
+                return Invalid(errors);
+            }
+
+            return Ok(BulkResponses.Describe(await _users.BulkAsync(
+                new BulkUserOperation
+                {
+                    Action = action!.Value,
+                    UserIds = ids!,
+                    GroupId = groupId
+                },
+                actingUserId,
+                await GrantedAsync(),
+                cancellationToken)));
+        }
+
+        /// <summary>
+        /// Turns the text a bulk body sent into the operation it names, or nothing at all.
+        /// </summary>
+        /// <remarks>
+        /// Compared after lowering and with the hyphens spelled the way the rest of this API
+        /// spells its actions, so <c>Block</c> and <c>confirm-registration</c> are both the
+        /// request a client naturally sends. Enum binding is deliberately not used: it takes a
+        /// member name spelled in full, so the conventional <c>block</c> would be refused while
+        /// <c>Block</c> was accepted - the exact lesson <c>sortOrder</c> taught this API.
+        /// </remarks>
+        private static BulkUserAction? ParseBulkAction(string? value) =>
+            value?.Trim().ToLowerInvariant() switch
+            {
+                "block" => BulkUserAction.Block,
+                "unblock" => BulkUserAction.Unblock,
+                "delete" => BulkUserAction.Delete,
+                "confirm-registration" => BulkUserAction.ConfirmRegistration,
+                "assign-group" => BulkUserAction.AssignGroup,
+                _ => null
+            };
+
+        /// <summary>
+        /// Turns the identifiers a bulk body sent into the rows they name, or nothing at all
+        /// once one of them is wrong.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The three refusals answer different mistakes and none of them is clamped. A list
+        /// nobody filled in is a request that named nothing, which is refused rather than
+        /// answered with an empty run - an operation over zero accounts is a success that
+        /// changed nothing, and a client that meant to send twenty deserves to be told its
+        /// body did not arrive.
+        /// </para>
+        /// <para>
+        /// <b>Duplicates collapse rather than being refused.</b> A page of a table cannot hold
+        /// the same row twice, so a duplicate can only come from a client assembling the list
+        /// by hand - and running an operation twice over one row is not what anybody means by
+        /// selecting it. Refusing would turn a harmless overlap into a 400 the operator could
+        /// not explain.
+        /// </para>
+        /// </remarks>
+        private static IReadOnlyList<Guid>? ParseIds(
+            IReadOnlyList<string>? ids,
+            Dictionary<string, string[]> errors)
+        {
+            if (ids is null || ids.Count is 0)
+            {
+                errors[nameof(BulkUsersRequest.Ids)] = ["Select at least one account."];
+                return null;
+            }
+
+            if (ids.Count > BulkOperationLimits.MaxItems)
+            {
+                errors[nameof(BulkUsersRequest.Ids)] =
+                [$"At most {BulkOperationLimits.MaxItems} accounts may be named in one request."];
+                return null;
+            }
+
+            var parsed = new List<Guid>(ids.Count);
+
+            foreach (var text in ids)
+            {
+                if (!Guid.TryParse(text, out var id))
+                {
+                    errors[nameof(BulkUsersRequest.Ids)] = [IdsHint];
+                    return null;
+                }
+
+                if (!parsed.Contains(id))
+                {
+                    parsed.Add(id);
+                }
+            }
+
+            return parsed;
         }
 
         /// <summary>

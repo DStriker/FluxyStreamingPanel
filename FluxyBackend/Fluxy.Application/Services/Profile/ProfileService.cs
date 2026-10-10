@@ -86,6 +86,7 @@ namespace Fluxy.Application.Services.Profile
             var user = await _context.Users
                 .AsNoTracking()
                 .Include(entry => entry.Group)
+                .ThenInclude(entry => entry!.Permissions)
                 .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
 
             if (user is null)
@@ -108,7 +109,8 @@ namespace Fluxy.Application.Services.Profile
                 Username = user.Username,
                 Email = user.Email,
                 Role = account.Role,
-                TimeZone = user.TimeZone
+                TimeZone = user.TimeZone,
+                Permissions = ReadPermissions(user.Group)
             };
         }
 
@@ -936,6 +938,28 @@ namespace Fluxy.Application.Services.Profile
                 clientAddress);
 
             return true;
+        }
+
+        /// <summary>
+        /// The permissions of the group an account points at, read from the rows the include
+        /// already loaded.
+        /// </summary>
+        /// <param name="group">The group the account belongs to, or null when it has none.</param>
+        /// <returns>
+        /// The grants of that group, or an empty set when the navigation was not loaded. An
+        /// account whose group could not be read is granted nothing, which is the safe answer
+        /// for a field whose only job is to draw buttons - the server refuses either way.
+        /// </returns>
+        private static IReadOnlySet<UserPermission> ReadPermissions(UserGroupEntity? group)
+        {
+            if (group?.Permissions is null)
+            {
+                return new HashSet<UserPermission>();
+            }
+
+            return group.Permissions
+                .Select(grant => grant.Permission)
+                .ToHashSet();
         }
 
         /// <summary>Folds an address into the single form the database compares against.</summary>

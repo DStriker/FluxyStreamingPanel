@@ -441,6 +441,55 @@ namespace Fluxy.Application.Services.Users
             };
         }
 
+        /// <inheritdoc />
+        public async Task<BulkUserGroupOutcome> BulkAsync(
+            BulkUserGroupOperation operation,
+            CancellationToken cancellationToken = default)
+        {
+            var items = new List<BulkUserGroupItemResult>(operation.GroupIds.Count);
+
+            foreach (var groupId in operation.GroupIds)
+            {
+                // Every entry comes from the single-group method of the same name, so the two
+                // refusals that protect the installation are the ones those methods already
+                // make rather than a copy of them - see IUserGroupService.BulkAsync.
+                var outcome = operation.Action switch
+                {
+                    BulkUserGroupAction.Delete => await DeleteAsync(groupId, cancellationToken),
+
+                    // Block and Unblock are the state the row button sends, because there is
+                    // no dedicated endpoint for either and one spelling of a state change is
+                    // enough. Registered rather than Unregistered for an unblock is the same
+                    // choice the single-row button makes: taking a group out of Blocked has no
+                    // reason to also declare that every member never finished registering.
+                    BulkUserGroupAction.Block => await UpdateAsync(
+                        groupId,
+                        new UserGroupPatch { Status = UserStatus.Blocked },
+                        cancellationToken),
+
+                    BulkUserGroupAction.Unblock => await UpdateAsync(
+                        groupId,
+                        new UserGroupPatch { Status = UserStatus.Registered },
+                        cancellationToken),
+
+                    // Unreachable: see the same throw in UserAdminService.BulkAsync.
+                    _ => throw new ArgumentOutOfRangeException(
+                        nameof(operation),
+                        operation.Action,
+                        "Unknown bulk user group action.")
+                };
+
+                items.Add(new BulkUserGroupItemResult
+                {
+                    GroupId = groupId,
+                    Action = outcome.Action,
+                    Errors = outcome.Errors
+                });
+            }
+
+            return new BulkUserGroupOutcome { Action = operation.Action, Items = items };
+        }
+
         /// <summary>
         /// Orders by the first key and breaks the tie with the second.
         /// </summary>

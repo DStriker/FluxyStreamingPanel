@@ -171,7 +171,12 @@ namespace Fluxy.API.Configuration
             // does a grant withdrawn while the token was still good. Both are the answer the
             // reader is after; neither is the same as "you are in the wrong area", which is why
             // the two codes are different.
-            return standing.Grants(demanded.Permission)
+            //
+            // Any of the named permissions is enough here too - the same "some accounts, not
+            // every kind" reading the handler applies. A caller holding one of the three
+            // <c>view*</c> keys and refused by this endpoint was refused by the *role*
+            // requirement, which is the other half of the message this branch words.
+            return demanded.Permissions.Any(standing.Grants)
                 ? Contracts.AuthenticationResponses.RoleChangedCode
                 : Contracts.AuthenticationResponses.PermissionDeniedCode;
         }

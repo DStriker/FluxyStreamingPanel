@@ -38,11 +38,25 @@ namespace Fluxy.API.Configuration
         /// <summary>Name of the policy that accepts a client and nothing else.</summary>
         public const string ClientPolicy = "ClientOnly";
 
-        /// <summary>Policy that accepts an operator who may read the accounts list.</summary>
-        public const string ViewUsersPolicy = "Permission.ViewUsers";
+        /// <summary>
+        /// Policy that accepts an operator who may read the accounts of at least one role.
+        /// </summary>
+        /// <remarks>
+        /// The <i>coarse</i> gate, and deliberately coarse: an endpoint behind it knows that
+        /// the caller may read some of the installation's accounts but not which, because the
+        /// target of a request is only known once the request is being handled. The decision
+        /// about a specific account is taken inside the action, against
+        /// <c>UserPermissionCatalog.ViewFor</c>. Keeping this policy is what preserves the
+        /// property the controllers were built on - an action that forgot to narrow the gate
+        /// is readable by too many administrators rather than by all of them.
+        /// </remarks>
+        public const string ViewAnyUsersPolicy = "Permission.ViewAnyUsers";
 
-        /// <summary>Policy that accepts an operator who may change the accounts.</summary>
-        public const string EditUsersPolicy = "Permission.EditUsers";
+        /// <summary>
+        /// Policy that accepts an operator who may change the accounts of at least one role.
+        /// The coarse half of the same two-layer gate; see <see cref="ViewAnyUsersPolicy"/>.
+        /// </summary>
+        public const string EditAnyUsersPolicy = "Permission.EditAnyUsers";
 
         /// <summary>Policy that accepts an operator who may read the groups list.</summary>
         public const string ViewUserGroupsPolicy = "Permission.ViewUserGroups";
@@ -107,20 +121,31 @@ namespace Fluxy.API.Configuration
                 // policy on top of the class's role policy gets the two merged into a single
                 // evaluation, which is what keeps "two checks" from meaning two answers.
                 //
-                // The role named here is the role that owns the permission in
-                // <c>UserPermissionCatalog</c>, which is why all four say Admin today: a
+                // The role named here is the role that owns the permissions in
+                // <c>UserPermissionCatalog</c>, which is why all of them say Admin: a
                 // permission only exists for the role that owns it, so a policy for a
                 // permission of another role names that role instead.
-                .AddPolicy(ViewUsersPolicy, policy => policy
+                //
+                // The two account policies demand *any* of the three <c>view*</c> (or
+                // <c>edit*</c>) keys rather than one, because one endpoint serves all three
+                // roles and which role it is about is not known until the request is being
+                // handled. What the policy settles is that this caller may read - or write -
+                // some accounts of the installation at all; which ones is decided inside the
+                // action, against <c>UserPermissionCatalog.ViewFor</c>/<c>EditFor</c>.
+                .AddPolicy(ViewAnyUsersPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewUsers)))
-                .AddPolicy(EditUsersPolicy, policy => policy
+                        new PermissionRequirement(
+                            Fluxy.Core.Models.Users.UserPermissionCatalog.ViewingAccounts
+                                .ToArray())))
+                .AddPolicy(EditAnyUsersPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUsers)))
+                        new PermissionRequirement(
+                            Fluxy.Core.Models.Users.UserPermissionCatalog.EditingAccounts
+                                .ToArray())))
                 .AddPolicy(ViewUserGroupsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
@@ -297,33 +322,55 @@ namespace Fluxy.API.Configuration
     }
 
     /// <summary>
-    /// Demands that the account behind a token holds one permission key in its group.
+    /// Demands that the account behind a token holds one or more permission keys in its group.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The second, finer gate - the role decides which area of the application a caller is in,
     /// and a permission decides what they may do once there. The two are deliberately separate
     /// rather than one folded into the other: a role is an audience and is checked on every
     /// request of that area, while a permission is an operation and grows over time without
     /// needing a new role or a new policy for every addition.
-    ///
+    /// </para>
+    /// <para>
+    /// Several permissions may be named, in which case <b>any one of them</b> satisfies the
+    /// requirement. That is what the two account policies use: one endpoint serves clients,
+    /// resellers and administrators alike, so which of the three <c>view*</c> keys it needs
+    /// depends on the account the request is about - a fact the policy cannot know before the
+    /// request is being handled. Such a policy is therefore a coarse gate only, and the
+    /// decision about a specific account is taken inside the action.
+    /// </para>
+    /// <para>
     /// It is checked against the account's current row for exactly the reason
     /// <see cref="RoleRequirement"/> is: the permission a token was minted under is not a claim
     /// the token even carries, and a grant withdrawn a second ago has to be gone now rather
     /// than in five minutes.
+    /// </para>
     /// </remarks>
     public sealed class PermissionRequirement : IAuthorizationRequirement
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="PermissionRequirement"/> class.
         /// </summary>
-        /// <param name="permission">Permission the endpoint demands.</param>
-        public PermissionRequirement(Fluxy.Core.Models.Users.UserPermission permission)
+        /// <param name="permissions">
+        /// Permissions the endpoint demands, any one of which is enough. At least one must be
+        /// named - a requirement with nothing to ask for would succeed for everybody, which is
+        /// the one answer it exists to prevent.
+        /// </param>
+        public PermissionRequirement(params Fluxy.Core.Models.Users.UserPermission[] permissions)
         {
-            Permission = permission;
+            if (permissions is null || permissions.Length is 0)
+            {
+                throw new ArgumentException(
+                    "A permission requirement has to demand at least one permission.",
+                    nameof(permissions));
+            }
+
+            Permissions = permissions;
         }
 
-        /// <summary>Permission the endpoint demands.</summary>
-        public Fluxy.Core.Models.Users.UserPermission Permission { get; }
+        /// <summary>Permissions the endpoint demands; any one of them satisfies the requirement.</summary>
+        public IReadOnlyList<Fluxy.Core.Models.Users.UserPermission> Permissions { get; }
     }
 
     /// <summary>
@@ -461,6 +508,10 @@ namespace Fluxy.API.Configuration
     /// <see cref="RoleRequirement"/> that would refuse the same request for the same reason. The
     /// two handlers may run in either order, and a permission of a blocked account must not
     /// succeed on the strength of a check that has not run yet.
+    ///
+    /// A requirement naming several permissions succeeds when the group holds any one of them.
+    /// That is what makes a coarse "may this caller touch accounts at all" gate expressible
+    /// while the account the request is about is still unknown.
     /// </remarks>
     public sealed class PermissionRequirementHandler : AuthorizationHandler<PermissionRequirement>
     {
@@ -507,14 +558,20 @@ namespace Fluxy.API.Configuration
                 return;
             }
 
-            if (!standing.Grants(requirement.Permission))
+            // Any one of the named permissions is enough: a requirement naming three <c>view*</c>
+            // keys is asking whether this caller may read accounts of *some* role, not whether
+            // they may read all three kinds.
+            if (!requirement.Permissions.Any(standing.Grants))
             {
                 _logger.LogInformation(
-                    "Refused a request from account {UserId} in role {Role}: its group does not " +
-                    "grant {Permission}.",
+                    "Refused a request from account {UserId} in role {Role}: its group holds none " +
+                    "of {Permissions}.",
                     userId,
                     standing.Role,
-                    Fluxy.Core.Models.Users.UserPermissionCatalog.NameOf(requirement.Permission));
+                    string.Join(
+                        ", ",
+                        requirement.Permissions.Select(
+                            Fluxy.Core.Models.Users.UserPermissionCatalog.NameOf)));
 
                 return;
             }

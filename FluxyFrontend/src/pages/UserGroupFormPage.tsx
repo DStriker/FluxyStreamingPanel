@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
@@ -59,6 +60,40 @@ const STATUSES: UserStatus[] = ['Unregistered', 'Registered', 'Blocked']
 const FIELD_NAMES: readonly (keyof GroupFormValues)[] = ['name', 'role', 'status', 'permissions']
 
 /**
+ * The permission boxes as a grid rather than as antd's default flow, and why they are not
+ * left alone.
+ *
+ * `Checkbox.Group` wraps its items with `flex-wrap` and sets a **column** gap of 8px and no
+ * row gap at all, while each label carries 8px of padding on both sides of its own text. The
+ * eight boxes therefore arrived with three different distances between them: 8px from a box
+ * to its own label, 16px from a label to the next box, and **0px** from one wrapped row to
+ * the next - columns apart, rows touching. That is what the complaint about uneven indents
+ * was, and it also made the click targets uneven, since rows abutted while columns did not.
+ *
+ * One grid with one gap answers both halves at once. The catalog's own order makes the two
+ * columns mean something besides being tidy: `view*` down the left, `edit*` down the right,
+ * one target role per row. A grid item is blockified and stretches to its track, so the
+ * whole cell becomes the label's click area instead of only the text — which is the half
+ * that makes the block easier to use rather than merely neater.
+ *
+ * `240px` is a floor rather than a preference, and the arithmetic behind it is worth
+ * keeping: this form is `layout="vertical"` under `maxWidth: 640`, so the control is 640px
+ * wide, and `auto-fill` fits `floor((640 + 12) / (240 + 12)) = 2` tracks of 314px. The
+ * longest label - "Edit administrators", a 16px box, 16px of padding and about 135px of
+ * text - needs roughly 170px and so fits with room to spare, while a viewport narrow enough
+ * for two of them not to fit drops to one column rather than squeezing the label until it
+ * wraps. Nothing about the layout depends on a screen width nobody wrote down.
+ *
+ * `probe:render` cannot reach it for the same reason it cannot reach `permissionsForRole` -
+ * every render of this page under the probe lands at `Client`, where no boxes are drawn.
+ */
+const PERMISSION_GRID: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+  gap: 12,
+}
+
+/**
  * The add form's starting content, and the shape the edit form is painted over once its
  * group arrives.
  *
@@ -66,7 +101,7 @@ const FIELD_NAMES: readonly (keyof GroupFormValues)[] = ['name', 'role', 'status
  * rather than an oversight: a default is a decision about a group nobody has described yet,
  * and the two directions fail differently. Starting at `Client` hands over nothing until
  * somebody says so - a group created without looking would be a group that grants only what
- * every account grants - while starting at `Admin` would hand the four permissions this
+ * every account grants - while starting at `Admin` would hand the eight permissions this
  * whole page exists to manage to whoever pressed the button first. It also matches what the
  * add form for an *account* does: its default group is the base `Clients` group, and both
  * defaults are the same answer for the same reason.
@@ -194,7 +229,7 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
    *
    * Without this the value would quietly outlive the choice: antd's checkbox group only
    * *draws* the options it was given, so moving a group from `Admin` to `Client` would
-   * untick every box on screen while the form still held all four - and moving it back
+   * untick every box on screen while the form still held all eight - and moving it back
    * would bring the ticks back as if somebody had put them there. The prune watches the
    * level rather than the click so it also covers a level painted from the server, and
    * `handleFinish` filters once more on the way out for the case this effect cannot see.
@@ -420,10 +455,10 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
                   <Space>
                     {/* The two bulk moves sit with the hint rather than in a row of their
                         own, so the section reads as one thing: the boxes, what they mean,
-                        and the two ways to settle them all at once. Four permissions is
-                        four clicks and nobody minds; forty is forty, and a page that made
-                        an administrator tick them one by one would be a page that gets
-                        half of them right. */}
+                        and the two ways to settle them all at once. The set for the level
+                        is small and nobody minds ticking it; a level offering twice this
+                        much is twice as many, and a page that made an administrator tick
+                        them one by one would be a page that gets half of them right. */}
                     <Button
                       size="small"
                       disabled={detail?.isBase || allOfferedTicked}
@@ -442,7 +477,11 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
                 </Space>
               }
             >
-              <Checkbox.Group disabled={detail?.isBase} options={permissionOptions} />
+              <Checkbox.Group
+                disabled={detail?.isBase}
+                options={permissionOptions}
+                style={PERMISSION_GRID}
+              />
             </Form.Item>
           ) : (
             <Form.Item label={t('userGroups.permissionsTitle')}>

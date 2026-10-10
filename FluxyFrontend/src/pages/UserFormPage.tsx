@@ -14,9 +14,18 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ALL_GROUPS_PAGE_SIZE, createUser, getUser, getUserGroups, updateUser } from '../lib/api'
+import {
+  ALL_GROUPS_PAGE_SIZE,
+  createUser,
+  getProfile,
+  getUser,
+  getUserGroups,
+  updateUser,
+} from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
+import { hinted } from '../lib/hinted'
+import { canEdit } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { combineStatus } from '../lib/userStatus'
@@ -34,7 +43,13 @@ import { AutoTimeZone, knownZones } from '../lib/timeZones'
 import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
-import type { AdminUserDetail, LoginGuardSettings, UserGroup, UserStatus } from '../types'
+import type {
+  AdminUserDetail,
+  LoginGuardSettings,
+  UserGroup,
+  UserPermission,
+  UserStatus,
+} from '../types'
 
 /**
  * What the form collects.
@@ -187,6 +202,13 @@ const detailToFormValues = (detail: AdminUserDetail): UserFormValues => ({
  *   page, and here the caller's network is the wrong network for an account that is not
  *   theirs - so there is deliberately no "use my current network" button (see the `fillCurrent`
  *   prop of `LoginGuardFields`).
+ * - **The group picker offers only groups the caller may write accounts of, and Save greys
+ *   for the one the row is already in if they may not.** Which roles an operator may reach is
+ *   now a per-role grant rather than one `editUsers` bit, so the destination of this save is
+ *   a fact the server checks - the role being left *and* the one being arrived in. The held
+ *   group is never dropped from the list, because it is what the row is in and a form that
+ *   cannot describe the account it opened on is worse than one whose Save the page is about
+ *   to disable.
  *
  * Success goes back to the list rather than staying here: the save-and-close shape matches
  * the button beside it, and the list is where the change is visible among the other rows.
@@ -223,6 +245,21 @@ export default function UserFormPage(_props: UserFormPageProps) {
   // a connection one), so it is worth showing rather than swallowing.
   const [groups, setGroups] = useState<UserGroup[]>([])
   const [groupsError, setGroupsError] = useState<string | null>(null)
+  /**
+   * Everything the signed-in operator's group grants, read once on this page too.
+   *
+   * It is what the two rules below ask: which groups the picker may offer, and whether Save
+   * is worth drawing live. `viewUsers`/`editUsers` are gone - "may this operator touch
+   * accounts" is now a claim about a *particular role*, so an administrator who may run the
+   * clients still cannot move one into the resellers, and the account behind this address
+   * may be in a group outside their grants entirely.
+   *
+   * Empty rather than "unknown" when the call fails, mirroring `AccountStanding.Permissions`
+   * on the backend: an account the server cannot find grants nothing, and a form that went
+   * ahead on the strength of a lookup it did not get would be claiming a permission nobody
+   * has confirmed. The server refuses regardless - this only decides what is drawn.
+   */
+  const [granted, setGranted] = useState<UserPermission[]>([])
 
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
@@ -261,15 +298,34 @@ export default function UserFormPage(_props: UserFormPageProps) {
   }, [id, form, attempt])
 
   useEffect(() => {
+    // The operator's own grants, in an effect of its own rather than folded into either
+    // fetch above: this is a third answer from a third place, and it must not take the
+    // account or the group list down with it when it is the one that fails. It gates what
+    // is drawn, never what is loaded - the account is read in full either way, because a
+    // form that cannot open is a form that cannot explain why it is closed.
+    let cancelled = false
+
+    getProfile()
+      .then((profile) => {
+        if (!cancelled) setGranted(profile.permissions)
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     // The picker's own options. One page of the ceiling rather than a second unpaged route
     // - see `getUserGroups` for why the account form and the accounts table ask the same
     // endpoint for the same thing.
     //
     // It fails on its own, without a retry button: the only reason this can fail that is
     // worth repeating is a dropped connection, and the one reason it will not heal on its
-    // own - the account's group holding `viewUsers` but not `viewUserGroups` - is not
-    // something another click would change. Either way the message goes under the field it
-    // blocks, where it explains exactly what could not be offered.
+    // own - the caller's group holding no `viewUserGroups` - is not something another click
+    // would change. Either way the message goes under the field it blocks, where it explains
+    // exactly what could not be offered.
     let cancelled = false
 
     getUserGroups({ page: 1, pageSize: ALL_GROUPS_PAGE_SIZE })
@@ -336,10 +392,41 @@ export default function UserFormPage(_props: UserFormPageProps) {
       ? combineStatus(ownStatus, chosenGroup.status)
       : (detail?.effectiveStatus ?? ownStatus)
 
-  const groupOptions = useMemo(
-    () => groups.map((group) => ({ value: group.id, label: group.name })),
-    [groups],
-  )
+  /**
+   * Which groups the picker may offer - and, by the same rule, which roles the account may
+   * be moved *into*.
+   *
+   * The server enforces the same split (it checks the role being left and the role being
+   * arrived in), so this is the difference between being told before the choice and being
+   * told after it. Two rules keep the list honest:
+   *
+   * - Only a group whose role the operator may edit is offered.
+   * - **The group the form is already holding is always kept**, even when its role sits
+   *   outside those grants: in edit mode that is the row's own group, and dropping it would
+   *   blank the one field that says what the account is in right now; on add it is the
+   *   default the picker chose. It cannot be picked *into* again - once the selection moves
+   *   somewhere allowed, the refused one is no longer offered.
+   */
+  const groupOptions = useMemo(() => {
+    const editable = groups.filter((group) => canEdit(granted, group.role))
+    const held = groups.filter(
+      (group) => group.id === chosenGroupId && !editable.includes(group),
+    )
+
+    return [...held, ...editable].map((group) => ({ value: group.id, label: group.name }))
+  }, [groups, granted, chosenGroupId])
+
+  /**
+   * Whether Save is worth drawing live - asked about the group the account is going to,
+   * which is the fact the server checks (the role being left *and* the role being arrived
+   * in), rather than about accounts in general.
+   *
+   * `undefined` means the destination is not known yet - the list has not arrived, or the
+   * field is still empty - and then nothing is greyed: the `required` rule under the picker
+   * is what refuses an empty destination, and greying over a lookup that has not finished
+   * would be describing a permission nobody has been asked about.
+   */
+  const maySave = chosenGroup === undefined || canEdit(granted, chosenGroup.role)
 
   const statusOptions = useMemo(
     () => STATUSES.map((status) => ({ value: status, label: t(`users.statuses.${status}`) })),
@@ -464,6 +551,16 @@ export default function UserFormPage(_props: UserFormPageProps) {
   }
 
   const cardTitle = isEdit ? t('users.editTitle') : t('users.addTitle')
+
+  // Drawn once and wrapped only when it has a reason to be greyed: `hinted` around a live
+  // button would put a tooltip on a control that needs no explanation, and the reason a
+  // disabled button *is* disabled is the one thing the span exists to keep reachable - the
+  // same rule the account table's own greyed actions follow.
+  const saveButton = (
+    <Button type="primary" htmlType="submit" loading={submitting} disabled={!maySave}>
+      {isEdit ? t('actions.save') : t('users.create')}
+    </Button>
+  )
 
   if (loadError) {
     // Edit mode only: nothing fetches on add, so this state cannot be reached there. The
@@ -686,9 +783,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
 
           <Form.Item style={{ marginTop: 24 }}>
             <Space>
-              <Button type="primary" htmlType="submit" loading={submitting}>
-                {isEdit ? t('actions.save') : t('users.create')}
-              </Button>
+              {maySave ? saveButton : hinted(t('users.noPermission'), saveButton)}
               <Button disabled={submitting} onClick={() => navigate(listPath)}>
                 {t('users.backToList')}
               </Button>

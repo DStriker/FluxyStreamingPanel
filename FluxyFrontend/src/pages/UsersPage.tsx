@@ -1,29 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { Key } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   App,
   Button,
   Card,
+  Dropdown,
   Input,
+  Modal,
   Select,
   Space,
   Table,
   Tag,
   Typography,
 } from 'antd'
-import type { TableColumnsType, TableProps } from 'antd'
+import type { MenuProps, TableColumnsType, TableProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   LockOutlined,
+  MoreOutlined,
   PlusOutlined,
+  TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
 import {
   ALL_GROUPS_PAGE_SIZE,
+  bulkUsers,
   confirmUserRegistration,
   deleteUser,
   getProfile,
@@ -32,10 +38,11 @@ import {
   setUserBlocked,
   setUserUnblocked,
 } from '../lib/api'
-import type { AdminUserSortField, AdminUserSortOrder } from '../lib/api'
+import type { AdminUserSortField, AdminUserSortOrder, BulkUserAction } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
+import { canEdit, canEditAny } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { formatTimestamp } from '../lib/dateFormat'
@@ -43,7 +50,14 @@ import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
-import type { AdminUser, AdminUserList, MessageResponse, UserStatus } from '../types'
+import type {
+  AdminUser,
+  AdminUserList,
+  BulkOperationResponse,
+  MessageResponse,
+  UserPermission,
+  UserStatus,
+} from '../types'
 
 /**
  * How many accounts one page holds. The server's own default, kept in step by hand because
@@ -87,27 +101,43 @@ const COLUMN_KEYS: readonly UsersColumnKey[] = [
  * column is what keeps that length inside its own cell instead of dragging the whole table
  * sideways; the widths are a starting point, not the answer (see `useColumnWidths`).
  *
- * The three content columns are kept deliberately narrow - the whole table sums to 1230 -
- * so that the table, the sidebar and the card's own padding still fit one Full HD screen
- * without the action buttons at the far right falling outside the viewport. What those
- * columns lose in room they keep in their tooltips: an address or a visit is never *cut*,
- * only shown shortened until you look at it.
+ * The three content columns are kept deliberately narrow - these eight sum to 1190, and the
+ * selection column below takes the total back to the same **1230** the table has always
+ * been - so that the table, the sidebar and the card's own padding still fit one Full HD
+ * screen without the action buttons at the far right falling outside the viewport. What
+ * those columns lose in room they keep in their tooltips: an address or a visit is never
+ * *cut*, only shown shortened until you look at it.
  *
  * The identifier column is the narrowest of the eight at 100 rather than the 130 it started
  * at: it draws nine characters (eight of the GUID and an ellipsis) and nothing else, and the
  * twenty it gave up are what let `group` show `Administrators` whole. Widening one costs
  * visible table room; shrinking one that only ever prints nine characters does not.
+ *
+ * `email` is 160 rather than the 200 it was before the selection column arrived, and the
+ * forty it gave up are exactly the forty that column takes - the checkbox is paid for by the
+ * one cell that truncates into a tooltip anyway, rather than by the table growing or by one
+ * of the narrower columns losing a third of its width.
  */
 const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
   id: 100,
   username: 170,
-  email: 200,
+  email: 160,
   group: 150,
   status: 150,
   lastSeenAt: 180,
   ip: 130,
   actions: 150,
 }
+
+/**
+ * The width of the checkbox column antd prepends, which is not one of the eight and is
+ * therefore not part of the hook's sum or its memory.
+ *
+ * `scroll.x` is that sum **plus** this, so the eight keep their own widths, their own
+ * reset and their own storage while the table as a whole still fills the same 1230 it
+ * filled before a selection column existed.
+ */
+const SELECTION_WIDTH = 40
 
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.users.columnWidths'
@@ -216,12 +246,28 @@ export default function UsersPage(_props: UsersPageProps) {
    * accounts.
    *
    * Kept out of the accounts request on purpose: this is a **different** permission
-   * (`viewUserGroups`, not `viewUsers`), so an administrator whose group may read accounts
-   * but not groups would have the whole accounts page fail with `403 permission_denied` if
-   * the two shared one call. As it is, that visitor's filter simply offers nothing to pick,
-   * which is the truth - a group they may not see is not one they could have filtered by.
+   * (`viewUserGroups`, not the per-role `view*` permissions the account rows need), so an
+   * administrator whose group may read accounts but not groups would have the whole accounts
+   * page fail with `403 permission_denied` if the two shared one call. As it is, that
+   * visitor's filter simply offers nothing to pick, which is the truth - a group they may not
+   * see is not one they could have filtered by.
    */
   const [groupOptions, setGroupOptions] = useState<GroupOption[]>([])
+  /**
+   * Everything the signed-in operator's group grants, read alongside the time zone on mount.
+   *
+   * It answers a question the role in the token cannot: `viewUsers` and `editUsers` are gone,
+   * and the four write actions below now ask about the **row's** role rather than about
+   * accounts in general. The server enforces the same split - it filters the page to the
+   * roles this operator may read, and refuses every write outside them - so this decides
+   * which buttons are drawn greyed rather than which requests are worth making. An empty set
+   * after a failed profile call is the safe reading: the API refuses regardless, and a grey
+   * button with a reason is a better first paint than a live one that answers 403.
+   *
+   * Deliberately not `GET /auth/me` - the guest guard polls that on every navigation, and
+   * this is a database read the guard has no use for.
+   */
+  const [granted, setGranted] = useState<UserPermission[]>([])
   const [sortBy, setSortBy] = useState<AdminUserSortField>('username')
   const [sortOrder, setSortOrder] = useState<AdminUserSortOrder>('asc')
   // The row whose action is in flight - its buttons show a spinner and refuse a second
@@ -230,6 +276,22 @@ export default function UsersPage(_props: UsersPageProps) {
   // Bumped by the retry button and by every successful action, so one re-read of the list
   // is all a row transition or a dropped connection needs.
   const [attempt, setAttempt] = useState(0)
+  /**
+   * The rows the checkboxes on **this page** have marked, held by id rather than by row.
+   *
+   * The scope is the page, and that is the whole decision: an id list is what the endpoint
+   * takes, the server bounds it at one page's worth, and the alternative - "everything that
+   * matches this filter" - would mean asking for rows nobody has looked at, some of which
+   * the operator may not even be allowed to change. So the header checkbox selects what is
+   * drawn, and moving to another page drops the ids that are no longer there (see the prune
+   * in the load effect) rather than keeping a selection the visitor cannot see.
+   */
+  const [selectedIds, setSelectedIds] = useState<Key[]>([])
+  /** The move dialog, and the group chosen in it. Separate from the selection because it outlives the menu that opened it. */
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assignGroupId, setAssignGroupId] = useState<string | null>(null)
+  /** Whether a bulk run is in flight. One run at a time, and the toolbar says so. */
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   /**
    * The eight widths: their state, their memory between visits, and the drag that changes
@@ -266,14 +328,18 @@ export default function UsersPage(_props: UsersPageProps) {
   const ownId = session?.userId ?? null
 
   useEffect(() => {
-    // The zone is read for the dates below, not for this page's own state: a failure here
-    // leaves the browser's zone in place and the list still renders, which is the right
-    // degradation - the accounts matter and the exact zone their visits are printed in do not.
+    // The zone is read for the dates below and the grants for the buttons below that; both
+    // come from the one profile call because asking twice would be two round trips for two
+    // fields of one body. Neither failure is fatal: a missing zone leaves the browser's in
+    // place, and a missing grant set greys the write buttons - which is the direction the
+    // server refuses in anyway, so the two agree by construction.
     let cancelled = false
 
     getProfile()
       .then((profile) => {
-        if (!cancelled) setTimeZone(profile.timeZone)
+        if (cancelled) return
+        setTimeZone(profile.timeZone)
+        setGranted(profile.permissions)
       })
       .catch(() => {})
 
@@ -330,6 +396,19 @@ export default function UsersPage(_props: UsersPageProps) {
         if (cancelled) return
         setUsers(answer)
         setLoadError(null)
+
+        // The selection is this page's, so it is pruned to the ids the page still holds.
+        // Returning the same array when nothing moved is not an optimisation but the
+        // termination condition: a fresh array on every answer is a fresh reference, a
+        // re-render, and - on a page whose list is re-read after every action - a loop.
+        setSelectedIds((current) => {
+          if (current.length === 0) return current
+
+          const present = new Set(answer.items.map((user) => user.id))
+          const kept = current.filter((id) => present.has(String(id)))
+
+          return kept.length === current.length ? current : kept
+        })
       })
       .catch((error) => {
         if (cancelled) return
@@ -524,6 +603,148 @@ export default function UsersPage(_props: UsersPageProps) {
     })
   }
 
+  /**
+   * Reads the answer to a bulk run out loud: a toast when every row landed, and a dialog
+   * listing the refusals when at least one did not.
+   *
+   * The dialog exists because a count is not a reason. "Changed 4 of 5" tells the operator
+   * that something was refused and nothing about what - and the reason the row buttons would
+   * have said *before* a click (`cannot_block_self` above all) is exactly the reason that
+   * now has to arrive after one. Every line is the server's own sentence for that row's
+   * code, already translated, so this summarises rather than invents: the same code in the
+   * same words the single-row path would have shown.
+   *
+   * The lines are grouped by code with a count, because a run over thirty rows refusing all
+   * thirty for one reason is one sentence, not thirty.
+   */
+  const reportBulk = (result: BulkOperationResponse) => {
+    const refusals: { code: string; count: number }[] = []
+    const at = new Map<string, number>()
+
+    for (const item of result.items) {
+      if (item.ok) continue
+
+      const index = at.get(item.code)
+
+      if (index === undefined) {
+        at.set(item.code, refusals.length)
+        refusals.push({ code: item.code, count: 1 })
+      } else {
+        // `refusals[index]` is looked up once rather than read twice: under
+        // `noUncheckedIndexedAccess` an index that came from a `Map` is still an index, and
+        // the compiler is right that nothing here proves the slot is filled.
+        const previous = refusals[index]
+
+        if (previous) refusals[index] = { code: item.code, count: previous.count + 1 }
+      }
+    }
+
+    if (refusals.length === 0) {
+      message.success(
+        textForCode(result.code, { done: result.succeeded, total: result.items.length }) ??
+          result.message,
+      )
+      return
+    }
+
+    modal.info({
+      title: t('users.bulk.partialTitle', {
+        done: result.succeeded,
+        total: result.items.length,
+      }),
+      okText: t('actions.ok'),
+      content: (
+        <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+          {refusals.map((refusal) => (
+            <li key={refusal.code}>
+              {textForCode(refusal.code) ?? refusal.code}
+              {refusal.count > 1 ? ` (${refusal.count})` : ''}
+            </li>
+          ))}
+        </ul>
+      ),
+    })
+  }
+
+  /**
+   * Runs one operation over the selection.
+   *
+   * `groupId` belongs to `assign-group` alone and is what the move dialog hands over; the
+   * other four never see it. Afterwards the list is **re-read** rather than patched, for
+   * the reason every single-row action on this page re-reads it: a transition changes what
+   * the server considers each row to be (a stamped `registeredAt`, revoked sessions, a
+   * different group), and the page draws what it is told rather than what it guesses.
+   *
+   * The selection is cleared on the way through - not because the rows are gone (only
+   * deletion guarantees that) but because the run is over, and leaving thirty boxes ticked
+   * after "blocked" was reported would invite the same operation a second time.
+   */
+  const runBulk = async (action: BulkUserAction, groupId: string | null = null) => {
+    if (selectedIds.length === 0) return
+
+    setBulkBusy(true)
+
+    try {
+      const result = await bulkUsers({
+        ids: selectedIds.map(String),
+        action,
+        groupId,
+        csrfToken: await getCsrfToken(),
+      })
+
+      reportBulk(result)
+      setSelectedIds([])
+      setAttempt((value) => value + 1)
+    } catch (error) {
+      message.error(messageForError(error))
+    } finally {
+      setBulkBusy(false)
+      setAssignOpen(false)
+      setAssignGroupId(null)
+    }
+  }
+
+  /**
+   * Asks before a bulk deletion, for the reason only deletion asks first on a single row:
+   * it is the one operation here that cannot be undone, and the question is about the whole
+   * selection at once - so the body names the count rather than a name, because there is no
+   * one row to name.
+   */
+  const confirmBulkDelete = () => {
+    modal.confirm({
+      title: t('users.bulk.deleteTitle', { count: selectedIds.length }),
+      content: t('users.bulk.deleteBody'),
+      okText: t('users.deleteConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('actions.cancel'),
+      onOk: () => runBulk('delete'),
+    })
+  }
+
+  /**
+   * What the toolbar's menu offers. The labels are the row actions' own, because this is the
+   * same operation over more than one row and a second name for one thing is a second name.
+   *
+   * The move is the one entry with a label of its own: it does not run, it opens the dialog,
+   * and it is the only one that is dropped rather than greyed when it cannot be obeyed - the
+   * dialog's list *is* the group list, and an operator whose group may not read groups has
+   * no list to choose from, so offering the entry would be offering a dialog with a disabled
+   * confirm button and nothing else.
+   */
+  const onBulkMenu: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'assign-group') {
+      setAssignOpen(true)
+      return
+    }
+
+    if (key === 'delete') {
+      confirmBulkDelete()
+      return
+    }
+
+    void runBulk(key as BulkUserAction)
+  }
+
   const columns: TableColumnsType<AdminUser> = [
     {
       // Eight characters of the identifier and the rest on hover. A full GUID is 36
@@ -637,7 +858,9 @@ export default function UsersPage(_props: UsersPageProps) {
       // name each one gets in the locale files is the only thing that says what pressing it
       // does. Two of them appear conditionally: confirming is only a move an `Unregistered`
       // row can make, and block/unblock are one button that means the opposite depending on
-      // which side of the state the row is on.
+      // which side of the state the row is on. All four write actions additionally ask
+      // whether this row's role is one the operator may *change*, which is a different
+      // question from the one the page was loaded with - see `editable` inside.
       title: t('users.columns.actions'),
       key: 'actions',
       width: widths.actions,
@@ -646,8 +869,21 @@ export default function UsersPage(_props: UsersPageProps) {
         const isSelf = user.id === ownId
         const busy = busyId === user.id
 
+        // Whether this row's role is inside the operator's edit grants. The list itself was
+        // already filtered to the roles they may *read*, so every row here is readable - but
+        // reading is not writing, and `viewAdmins` without `editAdmins` is a page where an
+        // administrator is visible and every move on it is refused. Disabling here rather
+        // than letting the refusal arrive is the same rule `selfProtected` follows: the UI
+        // tells the truth the API would tell, and it says it before the click rather than
+        // after it.
+        const editable = canEdit(granted, user.role)
+        const refused = t('users.noPermission')
+
         return (
           <Space size={4}>
+            {/* Never gated on `editable`: opening the form is a read, and the row only
+                arrived because `canView` already holds for its role. The form greys its own
+                submit for the same reason this one greys its buttons. */}
             {hinted(
               t('users.actions.edit'),
               <Button
@@ -660,50 +896,56 @@ export default function UsersPage(_props: UsersPageProps) {
 
             {user.status === 'Unregistered' &&
               hinted(
-                t('users.actions.confirm'),
+                editable ? t('users.actions.confirm') : refused,
                 <Button
                   type="text"
                   size="small"
                   icon={<CheckOutlined />}
                   loading={busy}
-                  disabled={busy}
+                  disabled={busy || !editable}
                   onClick={() => runAction(confirmUserRegistration, user)}
                 />,
               )}
 
             {user.status === 'Blocked' ? (
               hinted(
-                t('users.actions.unblock'),
+                editable ? t('users.actions.unblock') : refused,
                 <Button
                   type="text"
                   size="small"
                   icon={<UnlockOutlined />}
                   loading={busy}
-                  disabled={busy}
+                  disabled={busy || !editable}
                   onClick={() => runAction(setUserUnblocked, user)}
                 />,
               )
-            ) : (
-              hinted(
-                isSelf ? t('users.selfProtected') : t('users.actions.block'),
+            ) : hinted(
+                !editable
+                  ? refused
+                  : isSelf
+                    ? t('users.selfProtected')
+                    : t('users.actions.block'),
                 <Button
                   type="text"
                   size="small"
                   icon={<LockOutlined />}
-                  disabled={isSelf || busy}
+                  disabled={isSelf || busy || !editable}
                   onClick={() => runAction(setUserBlocked, user)}
                 />,
-              )
-            )}
+              )}
 
             {hinted(
-              isSelf ? t('users.selfProtected') : t('users.actions.delete'),
+              !editable
+                ? refused
+                : isSelf
+                  ? t('users.selfProtected')
+                  : t('users.actions.delete'),
               <Button
                 danger
                 type="text"
                 size="small"
                 icon={<DeleteOutlined />}
-                disabled={isSelf || busy}
+                disabled={isSelf || busy || !editable}
                 onClick={() => confirmDelete(user)}
               />,
             )}
@@ -718,16 +960,89 @@ export default function UsersPage(_props: UsersPageProps) {
     [t],
   )
 
+  /**
+   * Whether the menu may be opened at all: something is selected, nothing else is running,
+   * and the operator may change at least one kind of account.
+   *
+   * The permission question is the page-level one (`canEditAny`), not the per-row one. Which
+   * rows are editable is answered per entry by the server - it knows each row's role and the
+   * operator's grants for it - and that refusal is precisely what the summary dialog above
+   * reports. Greying every entry here would mean deciding in the browser which of thirty
+   * rows the server would have refused, with the list's own filter already having hidden
+   * some of them.
+   */
+  const bulkEnabled = canEditAny(granted) && selectedIds.length > 0 && !bulkBusy
+
+  /** The five entries, in the order the menu draws them. */
+  const bulkItems = useMemo<MenuProps['items']>(
+    () => [
+      { key: 'block', icon: <LockOutlined />, label: t('users.actions.block') },
+      { key: 'unblock', icon: <UnlockOutlined />, label: t('users.actions.unblock') },
+      {
+        key: 'confirm-registration',
+        icon: <CheckOutlined />,
+        label: t('users.actions.confirm'),
+      },
+      // Dropped rather than greyed when there is nothing to choose from: the dialog's
+      // select *is* this same list, and an operator who may not read groups has no list to
+      // show them - so the entry would lead to a dialog whose only live control is Cancel.
+      ...(groupOptions.length > 0
+        ? [{ key: 'assign-group', icon: <TeamOutlined />, label: t('users.bulk.assign') }]
+        : []),
+      { type: 'divider' },
+      { key: 'delete', icon: <DeleteOutlined />, danger: true, label: t('users.actions.delete') },
+    ],
+    [t, groupOptions.length],
+  )
+
   return (
     <Card
       title={t('users.listTitle')}
+      // The title is the one thing in this header that must never yield. Without this, antd
+      // shrinks both halves when the row is too wide and the title's own text wraps to a
+      // second line - which, on a Full HD screen at 125% scaling and with the longer Russian
+      // labels, is exactly what happened. Pinned to one line, the overflow goes where it can
+      // actually be handled: the `Space wrap` in `extra` stacks the toolbar's controls onto a
+      // second row, which is taller but readable, rather than crushing the page's own heading
+      // into two lines. The widths below are what keep that from being needed in the first
+      // place; this is what decides which side loses if they ever stop being enough.
+      styles={{ title: { whiteSpace: 'nowrap' } }}
       extra={
         <Space wrap>
+          {/* The selection's controls, first because that is what they act on, and as one
+              button rather than a label beside one. The count rides inside the button the
+              count enables - see `menuWithCount` in the locales for why, which is a width
+              decision about this row before it is anything else. Both states are drawn with
+              nothing selected, for the reason the "Reset widths" button below is drawn while
+              disabled: a control that appears and disappears reads as a broken one, and the
+              count is what says *why* the menu is greyed. The tooltip carries the permission
+              sentence only where there is one - with the grants in place it would be
+              repeating the button's own label back at the visitor, which is what the "Add
+              user" button beside it already does. */}
+          {hinted(
+            canEditAny(granted) ? t('users.bulk.menu') : t('users.noPermission'),
+            <Dropdown
+              menu={{ items: bulkItems, onClick: onBulkMenu }}
+              disabled={!bulkEnabled}
+            >
+              <Button icon={<MoreOutlined />} loading={bulkBusy}>
+                {selectedIds.length > 0
+                  ? t('users.bulk.menuWithCount', { count: selectedIds.length })
+                  : t('users.bulk.menu')}
+              </Button>
+            </Dropdown>,
+          )}
+          {/*200 rather than 260, and the two selects below are narrower for the same reason:
+              this row has to fit **beside the card's own title** on one Full HD screen, and
+              in Russian it does not. `Сбросить ширину`, `Добавить пользователя` and
+              `Действия` are all longer than their English twins, so the budget the English
+              layout never noticed is the one the Russian one spends. What the search loses in
+              room it keeps in its aria-label, which still names the whole field. */}
           <Input.Search
             allowClear
             aria-label={t('users.searchLabel')}
             placeholder={t('users.searchPlaceholder')}
-            style={{ width: 260 }}
+            style={{ width: 200 }}
             value={searchText}
             onChange={(event) => {
               setSearchText(event.target.value)
@@ -743,7 +1058,7 @@ export default function UsersPage(_props: UsersPageProps) {
             allowClear
             showSearch
             aria-label={t('users.columns.group')}
-            style={{ width: 180 }}
+            style={{ width: 150 }}
             value={groupFilter ?? undefined}
             options={groupOptions}
             placeholder={t('users.filterAnyGroup')}
@@ -753,7 +1068,7 @@ export default function UsersPage(_props: UsersPageProps) {
           <Select
             allowClear
             aria-label={t('users.columns.status')}
-            style={{ width: 165 }}
+            style={{ width: 130 }}
             value={statusFilter ?? undefined}
             options={statusOptions}
             placeholder={t('users.filterAnyStatus')}
@@ -767,14 +1082,21 @@ export default function UsersPage(_props: UsersPageProps) {
           </Button>
           {/* The same address the sidebar's own "Add user" opens, offered here because this
               is the screen from which adding one is a decision: the list is where "there is
-              no account for that person yet" becomes visible. */}
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(`${area}/users/add`)}
-          >
-            {t('nav.items.usersAdd')}
-          </Button>
+              no account for that person yet" becomes visible. Greyed for an operator who may
+              read accounts but change none of them - creating is one of the writes, and a
+              button leading to a form whose own Save is already greyed would be two steps
+              into a refusal the first one could have said. */}
+          {hinted(
+            canEditAny(granted) ? t('nav.items.usersAdd') : t('users.noPermission'),
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!canEditAny(granted)}
+              onClick={() => navigate(`${area}/users/add`)}
+            >
+              {t('nav.items.usersAdd')}
+            </Button>,
+          )}
         </Space>
       }
     >
@@ -802,7 +1124,16 @@ export default function UsersPage(_props: UsersPageProps) {
           // be a new type on every repaint, and React would then unmount the handle mid-drag,
           // dropping the pointer with it.
           components={{ header: { cell: ResizableHeaderCell } }}
-          scroll={{ x: tableWidth }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys),
+            columnWidth: SELECTION_WIDTH,
+          }}
+          // `tableWidth` is the eight columns this page owns; the checkbox column antd
+          // prepends is a ninth with a width of its own, so it is added here rather than
+          // being smuggled into the hook's sum - which would make the stored widths and the
+          // reset disagree with the eight headers they are supposed to describe.
+          scroll={{ x: tableWidth + SELECTION_WIDTH }}
           onChange={handleTableChange}
           locale={{
             emptyText: t(
@@ -819,6 +1150,36 @@ export default function UsersPage(_props: UsersPageProps) {
           }}
         />
       )}
+      {/* The move, as a dialog rather than a control in the toolbar: the destination is one
+          decision about the whole selection, and a select dropped into the toolbar would be
+          answering it for a menu that has already closed. The list is the same one the group
+          filter loads, fetched for a different purpose and reused here rather than asked for
+          a second time - and it is the reason the menu entry disappears instead of greying
+          when this list is empty. */}
+      <Modal
+        title={t('users.bulk.assignTitle')}
+        open={assignOpen}
+        okText={t('users.bulk.assignOk')}
+        okButtonProps={{ disabled: !assignGroupId, loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() => runBulk('assign-group', assignGroupId)}
+        onCancel={() => {
+          setAssignOpen(false)
+          setAssignGroupId(null)
+        }}
+      >
+        <Select
+          showSearch
+          allowClear
+          aria-label={t('users.bulk.assignPlaceholder')}
+          style={{ width: '100%' }}
+          value={assignGroupId ?? undefined}
+          options={groupOptions}
+          placeholder={t('users.bulk.assignPlaceholder')}
+          optionFilterProp="label"
+          onChange={(value) => setAssignGroupId(value ?? null)}
+        />
+      </Modal>
     </Card>
   )
 }

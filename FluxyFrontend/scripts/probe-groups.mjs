@@ -14,9 +14,10 @@
  *
  *   - one in a group holding **every** permission its role owns (`historyadmin`, in the base
  *     `Admins` group) - everything below must succeed for it;
- *   - one holding `viewUsers` and `editUsers` and **nothing else** (`admintest`, in the
- *     `Limited admins` group) - the group endpoints must refuse it with
- *     `permission_denied` while the accounts endpoints keep working.
+ *   - one holding `viewClients` and `editClients` and **nothing else** (`admintest`, in the
+ *     `Limited admins` group) - the group endpoints must refuse it with `permission_denied`,
+ *     and an administrator's row must be refused the same way while the client rows keep
+ *     working.
  *
  * That second account is the check this probe exists for. A single-account probe cannot see
  * a permission gate at all: everything it tries is allowed.
@@ -31,6 +32,8 @@ import { apiFetch } from '../src/lib/http'
 import {
   createUserGroup,
   deleteUserGroup,
+  getProfile,
+  getUser,
   getUserGroup,
   getUserGroups,
   getUsers,
@@ -44,12 +47,23 @@ config.API_BASE_URL = BASE
 
 /** The account whose group grants everything its role owns. */
 const FULL_USER = process.env.FLUXY_GROUP_ADMIN_USER ?? 'historyadmin'
-/** The account whose group grants `viewUsers` and `editUsers` and nothing more. */
+/** The account whose group grants `viewClients` and `editClients` and nothing more. */
 const LIMITED_USER = process.env.FLUXY_GROUP_LIMITED_USER ?? 'admintest'
 const PASSWORD = process.env.FLUXY_ADMIN_PASSWORD ?? null
 
 const results = []
 const record = (name, detail, ok = true) => {
+  // Both arguments after the name are easy to swap, and swapping them is silent: a non-empty
+  // string is truthy, so `record(name, <verdict>, <detail>)` used to push a string as the
+  // verdict and print PASS for a check that had just failed. Twelve of this file's checks were
+  // in that order - among them the whole of the limited-account half - and a run that reported
+  // every one of them green proved nothing about them. Refusing a non-boolean verdict turns
+  // the next mix-up into a crash on the line it happened rather than a reassuring PASS.
+  if (typeof ok !== 'boolean') {
+    throw new TypeError(
+      `record(): the third argument must be the verdict, got ${typeof ok} (${JSON.stringify(ok)}) - "${name}"`,
+    )
+  }
   results.push({ name, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}\n      ${detail}`)
 }
@@ -179,20 +193,20 @@ const limited = groups.find((g) => g.name === 'Limited admins')
 
 record(
   'the three base groups are there and only those are marked as base',
-  groups.filter((g) => g.isBase).length === 3 && !!baseAdmins && !!baseClients,
   `${groups.length} groups, ${groups.filter((g) => g.isBase).length} of them base`,
+  groups.filter((g) => g.isBase).length === 3 && !!baseAdmins && !!baseClients,
 )
 
 record(
   'the base Admin group grants every permission its role owns',
-  baseAdmins?.permissionsCount === 4,
   `${baseAdmins?.name} grants ${baseAdmins?.permissionsCount}`,
+  baseAdmins?.permissionsCount === 8,
 )
 
 record(
   'the base Client group grants none, and says so as zero rather than as a gap',
-  baseClients?.permissionsCount === 0,
   `${baseClients?.name} grants ${baseClients?.permissionsCount}`,
+  baseClients?.permissionsCount === 0,
 )
 
 // The detail the edit form paints from. `members` is the number that tells an administrator
@@ -213,7 +227,7 @@ const created = await call(createUserGroup, {
     name: 'Probe group',
     role: 'Admin',
     status: 'Registered',
-    permissions: ['viewUsers', 'editUsers'],
+    permissions: ['viewClients', 'editClients'],
   },
   csrfToken: await csrf(),
 })
@@ -231,8 +245,8 @@ const duplicate = await call(createUserGroup, {
 })
 record(
   'a second group with the same name is refused with 409',
-  refused(duplicate, 'user_group_already_exists', 409),
   refusedAs(duplicate),
+  refused(duplicate, 'user_group_already_exists', 409),
 )
 
 const unknownPermission = await call(createUserGroup, {
@@ -241,8 +255,8 @@ const unknownPermission = await call(createUserGroup, {
 })
 record(
   'a permission name that does not exist is refused, not dropped',
-  refused(unknownPermission, 'validation_failed', 400),
   refusedAs(unknownPermission),
+  refused(unknownPermission, 'validation_failed', 400),
 )
 
 // The asymmetry the catalog is built on: a name that does not exist is a client that is
@@ -254,7 +268,7 @@ const wrongRole = await call(createUserGroup, {
     name: 'Probe client',
     role: 'Client',
     status: 'Registered',
-    permissions: ['viewUsers'],
+    permissions: ['viewClients'],
   },
   csrfToken: await csrf(),
 })
@@ -263,10 +277,10 @@ const wrongRoleDetail = wrongRole.ok
   : null
 record(
   'a permission the chosen role does not own is dropped rather than refused',
-  wrongRole.ok && wrongRoleDetail?.permissions.length === 0,
   wrongRole.ok
     ? `created with ${wrongRoleDetail?.permissions.length} permissions`
     : refusedAs(wrongRole),
+  wrongRole.ok && wrongRoleDetail?.permissions.length === 0,
 )
 
 // Its identifier, kept so the cleanup at the end of the probe can take it back out: a probe
@@ -295,8 +309,8 @@ const reshapedBase = await call(updateUserGroup, {
 })
 record(
   'a base group may not have its role changed: 409 user_group_immutable',
-  refused(reshapedBase, 'user_group_immutable', 409),
   refusedAs(reshapedBase),
+  refused(reshapedBase, 'user_group_immutable', 409),
 )
 
 const strippedBase = await call(updateUserGroup, {
@@ -306,15 +320,15 @@ const strippedBase = await call(updateUserGroup, {
 })
 record(
   'a base group may not have its permissions stripped: 409 user_group_immutable',
-  refused(strippedBase, 'user_group_immutable', 409),
   refusedAs(strippedBase),
+  refused(strippedBase, 'user_group_immutable', 409),
 )
 
 const deletedBase = await call(deleteUserGroup, { id: baseClients.id, csrfToken: await csrf() })
 record(
   'a base group may not be deleted: 409 user_group_immutable',
-  refused(deletedBase, 'user_group_immutable', 409),
   refusedAs(deletedBase),
+  refused(deletedBase, 'user_group_immutable', 409),
 )
 
 // `Limited admins` has a member, so this is the refusal the member count on the detail page
@@ -322,8 +336,8 @@ record(
 const inUse = await call(deleteUserGroup, { id: limited.id, csrfToken: await csrf() })
 record(
   'a group with members may not be deleted: 409 user_group_in_use',
-  refused(inUse, 'user_group_in_use', 409),
   refusedAs(inUse),
+  refused(inUse, 'user_group_in_use', 409),
 )
 
 const missing = await call(deleteUserGroup, {
@@ -332,8 +346,8 @@ const missing = await call(deleteUserGroup, {
 })
 record(
   'an identifier nobody answers to is 404 user_group_not_found',
-  refused(missing, 'user_group_not_found', 404),
   refusedAs(missing),
+  refused(missing, 'user_group_not_found', 404),
 )
 
 // No antiforgery token at all, on a write that has one: the check runs before any of the
@@ -348,8 +362,8 @@ const noCsrf = await apiFetch('/admin/user-groups', {
 )
 record(
   'a write without an antiforgery token is refused with 400 csrf_invalid',
-  refused(noCsrf, 'csrf_invalid', 400),
   refusedAs(noCsrf),
+  refused(noCsrf, 'csrf_invalid', 400),
 )
 
 // --------------------------------------------------------------- the accounts side
@@ -362,6 +376,18 @@ record(
     : refusedAs(accounts),
   accounts.ok && accounts.data.total >= 1 && accounts.data.items.every((u) => u.groupId === limited.id),
 )
+
+// A row the limited account must not be able to open. `historyadmin` is an administrator and
+// `Limited admins` may reach only the clients, so its identifier is the shape of the refusal
+// the permission split exists for: not "there is no such account" but "not the role you may
+// read". Looked up while the full account is still signed in, because the list a limited
+// caller receives is already filtered down to the roles their group holds.
+const adminRows = await call(getUsers, {
+  page: 1,
+  pageSize: 100,
+  groupId: baseAdmins?.id,
+})
+const adminAccountId = adminRows.ok ? (adminRows.data.items[0]?.id ?? null) : null
 
 // The group the probe just made has no members, which is exactly what makes it deletable.
 const deletable = await call(deleteUserGroup, { id: createdId, csrfToken: await csrf() })
@@ -386,11 +412,12 @@ record(
 // --------------------------------------------------------------- the limited account
 //
 // The half of the feature that a single-account probe cannot see. This account holds
-// `viewUsers` and `editUsers` and nothing else, so the accounts endpoints must keep working
-// while every group endpoint refuses it - and the refusal must be `permission_denied`, not
-// `invalid_credentials` or a 404, because the difference between "you may not" and "there is
-// no such thing" is the difference between an operator asking their administrator for
-// access and an operator filing a bug.
+// `viewClients` and `editClients` and nothing else, so the client rows must keep working
+// while every group endpoint refuses it - and while an administrator's row is refused by the
+// per-target check inside the service rather than by the policy on the endpoint. Every
+// refusal here must be `permission_denied`, not `invalid_credentials` or a 404, because the
+// difference between "you may not" and "there is no such thing" is the difference between an
+// operator asking their administrator for access and an operator filing a bug.
 
 jar.clear()
 visible.clear()
@@ -412,18 +439,61 @@ if (limitedSignIn.ok) {
     stillAccounts.ok,
   )
 
+  // The list is not merely reachable, it is *narrow*: `VisibleRoles` is applied before the
+  // count, so a total over rows the caller may not open would be a pager lying about the
+  // pages behind it.
+  record(
+    'every row it is shown belongs to a role its group may reach',
+    stillAccounts.ok
+      ? `${stillAccounts.data.items.length} drawn of ${stillAccounts.data.total}, every one ${[...new Set(stillAccounts.data.items.map((u) => u.role))].join(', ') || '(none)'}`
+      : refusedAs(stillAccounts),
+    stillAccounts.ok && stillAccounts.data.items.every((u) => u.role === 'Client'),
+  )
+
+  // The browser needs the same two answers, and this is where the second one comes from.
+  // Asserted here rather than by a render because the pages never draw these buttons under
+  // a static probe - they arrive before the profile call does.
+  const ownProfile = await call(getProfile)
+  record(
+    'the profile reports exactly the two grants its group holds',
+    ownProfile.ok
+      ? `permissions=[${ownProfile.data.permissions.join(', ')}]`
+      : refusedAs(ownProfile),
+    ownProfile.ok &&
+      ownProfile.data.permissions.length === 2 &&
+      ownProfile.data.permissions.includes('viewClients') &&
+      ownProfile.data.permissions.includes('editClients'),
+  )
+
+  // The per-target check that replaced one `editUsers` bit for accounts in general. The
+  // policy on the endpoint is coarse on purpose - it settles "may this caller read accounts
+  // at all" - and the refusal for a particular row is the service's, so this is the only
+  // place the difference is visible from outside. Recorded either way: a fixture that
+  // produced no administrator row would otherwise leave the check simply absent from the
+  // run, and a missing check reads exactly like a passing one in the total.
+  const refusedAdminRow = adminAccountId ? await call(getUser, adminAccountId) : null
+  record(
+    'the limited account is refused an administrator’s row with permission_denied',
+    adminAccountId === null
+      ? `no administrator row to try: ${adminRows.ok ? 'the base Admin group has no members' : refusedAs(adminRows)}`
+      : refusedAdminRow.ok
+        ? 'the row was READ, which viewClients must not allow'
+        : refusedAs(refusedAdminRow),
+    adminAccountId !== null && refused(refusedAdminRow, 'permission_denied', 403),
+  )
+
   const refusedList = await call(getUserGroups, { page: 1, pageSize: 100 })
   record(
     'the limited account is refused the group list with permission_denied',
-    refused(refusedList, 'permission_denied', 403),
     refusedAs(refusedList),
+    refused(refusedList, 'permission_denied', 403),
   )
 
   const refusedDetail = await call(getUserGroup, baseAdmins.id)
   record(
     'the limited account is refused one group with permission_denied',
-    refused(refusedDetail, 'permission_denied', 403),
     refusedAs(refusedDetail),
+    refused(refusedDetail, 'permission_denied', 403),
   )
 
   const refusedCreate = await call(createUserGroup, {
@@ -432,8 +502,8 @@ if (limitedSignIn.ok) {
   })
   record(
     'the limited account is refused creating a group with permission_denied',
-    refused(refusedCreate, 'permission_denied', 403),
     refusedAs(refusedCreate),
+    refused(refusedCreate, 'permission_denied', 403),
   )
 
   const refusedPatch = await call(updateUserGroup, {
@@ -443,15 +513,15 @@ if (limitedSignIn.ok) {
   })
   record(
     'the limited account is refused changing a group with permission_denied',
-    refused(refusedPatch, 'permission_denied', 403),
     refusedAs(refusedPatch),
+    refused(refusedPatch, 'permission_denied', 403),
   )
 
   const refusedDelete = await call(deleteUserGroup, { id: createdId, csrfToken: await csrf() })
   record(
     'the limited account is refused deleting a group with permission_denied',
-    refused(refusedDelete, 'permission_denied', 403),
     refusedAs(refusedDelete),
+    refused(refusedDelete, 'permission_denied', 403),
   )
 }
 

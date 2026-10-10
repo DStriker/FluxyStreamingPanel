@@ -69,6 +69,23 @@ namespace Fluxy.Core.Models.Users
         /// actually blocking the account: the group, whose own row is where the button that
         /// helps lives.
         /// </remarks>
-        BlockedByGroup
+        BlockedByGroup,
+
+        /// <summary>
+        /// The account's group does not hold the permission this operation needs for the
+        /// role of the account it is about.
+        /// </summary>
+        /// <remarks>
+        /// A refusal rather than a failure, like the <c>Cannot</c> members above: the request
+        /// was well formed and the account exists, but this operator's group may not touch
+        /// accounts of that role. It lives here rather than only in the policy because the
+        /// role of the target is a fact about the row and not about the endpoint - one
+        /// endpoint serves clients, resellers and administrators alike, so which of the three
+        /// <c>edit*</c> keys the call needs can only be decided once the row has been read.
+        ///
+        /// The same word is what the coarse policy answers with when the caller holds no
+        /// account permission at all, so a client sees one code for both halves of the gate.
+        /// </remarks>
+        PermissionDenied
     }
 }

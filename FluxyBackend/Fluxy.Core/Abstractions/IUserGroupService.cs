@@ -99,5 +99,34 @@ namespace Fluxy.Core.Abstractions
         /// because it still has members.
         /// </returns>
         Task<UserGroupOutcome> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Applies one operation to every group the request names, reporting how each one
+        /// ended.
+        /// </summary>
+        /// <param name="operation">Which operation, over which groups.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// One <see cref="BulkUserGroupItemResult"/> per identifier named, in the order it was
+        /// named - each carrying the very <see cref="UserGroupAction"/> the corresponding
+        /// single-group method would have returned.
+        /// </returns>
+        /// <remarks>
+        /// An orchestration rather than a second implementation, for the reason
+        /// <see cref="IUserAdminService.BulkAsync"/> gives: the two refusals that protect the
+        /// installation - a base group accepts a rename and nothing else, a group with members
+        /// may not be deleted - live inside the methods this calls, so a bulk request cannot
+        /// reach them without them. Block and Unblock are a status patch here, because that is
+        /// what the single-row button on the group table sends and one spelling of a state
+        /// change is enough.
+        ///
+        /// Partial success again: three groups of a page may be foundation rows, and an
+        /// answer that changed nothing because two of them were would be the least useful
+        /// thing this endpoint could do. The refusal naming the offending row travels in the
+        /// entry.
+        /// </remarks>
+        Task<BulkUserGroupOutcome> BulkAsync(
+            BulkUserGroupOperation operation,
+            CancellationToken cancellationToken = default);
     }
 }

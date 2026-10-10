@@ -4,6 +4,7 @@ import type {
   ActiveSessionList,
   AdminUserDetail,
   AdminUserList,
+  BulkOperationResponse,
   GeoLookup,
   LoginGuardSettings,
   MessageResponse,
@@ -780,6 +781,58 @@ export const deleteUser = ({
   })
 
 /**
+ * The five operations one request can run over a set of accounts, as the text the server
+ * parses them from.
+ *
+ * The hyphens are the server's own spelling rather than a local invention: `ParseBulkAction`
+ * compares the trimmed, lower-cased text against exactly these five, and a name that maps to
+ * none of them is refused with `validation_failed` listing the ones that do. A union rather
+ * than `string` so that a sixth name is a compile error here instead of a 400 from an
+ * endpoint the caller has already reached.
+ */
+export type BulkUserAction =
+  | 'block'
+  | 'unblock'
+  | 'delete'
+  | 'confirm-registration'
+  | 'assign-group'
+
+/**
+ * Runs one operation over a set of accounts: `POST /admin/users/bulk`.
+ *
+ * The identifiers travel explicitly rather than as a filter, because the selection a table
+ * offers is the rows of the page the operator is looking at - the request names them instead
+ * of describing a predicate whose result nobody has seen. They are bounded at one page on the
+ * server (`BulkOperationLimits.MaxItems`, 100), which is also the ceiling the page size
+ * picker offers, so a selection this page can make is always a selection the endpoint accepts.
+ *
+ * **The answer is `200` for the run, not for every row.** A well-formed bulk request is not a
+ * partial failure: every identifier came back with a verdict, and each one sits in `items`
+ * carrying the same code the single-row endpoint would have given it. The caller reports
+ * those verdicts rather than reading one status as a verdict for all of them.
+ *
+ * `groupId` belongs to `assign-group` alone. It travels as `null` for the other four rather
+ * than being dropped from the body, so there is one request shape to read rather than one
+ * that quietly changes meaning between five operations.
+ */
+export const bulkUsers = ({
+  ids,
+  action,
+  groupId = null,
+  csrfToken,
+}: {
+  ids: string[]
+  action: BulkUserAction
+  groupId?: string | null
+  csrfToken: string | null
+}): Promise<BulkOperationResponse> =>
+  apiFetch('/admin/users/bulk', {
+    method: 'POST',
+    body: { action, ids, groupId },
+    csrfToken,
+  })
+
+/**
  * Which column of the group table a caller asked to order by: `GET /admin/user-groups`.
  *
  * Five exist because the server can order by five - `name` (the default), `role`, `status`,
@@ -971,5 +1024,44 @@ export const deleteUserGroup = ({
 }): Promise<MessageResponse> =>
   apiFetch(`/admin/user-groups/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    csrfToken,
+  })
+
+/**
+ * The three operations one request can run over a set of groups, as the text the server
+ * parses them from.
+ *
+ * Deliberately not the accounts' union: a bulk edit of names, levels or permissions does not
+ * exist (a base group refuses all of them anyway), so a name from the accounts list would be
+ * a compile-time lie here. Two enums make "this action was sent to the wrong endpoint" a
+ * compile error rather than a runtime surprise.
+ */
+export type BulkUserGroupAction = 'block' | 'unblock' | 'delete'
+
+/**
+ * Runs one operation over a set of groups: `POST /admin/user-groups/bulk`.
+ *
+ * Block and unblock are named rather than spelled as a `status` patch for the same reason the
+ * row buttons name them: what the operator means is "block these", and the service decides
+ * that this is `PATCH { status: 'Blocked' }`. One place decides that, not three.
+ *
+ * The two refusals that protect the installation are unchanged by any of this and are not
+ * restated here - a base group answers `user_group_immutable` per entry and a group still
+ * holding members answers `user_group_in_use`, both from the single-group methods the server
+ * calls. So a run over a selection containing two of the foundation rows blocks the other
+ * three and reports the two by name, rather than changing nothing at all.
+ */
+export const bulkUserGroups = ({
+  ids,
+  action,
+  csrfToken,
+}: {
+  ids: string[]
+  action: BulkUserGroupAction
+  csrfToken: string | null
+}): Promise<BulkOperationResponse> =>
+  apiFetch('/admin/user-groups/bulk', {
+    method: 'POST',
+    body: { action, ids },
     csrfToken,
   })

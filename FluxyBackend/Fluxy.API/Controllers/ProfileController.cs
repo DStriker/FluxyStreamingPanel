@@ -162,6 +162,10 @@ namespace Fluxy.API.Controllers
                 Username = profile.Username,
                 Email = profile.Email,
                 Role = profile.Role.ToString(),
+                Permissions = UserPermissionCatalog.All
+                    .Where(profile.Permissions.Contains)
+                    .Select(UserPermissionCatalog.NameOf)
+                    .ToArray(),
                 TimeZone = profile.TimeZone,
                 GeoProtectionEnabled = guard.GeoProtectionEnabled,
                 BindSessionToIp = guard.BindSessionToIp,

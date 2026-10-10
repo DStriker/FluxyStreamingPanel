@@ -18,6 +18,12 @@ namespace Fluxy.API.Contracts
     /// same one a registration conflict gets, because they are the same facts - a client
     /// branching on either behaves the same way no matter which door the answer came through.
     ///
+    /// A third, <c>permission_denied</c>, is shared with the authorization middleware for the
+    /// same reason: it is the refusal a caller gets from the coarse policy on the way into an
+    /// action, and the per-target check inside the service produces the other half of the same
+    /// gate. A client shown two different words for "your group does not grant this" would have
+    /// to decide which one to trust, and it would have no way to tell them apart.
+    ///
     /// The codes are snake_case, matching the naming the protocol already uses, and they are
     /// the part of the contract a client branches on. Renaming one breaks every client;
     /// rewriting the wording beside it breaks nothing.
@@ -121,6 +127,12 @@ namespace Fluxy.API.Contracts
                     (StatusCodes.Status400BadRequest,
                         CannotDemoteSelfCode,
                         "You cannot lower your own access level. Ask another administrator."),
+
+                // The same word as the policy's refusal, on purpose - see the class remarks.
+                AdminUserAction.PermissionDenied =>
+                    (StatusCodes.Status403Forbidden,
+                        AuthenticationResponses.PermissionDeniedCode,
+                        "Your account does not have permission for this."),
 
                 AdminUserAction.BlockedByGroup =>
                     (StatusCodes.Status409Conflict,

@@ -40,7 +40,14 @@ import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
 import { countryName } from '../src/lib/countryName'
 import { describeUserAgent } from '../src/lib/userAgent'
-import { ALL_PERMISSIONS, permissionsForRole } from '../src/lib/permissions'
+import {
+  ALL_PERMISSIONS,
+  canEdit,
+  canEditAny,
+  canView,
+  canViewAny,
+  permissionsForRole,
+} from '../src/lib/permissions'
 import {
   GENERATED_PASSWORD_LENGTH,
   generatePassword,
@@ -506,11 +513,18 @@ async function main() {
   //   to be the same word, which is exactly the echo of its own menu entry the page
   //   stopped making;
   // - the table draws its heading, its toolbar and the table itself before any row exists,
-  //   and all eight columns keep their own width *in order*: the sum of 1230px is the
-  //   deliberate total that keeps the action buttons at the far right inside one Full HD
-  //   viewport beside the sidebar, and the three content columns (200/180/130) are narrow
-  //   *because* their cells truncate into tooltips - the next person to widen one should
-  //   learn here what the widening costs;
+  //   and all eight columns keep their own width *in order*: with the 40px checkbox column
+  //   antd prepends, the sum of 1230px is the deliberate total that keeps the action buttons
+  //   at the far right inside one Full HD viewport beside the sidebar, and the three content
+  //   columns (160/180/130) are narrow *because* their cells truncate into tooltips - the
+  //   next person to widen one should learn here what the widening costs. `email` is 160
+  //   rather than the 200 it was before the selection arrived, which is where the checkbox
+  //   was paid for from;
+  // - the selection's toolbar control is drawn with nothing selected, the card pins its
+  //   title to one line so the toolbar is what yields when the row is too wide, and the
+  //   selection column's header cell is the one that carries **no** resize handle -
+  //   `components.header.cell` replaces the cell for every header including the one antd
+  //   builds itself, and that column never calls `onHeaderCell`;
   // - every column carries a keyboard-reachable resize handle named for resizing, and a
   //   sortable header keeps its own cell access - the same two `ResizableHeaderCell`
   //   facts the visit history asserts, now asserted over a *second* table, because two
@@ -571,16 +585,57 @@ async function main() {
       usersHtml.includes('Any status') &&
       usersHtml.includes('Reset widths') &&
       usersHtml.includes('Add user'),
-    usersHtml.includes('Any group') ? `rendered ${usersHtml.length} bytes` : 'a filter lost its "any" choice',
+    usersHtml.includes('Add user') ? `rendered ${usersHtml.length} bytes` : 'the add button went missing',
+  )
+
+  // The selection's control, drawn with nothing selected for the reason the "Reset widths"
+  // button is drawn while disabled: a control that appears and disappears reads as a broken
+  // one, and the count *inside* the button is what says why it is greyed. Every render here
+  // lands in the state before the first answer, so a greyed button reading just "Actions" is
+  // the first paint - and a page that hid it until something was ticked would be a page whose
+  // bulk actions are invisible until the visitor already knows they exist.
+  //
+  // Matched on the *button* rather than on the word "Actions", which is also the title of the
+  // last column on both tables - an assertion on the word alone would pass on a page that had
+  // lost its bulk menu entirely.
+  const usersBulkButtons = [...usersHtml.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /<span[^>]*>Actions<\/span>/.test(tag))
+  check(
+    'the users toolbar draws the bulk menu, greyed while nothing is selected',
+    usersBulkButtons.length === 1 && usersBulkButtons[0].includes('disabled'),
+    `${usersBulkButtons.length} button(s) labelled "Actions": ${usersBulkButtons[0]?.slice(0, 180) ?? 'none'}`,
+  )
+
+  // The header's tie-break, and the half of the fix a narrower toolbar is not: when the row
+  // is still too wide - a longer label, a narrower window, a browser at 150% - the title is
+  // pinned to one line so the *toolbar* is what yields, wrapping its controls onto a second
+  // row through `Space wrap`. Without it antd shrinks both halves and the page's own heading
+  // wraps to two lines, which is what a visitor sees as "the title does not fit". No CSS in
+  // this repo reaches into `.ant-card-head-title`, and the prop is the only handle there is,
+  // so this is asserted rather than trusted.
+  check(
+    'the users card pins its title to one line so the toolbar is what yields',
+    /<div[^>]*class="ant-card-head-title"[^>]*style="white-space:nowrap"/.test(usersHtml),
+    `head title: ${
+      /<div[^>]*class="ant-card-head-title"[^>]*>/.exec(usersHtml)?.[0] ?? 'not found'
+    }`,
   )
 
   const usersCols = [...usersHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
   const usersWidths = usersCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const usersTotal = usersWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  // Nine columns, not eight: antd prepends the checkbox column the selection adds, at the
+  // 40px the pages declare. The eight this page owns keep their own widths and their own
+  // order, with `email` at 160 rather than the 200 it was before - the forty the checkbox
+  // takes came out of the one column that truncates into a tooltip anyway, which is why the
+  // total is still the 1230 the sidebar has always left room for.
   check(
-    'the users table is fixed-layout with its eight deliberate widths, in order',
+    'the users table is fixed-layout with a selection column and its eight deliberate widths, in order',
     /table-layout:\s*fixed/.test(usersHtml) &&
-      usersWidths.join(',') === '100,170,200,150,150,180,130,150',
-    `${usersCols.length} columns: [${usersWidths.join(', ')}]`,
+      usersWidths.join(',') === '40,100,170,160,150,150,180,130,150' &&
+      usersTotal === 1230,
+    `${usersCols.length} columns: [${usersWidths.join(', ')}] = ${usersTotal}px`,
   )
 
   const usersHandles = [...usersHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
@@ -599,7 +654,23 @@ async function main() {
     `${usersHandles.length} handles: ${usersHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'}`,
   )
 
+  // The selection column is the one header cell with no per-column data to hand over, so it
+  // is where `ResizableHeaderCell`'s fallback is worth pinning: `components.header.cell`
+  // replaces the cell for *every* header, including the one antd builds itself, and that
+  // column never calls `onHeaderCell`. The check above counting eight handles over nine
+  // header cells already implies the fallback - this one names it, because the failure it
+  // guards against is a handle drawn over a checkbox with nowhere to put a width and no
+  // `onHeaderCell` to be told about it.
   const usersHeaderCells = [...usersHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'the selection column draws a plain header cell: no resize handle of its own',
+    usersHeaderCells.length === 9 &&
+      usersHeaderCells.filter((th) => th.includes('table-col-resizer')).length === 0 &&
+      usersHtml.includes('ant-table-selection') &&
+      usersHtml.includes('type="checkbox"'),
+    `${usersHeaderCells.length} header cells, ${usersHandles.length} of them resizable`,
+  )
+
   check(
     'a sortable users header keeps its own access to sorting',
     usersHeaderCells.some(
@@ -693,9 +764,9 @@ async function main() {
 
   // The group table, which is the accounts table's twin by design and its own page in
   // every other respect: it hangs off a different permission (`viewUserGroups` rather than
-  // `viewUsers`), so a page that rendered the wrong one would be a page answering a
-  // question the visitor never asked and would keep answering it while every check above
-  // stayed green.
+  // any of the per-role `view*` permissions), so a page that rendered the wrong one would be
+  // a page answering a question the visitor never asked and would keep answering it while
+  // every check above stayed green.
   const groupsHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/user-groups']}>
       <AntApp>
@@ -729,18 +800,44 @@ async function main() {
       : 'the way to add a group is missing from the toolbar',
   )
 
-  // Six columns, and the same 1230px the accounts table holds on one Full HD screen: the
+  // The same control the accounts table offers, in the same place, with the count folded
+  // into it - two tables with different rules for a selection would be two places for one
+  // rule to be wrong. Matched on the button for the reason the accounts table's is: "Actions"
+  // is also the title of this table's last column.
+  const groupsBulkButtons = [...groupsHtml.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /<span[^>]*>Actions<\/span>/.test(tag))
+  check(
+    'the groups toolbar draws the bulk menu, greyed while nothing is selected',
+    groupsBulkButtons.length === 1 && groupsBulkButtons[0].includes('disabled'),
+    `${groupsBulkButtons.length} button(s) labelled "Actions": ${groupsBulkButtons[0]?.slice(0, 180) ?? 'none'}`,
+  )
+
+  // The same tie-break as the accounts table's, and the more load-bearing of the two here:
+  // `Группы пользователей` is the longest heading either table carries, sitting beside what
+  // is now the wider of the two toolbars.
+  check(
+    'the groups card pins its title to one line so the toolbar is what yields',
+    /<div[^>]*class="ant-card-head-title"[^>]*style="white-space:nowrap"/.test(groupsHtml),
+    `head title: ${
+      /<div[^>]*class="ant-card-head-title"[^>]*>/.exec(groupsHtml)?.[0] ?? 'not found'
+    }`,
+  )
+
+  // Seven columns, and the same 1230px the accounts table holds on one Full HD screen: the
   // two tables sit under one sidebar and a visitor who can see one of them whole should be
   // able to see the other. The widths differ because the content does - the name column is
-  // 400 rather than 170 because a group name is the one thing on this page nobody truncates
-  // into a tooltip, and `id` gives back the room by staying at 110.
+  // 360 rather than 170 because a group name is the one thing on this page nobody truncates
+  // into a tooltip, and `id` gives back the room by staying at 110. The first `<col>` is
+  // the 40px checkbox column the selection adds, which neither this table's six widths nor
+  // the hook's memory know anything about.
   const groupsCols = [...groupsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
   const groupsWidths = groupsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
   const groupsTotal = groupsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
   check(
-    'the groups table is fixed-layout with its six deliberate widths, in order',
+    'the groups table is fixed-layout with a selection column and its six deliberate widths, in order',
     /table-layout:\s*fixed/.test(groupsHtml) &&
-      groupsWidths.join(',') === '110,400,180,200,140,200' &&
+      groupsWidths.join(',') === '40,110,360,180,200,140,200' &&
       groupsTotal === 1230,
     `${groupsCols.length} columns: [${groupsWidths.join(', ')}] = ${groupsTotal}px`,
   )
@@ -773,7 +870,7 @@ async function main() {
 
   // The add form opens at the least privileged level on purpose, and the visible
   // consequence is asserted rather than reasoned about: a `Client` group owns no
-  // permissions at all, so the permission section draws its explanation instead of four
+  // permissions at all, so the permission section draws its explanation instead of eight
   // boxes that would all be refused - and the two bulk buttons go with the boxes, since
   // "select all" over nothing is a control that cannot be obeyed. A default that had crept
   // up to `Admin` would show up here as checkboxes, and a bulk row that stayed behind them
@@ -829,6 +926,29 @@ async function main() {
       permissionsForRole('Client').length === 0 &&
       permissionsForRole('Reseller').length === 0,
     `Admin ${permissionsForRole('Admin').length}/${ALL_PERMISSIONS.length}, Client ${permissionsForRole('Client').length}, Reseller ${permissionsForRole('Reseller').length}`,
+  )
+
+  // The split that replaced `viewUsers`/`editUsers`, asserted as a function for the same
+  // reason the row above is: the accounts table only ever draws rows the server already
+  // filtered to the roles this operator may read, and every render here arrives before the
+  // profile answer - so no render in this probe can put a refused button on screen. Without
+  // this, a `canEdit` that answered `true` for everything would leave every button live and
+  // this file would still be green, which is exactly the state the old two permissions were
+  // in: an operator allowed to run the clients could open, patch and delete an administrator.
+  check(
+    'view and edit are asked per target role, and the two groups permissions are neither',
+    canView(['viewClients'], 'Client') &&
+      !canView(['viewClients'], 'Admin') &&
+      canView(['viewAdmins', 'editAdmins'], 'Admin') &&
+      !canView(['viewAdmins'], 'Reseller') &&
+      canEdit(['editResellers'], 'Reseller') &&
+      !canEdit(['editResellers'], 'Client') &&
+      canViewAny(['viewAdmins']) &&
+      !canViewAny(['editAdmins']) &&
+      !canViewAny(['viewUserGroups', 'editUserGroups']) &&
+      canEditAny(['editClients']) &&
+      !canEditAny(['viewUserGroups', 'editUserGroups']),
+    'editClients alone must not read administrators, and neither groups permission may stand in for a view or an edit',
   )
 
   // The edit address of a group, with the same rule the accounts edit address follows: it

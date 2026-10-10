@@ -35,6 +35,16 @@ const TEST_LOGIN_LIMIT = process.env.FLUXY_TEST_LOGIN_LIMIT === '1'
 
 const results = []
 const record = (name, detail, ok = true) => {
+  // A swapped verdict and detail is silent: a non-empty string is truthy, so
+  // `record(name, <verdict>, <detail>)` prints PASS for a check that just failed. Twelve of
+  // `probe-groups.mjs`'s checks were in that order before this guard existed. See the note
+  // there for the whole story; the short version is that a missing check and a passing one
+  // look identical in the total.
+  if (typeof ok !== 'boolean') {
+    throw new TypeError(
+      `record(): the third argument must be the verdict, got ${typeof ok} (${JSON.stringify(ok)}) - "${name}"`,
+    )
+  }
   results.push({ name, detail, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}\n      ${detail}`)
 }

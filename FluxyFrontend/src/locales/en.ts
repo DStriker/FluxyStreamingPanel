@@ -69,6 +69,10 @@ const en = {
     cancel: 'Cancel',
     // The only way out of a failed load on the pages that read the server for their rows.
     retry: 'Try again',
+    // The acknowledge button of an informational dialog (the bulk run's partial-success
+    // summary). Deliberately not `confirm`: nothing is being agreed to, the dialog is
+    // reporting what already happened.
+    ok: 'OK',
   },
   nav: {
     // Categories are the sidebar's submenus; items are the routes beneath them. Both are
@@ -339,6 +343,13 @@ const en = {
     // is the same fact told before the click - the pattern the current session's button
     // follows on the active sessions page.
     selfProtected: 'You cannot do this to the account you are signed in with.',
+    // Why a write button on *somebody else's* row is disabled: the operator's own group holds
+    // no grant for that account's role. The server refuses the same move with 403
+    // `permission_denied`, so this is the same fact told before the click - and it names the
+    // group rather than the visitor, because that is what the refusal is about. A visitor
+    // told "you are not allowed" would go looking for a different account; there is none to
+    // find, only a grant their group does not hold.
+    noPermission: 'Your group does not allow this.',
     // The one action that asks first. Only deletion is irreversible - blocking is an
     // unblock away and confirmation is a state the row can be put back into - so a
     // confirmation here is a question and not a habit.
@@ -346,20 +357,58 @@ const en = {
     deleteConfirmBody:
       'The account "{{name}}" and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
     deleteConfirmOk: 'Delete',
+    // The bulk toolbar over the selection: one count and one menu, deliberately the smallest
+    // thing that can carry five operations, because the toolbar shares its row with the
+    // search and both filters and there is no room in it for a second line. Both are drawn
+    // even with nothing selected - a control that appears and disappears reads as a broken
+    // one, and the count is what says *why* the menu is greyed.
+    bulk: {
+      menu: 'Actions',
+      // The count rides inside the button that the count enables, rather than beside it as
+      // a label of its own. That is a width decision before it is a design one: `Сбросить
+      // ширину`, `Добавить пользователя` and `Действия` are already longer than their
+      // English twins, and a separate `Selected: 0` costs a whole extra element of room in
+      // the one row of the card that has no room to spare. Number and control in one place
+      // is also the tighter truth - the count exists to say why the button is greyed.
+      menuWithCount: 'Actions ({{count}})',
+      // The move, which opens a modal rather than an inline select: the destination is a
+      // decision about the whole selection, and a control dropped into the toolbar would be
+      // answering it for a menu that has already closed. The other four run straight from
+      // the menu and take the labels of the row actions - it is the same operation over more
+      // than one row, and a second name for it would be a second name for one thing.
+      assign: 'Move to group',
+      assignTitle: 'Move these accounts to a group',
+      assignPlaceholder: 'Choose a group',
+      assignOk: 'Move',
+      // Shown instead of a toast the moment at least one row was refused. Every line is the
+      // server's own sentence for that row's code, already translated here, so the reason is
+      // read rather than guessed at from a count - and this is where the refusal the row
+      // buttons would have shown *before* a click arrives for a row the visitor did not
+      // click (`cannot_block_self` above all).
+      partialTitle: 'Changed {{done}} of {{total}}. The rest were refused:',
+      // Only deletion asks first, for the reason only deletion asks first on a single row.
+      deleteTitle: 'Delete these {{count}} accounts?',
+      deleteBody:
+        'Each account and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
+    },
   },
-  // The four permission keys, exactly as the catalog spells them. These strings are the
+  // The eight permission keys, exactly as the catalog spells them. These strings are the
   // labels of the checkboxes on the group form and the values `src/lib/permissions.ts`
   // mirrors from the backend - one name for one thing, spelled the same way in both, so a
   // permission added on the server becomes a box an operator can tick without a translation
   // step in between.
   permissions: {
-    viewUsers: 'View users',
-    editUsers: 'Edit users',
+    viewClients: 'View clients',
+    editClients: 'Edit clients',
+    viewResellers: 'View resellers',
+    editResellers: 'Edit resellers',
+    viewAdmins: 'View administrators',
+    editAdmins: 'Edit administrators',
     viewUserGroups: 'View groups',
     editUserGroups: 'Edit groups',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
-  // because the two are behind different permissions (`viewUsers` vs. `viewUserGroups`) and
+  // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
   // a page that fails must name which of the two it was asking for.
   userGroups: {
     // The list page's heading. Deliberately *not* `nav.items.userGroups`: a card repeating
@@ -447,11 +496,11 @@ const en = {
     // exactly one role, and offering one the role does not own would be offering a choice
     // the server throws away on the way in.
     permissionsHint:
-      'A permission decides what an account may do inside its role. A permission the role does not own cannot be granted.',
+      'A permission decides which accounts a member of this group may see and change. It belongs to the group’s own level, so a permission that level does not own cannot be granted.',
     // The section for a role that owns none of them - which, on this installation, is every
     // role but Admin. An empty space would read as a section that failed to load.
     permissionsNone: 'This role owns no permissions of its own, so there is nothing to grant here.',
-    // The two bulk moves beside that hint. Four permissions is four clicks; forty is the
+    // The two bulk moves beside that hint. Eight permissions is eight clicks; forty is the
     // point where a form that offered only the boxes starts producing groups that are
     // nearly right, which is worse than a form that offered nothing. Both act on what the
     // chosen level may grant and never on the whole catalog - see the buttons' own comments.
@@ -463,6 +512,24 @@ const en = {
     deleteConfirmBody:
       'The group "{{name}}" will be removed. Accounts in it are not deleted - the deletion is refused while any account still belongs to it.',
     deleteConfirmOk: 'Delete',
+    // The bulk toolbar over the selection, mirroring the accounts table's for the reason that
+    // table mirrors this one: two tables with different rules for a selection would be two
+    // places for one of those rules to be wrong. There is no move here, because a group
+    // cannot be moved into a group.
+    bulk: {
+      menu: 'Actions',
+      // The count rides inside the button, for the reason the accounts table folds it in
+      // there too: this row has no room to spare, and the Russian labels are the long ones.
+      menuWithCount: 'Actions ({{count}})',
+      // Where the three foundation rows are named. A run over a selection containing two of
+      // them blocks the rest and reports the two - every line below is the server's own
+      // sentence for that row's code, so `user_group_immutable` reads the same here as it
+      // does when a single disabled button would have said it.
+      partialTitle: 'Changed {{done}} of {{total}}. The rest were refused:',
+      deleteTitle: 'Delete these {{count}} groups?',
+      deleteBody:
+        'Each group will be removed. Accounts in them are not deleted - a deletion is refused while any account still belongs to that group.',
+    },
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
@@ -552,6 +619,13 @@ const en = {
       user_group_immutable:
         'The three groups this installation is built from may only be renamed. Create a group of your own for anything else.',
       user_group_in_use: 'Accounts still belong to this group. Move them somewhere else first.',
+      // A bulk run: one code for the run as a whole, because the run as a whole *was*
+      // carried out - every identifier it named came back with a verdict, and those verdicts
+      // are in `items` with the codes above rather than folded into one status. The counts
+      // are interpolated so the sentence stays translated *and* says how much of it landed;
+      // a row-by-row refusal opens the summary dialog instead of this toast.
+      users_bulk_completed: 'Changed {{done}} of {{total}} accounts.',
+      user_groups_bulk_completed: 'Changed {{done}} of {{total}} groups.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',

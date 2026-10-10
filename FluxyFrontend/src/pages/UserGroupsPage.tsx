@@ -1,18 +1,43 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { Key } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Alert, App, Button, Card, Input, Select, Space, Table, Tag } from 'antd'
-import type { TableColumnsType, TableProps } from 'antd'
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Dropdown,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+} from 'antd'
+import type { MenuProps, TableColumnsType, TableProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   DeleteOutlined,
   EditOutlined,
   LockOutlined,
+  MoreOutlined,
   PlusOutlined,
   TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import { deleteUserGroup, getUserGroups, updateUserGroup } from '../lib/api'
-import type { UserGroupSortField, UserGroupSortOrder } from '../lib/api'
+import { bulkUserGroups, deleteUserGroup, getUserGroups, updateUserGroup } from '../lib/api'
+import type {
+  BulkUserGroupAction,
+  UserGroupSortField,
+  UserGroupSortOrder,
+} from '../lib/api'
+import type {
+  BulkOperationResponse,
+  MessageResponse,
+  Role,
+  UserGroup,
+  UserGroupList,
+  UserStatus,
+} from '../types'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
@@ -22,7 +47,6 @@ import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
-import type { MessageResponse, Role, UserGroup, UserGroupList, UserStatus } from '../types'
 
 /**
  * How many groups one page holds. The server's own default, kept in step by hand because
@@ -50,22 +74,36 @@ const COLUMN_KEYS: readonly GroupsColumnKey[] = [
 /**
  * The width each column starts at, and the width it goes back to when asked to reset.
  *
- * Summed deliberately to the same **1230** the accounts table adds up to, for the reason
- * that one does: the sum is what has to fit beside the sidebar on one Full HD screen so the
- * action buttons at the far right stay inside the viewport. This table has two fewer columns
- * to spend it on, so the extra room goes where this page's content actually is - `name`,
- * which the server bounds only by uniqueness, and `status`, whose tag and its padding need
- * more than a bare label does. The identifier is narrow for the reason the accounts table
- * keeps its narrow: it prints nine characters and the whole value is a hover away.
+ * Summed deliberately to the same **1190** the accounts table adds up to, for the reason
+ * that one does: with the selection column below the table fills the same **1230** both of
+ * them have always filled, and that sum is what has to fit beside the sidebar on one Full
+ * HD screen so the action buttons at the far right stay inside the viewport. This table has
+ * two fewer columns to spend it on, so the extra room goes where this page's content
+ * actually is - `name`, which the server bounds only by uniqueness, and `status`, whose tag
+ * and its padding need more than a bare label does. The identifier is narrow for the reason
+ * the accounts table keeps its narrow: it prints nine characters and the whole value is a
+ * hover away.
+ *
+ * `name` is 360 rather than the 400 it was before the selection column arrived, and the
+ * forty it gave up are exactly the forty that column takes - the checkbox is paid for by the
+ * one column this page would have widened anyway, rather than by the table growing or by the
+ * identifier losing a third of what it has.
  */
 const DEFAULT_COLUMN_WIDTHS: Record<GroupsColumnKey, number> = {
   id: 110,
-  name: 400,
+  name: 360,
   role: 180,
   status: 200,
   permissionsCount: 140,
   actions: 200,
 }
+
+/**
+ * The width of the checkbox column antd prepends, which is not one of the six and is
+ * therefore not part of the hook's sum or its memory - the same fact `UsersPage` records
+ * about its own eight.
+ */
+const SELECTION_WIDTH = 40
 
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.userGroups.columnWidths'
@@ -150,6 +188,23 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   // Bumped by the retry button and by every successful action, so one re-read of the list
   // is all a row transition or a dropped connection needs.
   const [attempt, setAttempt] = useState(0)
+  /**
+   * The rows the checkboxes on **this page** have marked, held by id rather than by row -
+   * the same scope, and for the same reason, as the accounts table's selection: an id list
+   * is what the endpoint takes, and "everything that matches this filter" would mean acting
+   * on rows nobody has looked at. Moving to another page drops the ids that are no longer
+   * drawn (see the prune in the load effect) rather than keeping a selection the visitor
+   * cannot see.
+   *
+   * A base group is **not** excluded here. The row's own block and delete buttons are
+   * disabled with a reason, but a selection is a set the operator is still assembling - and
+   * the server answers `user_group_immutable` per entry, which the summary dialog below
+   * reports by name. Excluding it here would mean the browser deciding, from a flag it was
+   * given, that a rule the server owns is worth a rule of its own.
+   */
+  const [selectedIds, setSelectedIds] = useState<Key[]>([])
+  /** Whether a bulk run is in flight. One run at a time, and the toolbar says so. */
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   /**
    * The six widths: their state, their memory between visits, and the drag that changes them
@@ -189,6 +244,19 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
         if (cancelled) return
         setGroups(answer)
         setLoadError(null)
+
+        // The selection is this page's, so it is pruned to the ids the page still holds -
+        // the same prune the accounts table does, and the same termination condition:
+        // returning the same array when nothing moved is what keeps a re-read after every
+        // action from becoming a loop.
+        setSelectedIds((current) => {
+          if (current.length === 0) return current
+
+          const present = new Set(answer.items.map((group) => group.id))
+          const kept = current.filter((id) => present.has(String(id)))
+
+          return kept.length === current.length ? current : kept
+        })
       })
       .catch((error) => {
         if (cancelled) return
@@ -381,6 +449,131 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     })
   }
 
+  /**
+   * Reads the answer to a bulk run out loud: a toast when every group landed, and a dialog
+   * listing the refusals when at least one did not.
+   *
+   * Same shape as the accounts page's, and for the same reason: a count is not a reason.
+   * "Changed 2 of 3" says nothing about *which* group was refused or why - and the two
+   * refusals this table owns are exactly the ones worth naming out loud. A base group
+   * answers `user_group_immutable`, a group still holding members answers
+   * `user_group_in_use`, and both are the server's own sentences for those codes, already
+   * translated. A run over a selection containing two of the foundation rows therefore
+   * blocks the other three and reports the two, rather than reporting nothing at all.
+   */
+  const reportBulk = (result: BulkOperationResponse) => {
+    const refusals: { code: string; count: number }[] = []
+    const at = new Map<string, number>()
+
+    for (const item of result.items) {
+      if (item.ok) continue
+
+      const index = at.get(item.code)
+
+      if (index === undefined) {
+        at.set(item.code, refusals.length)
+        refusals.push({ code: item.code, count: 1 })
+      } else {
+        // `refusals[index]` is looked up once rather than read twice: under
+        // `noUncheckedIndexedAccess` an index that came from a `Map` is still an index, and
+        // the compiler is right that nothing here proves the slot is filled.
+        const previous = refusals[index]
+
+        if (previous) refusals[index] = { code: item.code, count: previous.count + 1 }
+      }
+    }
+
+    if (refusals.length === 0) {
+      message.success(
+        textForCode(result.code, { done: result.succeeded, total: result.items.length }) ??
+          result.message,
+      )
+      return
+    }
+
+    modal.info({
+      title: t('userGroups.bulk.partialTitle', {
+        done: result.succeeded,
+        total: result.items.length,
+      }),
+      okText: t('actions.ok'),
+      content: (
+        <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+          {refusals.map((refusal) => (
+            <li key={refusal.code}>
+              {textForCode(refusal.code) ?? refusal.code}
+              {refusal.count > 1 ? ` (${refusal.count})` : ''}
+            </li>
+          ))}
+        </ul>
+      ),
+    })
+  }
+
+  /**
+   * Runs one operation over the selection.
+   *
+   * Block and unblock are names rather than a `status` patch for the same reason the row
+   * buttons name them: what the operator means is "block these", and the service decides
+   * that this is `PATCH { status: 'Blocked' }`. One place decides that, not three - so a
+   * second guess made here about which status means "blocked" would be a second place for
+   * the two to disagree.
+   *
+   * Afterwards the list is **re-read** rather than patched, for the reason every single-row
+   * action on this page re-reads it: a transition changes what the server considers each
+   * row to be, and the page draws what it is told rather than what it guesses.
+   */
+  const runBulk = async (action: BulkUserGroupAction) => {
+    if (selectedIds.length === 0) return
+
+    setBulkBusy(true)
+
+    try {
+      const result = await bulkUserGroups({
+        ids: selectedIds.map(String),
+        action,
+        csrfToken: await getCsrfToken(),
+      })
+
+      reportBulk(result)
+      setSelectedIds([])
+      setAttempt((value) => value + 1)
+    } catch (error) {
+      message.error(messageForError(error))
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  /**
+   * Asks before a bulk deletion, for the reason only deletion asks first on a single row:
+   * it is the one operation here that cannot be undone, and the question is about the whole
+   * selection at once - so the body names the count rather than a name. What the body says
+   * about members is the same promise the single-row dialog makes: accounts in these groups
+   * are not deleted, they are simply left belonging to nothing until an administrator puts
+   * them somewhere.
+   */
+  const confirmBulkDelete = () => {
+    modal.confirm({
+      title: t('userGroups.bulk.deleteTitle', { count: selectedIds.length }),
+      content: t('userGroups.bulk.deleteBody'),
+      okText: t('userGroups.deleteConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('actions.cancel'),
+      onOk: () => runBulk('delete'),
+    })
+  }
+
+  /** What the toolbar's menu offers: the three operations, in the order the row actions draw them. */
+  const onBulkMenu: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'delete') {
+      confirmBulkDelete()
+      return
+    }
+
+    void runBulk(key as BulkUserGroupAction)
+  }
+
   const columns: TableColumnsType<UserGroup> = [
     {
       // Eight characters of the identifier and the rest on hover, for the reason the
@@ -566,16 +759,60 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     [t],
   )
 
+  /** Whether the menu may be opened at all: something is selected and nothing else is running. */
+  const bulkEnabled = selectedIds.length > 0 && !bulkBusy
+
+  /** The three entries, in the order the row actions draw them. */
+  const bulkItems = useMemo<MenuProps['items']>(
+    () => [
+      { key: 'block', icon: <LockOutlined />, label: t('userGroups.actions.block') },
+      { key: 'unblock', icon: <UnlockOutlined />, label: t('userGroups.actions.unblock') },
+      { type: 'divider' },
+      {
+        key: 'delete',
+        icon: <DeleteOutlined />,
+        danger: true,
+        label: t('userGroups.actions.delete'),
+      },
+    ],
+    [t],
+  )
+
   return (
     <Card
       title={t('userGroups.listTitle')}
+      // The title pinned to one line, for the reason the accounts table pins its own - see
+      // the comment there. This page needs it more than that one does: `Группы
+      // пользователей` is the longest heading either table carries, and it sits beside a
+      // toolbar that is now the wider of the two.
+      styles={{ title: { whiteSpace: 'nowrap' } }}
       extra={
         <Space wrap>
+          {/* The selection's controls, first because that is what they act on - the same
+              pair the accounts table offers, in the same place, for the reason that table
+              offers them there, and folded into one button for the same reason: this row
+              shares the card header with a title that is already the longest on either
+              page (`Группы пользователей`), so the count rides inside the button the count
+              enables rather than beside it. Both states are drawn with nothing selected, for
+              the reason the "Reset widths" button below is drawn while disabled: a control
+              that appears and disappears reads as a broken one, and the count is what says
+              *why* the menu is greyed. */}
+          <Dropdown menu={{ items: bulkItems, onClick: onBulkMenu }} disabled={!bulkEnabled}>
+            <Button icon={<MoreOutlined />} loading={bulkBusy}>
+              {selectedIds.length > 0
+                ? t('userGroups.bulk.menuWithCount', { count: selectedIds.length })
+                : t('userGroups.bulk.menu')}
+            </Button>
+          </Dropdown>
+          {/* Narrower than the 240/160/165 they were, for the reason the accounts table's
+              three are: this row has to fit beside the card's title on one Full HD screen,
+              and in Russian it did not. What each loses in room it keeps in its aria-label,
+              which still names the whole field. */}
           <Input.Search
             allowClear
             aria-label={t('userGroups.searchLabel')}
             placeholder={t('userGroups.searchPlaceholder')}
-            style={{ width: 240 }}
+            style={{ width: 190 }}
             value={searchText}
             onChange={(event) => {
               setSearchText(event.target.value)
@@ -590,7 +827,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           <Select
             allowClear
             aria-label={t('userGroups.columns.role')}
-            style={{ width: 160 }}
+            style={{ width: 140 }}
             value={roleFilter ?? undefined}
             options={roleOptions}
             placeholder={t('userGroups.filterAnyRole')}
@@ -599,7 +836,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           <Select
             allowClear
             aria-label={t('userGroups.columns.status')}
-            style={{ width: 165 }}
+            style={{ width: 125 }}
             value={statusFilter ?? undefined}
             options={statusOptions}
             placeholder={t('userGroups.filterAnyStatus')}
@@ -649,7 +886,16 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           // be a new type on every repaint, and React would then unmount the handle mid-drag,
           // dropping the pointer with it.
           components={{ header: { cell: ResizableHeaderCell } }}
-          scroll={{ x: tableWidth }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys),
+            columnWidth: SELECTION_WIDTH,
+          }}
+          // `tableWidth` is the six columns this page owns; the checkbox column antd
+          // prepends is a seventh with a width of its own, so it is added here rather than
+          // being smuggled into the hook's sum - which would make the stored widths and the
+          // reset disagree with the six headers they are supposed to describe.
+          scroll={{ x: tableWidth + SELECTION_WIDTH }}
           onChange={handleTableChange}
           locale={{
             emptyText: t(

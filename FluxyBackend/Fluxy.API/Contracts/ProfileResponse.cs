@@ -23,6 +23,22 @@ namespace Fluxy.API.Contracts
         public required string Role { get; init; }
 
         /// <summary>
+        /// Everything the account's group allows it to do, each as the name a client sends
+        /// back: <c>viewClients</c>, <c>editGroups</c>-style camelCase, in catalog order.
+        /// </summary>
+        /// <remarks>
+        /// An empty array for an account whose group grants nothing, which is every client and
+        /// reseller today. This is a hint about which controls to draw rather than an
+        /// authority: the server refuses on its own, in the service, so a caller that ignored
+        /// this field would see buttons that do not work and no extra access.
+        ///
+        /// Order comes from <c>UserPermissionCatalog.All</c> rather than from the row order,
+        /// because the rows are per-grant and their order is whatever the index produced -
+        /// a list a client renders in two places must not rearrange itself between them.
+        /// </remarks>
+        public required string[] Permissions { get; init; }
+
+        /// <summary>
         /// IANA identifier of the chosen display time zone, or null when the visitor has not
         /// chosen one and it should be read from their browser.
         /// </summary>
