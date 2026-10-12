@@ -74,6 +74,16 @@ namespace Fluxy.Application
             // caller that wanted one should not be handed the other's shape to dig through.
             services.AddScoped<IActiveSessionService, ActiveSessionService>();
 
+            // The same rows seen from the operator's side of them, and the reason this is its
+            // own service rather than a second method on either above: those two answer a
+            // question about one account, taken from the token, and have no shape for the
+            // question that matters here - which accounts of the installation are this
+            // caller's business at all. That answer comes in as `granted` and is the same rule
+            // the accounts list is scoped by, so a person who may see an account may see where
+            // it was signed in from. It is the only one of the three that writes, and only ever
+            // by ending a session.
+            services.AddScoped<IAdminSessionHistoryService, AdminSessionHistoryService>();
+
             // The throttle counts attempts for every request that reaches an endpoint, so it is
             // shared. It holds no per-request state, which is what lets it live next to the redis
             // connection rather than in a scope.

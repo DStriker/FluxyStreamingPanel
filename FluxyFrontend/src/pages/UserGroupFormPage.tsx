@@ -15,12 +15,13 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { createUserGroup, getUserGroup, updateUserGroup } from '../lib/api'
+import { createUserGroup, updateUserGroup } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { permissionsForRole } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
+import { useUserGroupDetail } from '../hooks/queries'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
 
 /**
@@ -164,16 +165,20 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
   const session = useSession()
   const [form] = Form.useForm<GroupFormValues>()
 
-  const [detail, setDetail] = useState<UserGroupDetail | null>(null)
-  // True before the first render in edit mode: the form must not draw its fields against a
-  // group that has not arrived, and `renderToStaticMarkup` never runs the effect that would
-  // clear this - which is what makes the spinner below the state every probe sees.
-  const [loading, setLoading] = useState(isEdit)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  /**
+   * The group being edited, fetched through a query rather than an effect. `enabled` only
+   * when the address carries an id, so on the add address nothing fetches and nothing is
+   * pending - which is why `loading` is gated on `isEdit`: a disabled query is `pending`
+   * forever, and the add form must not wait on anything. The form must not draw its fields
+   * against a group that has not arrived, and `renderToStaticMarkup` runs no query - which
+   * is what makes the spinner below the state every probe sees. The retry button re-asks
+   * through `refetch()` rather than by bumping an `attempt` counter.
+   */
+  const detailQuery = useUserGroupDetail(id)
+  const detail = detailQuery.data ?? null
+  const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
+  const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
   const [submitting, setSubmitting] = useState(false)
-  // Bumped by the retry button rather than by anything the page navigated to, so a dropped
-  // connection can be asked about again without leaving the address the visitor chose.
-  const [attempt, setAttempt] = useState(0)
 
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
@@ -182,34 +187,16 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
   const listPath = `${area}/user-groups`
 
   useEffect(() => {
-    // Add mode has nothing to fetch, and this guard is what keeps the static render of *that*
-    // address from ever writing into a form that is already complete.
-    if (!isEdit || !id) return
+    if (!detail) return
 
-    let cancelled = false
-
-    setLoading(true)
-
-    getUserGroup(id)
-      .then((answer) => {
-        if (cancelled) return
-        setDetail(answer)
-        setLoadError(null)
-        form.setFieldsValue(detailToFormValues(answer))
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setDetail(null)
-        setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [id, isEdit, form, attempt])
+    // Painted rather than passed as `initialValues`: the form is already mounted by the
+    // time the answer lands (the spinner above is what drew in the meantime), and
+    // `initialValues` only ever applies to fields nothing has set yet. The guard on the
+    // query itself is what keeps the static render of the *add* address from ever writing
+    // into a form that is already complete: with no id there is no query, no data and no
+    // paint.
+    form.setFieldsValue(detailToFormValues(detail))
+  }, [detail, form])
 
   /**
    * The level currently chosen, and everything that level is entitled to grant.
@@ -365,7 +352,7 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
               <Button
                 size="small"
                 loading={loading}
-                onClick={() => setAttempt((value) => value + 1)}
+                onClick={() => detailQuery.refetch()}
               >
                 {t('actions.retry')}
               </Button>

@@ -28,13 +28,9 @@ import {
   UnlockOutlined,
 } from '@ant-design/icons'
 import {
-  ALL_GROUPS_PAGE_SIZE,
   bulkUsers,
   confirmUserRegistration,
   deleteUser,
-  getProfile,
-  getUserGroups,
-  getUsers,
   setUserBlocked,
   setUserUnblocked,
 } from '../lib/api'
@@ -46,16 +42,16 @@ import { canEdit, canEditAny } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { formatTimestamp } from '../lib/dateFormat'
+import LastSeenCell from '../components/LastSeenCell'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
+import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
 import type {
   AdminUser,
-  AdminUserList,
   BulkOperationResponse,
   MessageResponse,
-  UserPermission,
   UserStatus,
 } from '../types'
 
@@ -217,10 +213,6 @@ export default function UsersPage(_props: UsersPageProps) {
   const { message, modal } = App.useApp()
   const session = useSession()
 
-  const [users, setUsers] = useState<AdminUserList | null>(null)
-  const [timeZone, setTimeZone] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   // What is typed and what the server has been asked are two different things: one request
@@ -241,41 +233,11 @@ export default function UsersPage(_props: UsersPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const groupFilter = searchParams.get('groupId')
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
-  /**
-   * The groups the filter may name, read once on mount rather than with every page of
-   * accounts.
-   *
-   * Kept out of the accounts request on purpose: this is a **different** permission
-   * (`viewUserGroups`, not the per-role `view*` permissions the account rows need), so an
-   * administrator whose group may read accounts but not groups would have the whole accounts
-   * page fail with `403 permission_denied` if the two shared one call. As it is, that
-   * visitor's filter simply offers nothing to pick, which is the truth - a group they may not
-   * see is not one they could have filtered by.
-   */
-  const [groupOptions, setGroupOptions] = useState<GroupOption[]>([])
-  /**
-   * Everything the signed-in operator's group grants, read alongside the time zone on mount.
-   *
-   * It answers a question the role in the token cannot: `viewUsers` and `editUsers` are gone,
-   * and the four write actions below now ask about the **row's** role rather than about
-   * accounts in general. The server enforces the same split - it filters the page to the
-   * roles this operator may read, and refuses every write outside them - so this decides
-   * which buttons are drawn greyed rather than which requests are worth making. An empty set
-   * after a failed profile call is the safe reading: the API refuses regardless, and a grey
-   * button with a reason is a better first paint than a live one that answers 403.
-   *
-   * Deliberately not `GET /auth/me` - the guest guard polls that on every navigation, and
-   * this is a database read the guard has no use for.
-   */
-  const [granted, setGranted] = useState<UserPermission[]>([])
   const [sortBy, setSortBy] = useState<AdminUserSortField>('username')
   const [sortOrder, setSortOrder] = useState<AdminUserSortOrder>('asc')
   // The row whose action is in flight - its buttons show a spinner and refuse a second
   // click, and nothing else about the page changes until the answer lands.
   const [busyId, setBusyId] = useState<string | null>(null)
-  // Bumped by the retry button and by every successful action, so one re-read of the list
-  // is all a row transition or a dropped connection needs.
-  const [attempt, setAttempt] = useState(0)
   /**
    * The rows the checkboxes on **this page** have marked, held by id rather than by row.
    *
@@ -284,7 +246,7 @@ export default function UsersPage(_props: UsersPageProps) {
    * matches this filter" - would mean asking for rows nobody has looked at, some of which
    * the operator may not even be allowed to change. So the header checkbox selects what is
    * drawn, and moving to another page drops the ids that are no longer there (see the prune
-   * in the load effect) rather than keeping a selection the visitor cannot see.
+   * below) rather than keeping a selection the visitor cannot see.
    */
   const [selectedIds, setSelectedIds] = useState<Key[]>([])
   /** The move dialog, and the group chosen in it. Separate from the selection because it outlives the menu that opened it. */
@@ -292,6 +254,61 @@ export default function UsersPage(_props: UsersPageProps) {
   const [assignGroupId, setAssignGroupId] = useState<string | null>(null)
   /** Whether a bulk run is in flight. One run at a time, and the toolbar says so. */
   const [bulkBusy, setBulkBusy] = useState(false)
+
+  /**
+   * The page of accounts, fetched through a query whose key **is** the parameters -
+   * replacing the old `loading`/`loadError`/`cancelled`/`attempt` effect, in which the key
+   * changing and the request going out were two things an effect had to reconcile by hand.
+   * A failure is the query's own `error`; the retry button and every successful action
+   * re-read through `refetch()` rather than by bumping a counter.
+   */
+  const usersQuery = useUsers({
+    page,
+    pageSize,
+    search,
+    groupId: groupFilter,
+    status: statusFilter,
+    sortBy,
+    sortOrder,
+  })
+  const users = usersQuery.data
+  const loadError = usersQuery.isError ? messageForError(usersQuery.error) : null
+  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
+  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
+  const loading = usersQuery.isFetching
+
+  /**
+   * The reading account's zone and grants, answered by the shared `['profile']` query -
+   * one fetch per installation instead of a `getProfile()` effect per page.
+   *
+   * The grant set answers a question the role in the token cannot: `viewUsers` and
+   * `editUsers` are gone, and the four write actions below ask about the **row's** role
+   * rather than about accounts in general. An empty set after a failed profile call is the
+   * safe reading: the API refuses regardless, and a grey button with a reason is a better
+   * first paint than a live one that answers 403.
+   *
+   * Deliberately not `GET /auth/me` - the guest guard polls that on every navigation, and
+   * this is a database read the guard has no use for.
+   */
+  const profileQuery = useProfile()
+  const timeZone = profileQuery.data?.timeZone ?? null
+  const granted = profileQuery.data?.permissions ?? []
+
+  /**
+   * The groups the filter may name, as a query of their own rather than an effect.
+   *
+   * Kept out of the accounts request on purpose: this is a **different** permission
+   * (`viewUserGroups`, not the per-role `view*` permissions the account rows need), so an
+   * administrator whose group may read accounts but not groups would have the whole accounts
+   * page fail with `403 permission_denied` if the two shared one call. As it is, that
+   * visitor's filter simply offers nothing to pick, which is the truth - a group they may not
+   * see is not one they could have filtered by.
+   */
+  const groupsQuery = useAllUserGroups()
+  const groupOptions: GroupOption[] = (groupsQuery.data?.items ?? []).map((group) => ({
+    value: group.id,
+    label: group.name,
+  }))
 
   /**
    * The eight widths: their state, their memory between visits, and the drag that changes
@@ -328,101 +345,21 @@ export default function UsersPage(_props: UsersPageProps) {
   const ownId = session?.userId ?? null
 
   useEffect(() => {
-    // The zone is read for the dates below and the grants for the buttons below that; both
-    // come from the one profile call because asking twice would be two round trips for two
-    // fields of one body. Neither failure is fatal: a missing zone leaves the browser's in
-    // place, and a missing grant set greys the write buttons - which is the direction the
-    // server refuses in anyway, so the two agree by construction.
-    let cancelled = false
+    // The selection is this page's, so it is pruned to the ids the page still holds.
+    // Returning the same array when nothing moved is not an optimisation but the
+    // termination condition: a fresh array on every answer is a fresh reference, a
+    // re-render, and - on a page whose list is re-read after every action - a loop.
+    if (!users) return
 
-    getProfile()
-      .then((profile) => {
-        if (cancelled) return
-        setTimeZone(profile.timeZone)
-        setGranted(profile.permissions)
-      })
-      .catch(() => {})
+    setSelectedIds((current) => {
+      if (current.length === 0) return current
 
-    return () => {
-      cancelled = true
-    }
-  }, [])
+      const present = new Set(users.items.map((user) => user.id))
+      const kept = current.filter((id) => present.has(String(id)))
 
-  useEffect(() => {
-    // The filter's own options, read once and deliberately failing alone: no error banner,
-    // no retry button, no effect on the accounts below. Everything this call can get wrong
-    // is a fact about the *group* permission rather than about the page, and an alert
-    // saying "you may not list groups" on the accounts screen would be naming a limitation
-    // the visitor can do nothing about, in the place where it matters least.
-    //
-    // One page of the ceiling rather than a second unpaged route - see `getUserGroups` for
-    // why the picker and the table ask the same endpoint for the same thing.
-    let cancelled = false
-
-    getUserGroups({ page: 1, pageSize: ALL_GROUPS_PAGE_SIZE })
-      .then((answer) => {
-        if (cancelled) return
-        setGroupOptions(answer.items.map((group) => ({ value: group.id, label: group.name })))
-      })
-      .catch(() => {
-        // Nothing to filter by, which is exactly what an administrator without
-        // `viewUserGroups` should be offered. The accounts list is untouched.
-        if (!cancelled) setGroupOptions([])
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    // A generation of one per effect run rather than one shared counter: an answer from the
-    // page the visitor just left must not overwrite the page they moved to, and an effect
-    // that is torn down mid-flight must not write into a table that has drawn its next row.
-    let cancelled = false
-
-    setLoading(true)
-
-    getUsers({
-      page,
-      pageSize,
-      search,
-      groupId: groupFilter,
-      status: statusFilter,
-      sortBy,
-      sortOrder,
+      return kept.length === current.length ? current : kept
     })
-      .then((answer) => {
-        if (cancelled) return
-        setUsers(answer)
-        setLoadError(null)
-
-        // The selection is this page's, so it is pruned to the ids the page still holds.
-        // Returning the same array when nothing moved is not an optimisation but the
-        // termination condition: a fresh array on every answer is a fresh reference, a
-        // re-render, and - on a page whose list is re-read after every action - a loop.
-        setSelectedIds((current) => {
-          if (current.length === 0) return current
-
-          const present = new Set(answer.items.map((user) => user.id))
-          const kept = current.filter((id) => present.has(String(id)))
-
-          return kept.length === current.length ? current : kept
-        })
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setUsers(null)
-        setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [page, pageSize, search, groupFilter, statusFilter, sortBy, sortOrder, attempt])
+  }, [users])
 
   /**
    * Applies what is in the search box, from the field itself rather than from a button, so
@@ -557,7 +494,7 @@ export default function UsersPage(_props: UsersPageProps) {
     try {
       const result = await action({ id: user.id, csrfToken: await getCsrfToken() })
       message.success(textForCode(result.code) ?? result.message)
-      setAttempt((value) => value + 1)
+      void usersQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
     } finally {
@@ -590,10 +527,10 @@ export default function UsersPage(_props: UsersPageProps) {
 
           // The last row of a later page: with it gone, that page no longer exists and the
           // server would answer it empty - a blank table under a pager still offering the
-          // page the visitor is standing on. Back a page instead, which re-runs the load
-          // effect anyway, so the list and the pager agree again without a second call.
+          // page the visitor is standing on. Back a page instead, which re-runs the query
+          // anyway, so the list and the pager agree again without a second call.
           if (users?.items.length === 1 && page > 1) setPage(page - 1)
-          else setAttempt((value) => value + 1)
+          else void usersQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
         } finally {
@@ -694,7 +631,7 @@ export default function UsersPage(_props: UsersPageProps) {
 
       reportBulk(result)
       setSelectedIds([])
-      setAttempt((value) => value + 1)
+      void usersQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
     } finally {
@@ -826,6 +763,11 @@ export default function UsersPage(_props: UsersPageProps) {
       // and the column says so with the same dash a value the server could not determine
       // gets. The ordering of the nulls is the server's (`ChainNullsLast`) - both directions
       // end with these rows rather than opening with them.
+      //
+      // A visit that *is* recorded is the link to the rest of them, with this account's
+      // identifier already in the filter. The cell is a component of its own rather than an
+      // expression here because a `render` is reached only once a row exists, and nothing in
+      // `probe:render` ever gets that far - see `LastSeenCell`.
       title: t('users.columns.lastSeenAt'),
       dataIndex: 'lastSeenAt',
       key: 'lastSeenAt',
@@ -833,7 +775,9 @@ export default function UsersPage(_props: UsersPageProps) {
       sorter: true,
       sortOrder: orderOf('lastSeenAt'),
       onHeaderCell: () => resizer('lastSeenAt'),
-      render: (value: string | null) => (value ? formatMoment(value) : '—'),
+      render: (value: string | null, user: AdminUser) => (
+        <LastSeenCell area={area} user={user} value={value} format={formatMoment} />
+      ),
     },
     {
       // The address of that same visit, in its own column rather than beside the time: the
@@ -1106,7 +1050,7 @@ export default function UsersPage(_props: UsersPageProps) {
           showIcon
           message={loadError}
           action={
-            <Button size="small" onClick={() => setAttempt((value) => value + 1)} loading={loading}>
+            <Button size="small" onClick={() => usersQuery.refetch()} loading={loading}>
               {t('actions.retry')}
             </Button>
           }

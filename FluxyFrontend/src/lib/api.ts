@@ -2,6 +2,7 @@ import { apiFetch, apiGet } from './http'
 import { getCsrfToken } from './csrf'
 import type {
   ActiveSessionList,
+  AdminSessionHistoryResponse,
   AdminUserDetail,
   AdminUserList,
   BulkOperationResponse,
@@ -183,7 +184,8 @@ export const currentSession = async (): Promise<Session | null> => {
  * deliberately not among them - a claim is a copy that outlives the change it describes -
  * so anything that has to show or verify the current address has to ask the row.
  */
-export const getProfile = (): Promise<ProfileResponse> => apiGet<ProfileResponse>('/auth/profile')
+export const getProfile = (signal?: AbortSignal): Promise<ProfileResponse> =>
+  apiGet<ProfileResponse>('/auth/profile', signal)
 
 /**
  * What a page of the visit history is ordered by, spelled the way the endpoint reads it.
@@ -221,12 +223,14 @@ export const getSessionHistory = ({
   search,
   sortBy = 'visitedAt',
   sortOrder = 'desc',
+  signal,
 }: {
   page: number
   pageSize: number
   search?: string
   sortBy?: SessionSortField
   sortOrder?: SessionSortOrder
+  signal?: AbortSignal
 }): Promise<SessionHistoryResponse> => {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
 
@@ -238,8 +242,86 @@ export const getSessionHistory = ({
   query.set('sortBy', sortBy)
   query.set('sortOrder', sortOrder)
 
-  return apiGet<SessionHistoryResponse>(`/auth/sessions?${query.toString()}`)
+  return apiGet<SessionHistoryResponse>(`/auth/sessions?${query.toString()}`, signal)
 }
+
+/**
+ * One page of **the installation's** visit history: `GET /admin/sessions`.
+ *
+ * The twin of `getSessionHistory` in every parameter, and the reason is the same: `total`
+ * makes paging, filtering and ordering a server-side job rather than a browser-side one.
+ * What differs is whose rows come back - the caller's own by the token there, and here the
+ * rows of every account the caller's group may read, narrowed per target role by
+ * `viewClients` / `viewResellers` / `viewAdmins`.
+ *
+ * `userId` is the per-account filter and lives in the address (`?userId=`) for the reason
+ * the accounts table's `groupId` does: it is what a "show this account" link would carry,
+ * and a filter kept in component state would be gone by the time the page mounted. `null`
+ * means "every account I may read" and is left out of the query entirely - a cleared filter
+ * has no business appearing in it.
+ *
+ * No antiforgery token, like every GET here: the call changes nothing, so there is no state
+ * for a cross-site submission to alter.
+ */
+export const getAdminSessionHistory = ({
+  page,
+  pageSize,
+  search,
+  userId,
+  sortBy = 'visitedAt',
+  sortOrder = 'desc',
+  signal,
+}: {
+  page: number
+  pageSize: number
+  search?: string
+  userId?: string | null
+  sortBy?: SessionSortField
+  sortOrder?: SessionSortOrder
+  signal?: AbortSignal
+}): Promise<AdminSessionHistoryResponse> => {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+
+  // Built as parameters rather than interpolated into the path: a space, a `+` or an `&` in
+  // what somebody typed looking for a user agent would otherwise change the meaning of the
+  // request instead of being part of the term.
+  if (search) query.set('search', search)
+  if (userId) query.set('userId', userId)
+
+  query.set('sortBy', sortBy)
+  query.set('sortOrder', sortOrder)
+
+  return apiGet<AdminSessionHistoryResponse>(`/admin/sessions?${query.toString()}`, signal)
+}
+
+/**
+ * Ends one session of an account the caller may read, so that no refresh token in its chain
+ * can be exchanged again.
+ *
+ * The id is the **session**, not the row: several rows of one sign-in share it, because
+ * ending a session is an act on the chain rather than on the rotation that happened to be
+ * on screen. That is also why the page re-reads the list after this answers - one revoke
+ * turns every row of that session on every page into an ended one, and deciding in the
+ * browser which those are would be deciding what the server already knows.
+ *
+ * The endpoint answers `400 cannot_revoke_current` for the session the request arrived
+ * with and `404 session_not_found` for anything else it will not end - unknown, already
+ * ended, quietly expired and belonging to an account outside the caller's grants are one
+ * answer on purpose, so the id cannot be used to probe which accounts hold a signed-in
+ * session. The antiforgery token is minted at call time, never cached: a token bound to an
+ * earlier identity is exactly what the server refuses with `csrf_invalid`.
+ */
+export const revokeAdminSession = ({
+  sessionId,
+  csrfToken,
+}: {
+  sessionId: string
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/admin/sessions/${encodeURIComponent(sessionId)}`, {
+    csrfToken,
+    method: 'DELETE',
+  })
 
 /**
  * The answer to "end all sessions but this one": the code every answer carries, plus how many
@@ -263,8 +345,8 @@ export interface RevokeOtherSessionsResult extends MessageResponse {
  * reads only its own list. The rows are sessions rather than tokens - a rotation does not add
  * a row, it moves the one that exists.
  */
-export const getActiveSessions = (): Promise<ActiveSessionList> =>
-  apiGet<ActiveSessionList>('/auth/active-sessions')
+export const getActiveSessions = (signal?: AbortSignal): Promise<ActiveSessionList> =>
+  apiGet<ActiveSessionList>('/auth/active-sessions', signal)
 
 /**
  * Ends one session of this account, so no refresh token in its chain can be exchanged again.
@@ -536,6 +618,27 @@ export type AdminUserSortField =
 export type AdminUserSortOrder = 'asc' | 'desc'
 
 /**
+ * One page of accounts, asked for in full - the account picker behind the visit history's
+ * `?userId=` filter uses this, for the same reason the group picker uses
+ * `ALL_GROUPS_PAGE_SIZE`: one route is one thing to keep correct, and the count a picker
+ * would ignore is the same number the table needs.
+ *
+ * It is a page size rather than a promise, and the difference matters more here than it
+ * does for groups. Groups are few by construction - three an installation cannot operate
+ * without plus whatever an operator adds - while accounts are one row per person, so the
+ * first hundred is a real ceiling to run into. Past it the picker offers what it was given
+ * and the visitor narrows the table by the search beside it instead, which is the honest
+ * degradation: an account the picker has never seen can still be reached by typing its
+ * address into the history's own search box, which matches rows rather than names.
+ *
+ * The ceiling is the server's own (`AdminUserListLimits.MaxPageSize`) - asking for more
+ * comes back `400 validation_failed` on `pageSize` rather than with a shorter page, so a
+ * constant here that drifted from the endpoint would break the picker rather than silently
+ * shrink it.
+ */
+export const ALL_USERS_PAGE_SIZE = 100
+
+/**
  * One page of accounts, ordered and filtered by the server: `GET /admin/users`.
  *
  * A plain GET behind the admin session, so no antiforgery token - nothing is changed, and
@@ -566,6 +669,7 @@ export const getUsers = ({
   status,
   sortBy,
   sortOrder,
+  signal,
 }: {
   page: number
   pageSize: number
@@ -575,6 +679,7 @@ export const getUsers = ({
   status?: UserStatus | null
   sortBy?: AdminUserSortField
   sortOrder?: AdminUserSortOrder
+  signal?: AbortSignal
 }): Promise<AdminUserList> => {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
 
@@ -584,7 +689,7 @@ export const getUsers = ({
   query.set('sortBy', sortBy ?? 'username')
   query.set('sortOrder', sortOrder ?? 'asc')
 
-  return apiGet<AdminUserList>(`/admin/users?${query.toString()}`)
+  return apiGet<AdminUserList>(`/admin/users?${query.toString()}`, signal)
 }
 
 /**
@@ -594,8 +699,8 @@ export const getUsers = ({
  * row this administrator cannot see - or one that does not exist - is `404 user_not_found`
  * either way, so the endpoint is no probe for accounts outside its reach.
  */
-export const getUser = (id: string): Promise<AdminUserDetail> =>
-  apiGet<AdminUserDetail>(`/admin/users/${encodeURIComponent(id)}`)
+export const getUser = (id: string, signal?: AbortSignal): Promise<AdminUserDetail> =>
+  apiGet<AdminUserDetail>(`/admin/users/${encodeURIComponent(id)}`, signal)
 
 /**
  * What the add form sends to make an account in one request.
@@ -893,6 +998,7 @@ export const getUserGroups = ({
   status,
   sortBy,
   sortOrder,
+  signal,
 }: {
   page: number
   pageSize: number
@@ -901,6 +1007,7 @@ export const getUserGroups = ({
   status?: UserStatus | null
   sortBy?: UserGroupSortField
   sortOrder?: UserGroupSortOrder
+  signal?: AbortSignal
 }): Promise<UserGroupList> => {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
 
@@ -910,7 +1017,7 @@ export const getUserGroups = ({
   query.set('sortBy', sortBy ?? 'name')
   query.set('sortOrder', sortOrder ?? 'asc')
 
-  return apiGet<UserGroupList>(`/admin/user-groups?${query.toString()}`)
+  return apiGet<UserGroupList>(`/admin/user-groups?${query.toString()}`, signal)
 }
 
 /**
@@ -924,8 +1031,8 @@ export const getUserGroups = ({
  * that had to decode `15` would be one that has to know which bit the system set next,
  * which is the thing a permission catalog exists to keep stable.
  */
-export const getUserGroup = (id: string): Promise<UserGroupDetail> =>
-  apiGet<UserGroupDetail>(`/admin/user-groups/${encodeURIComponent(id)}`)
+export const getUserGroup = (id: string, signal?: AbortSignal): Promise<UserGroupDetail> =>
+  apiGet<UserGroupDetail>(`/admin/user-groups/${encodeURIComponent(id)}`, signal)
 
 /**
  * What the create form sends to make a group in one request.

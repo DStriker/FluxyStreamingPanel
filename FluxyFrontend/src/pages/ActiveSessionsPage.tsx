@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Alert,
   App,
@@ -13,11 +13,13 @@ import {
   Tooltip,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getActiveSessions, getProfile, revokeActiveSession, revokeOtherActiveSessions } from '../lib/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { revokeActiveSession, revokeOtherActiveSessions } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { messageForError, textForCode } from '../lib/http'
 import { countryName } from '../lib/countryName'
 import { describeUserAgent } from '../lib/userAgent'
+import { useActiveSessions, useProfile } from '../hooks/queries'
 import type { ActiveSession, ActiveSessionList } from '../types'
 
 /**
@@ -86,14 +88,25 @@ function dateFormatterFor(locale: string, timeZone: string | undefined): Intl.Da
 export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string }) {
   const { t, i18n } = useTranslation()
   const { message, modal } = App.useApp()
+  const queryClient = useQueryClient()
 
-  const [list, setList] = useState<ActiveSessionList | null>(null)
-  const [timeZone, setTimeZone] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  // Bumped by the retry button rather than by a route changing, so a failed load can be
-  // asked for again without pretending the visitor navigated somewhere else.
-  const [attempt, setAttempt] = useState(0)
+  /**
+   * The session list, fetched through the `['sessions', 'active']` query.
+   *
+   * Two consequences of that rather than the old `loading`/`loadError`/`cancelled` effect:
+   * the zone comes from the shared `['profile']` query instead of a `getProfile()` effect of
+   * this page's own, and the retry button and the bulk revoke re-read through `refetch()`
+   * rather than by bumping an `attempt` counter. A single revoke still takes its card out of
+   * the list without a re-read - `setQueryData` rather than `setList` - because the answer
+   * the endpoint just gave is that this session is gone, and each session is exactly one
+   * card: nothing else on any page can hold a second card for it (unlike the token history,
+   * where a revoke changes rows the screen is not showing).
+   */
+  const listQuery = useActiveSessions()
+  const list = listQuery.data ?? null
+  const loadError = listQuery.isError ? messageForError(listQuery.error) : null
+  const profileQuery = useProfile()
+  const timeZone = profileQuery.data?.timeZone ?? null
   // Which card's button is in flight, if any - one id rather than a boolean, so the other
   // cards stay clickable while one revoke runs and a second cannot be pressed twice.
   const [revoking, setRevoking] = useState<string | null>(null)
@@ -107,48 +120,9 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
    */
   const locale = i18n.resolvedLanguage ?? i18n.language
 
-  useEffect(() => {
-    // The zone is read for the dates below, not for this page's own state: a failure here
-    // leaves the browser's zone in place and the cards still render, which is the right
-    // degradation - the sessions matter and the exact zone the timestamps are printed in
-    // does not.
-    let cancelled = false
-
-    getProfile()
-      .then((profile) => {
-        if (!cancelled) setTimeZone(profile.timeZone)
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    // One generation per effect run rather than one shared flag: an answer from the attempt
-    // the visitor just abandoned must not overwrite the one they retried into.
-    let cancelled = false
-
-    setLoading(true)
-
-    getActiveSessions()
-      .then((answer) => {
-        if (cancelled) return
-        setList(answer)
-        setLoadError(null)
-      })
-      .catch((error) => {
-        if (!cancelled) setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [attempt])
+  // In a static render and on the way in: pending before the first answer. During a
+  // re-read `isFetching` is what keeps the bulk button and the retry button honest.
+  const loading = listQuery.isPending || listQuery.isFetching
 
   /**
    * A date as this account's own zone and the page's own language show it, falling back to
@@ -186,11 +160,11 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
   /**
    * Ends one session, and takes its card out of the list on success.
    *
-   * The row is removed rather than the whole list re-read: the answer the endpoint just gave
-   * is that this session is gone, and a second round trip to be told so again would be a
-   * slower page for nothing. A failure leaves the card where it is - the refusal is the
-   * truth about that session and hiding it would leave the visitor wondering whether it was
-   * ended after all.
+   * The card is removed rather than the whole list re-read: the answer the endpoint just
+   * gave is that this session is gone, and a session is exactly one card here, so no other
+   * visible thing is outdated by knowing it. A failure leaves the card where it is - the
+   * refusal is the truth about that session and hiding it would leave the visitor wondering
+   * whether it was ended after all.
    */
   const endSession = async (session: ActiveSession) => {
     setRevoking(session.id)
@@ -205,7 +179,7 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
 
       message.success(textForCode(result.code) ?? t('activeSessions.revoked'))
 
-      setList((previous) =>
+      queryClient.setQueryData<ActiveSessionList>(['sessions', 'active'], (previous) =>
         previous
           ? { items: previous.items.filter((item) => item.id !== session.id) }
           : previous,
@@ -254,7 +228,7 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
           // Re-read rather than filter: the endpoint reports a number, and rebuilding the
           // cards from that number would mean deciding here which card is which - while the
           // server already knows, and the current one is the only card that must remain.
-          setAttempt((value) => value + 1)
+          void listQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
         } finally {
@@ -293,7 +267,7 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
           showIcon
           message={loadError}
           action={
-            <Button size="small" onClick={() => setAttempt((value) => value + 1)} loading={loading}>
+            <Button size="small" onClick={() => listQuery.refetch()} loading={loading}>
               {t('actions.retry')}
             </Button>
           }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   Alert,
   App,
@@ -23,11 +23,11 @@ import {
   changePassword,
   changeUsername,
   confirmProfileChange,
-  getProfile,
   updateTimezone,
 } from '../lib/api'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { useSession } from '../lib/sessionContext'
+import { useProfile } from '../hooks/queries'
 import TimeZoneCard from '../components/TimeZoneCard'
 import LoginGuardCard from '../components/LoginGuardCard'
 import {
@@ -38,7 +38,6 @@ import {
   USERNAME_MIN,
   meetsPasswordComplexity,
 } from '../lib/policy'
-import type { ProfileResponse } from '../types'
 
 /** The codes that decide what happens next. */
 const Submitted = 'profile_change_submitted'
@@ -106,9 +105,26 @@ export default function ProfilePage() {
   const [form] = Form.useForm()
   const [codeForm] = Form.useForm()
 
-  const [profile, setProfile] = useState<ProfileResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  /**
+   * The profile row, fetched through the shared `['profile']` query.
+   *
+   * `useQuery` replaces what this page used to do by hand with a `generation` ref and an
+   * `everLoaded` flag, and the query's own state answers both of those questions at once.
+   * `isPending` means there is no answer at all yet - the spinner below is exactly that
+   * state and nothing else, which is the old `everLoaded` rule stated without a ref: a
+   * `refetch()` after a change leaves the *old* data on screen while the new answer is in
+   * flight (the card updates in place, rather than unmounting over data the visitor was
+   * just shown), and React Query discards an answer that arrives after the page has left
+   * instead of racing it against a later call. The error case likewise carries no state of
+   * its own: `isError` is the query's answer to what a failed load left behind.
+   */
+  const profileQuery = useProfile()
+  const profile = profileQuery.data ?? null
+  const loading = profileQuery.isPending
+  const loadError = profileQuery.isError ? messageForError(profileQuery.error) : null
+  /** Re-ask the server for the row - what every handler below calls after a change lands. */
+  const load = profileQuery.refetch
+
   const [kind, setKind] = useState<Kind>('username')
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -124,56 +140,6 @@ export default function ProfilePage() {
   // draft cannot simply start at `null`.
   const [timeZoneDraft, setTimeZoneDraft] = useState<string | null | undefined>(undefined)
   const [savingTimeZone, setSavingTimeZone] = useState(false)
-
-  /**
-   * Reads the card's data, and decides for itself whether it is still allowed to show it.
-   *
-   * Two counters, because two different questions need answering. `generation` decides
-   * *which* answer may land: `load` runs from the mount and from both submit handlers, so
-   * an earlier request still in flight when a later one starts must not arrive afterwards
-   * and overwrite fresher data - which is exactly what a rename produces, the pre-rename
-   * read answering last. The effect below also bumps it on unmount, so nothing can be
-   * written to a page that is gone.
-   *
-   * `everLoaded` decides whether the spinner belongs at all. It used to be `loading` on
-   * its own, which meant every successful change re-ran the first-load branch: the card,
-   * the form and both form instances unmounted and came back over data the visitor
-   * already had. The spinner is now the *first* load's and nothing else's; a refresh
-   * updates in place, which is what a reader of `setProfile` expects anyway.
-   */
-  const generation = useRef(0)
-  const everLoaded = useRef(false)
-
-  const load = useCallback(async () => {
-    const mine = ++generation.current
-    if (!everLoaded.current) setLoading(true)
-    try {
-      const answer = await getProfile()
-      if (mine !== generation.current) return
-      setProfile(answer)
-      setLoadError(null)
-      everLoaded.current = true
-    } catch (err) {
-      // A blocked or deleted account answers 403 with `account_not_active`, and the
-      // interesting part of that is the sentence rather than the status code. An expired
-      // token never reaches here: the transport refreshes and retries it first.
-      if (mine !== generation.current) return
-      setProfile(null)
-      setLoadError(messageForError(err))
-      everLoaded.current = true
-    } finally {
-      if (mine === generation.current) setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-    // Leaving the page invalidates whatever this one has in flight, so the guard inside
-    // `load` refuses an answer that would otherwise arrive after the page unmounted.
-    return () => {
-      generation.current += 1
-    }
-  }, [load])
 
   /**
    * Puts a new login name in front of the visitor where they can see it.

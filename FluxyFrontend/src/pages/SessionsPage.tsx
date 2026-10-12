@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
 import type { TableColumnsType, TableProps } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getSessionHistory, getProfile } from '../lib/api'
 import type { SessionSortField, SessionSortOrder } from '../lib/api'
 import { messageForError } from '../lib/http'
 import { countryName } from '../lib/countryName'
@@ -12,7 +11,8 @@ import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
-import type { SessionHistoryResponse, SessionVisit } from '../types'
+import { useProfile, useSessionHistory } from '../hooks/queries'
+import type { SessionVisit } from '../types'
 
 /**
  * How many visits one page holds. The server's own default, kept in step by hand because the
@@ -103,10 +103,6 @@ const COLUMN_WIDTHS_KEY = 'fluxy.sessions.columnWidths'
 export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   const { t, i18n } = useTranslation()
 
-  const [history, setHistory] = useState<SessionHistoryResponse | null>(null)
-  const [timeZone, setTimeZone] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   // What is typed and what the server has been asked are two different things: one request per
@@ -116,9 +112,33 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SessionSortField>('visitedAt')
   const [sortOrder, setSortOrder] = useState<SessionSortOrder>('desc')
-  // Bumped by the retry button rather than by the page changing, so a failed load can be asked
-  // for again without pretending the visitor navigated somewhere else.
-  const [attempt, setAttempt] = useState(0)
+
+  /**
+   * The page of visits, fetched through a query whose key **is** the five parameters.
+   *
+   * That is the whole of what the page used to do by hand: an effect depending on the five
+   * plus an `attempt` counter, a `cancelled` flag to keep an abandoned page's answer from
+   * landing, and a `loading` boolean. The key changing *is* the new request - `page 1` after
+   * a filter change is a different query rather than a state update the effect had to notice
+   * - and React Query discards the answer of a query the visitor has moved away from, which
+   * is what the per-run flag was for. A failure is the query's own `error`; the retry button
+   * calls `refetch` rather than bumping a counter.
+   */
+  const historyQuery = useSessionHistory({ page, pageSize, search, sortBy, sortOrder })
+  const history = historyQuery.data
+  const loadError = historyQuery.isError ? messageForError(historyQuery.error) : null
+  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
+  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
+  const loading = historyQuery.isFetching
+
+  /**
+   * The zone, shared with every other page that prints a date - one `['profile']` query per
+   * installation rather than one `getProfile()` effect per page. A failure leaves the
+   * browser's zone in place and the list still renders, which is the right degradation: the
+   * history matters and the exact zone it is printed in does not.
+   */
+  const profileQuery = useProfile()
+  const timeZone = profileQuery.data?.timeZone ?? null
 
   /**
    * The five widths: their state, their memory between visits, and the drag that changes
@@ -141,51 +161,6 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * exactly that disagreement, made visible in one cell.
    */
   const locale = i18n.resolvedLanguage ?? i18n.language
-
-  useEffect(() => {
-    // The zone is read for the dates below, not for this page's own state: a failure here leaves
-    // the browser's zone in place and the list still renders, which is the right degradation -
-    // the history matters and the exact zone it is printed in does not.
-    let cancelled = false
-
-    getProfile()
-      .then((profile) => {
-        if (!cancelled) setTimeZone(profile.timeZone)
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    // A generation of one per effect run rather than one shared counter: an answer from the
-    // page the visitor just left must not overwrite the page they moved to, and an effect that
-    // is torn down mid-flight must not write into a table that has already drawn its next row.
-    let cancelled = false
-
-    setLoading(true)
-
-    getSessionHistory({ page, pageSize, search, sortBy, sortOrder })
-      .then((answer) => {
-        if (cancelled) return
-        setHistory(answer)
-        setLoadError(null)
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setHistory(null)
-        setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [page, pageSize, search, sortBy, sortOrder, attempt])
 
   /**
    * Applies what is in the search box, from the field itself rather than from a button, so the
@@ -412,7 +387,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
           showIcon
           message={loadError}
           action={
-            <Button size="small" onClick={() => setAttempt((value) => value + 1)} loading={loading}>
+            <Button size="small" onClick={() => historyQuery.refetch()} loading={loading}>
               {t('actions.retry')}
             </Button>
           }

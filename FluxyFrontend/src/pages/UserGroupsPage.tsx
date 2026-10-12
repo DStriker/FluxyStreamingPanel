@@ -24,7 +24,7 @@ import {
   TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import { bulkUserGroups, deleteUserGroup, getUserGroups, updateUserGroup } from '../lib/api'
+import { bulkUserGroups, deleteUserGroup, updateUserGroup } from '../lib/api'
 import type {
   BulkUserGroupAction,
   UserGroupSortField,
@@ -35,7 +35,6 @@ import type {
   MessageResponse,
   Role,
   UserGroup,
-  UserGroupList,
   UserStatus,
 } from '../types'
 import { getCsrfToken } from '../lib/csrf'
@@ -47,6 +46,7 @@ import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
+import { useUserGroups } from '../hooks/queries'
 
 /**
  * How many groups one page holds. The server's own default, kept in step by hand because
@@ -168,9 +168,6 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   const { message, modal } = App.useApp()
   const session = useSession()
 
-  const [groups, setGroups] = useState<UserGroupList | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(PAGE_SIZE)
   // What is typed and what the server has been asked are two different things: one request
@@ -185,16 +182,12 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   // The row whose action is in flight - its buttons show a spinner and refuse a second
   // click, and nothing else about the page changes until the answer lands.
   const [busyId, setBusyId] = useState<string | null>(null)
-  // Bumped by the retry button and by every successful action, so one re-read of the list
-  // is all a row transition or a dropped connection needs.
-  const [attempt, setAttempt] = useState(0)
   /**
    * The rows the checkboxes on **this page** have marked, held by id rather than by row -
    * the same scope, and for the same reason, as the accounts table's selection: an id list
    * is what the endpoint takes, and "everything that matches this filter" would mean acting
    * on rows nobody has looked at. Moving to another page drops the ids that are no longer
-   * drawn (see the prune in the load effect) rather than keeping a selection the visitor
-   * cannot see.
+   * drawn (see the prune below) rather than keeping a selection the visitor cannot see.
    *
    * A base group is **not** excluded here. The row's own block and delete buttons are
    * disabled with a reason, but a selection is a set the operator is still assembling - and
@@ -205,6 +198,28 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   const [selectedIds, setSelectedIds] = useState<Key[]>([])
   /** Whether a bulk run is in flight. One run at a time, and the toolbar says so. */
   const [bulkBusy, setBulkBusy] = useState(false)
+
+  /**
+   * The page of groups, fetched through a query whose key **is** the parameters - the same
+   * shape the accounts table now uses, and the same reason: the key changing *is* the new
+   * request, React Query discards the answer of a query the visitor has moved away from,
+   * and every successful action re-reads through `refetch()` rather than by bumping an
+   * `attempt` counter.
+   */
+  const groupsQuery = useUserGroups({
+    page,
+    pageSize,
+    search,
+    role: roleFilter,
+    status: statusFilter,
+    sortBy,
+    sortOrder,
+  })
+  const groups = groupsQuery.data
+  const loadError = groupsQuery.isError ? messageForError(groupsQuery.error) : null
+  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
+  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
+  const loading = groupsQuery.isFetching
 
   /**
    * The six widths: their state, their memory between visits, and the drag that changes them
@@ -224,53 +239,21 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   const area = session ? areaForRole(session.role) : ''
 
   useEffect(() => {
-    // A generation of one per effect run rather than one shared counter: an answer from the
-    // page the visitor just left must not overwrite the page they moved to, and an effect
-    // that is torn down mid-flight must not write into a table that has drawn its next row.
-    let cancelled = false
+    // The selection is this page's, so it is pruned to the ids the page still holds - the
+    // same prune the accounts table does, and the same termination condition: returning the
+    // same array when nothing moved is what keeps a re-read after every action from
+    // becoming a loop.
+    if (!groups) return
 
-    setLoading(true)
+    setSelectedIds((current) => {
+      if (current.length === 0) return current
 
-    getUserGroups({
-      page,
-      pageSize,
-      search,
-      role: roleFilter,
-      status: statusFilter,
-      sortBy,
-      sortOrder,
+      const present = new Set(groups.items.map((group) => group.id))
+      const kept = current.filter((id) => present.has(String(id)))
+
+      return kept.length === current.length ? current : kept
     })
-      .then((answer) => {
-        if (cancelled) return
-        setGroups(answer)
-        setLoadError(null)
-
-        // The selection is this page's, so it is pruned to the ids the page still holds -
-        // the same prune the accounts table does, and the same termination condition:
-        // returning the same array when nothing moved is what keeps a re-read after every
-        // action from becoming a loop.
-        setSelectedIds((current) => {
-          if (current.length === 0) return current
-
-          const present = new Set(answer.items.map((group) => group.id))
-          const kept = current.filter((id) => present.has(String(id)))
-
-          return kept.length === current.length ? current : kept
-        })
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setGroups(null)
-        setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [page, pageSize, search, roleFilter, statusFilter, sortBy, sortOrder, attempt])
+  }, [groups])
 
   /**
    * Applies what is in the search box, from the field itself rather than from a button, so
@@ -390,7 +373,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     try {
       const result = await action({ id: group.id, csrfToken: await getCsrfToken() })
       message.success(textForCode(result.code) ?? result.message)
-      setAttempt((value) => value + 1)
+      void groupsQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
     } finally {
@@ -436,10 +419,10 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
 
           // The last row of a later page: with it gone, that page no longer exists and the
           // server would answer it empty - a blank table under a pager still offering the
-          // page the visitor is standing on. Back a page instead, which re-runs the load
-          // effect anyway, so the list and the pager agree again without a second call.
+          // page the visitor is standing on. Back a page instead, which re-runs the query
+          // anyway, so the list and the pager agree again without a second call.
           if (groups?.items.length === 1 && page > 1) setPage(page - 1)
-          else setAttempt((value) => value + 1)
+          else void groupsQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
         } finally {
@@ -537,7 +520,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
 
       reportBulk(result)
       setSelectedIds([])
-      setAttempt((value) => value + 1)
+      void groupsQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
     } finally {
@@ -868,7 +851,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           showIcon
           message={loadError}
           action={
-            <Button size="small" onClick={() => setAttempt((value) => value + 1)} loading={loading}>
+            <Button size="small" onClick={() => groupsQuery.refetch()} loading={loading}>
               {t('actions.retry')}
             </Button>
           }

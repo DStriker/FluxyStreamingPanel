@@ -54,6 +54,13 @@ interface RequestOptions {
   body?: unknown
   csrfToken?: string | null
   captchaToken?: string | null
+  /**
+   * Aborts the request itself rather than merely ignoring its answer. The queries layer
+   * (`src/hooks/queries.ts`) reaches for this on unmount and on a key change; the old
+   * `cancelled` flag the pages used to keep could only stop the answer from being written,
+   * not the request from riding on to completion.
+   */
+  signal?: AbortSignal
 }
 
 /** A request as `rawFetch` makes it: a `RequestOptions` plus the method. */
@@ -199,10 +206,11 @@ export async function apiFetch<T = MessageResponse>(
     csrfToken,
     captchaToken,
     method,
+    signal,
   }: RequestOptions & { method?: 'POST' | 'DELETE' | 'PATCH' } = {},
 ): Promise<T> {
   try {
-    return await rawFetch<T>(path, { body, csrfToken, captchaToken, method })
+    return await rawFetch<T>(path, { body, csrfToken, captchaToken, method, signal })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
 
@@ -225,6 +233,7 @@ export async function apiFetch<T = MessageResponse>(
       csrfToken: await getCsrfToken(),
       captchaToken,
       method,
+      signal,
     })
   }
 }
@@ -237,9 +246,9 @@ export async function apiFetch<T = MessageResponse>(
  * are two GETs in this application and both of them want the retry, and a boolean argument
  * at each of them would be an easy thing to forget to pass.
  */
-export async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   try {
-    return await rawFetch<T>(path, { method: 'GET' })
+    return await rawFetch<T>(path, { method: 'GET', signal })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
 
@@ -252,7 +261,7 @@ export async function apiGet<T>(path: string): Promise<T> {
       throw error
     }
 
-    return rawFetch<T>(path, { method: 'GET' })
+    return rawFetch<T>(path, { method: 'GET', signal })
   }
 }
 
@@ -262,7 +271,7 @@ export async function apiGet<T>(path: string): Promise<T> {
  */
 async function rawFetch<T>(
   path: string,
-  { method, body, csrfToken, captchaToken }: RawOptions = {},
+  { method, body, csrfToken, captchaToken, signal }: RawOptions = {},
 ): Promise<T> {
   const isWrite = method !== 'GET'
 
@@ -271,6 +280,7 @@ async function rawFetch<T>(
   try {
     response = await fetch(apiUrl(path), {
       method: method ?? 'POST',
+      signal: signal ?? null,
       // The cookies are the reason this is 'include' and not the default 'same-origin'.
       // They are `SameSite=Lax` and `HttpOnly`, which is what keeps a session out of reach
       // of a script on the page; same-origin in development means the browser sends them

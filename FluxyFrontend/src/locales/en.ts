@@ -99,6 +99,17 @@ const en = {
       // word that says which table opens. It has no "add" sibling in the rail - the add
       // button lives above its own table, where the visitor already is.
       userGroups: 'Groups',
+      // The visit history of every account this operator may read. Named for whose
+      // sessions they are rather than for what the rows are, for one reason: the *account's
+      // own* history is already called "Sign-in history" and sits in the Account group, and
+      // two entries reading as variants of one word is how the wrong page gets opened
+      // under pressure - which is exactly when this one is opened. "User sessions" rather
+      // than "Users' sessions": the noun attributes, as in "user table" and "user group",
+      // and an apostrophe on a plural possessive reads as a typo beside the four flat
+      // labels above it. The card heading is "Visit history" instead, so the pair works
+      // the way the two above it do: the menu names how you got there, the card names what
+      // you are looking at.
+      adminSessions: 'User sessions',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -304,6 +315,14 @@ const en = {
     // since a level filter would admit every group holding it at once.
     filterAnyGroup: 'Any group',
     filterAnyStatus: 'Any status',
+    // The moment in the "Last visit" column, drawn as the link to that account's own visit
+    // history. The date *is* the link rather than a label beside it: the cell stays one line,
+    // the column header already says "Last visit", and the whole of what the column is for
+    // becomes clickable. This is the link's `title` - the destination named for a hover and
+    // for a screen reader, deliberately a title rather than an `aria-label`: an `aria-label`
+    // replaces the visible date as the link's accessible name, and a name that does not
+    // contain what the eye reads breaks Label in Name.
+    lastSeenLinkTitle: 'Visit history for {{name}}',
     columns: {
       id: 'ID',
       username: 'Username',
@@ -530,6 +549,84 @@ const en = {
       deleteBody:
         'Each group will be removed. Accounts in them are not deleted - a deletion is refused while any account still belongs to that group.',
     },
+  },
+  // The administrator's visit history over the accounts. Its own block rather than more keys
+  // under `users` or `sessions`, for the reason the group table got one: the three are behind
+  // different gates (`view*Clients` here, `viewUserGroups` there, no gate at all on the
+  // account's own), and a page that fails must name which of them it was asking for. It also
+  // answers a different question from both - not "which accounts are there" and not "where
+  // did *I* sign in from" but "where are the accounts I mind signing in from".
+  adminSessions: {
+    // The heading. Deliberately *not* `nav.items.adminSessions`: a card repeating the menu
+    // item's name in large letters would say the menu again instead of naming the page. The
+    // pair is `User sessions` beside `Visit history` - one naming how the visitor got
+    // there, one naming what they are looking at, and the second is what the page is for:
+    // one row per token, so every sign-in and every rotation of it is on the list.
+    listTitle: 'Visit history',
+    // The table. The search matches what a row *stores* - the address and the user agent -
+    // because the country and the provider are resolved from GeoIP while the page is built
+    // and are not in the row for a filter to find.
+    searchPlaceholder: 'Search by IP address or user agent',
+    // For the screen reader: a placeholder is not a label, and it disappears the moment
+    // anything is typed - which is exactly when the field needs naming.
+    searchLabel: 'Search visits',
+    // The per-account filter, which lives in the address (`?userId=`) the way the accounts
+    // table's group filter does. Empty means "every account I may read".
+    filterAnyUser: 'Any user',
+    filterUserLabel: 'Filter by account',
+    // Only ever drawn for an operator whose group owns no view permission at all - the
+    // endpoint is behind `ViewAnyUsersPolicy`, so such a visitor reaches a `403` and never
+    // a page. The alert carries that sentence; this is what the table itself says.
+    empty: 'No recorded activity among the accounts you can see.',
+    // Shown instead of `empty` while a search or the account filter is on. The rows exist,
+    // they are simply not in this answer - and "there is no activity" would be contradicted
+    // by the filters right above the table.
+    noMatches: 'No visits match this search.',
+    // The pager's own sentence, which antd would otherwise write in its default locale.
+    range: '{{from}}–{{to}} of {{total}}',
+    current: 'This session',
+    // The row whose session has already been ended or has quietly expired. It stays in the
+    // list rather than being dropped: a history is a record of what happened, and a row that
+    // vanished the moment its session ended would take that moment with it. Its button is
+    // greyed, which is the same fact told before the click rather than after it.
+    ended: 'Ended',
+    // The handle at the right edge of every column header, which the visitor drags to change
+    // the width. `{{column}}` is that column's own name - a separator a screen reader cannot
+    // name is a separator it can only find by tabbing into it blindly.
+    resizeColumn: 'Resize the {{column}} column',
+    // Puts every column back to the width it ships with, next to the search rather than in a
+    // menu, because the widths it undoes are set by hand in the first place.
+    resetWidths: 'Reset widths',
+    columns: {
+      // The account the visit belongs to. Its own name rather than "User": every other
+      // account page in this application calls the subject a user, and the one word this
+      // column must not be is the same word the *account's own* history uses for its
+      // visitor.
+      user: 'Account',
+      when: 'When',
+      ip: 'IP address',
+      country: 'Country',
+      network: 'Network',
+      agent: 'User agent',
+      actions: 'Actions',
+    },
+    // The one row action, as a verb on the button - the accounts table labels its column
+    // "Actions" and lets the tooltip of each icon name it, but there is one button here and
+    // a column of icons for a single action would be a row of identical pictures.
+    end: 'End',
+    // The two reasons the button may be greyed, each stated as the fact rather than as a
+    // refusal. A greyed button that says nothing is a dead control, and the point of
+    // disabling it rather than letting the refusal arrive as a toast was to say why before
+    // the click.
+    endHint: 'This session is already signed out.',
+    // The success sentence, used only when the server's own code arrives without a
+    // translation yet - `messages.api.session_revoked` is where it normally comes from, so
+    // this is the floor beneath that lookup rather than a second place for the same fact.
+    revoked: 'The session has been ended.',
+    // Named with the way out rather than only the refusal, for the reason the active
+    // sessions page gives: "cannot end this one" without "sign out instead" is a dead end
+    // on a page whose whole purpose is ending sessions.
+    endCurrentHint: 'The session you are reading with cannot be ended from here. Sign out instead.',
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.

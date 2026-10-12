@@ -133,6 +133,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
+                    b.HasIndex("CreatedAt", "Id");
+
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("refresh_tokens", (string)null);

@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { matchRoutes, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { App as AntApp, ConfigProvider } from 'antd'
+import { QueryClientProvider } from '@tanstack/react-query'
 import i18n from '../src/i18n'
 import RegisterPage from '../src/pages/RegisterPage'
 import ClientLoginPage from '../src/pages/ClientLoginPage'
@@ -27,6 +28,8 @@ import UsersPage from '../src/pages/UsersPage'
 import UserFormPage from '../src/pages/UserFormPage'
 import UserGroupsPage from '../src/pages/UserGroupsPage'
 import UserGroupFormPage from '../src/pages/UserGroupFormPage'
+import AdminSessionsPage from '../src/pages/AdminSessionsPage'
+import LastSeenCell from '../src/components/LastSeenCell'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -40,6 +43,7 @@ import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
 import { countryName } from '../src/lib/countryName'
 import { describeUserAgent } from '../src/lib/userAgent'
+import { formatTimestamp } from '../src/lib/dateFormat'
 import {
   ALL_PERMISSIONS,
   canEdit,
@@ -54,13 +58,26 @@ import {
   meetsPasswordComplexity,
 } from '../src/lib/policy'
 import { routePath } from '../src/config/index'
+import { createQueryClient } from '../src/lib/queryClient'
+
+// Every page that reads the API does so through `useQuery` now, so every render of one
+// needs a QueryClient around it - and a **fresh** one per render, which is the whole
+// point: the state this script asserts at every turn is "before the first answer arrives",
+// and a shared client would let one render's cached answer leak into the next, painting
+// exactly the loaded state the assertions below exist to stand against. The real
+// application builds its own in `App.tsx`; this is the probe's twin of it.
+const withQuery = (children) => (
+  <QueryClientProvider client={createQueryClient()}>{children}</QueryClientProvider>
+)
 
 const render = (Page, path) =>
   renderToStaticMarkup(
     <MemoryRouter initialEntries={[path]}>
-      <AntApp>
-        <Page />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <Page />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
 
@@ -238,9 +255,11 @@ async function main() {
   // label was written in the menu and never defined in the locale files.
   const sessionsHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/client/sessions']}>
-      <AntApp>
-        <SessionsPage sectionKey="nav.items.sessions" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <SessionsPage sectionKey="nav.items.sessions" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   check(
@@ -338,9 +357,11 @@ async function main() {
   // many other sessions exist, and a bulk revoke offered from ignorance could end them all.
   const activeSessionsHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/client/sessions/active']}>
-      <AntApp>
-        <ActiveSessionsPage sectionKey="nav.items.activeSessions" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <ActiveSessionsPage sectionKey="nav.items.activeSessions" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   // Where the bulk button's own markup starts, found by walking back from its label: antd
@@ -555,9 +576,11 @@ async function main() {
 
   const usersHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/users']}>
-      <AntApp>
-        <UsersPage sectionKey="nav.items.usersManage" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <UsersPage sectionKey="nav.items.usersManage" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
 
@@ -684,9 +707,11 @@ async function main() {
 
   const userFormHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/users/add']}>
-      <AntApp>
-        <UserFormPage />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <UserFormPage />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   check(
@@ -747,11 +772,13 @@ async function main() {
   // render its *add* mode at a URL whose whole meaning is "this one, by id".
   const userEditHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/users/11111111-1111-1111-1111-111111111111']}>
-      <AntApp>
-        <Routes>
-          <Route path="/admin/users/:id" element={<UserFormPage />} />
-        </Routes>
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <Routes>
+            <Route path="/admin/users/:id" element={<UserFormPage />} />
+          </Routes>
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   check(
@@ -769,9 +796,11 @@ async function main() {
   // every check above stayed green.
   const groupsHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/user-groups']}>
-      <AntApp>
-        <UserGroupsPage sectionKey="nav.items.userGroups" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <UserGroupsPage sectionKey="nav.items.userGroups" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
 
@@ -862,9 +891,11 @@ async function main() {
 
   const groupFormHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/user-groups/add']}>
-      <AntApp>
-        <UserGroupFormPage sectionKey="nav.items.userGroups" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <UserGroupFormPage sectionKey="nav.items.userGroups" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
 
@@ -899,9 +930,11 @@ async function main() {
   // check here could see, since every render of this page also arrives with no rows.
   const groupArrivalHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/users?groupId=22222222-2222-2222-2222-222222222222']}>
-      <AntApp>
-        <UsersPage sectionKey="nav.items.usersManage" />
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <UsersPage sectionKey="nav.items.usersManage" />
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   check(
@@ -955,14 +988,16 @@ async function main() {
   // waits. `useParams` needs a real route match, so this one is rendered inside `Routes`.
   const groupEditHtml = renderToStaticMarkup(
     <MemoryRouter initialEntries={['/admin/user-groups/11111111-1111-1111-1111-111111111111']}>
-      <AntApp>
-        <Routes>
-          <Route
-            path="/admin/user-groups/:id"
-            element={<UserGroupFormPage sectionKey="nav.items.userGroups" />}
-          />
-        </Routes>
-      </AntApp>
+      {withQuery(
+        <AntApp>
+          <Routes>
+            <Route
+              path="/admin/user-groups/:id"
+              element={<UserGroupFormPage sectionKey="nav.items.userGroups" />}
+            />
+          </Routes>
+        </AntApp>,
+      )}
     </MemoryRouter>,
   )
   check(
@@ -973,25 +1008,182 @@ async function main() {
     `rendered ${groupEditHtml.length} bytes under the edit title with the spinner up`,
   )
 
+  // --- The administrator's visit history --------------------------------------
+  //
+  // The account's own history answered over every account the operator may read, so it gets
+  // the same three assertions that one does - a heading of its own, a table drawn before any
+  // row arrives, seven widths that keep it the same size as the two tables beside it in the
+  // rail - plus the two this page adds: the account filter, which is read out of the address
+  // on the way in, and the account column, which is the whole difference between the two.
+  const adminSessionsHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/user-sessions']}>
+      {withQuery(
+        <AntApp>
+          <AdminSessionsPage sectionKey="nav.items.adminSessions" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the installation visit history draws its own heading and its table before any rows arrive',
+    adminSessionsHtml.includes('>Visit history<') &&
+      adminSessionsHtml.includes('ant-table') &&
+      !adminSessionsHtml.includes('User sessions') &&
+      !adminSessionsHtml.includes('nav.items.adminSessions'),
+    `rendered ${adminSessionsHtml.length} bytes with the visits still being fetched`,
+  )
+
+  check(
+    'the visit-history toolbar offers the search, the account filter and the width reset',
+    adminSessionsHtml.includes('Search by IP address or user agent') &&
+      adminSessionsHtml.includes('Any user') &&
+      adminSessionsHtml.includes('Reset widths'),
+    `rendered ${adminSessionsHtml.length} bytes`,
+  )
+
+  const adminSessionsCols = [...adminSessionsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const adminSessionsWidths = adminSessionsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const adminSessionsTotal = adminSessionsWidths.reduce(
+    (sum, width) => sum + (Number(width) || 0),
+    0,
+  )
+  // Seven columns and no selection column in front of them - there is nothing here to
+  // select - so the seven alone are the 1230 that the accounts table and the group table
+  // reach only with their checkbox. All three then fit the same space beside the sidebar.
+  check(
+    'the visit-history table is fixed-layout with its seven deliberate widths, in order',
+    /table-layout:\s*fixed/.test(adminSessionsHtml) &&
+      adminSessionsWidths.join(',') === '170,250,150,120,190,230,120' &&
+      adminSessionsTotal === 1230,
+    `${adminSessionsCols.length} columns: [${adminSessionsWidths.join(', ')}] = ${adminSessionsTotal}px`,
+  )
+
+  const adminSessionsHandles = [
+    ...adminSessionsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g),
+  ].map((m) => m[0])
+  check(
+    'every visit-history column carries a keyboard-reachable resize handle, named for resizing',
+    adminSessionsHandles.length === 7 &&
+      adminSessionsHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('tabindex="0"') &&
+          handle.includes('aria-label="Resize the '),
+      ),
+    `${adminSessionsHandles.length} handles: ${
+      adminSessionsHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'
+    }`,
+  )
+
+  // Only "When" and "IP address" carry a sorter, for the same reason the account's own
+  // history offers those two and no more: they are the stored columns. The three geo fields
+  // are resolved from GeoIP while a page is built and the account column is a join, so there
+  // is nothing in the row for the endpoint to order by.
+  const adminSessionsHeaders = [...adminSessionsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'a sortable visit-history header keeps its own access to sorting',
+    adminSessionsHeaders.length === 7 &&
+      adminSessionsHeaders.some((th) => th.includes('aria-label="When"') && th.includes('tabindex="0"')),
+    `${adminSessionsHeaders.length} header cells`,
+  )
+
+  // The account filter lives in the address, the way the accounts table's group filter does -
+  // and this is the page the "Last visit" link in that table lands on, so a filter kept in
+  // this component's state instead would be gone by the time it mounted and the link would
+  // open an unfiltered list, looking as if it had done nothing.
+  const adminSessionsArrivalHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/user-sessions?userId=44444444-4444-4444-4444-444444444444']}>
+      {withQuery(
+        <AntApp>
+          <AdminSessionsPage sectionKey="nav.items.adminSessions" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the visit-history account filter picks its user up from the address it was opened at',
+    adminSessionsArrivalHtml.includes('44444444-4444-4444-4444-444444444444'),
+    adminSessionsArrivalHtml.includes('44444444-4444-4444-4444-444444444444')
+      ? `the arriving account is on the filter of ${adminSessionsArrivalHtml.length} bytes`
+      : 'THE ARRIVING ACCOUNT WAS DROPPED - the link would open an unfiltered list',
+  )
+
+  // The one thing on the accounts table a column `render` is the only place to write, and a
+  // `render` is reached only when a row exists - while every render of that page above also
+  // arrives before the first answer does. So the cell is a component and is rendered here
+  // directly, for the same reason `ConfirmCodeForm` and the two display helpers are: nothing
+  // else in this repository would notice it rendering nothing at all.
+  const probeVisit = '2026-10-11T10:46:52Z'
+  const probeVisitText = formatTimestamp(probeVisit, 'en', null)
+  const lastSeenHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users']}>
+      <AntApp>
+        <LastSeenCell
+          area="admin"
+          user={{ id: '33333333-3333-3333-3333-333333333333', username: 'probeuser' }}
+          value={probeVisit}
+          format={(v) => formatTimestamp(v, 'en', null)}
+        />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  const lastSeenLinkText = /<a[^>]*user-sessions[^>]*>([^<]*)</.exec(lastSeenHtml)?.[1]
+  check(
+    'a last-visit cell draws the moment itself as the way to the visit history of that account',
+    lastSeenLinkText === probeVisitText &&
+      lastSeenHtml.includes(
+        'href="/admin/user-sessions?userId=33333333-3333-3333-3333-333333333333"',
+      ) &&
+      lastSeenHtml.includes('title="Visit history for probeuser"'),
+    `link text ${JSON.stringify(lastSeenLinkText)} (expected ${JSON.stringify(probeVisitText)}), href ${
+      /href="([^"]*user-sessions[^"]*)"/.exec(lastSeenHtml)?.[1] ?? 'none'
+    }`,
+  )
+
+  // And the account that has never signed in: a dash, and nothing to click. A link over a
+  // dash would name a history the server has none of.
+  const lastSeenEmptyHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/users']}>
+      <AntApp>
+        <LastSeenCell
+          area="admin"
+          user={{ id: '33333333-3333-3333-3333-333333333333', username: 'probeuser' }}
+          value={null}
+          format={(v) => formatTimestamp(v, 'en', null)}
+        />
+      </AntApp>
+    </MemoryRouter>,
+  )
+  check(
+    'an account that has never signed in draws a dash where the link would be',
+    lastSeenEmptyHtml.includes('—') && !lastSeenEmptyHtml.includes('user-sessions'),
+    `${lastSeenEmptyHtml.length} bytes: ${lastSeenEmptyHtml.slice(0, 120)}`,
+  )
+
   // The same failure the profile item's check below exists for: `sectionRoutes` falls back
   // to `SectionPage` when an item carries no `page`, so a loader dropped from any of these
-  // three items would open the placeholder while the menu, lint and the build all stayed
-  // green. Three rather than two since the group table arrived, and the group item is the
-  // one worth watching: it is the newest, and it is the only one of the three whose page
-  // the menu cannot also reach by any other route.
-  const [usersAddModule, usersManageModule, userGroupsModule] = await Promise.all([
-    flatItems('Admin').find((item) => item.key === 'usersAdd')?.page?.(),
-    flatItems('Admin').find((item) => item.key === 'usersManage')?.page?.(),
-    flatItems('Admin').find((item) => item.key === 'userGroups')?.page?.(),
-  ])
+  // four items would open the placeholder while the menu, lint and the build all stayed
+  // green. Four rather than three since the visit history arrived, and it is the one worth
+  // watching: it is the newest, and like the group table its page the menu cannot reach by
+  // any other route.
+  const [usersAddModule, usersManageModule, userGroupsModule, adminSessionsModule] =
+    await Promise.all([
+      flatItems('Admin').find((item) => item.key === 'usersAdd')?.page?.(),
+      flatItems('Admin').find((item) => item.key === 'usersManage')?.page?.(),
+      flatItems('Admin').find((item) => item.key === 'userGroups')?.page?.(),
+      flatItems('Admin').find((item) => item.key === 'adminSessions')?.page?.(),
+    ])
   check(
-    'the admin menu points its three users-group items at the real pages rather than the placeholder',
+    'the admin menu points its four users-group items at the real pages rather than the placeholder',
     usersAddModule?.default === UserFormPage &&
       usersManageModule?.default === UsersPage &&
-      userGroupsModule?.default === UserGroupsPage,
+      userGroupsModule?.default === UserGroupsPage &&
+      adminSessionsModule?.default === AdminSessionsPage,
     `usersAdd opens ${usersAddModule?.default?.name ?? 'nothing'}, usersManage opens ${
       usersManageModule?.default?.name ?? 'nothing'
-    }, userGroups opens ${userGroupsModule?.default?.name ?? 'nothing'}`,
+    }, userGroups opens ${userGroupsModule?.default?.name ?? 'nothing'}, adminSessions opens ${
+      adminSessionsModule?.default?.name ?? 'nothing'
+    }`,
   )
 
   // The failure this has to catch is silent: `sectionRoutes` falls back to `SectionPage`

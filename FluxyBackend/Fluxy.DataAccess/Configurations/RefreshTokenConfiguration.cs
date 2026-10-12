@@ -114,6 +114,18 @@ namespace Fluxy.DataAccess.Configurations
             // account's rows and then sorts all of them to keep twenty, on every page.
             builder.HasIndex(token => new { token.UserId, token.CreatedAt });
 
+            // The same question asked of the whole installation rather than of one account: the
+            // visit history page an operator reads orders every visible row newest first, and
+            // the existing index above cannot serve that because its leading column is the
+            // account and no account was named. Without this the page finds the rows by a scan
+            // and sorts all of them to keep twenty, on every page turn.
+            //
+            // The trailing column is the tie-break the sort ends with, for the same reason the
+            // account one carries the moment: two tokens written in one transaction share a
+            // stamp, and an order that stops before the unique column can show a row on two
+            // pages or on none.
+            builder.HasIndex(token => new { token.CreatedAt, token.Id });
+
             // No HasDefaultValue anywhere on purpose, for the reason it holds on every other
             // table: a value the database invents when the application forgot a column hides the
             // mistake instead of surfacing it.

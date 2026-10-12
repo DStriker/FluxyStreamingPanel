@@ -3,6 +3,7 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   DashboardOutlined,
+  GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
   LaptopOutlined,
@@ -210,19 +211,21 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
-      // The admin's own section: three addresses behind one heading. It replaces the old
+      // The admin's own section: four addresses behind one heading. It replaces the old
       // `management` group, whose `users` entry was a placeholder pointing at nothing -
       // `SectionPage` saying the section was unfinished - and whose `settings` entry went
       // with it, because the two of them described a control panel this application does
-      // not have. What is here instead is the set of pages that answer one need from three
-      // sides: making an account, seeing the ones that exist, and deciding what a *kind* of
-      // account may do.
+      // not have. What is here instead is the set of pages that answer one need from four
+      // sides: making an account, seeing the ones that exist, deciding what a *kind* of
+      // account may do, and seeing where they have been signing in from.
       //
       // The order is deliberate and follows how the work goes: you add before you manage,
-      // and a stranger reading the rail meets them in that order. Groups come last because
+      // and a stranger reading the rail meets them in that order. Groups come next because
       // they are the layer above the two - an administrator who never opens this list still
       // has the three base groups doing their work - and a page reached second must not
-      // describe a thing the first page has not introduced.
+      // describe a thing the first page has not introduced. The history comes last: it is
+      // the only one of the four that is a question rather than a change, and it is reached
+      // when something has already gone wrong rather than as part of the ordinary work.
       key: 'users',
       labelKey: 'nav.groups.users',
       icon: TeamOutlined,
@@ -247,6 +250,25 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.userGroups',
           icon: ApartmentOutlined,
           page: () => import('../pages/UserGroupsPage'),
+        },
+        {
+          // The visit history of every account this operator may read. Its own address
+          // rather than a child of `sessions`, because that prefix belongs to the
+          // *account's own* two pages - `sessions` is this operator's own sign-in history
+          // and `sessions/active` is their own live sessions, both in the `account` group
+          // under every role. One path cannot be two pages, and the question here is a
+          // different one: not "where did I sign in from" but "where are the accounts I
+          // mind signing in from".
+          //
+          // `user-sessions` rather than something shorter, for the reason the rail already
+          // reads the way it does: the section names its subjects in the plural
+          // (`users`, `user-groups`), and this is the sessions of those users. It is also
+          // the one name that does not collide with the two addresses above.
+          key: 'adminSessions',
+          path: 'user-sessions',
+          labelKey: 'nav.items.adminSessions',
+          icon: GlobalOutlined,
+          page: () => import('../pages/AdminSessionsPage'),
         },
       ],
     },

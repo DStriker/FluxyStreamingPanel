@@ -3,10 +3,17 @@ import { App as AntApp, ConfigProvider, Spin, Typography } from 'antd'
 import ruRU from 'antd/locale/ru_RU'
 import enUS from 'antd/locale/en_US'
 import { RouterProvider } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import './i18n'
 import { appTheme, useIsDark } from './lib/theme'
+import { createQueryClient } from './lib/queryClient'
 import { router } from './router'
+
+// One client per application, made where the app is made. The defaults it holds (short
+// cache, no silent retries) are the whole point - see `createQueryClient` for them and for
+// why `probe:render` builds its own instead of borrowing this one.
+const queryClient = createQueryClient()
 
 export default function App() {
   const dark = useIsDark()
@@ -35,8 +42,9 @@ export default function App() {
   }, [dark, derived])
 
   return (
-    <ConfigProvider locale={antdLocale} theme={config}>
-      <AntApp>
+    <QueryClientProvider client={queryClient}>
+      <ConfigProvider locale={antdLocale} theme={config}>
+        <AntApp>
         {/* The pages are route-level chunks (`src/router/routes.tsx`), so the first visit
             to any of them arrives a moment after the navigation does. This is the boundary
             those imports resolve into, placed above the router rather than inside a route
@@ -55,7 +63,8 @@ export default function App() {
         >
           <RouterProvider router={router} />
         </Suspense>
-      </AntApp>
-    </ConfigProvider>
+        </AntApp>
+      </ConfigProvider>
+    </QueryClientProvider>
   )
 }

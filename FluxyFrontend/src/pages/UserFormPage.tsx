@@ -15,11 +15,7 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
-  ALL_GROUPS_PAGE_SIZE,
   createUser,
-  getProfile,
-  getUser,
-  getUserGroups,
   updateUser,
 } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
@@ -43,11 +39,10 @@ import { AutoTimeZone, knownZones } from '../lib/timeZones'
 import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
+import { useAllUserGroups, useProfile, useUserDetail } from '../hooks/queries'
 import type {
   AdminUserDetail,
   LoginGuardSettings,
-  UserGroup,
-  UserPermission,
   UserStatus,
 } from '../types'
 
@@ -223,30 +218,42 @@ export default function UserFormPage(_props: UserFormPageProps) {
   const session = useSession()
   const [form] = Form.useForm<UserFormValues>()
 
-  const [detail, setDetail] = useState<AdminUserDetail | null>(null)
-  // True before the first render in edit mode: the form must not draw its fields against an
-  // account that has not arrived, and `renderToStaticMarkup` never runs the effect that
-  // would clear this - which is what makes the spinner below the state every probe sees.
-  const [loading, setLoading] = useState(isEdit)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  /**
+   * The account being edited, fetched through a query rather than painted from whatever the
+   * previous screen happened to hold.
+   *
+   * `useUserDetail` is `enabled` only when the address carries an id, so on the add address
+   * nothing fetches and nothing is pending - which is also why `loading` below is gated on
+   * `isEdit` rather than read off the query's status: a disabled query is `pending` forever,
+   * and the add form is exactly the address that must not wait for anything. The form must
+   * not draw its fields against an account that has not arrived, and `renderToStaticMarkup`
+   * runs no query - which is what makes the spinner below the state every probe sees. The
+   * retry button re-asks through `refetch()` rather than by bumping an `attempt` counter.
+   */
+  const detailQuery = useUserDetail(id)
+  const detail = detailQuery.data ?? null
+  const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
+  const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
   const [submitting, setSubmitting] = useState(false)
-  // Bumped by the retry button rather than by anything the page navigated to, so a dropped
-  // connection can be asked about again without leaving the address the visitor chose.
-  const [attempt, setAttempt] = useState(0)
   // The eye over the password, controlled from the first paint rather than switched to
   // controlled later - an uncontrolled antd input becoming controlled is a warning about
   // a state two places think they own. Opened by `handleGeneratePassword` below.
   const [passwordVisible, setPasswordVisible] = useState(false)
-  // The groups the picker draws, read once on both addresses, plus the reason it could not
-  // read them. Not an `alert` over the whole form: the rest of the account is editable
-  // without knowing which groups exist, and a page that stopped working because one of its
-  // lookups failed would be reporting a limitation as a breakdown. The message is the
-  // server's own (`permission_denied` reads as a permission sentence, a dead connection as
-  // a connection one), so it is worth showing rather than swallowing.
-  const [groups, setGroups] = useState<UserGroup[]>([])
-  const [groupsError, setGroupsError] = useState<string | null>(null)
+
   /**
-   * Everything the signed-in operator's group grants, read once on this page too.
+   * The groups the picker draws, as a query of their own, plus the reason it could not
+   * read them. Not an `alert` over the whole form: the rest of the account is editable
+   * without knowing which groups exist, and a page that stopped working because one of its
+   * lookups failed would be reporting a limitation as a breakdown. The message is the
+   * server's own (`permission_denied` reads as a permission sentence, a dead connection as
+   * a connection one), so it is worth showing rather than swallowing.
+   */
+  const groupsQuery = useAllUserGroups()
+  const groups = groupsQuery.data?.items ?? []
+  const groupsError = groupsQuery.isError ? messageForError(groupsQuery.error) : null
+
+  /**
+   * Everything the signed-in operator's group grants, from the shared `['profile']` query.
    *
    * It is what the two rules below ask: which groups the picker may offer, and whether Save
    * is worth drawing live. `viewUsers`/`editUsers` are gone - "may this operator touch
@@ -259,7 +266,8 @@ export default function UserFormPage(_props: UserFormPageProps) {
    * ahead on the strength of a lookup it did not get would be claiming a permission nobody
    * has confirmed. The server refuses regardless - this only decides what is drawn.
    */
-  const [granted, setGranted] = useState<UserPermission[]>([])
+  const profileQuery = useProfile()
+  const granted = profileQuery.data?.permissions ?? []
 
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
@@ -268,93 +276,27 @@ export default function UserFormPage(_props: UserFormPageProps) {
   const listPath = `${area}/users`
 
   useEffect(() => {
-    if (!id) return
+    if (!detail) return
 
-    let cancelled = false
-    setLoading(true)
-
-    getUser(id)
-      .then((answer) => {
-        if (cancelled) return
-        setDetail(answer)
-        setLoadError(null)
-        // Painted rather than passed as `initialValues`: the form is already mounted by the
-        // time the answer lands (the spinner above is what drew in the meantime), and
-        // `initialValues` only ever applies to fields nothing has set yet.
-        form.setFieldsValue(detailToFormValues(answer))
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setDetail(null)
-        setLoadError(messageForError(error))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [id, form, attempt])
+    // Painted rather than passed as `initialValues`: the form is already mounted by the time
+    // the answer lands (the spinner above is what drew in the meantime), and `initialValues`
+    // only ever applies to fields nothing has set yet.
+    form.setFieldsValue(detailToFormValues(detail))
+  }, [detail, form])
 
   useEffect(() => {
-    // The operator's own grants, in an effect of its own rather than folded into either
-    // fetch above: this is a third answer from a third place, and it must not take the
-    // account or the group list down with it when it is the one that fails. It gates what
-    // is drawn, never what is loaded - the account is read in full either way, because a
-    // form that cannot open is a form that cannot explain why it is closed.
-    let cancelled = false
+    // The add form's default, read from the list rather than written into this file: the
+    // base group of the lowest level is where an account made by hand belongs until the
+    // administrator says otherwise. Written only when nothing is chosen yet, so a back
+    // button into a half-filled form keeps whatever was already picked - and never in edit
+    // mode, where the account's own group is what the answer painted above.
+    if (isEdit) return
+    if (groups.length === 0) return
+    if (form.getFieldValue('groupId')) return
 
-    getProfile()
-      .then((profile) => {
-        if (!cancelled) setGranted(profile.permissions)
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    // The picker's own options. One page of the ceiling rather than a second unpaged route
-    // - see `getUserGroups` for why the account form and the accounts table ask the same
-    // endpoint for the same thing.
-    //
-    // It fails on its own, without a retry button: the only reason this can fail that is
-    // worth repeating is a dropped connection, and the one reason it will not heal on its
-    // own - the caller's group holding no `viewUserGroups` - is not something another click
-    // would change. Either way the message goes under the field it blocks, where it explains
-    // exactly what could not be offered.
-    let cancelled = false
-
-    getUserGroups({ page: 1, pageSize: ALL_GROUPS_PAGE_SIZE })
-      .then((answer) => {
-        if (cancelled) return
-        setGroups(answer.items)
-        setGroupsError(null)
-
-        // The add form's default, read from the list rather than written into this file:
-        // the base group of the lowest level is where an account made by hand belongs until
-        // the administrator says otherwise. Written only when nothing is chosen yet, so a
-        // back button into a half-filled form keeps whatever was already picked - and never
-        // in edit mode, where the account's own group is what the answer painted above.
-        if (isEdit) return
-        if (form.getFieldValue('groupId')) return
-
-        const base = answer.items.find((group) => group.isBase && group.role === 'Client')
-        if (base) form.setFieldsValue({ groupId: base.id })
-      })
-      .catch((error) => {
-        if (cancelled) return
-        setGroups([])
-        setGroupsError(messageForError(error))
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [form, isEdit])
+    const base = groups.find((group) => group.isBase && group.role === 'Client')
+    if (base) form.setFieldsValue({ groupId: base.id })
+  }, [form, isEdit, groups])
 
   /**
    * Whether the guard's allow lists are enforced right now - the value `LoginGuardFields`
@@ -577,7 +519,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
               {/* Re-ask rather than only offering a way out: the refusal may be a dropped
                   connection as easily as a missing account, and a missing account reads the
                   same either way. */}
-              <Button size="small" loading={loading} onClick={() => setAttempt((value) => value + 1)}>
+              <Button size="small" loading={loading} onClick={() => detailQuery.refetch()}>
                 {t('actions.retry')}
               </Button>
               <Button size="small" onClick={() => navigate(listPath)}>
