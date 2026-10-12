@@ -1,6 +1,7 @@
 using Fluxy.Application.Services;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Authorization;
+using Fluxy.Application.Services.Content;
 using Fluxy.Application.Services.Email;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Profile;
@@ -52,6 +53,12 @@ namespace Fluxy.Application
             // with members that may not be deleted - so they are their own service rather than
             // extra methods on the one above.
             services.AddScoped<IUserGroupService, UserGroupService>();
+
+            // The categories content is filed under are their own resource, with rules that
+            // have no counterpart on an account or a group - a name unique within one kind of
+            // content, an order rewritten wholesale by one request - so they are their own
+            // service rather than extra methods on either of the two above.
+            services.AddScoped<IContentCategoryService, ContentCategoryService>();
 
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it

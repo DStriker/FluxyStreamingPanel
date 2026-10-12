@@ -56,6 +56,13 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<UserLoginGuardRuleEntity> LoginGuardRules => Set<UserLoginGuardRuleEntity>();
 
+        /// <summary>
+        /// Categories of content, one row per section an operator can file a piece of content
+        /// under. The kind of content is a column of the row, so one table holds the
+        /// categories of all four kinds.
+        /// </summary>
+        public DbSet<ContentCategoryEntity> ContentCategories => Set<ContentCategoryEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

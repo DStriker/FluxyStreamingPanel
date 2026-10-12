@@ -29,6 +29,7 @@ import UserFormPage from '../src/pages/UserFormPage'
 import UserGroupsPage from '../src/pages/UserGroupsPage'
 import UserGroupFormPage from '../src/pages/UserGroupFormPage'
 import AdminSessionsPage from '../src/pages/AdminSessionsPage'
+import ContentCategoriesPage from '../src/pages/ContentCategoriesPage'
 import LastSeenCell from '../src/components/LastSeenCell'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
@@ -1008,6 +1009,91 @@ async function main() {
     `rendered ${groupEditHtml.length} bytes under the edit title with the spinner up`,
   )
 
+  // --- The content categories page --------------------------------------------
+  //
+  // One component behind four menu entries, and the type of content it lists is read from
+  // the very key the router passes it - so the facts the renders pin are the ones nothing
+  // else can see: the heading names the kind the key maps to (and a *different* key names
+  // a different kind, which is the mapping itself asserted), the add action and the
+  // unsaved-order controls draw before any row arrives, and every render here lands in
+  // the state where the list has no rows yet and the drag handles therefore none.
+  const categoriesHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/video-streams/categories']}>
+      {withQuery(
+        <AntApp>
+          <ContentCategoriesPage sectionKey="nav.items.videoStreamsCategories" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the video stream categories page draws its typed heading, its add action and its table before any rows arrive',
+    categoriesHtml.includes('Video stream categories') &&
+      !categoriesHtml.includes('Content categories') &&
+      categoriesHtml.includes('Add category') &&
+      categoriesHtml.includes('ant-table') &&
+      !categoriesHtml.includes('nav.items.videoStreamsCategories'),
+    `rendered ${categoriesHtml.length} bytes with the list still being fetched`,
+  )
+
+  // The save and discard controls of the unsaved arrangement, drawn while disabled - the
+  // first paint of a page whose order on screen is still the order on the server. Matched
+  // on the button rather than on the words, which also appear inside a modal or a toast
+  // elsewhere; the disabled state is the assertion, because a save button enabled over an
+  // arrangement nobody has made would send a request that changes nothing and call it a
+  // save.
+  const saveOrderLabelAt = categoriesHtml.indexOf('Save order')
+  const saveOrderButtonAt = categoriesHtml.lastIndexOf('<button', saveOrderLabelAt)
+  const saveOrderButtonTag = categoriesHtml.slice(saveOrderButtonAt, saveOrderLabelAt)
+  check(
+    'the content categories page offers the order save, greyed until the arrangement differs',
+    saveOrderLabelAt !== -1 &&
+      categoriesHtml.includes('Discard changes') &&
+      saveOrderButtonTag.includes('disabled'),
+    `save button tag: ${saveOrderButtonTag.slice(0, 160) || 'NOT FOUND'}`,
+  )
+
+  // A second address of the same component, and the one assertion that would catch the
+  // section key renamed on the menu side only: a key the page does not know falls back to
+  // the video stream kind silently, so only reading what a *different* key renders tells
+  // the two apart.
+  const seriesCategoriesHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/series/categories']}>
+      {withQuery(
+        <AntApp>
+          <ContentCategoriesPage sectionKey="nav.items.seriesCategories" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'a different section key renders the same page for its own kind of content',
+    seriesCategoriesHtml.includes('Series categories') &&
+      !seriesCategoriesHtml.includes('Video stream categories'),
+    `rendered ${seriesCategoriesHtml.length} bytes with the series heading`,
+  )
+
+  // The four menu entries have to name the page the visitor came for. `sectionRoutes`
+  // falls back to `SectionPage` when an item carries no `page`, and a menu key renamed on
+  // one side only would leave the page reading the wrong key - which this cannot see in
+  // the render above, because the wrong key still renders *a* page. Asserted the way the
+  // users-group items below are: each loader has to resolve to this page's own module.
+  const categoryModules = await Promise.all(
+    ['videoStreamsCategories', 'audioStreamsCategories', 'videoOnDemandCategories', 'seriesCategories'].map(
+      async (key) => await flatItems('Admin').find((item) => item.key === key)?.page?.(),
+    ),
+  )
+  const allCategoriesOpen = categoryModules.every(
+    (module) => module?.default === ContentCategoriesPage,
+  )
+  check(
+    'the four content sections point their categories items at the real page rather than the placeholder',
+    allCategoriesOpen,
+    allCategoriesOpen
+      ? 'all four open ContentCategoriesPage'
+      : `one opened something else: ${categoryModules.map((m) => m?.default?.name ?? 'nothing').join(', ')}`,
+  )
+
   // --- The administrator's visit history --------------------------------------
   //
   // The account's own history answered over every account the operator may read, so it gets
@@ -1557,7 +1643,12 @@ async function main() {
   console.log(
     failed === 0 ? '\nall render checks passed' : `\n${failed} render check(s) failed`,
   )
-  if (failed > 0) process.exitCode = 1
+  // An explicit exit, and it is load-bearing rather than tidy: every query the pages
+  // created above keeps its garbage-collection timer (five minutes, TanStack Query's
+  // default `gcTime`) alive after the process would otherwise have finished, because
+  // `renderToStaticMarkup` never unmounts anything. Without this line the probe sits
+  // through the whole five minutes after printing its verdict, which reads as a hang.
+  process.exit(failed === 0 ? 0 : 1)
 }
 
 main()

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   getActiveSessions,
   getAdminSessionHistory,
+  getContentCategories,
   getProfile,
   getSessionHistory,
   getUser,
@@ -14,6 +15,7 @@ import {
 import type {
   AdminUserSortField,
   AdminUserSortOrder,
+  ContentTypeParam,
   SessionSortField,
   SessionSortOrder,
   UserGroupSortField,
@@ -145,4 +147,17 @@ export const useUserGroupDetail = (id: string | undefined) =>
     queryKey: ['userGroups', 'detail', id],
     queryFn: ({ signal }) => getUserGroup(id as string, signal),
     enabled: id !== undefined,
+  })
+
+/**
+ * Every category of one kind of content, in the order the operator arranged them in.
+ *
+ * The key *is* the type, so the four section pages - each asking about a different kind -
+ * never share a cache entry, and a drop that rewrites this list by hand still lands under
+ * the same key the next read answers from.
+ */
+export const useContentCategories = (type: ContentTypeParam) =>
+  useQuery({
+    queryKey: ['contentCategories', type],
+    queryFn: ({ signal }) => getContentCategories({ type, signal }),
   })

@@ -2,16 +2,22 @@ import type { ComponentType } from 'react'
 import {
   ApartmentOutlined,
   AppstoreOutlined,
+  CustomerServiceOutlined,
   DashboardOutlined,
   GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
   LaptopOutlined,
+  PlaySquareOutlined,
+  PlusOutlined,
   ShoppingCartOutlined,
   TableOutlined,
+  TagsOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
   UserAddOutlined,
   UserOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 import type { Role } from '../types'
 
@@ -59,6 +65,81 @@ interface NavGroup {
   icon: NavIcon
   items: NavItem[]
 }
+
+/**
+ * The four content sections, one group per kind, in the order the domain names them.
+ *
+ * Each section offers the same three entries - add, manage, categories - because the four
+ * sections are the same section wearing four names: what differs between them is the kind
+ * of content everything inside them works on, which is a fact the group carries and the
+ * items repeat. Building them from one table is what keeps four copies of that shape from
+ * drifting: a fifth kind is one entry here plus its labels in the locale files, not a
+ * hand-written fourth of a rail.
+ *
+ * Only `categories` is a real page today. `add` and `manage` carry no `page`, so the
+ * router renders `SectionPage` for them - the placeholder that says the section is still
+ * under construction, which is the honest answer for entries this pass deliberately did
+ * not build. Their menu keys exist so that filling them in later is a loader away, not a
+ * re-reading of the rail.
+ */
+const CONTENT_SECTIONS = [
+  {
+    key: 'videoStreams',
+    path: 'video-streams',
+    labelKey: 'nav.groups.videoStreams',
+    icon: VideoCameraOutlined,
+    categoriesPage: () => import('../pages/ContentCategoriesPage'),
+  },
+  {
+    key: 'audioStreams',
+    path: 'audio-streams',
+    labelKey: 'nav.groups.audioStreams',
+    icon: CustomerServiceOutlined,
+    categoriesPage: () => import('../pages/ContentCategoriesPage'),
+  },
+  {
+    key: 'videoOnDemand',
+    path: 'video-on-demand',
+    labelKey: 'nav.groups.videoOnDemand',
+    icon: PlaySquareOutlined,
+    categoriesPage: () => import('../pages/ContentCategoriesPage'),
+  },
+  {
+    key: 'series',
+    path: 'series',
+    labelKey: 'nav.groups.series',
+    icon: UnorderedListOutlined,
+    categoriesPage: () => import('../pages/ContentCategoriesPage'),
+  },
+] as const
+
+const contentGroups = (): NavGroup[] =>
+  CONTENT_SECTIONS.map((section) => ({
+    key: section.key,
+    labelKey: section.labelKey,
+    icon: section.icon,
+    items: [
+      {
+        key: `${section.key}Add`,
+        path: `${section.path}/add`,
+        labelKey: `nav.items.${section.key}Add`,
+        icon: PlusOutlined,
+      },
+      {
+        key: `${section.key}Manage`,
+        path: section.path,
+        labelKey: `nav.items.${section.key}Manage`,
+        icon: TableOutlined,
+      },
+      {
+        key: `${section.key}Categories`,
+        path: `${section.path}/categories`,
+        labelKey: `nav.items.${section.key}Categories`,
+        icon: TagsOutlined,
+        page: section.categoriesPage,
+      },
+    ],
+  }))
 
 /**
  * What each signed-in role sees in the sidebar, as categories of items.
@@ -272,6 +353,7 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
         },
       ],
     },
+    ...contentGroups(),
     {
       key: 'account',
       labelKey: 'nav.groups.account',

@@ -83,6 +83,12 @@ const en = {
       // The admin's own category, holding the three pages that make, mind and group
       // accounts.
       users: 'Users',
+      // The four content sections, in the order the domain names them. One group per kind
+      // of content, each with the same three entries beneath it.
+      videoStreams: 'Video streams',
+      audioStreams: 'Audio streams',
+      videoOnDemand: 'Video on demand',
+      series: 'Series',
       account: 'Account',
     },
     items: {
@@ -110,6 +116,22 @@ const en = {
       // the way the two above it do: the menu names how you got there, the card names what
       // you are looking at.
       adminSessions: 'User sessions',
+      // The three entries of each content section are one shape repeated four times, so
+      // the labels are one word each and are shared by all four sections - what differs
+      // between them is the group they sit under, which the rail already says. `Add` and
+      // `Manage` are placeholders today; `Categories` is the real page.
+      videoStreamsAdd: 'Add',
+      videoStreamsManage: 'Manage',
+      videoStreamsCategories: 'Categories',
+      audioStreamsAdd: 'Add',
+      audioStreamsManage: 'Manage',
+      audioStreamsCategories: 'Categories',
+      videoOnDemandAdd: 'Add',
+      videoOnDemandManage: 'Manage',
+      videoOnDemandCategories: 'Categories',
+      seriesAdd: 'Add',
+      seriesManage: 'Manage',
+      seriesCategories: 'Categories',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -628,6 +650,55 @@ const en = {
     // on a page whose whole purpose is ending sessions.
     endCurrentHint: 'The session you are reading with cannot be ended from here. Sign out instead.',
   },
+  // The content categories table, shared by all four content sections: one component,
+  // four addresses, and the kind of content each instance works on read from its own menu
+  // key. Everything here is copy the server does not send.
+  contentCategories: {
+    // One heading per kind of content. The four addresses of the page differ in nothing
+    // else, and a card that said only "Categories" on all four would leave the visitor
+    // reading four identical screens with no way to tell which one they are on. Keyed by
+    // the enum member, the way the account statuses are.
+    titles: {
+      VideoStream: 'Video stream categories',
+      AudioStream: 'Audio stream categories',
+      VideoOnDemand: 'On-demand video categories',
+      Series: 'Series categories',
+    },
+    empty: 'No categories yet.',
+    // The drag handle's own name - the only text it carries, for a visitor on a keyboard
+    // or a screen reader, and the instruction for everybody else.
+    dragHint: 'Drag to rearrange',
+    // The two toolbar controls for the unsaved arrangement. Dragging changes the screen
+    // only; this pair is what turns the arrangement into a request - one save for however
+    // many rows the visitor moved.
+    saveOrder: 'Save order',
+    discardOrder: 'Discard changes',
+    columns: {
+      sort: 'Order',
+      name: 'Name',
+      actions: 'Actions',
+    },
+    addTitle: 'Add category',
+    editTitle: 'Edit category',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a category name',
+    nameLength: 'Up to 100 characters',
+    create: 'Create',
+    actions: {
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    // Why the "show content" button is disabled: no content exists yet to list, so there
+    // is nothing the click could open. Stated as the fact rather than as a refusal - the
+    // visitor is being told before the click, not after it.
+    membersSoon: 'The content list is not built yet.',
+    // The one action that asks first. Nothing is filed under categories yet, so the body
+    // carries no warning about members - the confirmation is the whole of the guard until
+    // the content tables arrive.
+    deleteConfirmTitle: 'Delete this category?',
+    deleteConfirmBody: 'The category "{{name}}" will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -716,6 +787,16 @@ const en = {
       user_group_immutable:
         'The three groups this installation is built from may only be renamed. Create a group of your own for anything else.',
       user_group_in_use: 'Accounts still belong to this group. Move them somewhere else first.',
+      // The content category resource: the same three shapes as the accounts and the
+      // groups above, plus the reorder - one code for the whole-list write, because the
+      // list as a whole is what the request names.
+      content_category_created: 'The category has been created.',
+      content_category_updated: 'The category has been updated.',
+      content_category_deleted: 'The category has been deleted.',
+      content_categories_reordered: 'The categories have been reordered.',
+      content_category_not_found: 'There is no category with that identifier.',
+      content_category_already_exists:
+        'That category name is already taken within this content type.',
       // A bulk run: one code for the run as a whole, because the run as a whole *was*
       // carried out - every identifier it named came back with a verdict, and those verdicts
       // are in `items` with the codes above rather than folded into one status. The counts

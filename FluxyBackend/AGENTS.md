@@ -912,6 +912,76 @@ come back as a 409 wearing a different hat); `GET /admin/users?groupId=` returni
 group's accounts; and a second account holding only `viewUsers`+`editUsers` still reading
 accounts while every group endpoint answers `403 permission_denied`.
 
+## The content categories API: `admin/content-categories`
+
+The first piece of the content domain. A category is a named, typed, ordered section that
+pieces of content will be filed under; the content itself does not exist yet.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/content-categories?type=` | `AdminOnly` | every category of the type, lowest `sort_order` first |
+| `POST /admin/content-categories` | CSRF | `201 content_category_created` + relative `Location` |
+| `PATCH /admin/content-categories/{id}` | CSRF | `200 content_category_updated` (rename only) |
+| `DELETE /admin/content-categories/{id}` | CSRF | `200 content_category_deleted`, `404 content_category_not_found` |
+| `PUT /admin/content-categories/order` | CSRF | `200 content_categories_reordered` |
+
+- **`ContentType` is four members, fixed** (`VideoStream=1, AudioStream=2, VideoOnDemand=3,
+  Series=4`, `smallint` like every other enum). It is a partition of the domain, not a
+  scale - nothing anywhere may compare two members. `type` is parsed from plain text
+  case-insensitively (`videostream`, `audiostream`, `videoondemand`, `series`); an unknown
+  value is refused with `validation_failed`, never treated as "no filter", because a GET
+  without a type would fold four unrelated lists into one answer no screen draws.
+- **The list is not paged, deliberately.** A type's categories are a screenful by
+  construction - they are the section headings of a content grid - so the response is a
+  bare `items` array with no `total`/`page`/`pageSize`. If a type ever outgrows one screen,
+  that is the moment to add paging, not before. This is a recorded departure, and the
+  reasoning lives in the controller's remarks.
+- **The order is one whole-list write.** `PUT order` takes `{ contentType, orderedIds }`
+  and the list must name **every** category of the type exactly once - a subset, a
+  duplicate or a foreign id is refused whole (`errors.orderedIds`), because half an order
+  is two rows sharing a position. The service writes positions 1..N over the named rows in
+  one `SaveChanges`, so an interrupted request cannot leave two categories at one
+  position. Positions are plain ints; deletions leave gaps and nothing hurries to close
+  them (renumbering would be a second source for a fact the reorder owns), and a create
+  appends at `max(sort_order) + 1`, read server-side rather than claimed by the caller.
+- **Uniqueness is scoped to the type** (`UNIQUE(content_type, name)`): "Sports" over video
+  streams and "Sports" over series are two unrelated sections of two different screens.
+  Case sensitive, like username and email. The lost race is caught (`SQLSTATE 23505`) and
+  mapped to `409 content_category_already_exists` with the field named.
+- **No captcha and no attempt window** - the recorded admin-area departure; every write is
+  behind an `AdminOnly` session and a fresh antiforgery pair, and `RejectsCsrfAsync()` runs
+  before any body is read.
+- **No "in use" refusal yet, on purpose.** No table of content items exists to be in one,
+  so the check would guard an empty set. It arrives with the content tables - a foreign key
+  with `ON DELETE RESTRICT` plus a `category_in_use` refusal naming the count - not before
+  them. Until then the delete confirmation dialog on the frontend is the whole of the guard.
+- **The frontend saves the order by an explicit button, not per drop.** A drag changes the
+  screen only; "Save order" sends one `PUT order` for the whole arrangement. One
+  arrangement, one request - the reduction in writes is the owner's stated goal, and it is
+  also why the request is shaped as a full list: the screen knows all of it the moment the
+  visitor is finished.
+
+Layering follows the usual split: `ContentType` / `ContentCategory` / `NewContentCategory` +
+`ContentCategoryPatch` + `ReorderContentCategories` / `ContentCategoryOutcome` +
+`ContentCategoryAction` in `Fluxy.Core/Models/Content/`, `IContentCategoryService` in
+`Fluxy.Core/Abstractions/`, `ContentCategoryService` in
+`Fluxy.Application/Services/Content/` (Scoped), the entity and its configuration in
+`Fluxy.DataAccess/` (migration `20261012103956_AddContentCategories`), and the contracts +
+`ContentCategoriesController` in `Fluxy.API/`.
+
+Verified against a running instance (27 scripted checks, all green): empty list; missing and
+unknown `type` refused with `errors.type`; a write without the antiforgery pair → `400
+csrf_invalid` before any rule; create → `201` with an honest `Location`; duplicate within
+the type → `409` naming `name`, the same name over a *different* type → `201`; blank name
+and unknown type refused with the field named; the list ordered by `sort_order`; rename →
+`200`, rename onto a taken name → `409`, foreign id → `404`, blank → `400`, empty body →
+`200 content_category_updated`; reorder reversed → `200` and the next read answers the new
+order with positions 1..N; partial, duplicate, foreign, non-uuid and unknown-type reorder
+bodies each refused with the field named; delete → `200`, delete again → `404`, the gap
+kept (1, 3) and the next create landing at `max + 1` (4); the four types fully independent;
+and cleanup leaving no rows behind. The SQL in the log confirms the reorder is one batch of
+two `UPDATE`s and the create reads `max(sort_order)` in its own query.
+
 ## Conventions
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
