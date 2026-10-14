@@ -7,6 +7,7 @@ using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Profile;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
+using Fluxy.Application.Services.Streams;
 using Fluxy.Application.Services.Throttling;
 using Fluxy.Application.Services.Users;
 using Fluxy.Core.Abstractions;
@@ -59,6 +60,13 @@ namespace Fluxy.Application
             // content, an order rewritten wholesale by one request - so they are their own
             // service rather than extra methods on either of the two above.
             services.AddScoped<IContentCategoryService, ContentCategoryService>();
+
+            // The streams filed under those categories are their own resource again, for the
+            // same reason three times over: a stream has rules no category has - the type
+            // owns the payload it may carry, a position is read rather than claimed - and a
+            // service carrying both would answer "whose row?" for every call. Scoped because
+            // it reads and writes through the context, like every other service here.
+            services.AddScoped<IVideoStreamService, VideoStreamService>();
 
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it

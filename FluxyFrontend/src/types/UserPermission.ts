@@ -1,7 +1,7 @@
 /**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These eight strings are the whole catalog at the time of writing. They are a union rather
+ * These ten strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,10 +16,15 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all eight - see `permissionsForRole` in `src/lib/permissions.ts`, which mirrors
+ * `Admin` for all ten - see `permissionsForRole` in `src/lib/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all eight comes
+ * dropped on the way in rather than refused, which is why a Client group sent all ten comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
+ *
+ * **The two stream permissions are the first pair that is not about accounts.**
+ * `viewStreams`/`editStreams` ask about the configured streams, so they name no role of any
+ * particular account - which is why they are a pair of their own rather than three. The
+ * backend keeps them at 1024 and 2048, the first free values above the account pair.
  *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
@@ -34,3 +39,5 @@ export type UserPermission =
   | 'editAdmins'
   | 'viewUserGroups'
   | 'editUserGroups'
+  | 'viewStreams'
+  | 'editStreams'

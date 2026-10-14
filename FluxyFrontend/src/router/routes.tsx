@@ -69,6 +69,21 @@ const UserFormPage = lazy(() => import('../pages/UserFormPage'))
 const UserGroupFormPage = lazy(() => import('../pages/UserGroupFormPage'))
 
 /**
+ * The streams form, for the same reason and with the same two-address shape as the two
+ * above.
+ *
+ * `/admin/video-streams/add` is a menu item (its label is the verb a visitor scans for,
+ * exactly like `usersAdd`), while `/admin/video-streams/{id}` is an `extra` route with no
+ * menu item beside it - it is only ever reached by choosing a row to edit, and a third
+ * entry saying "edit" would be a page that is empty until you tell it *which*.
+ *
+ * A second `lazy()` over the same module as the `add` item, so a move between the two
+ * addresses remounts the form instead of carrying a half-filled one across - which is what
+ * you want when the id underneath it just changed.
+ */
+const VideoStreamFormPage = lazy(() => import('../pages/VideoStreamFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -238,6 +253,14 @@ export const routes: RouteObject[] = [
     {
       path: 'user-groups/:id',
       element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
+    },
+    // The streams form's edit address. `video-streams/add` is a menu item and is a static
+    // segment, so react-router ranks it above `:id` - the same reason `users/add` can be a
+    // menu item while `users/:id` is not. This one has no menu item: it is reached only by
+    // choosing a row of the streams table (see the loader above for why).
+    {
+      path: 'video-streams/:id',
+      element: <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />,
     },
   ]),
   {

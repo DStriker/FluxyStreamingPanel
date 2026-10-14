@@ -859,12 +859,32 @@ from a `PATCH`.
 - **The permission catalog is role-scoped, and the two failure modes are different on
   purpose.** A name that does not exist (`viewEverything`) is **refused** with
   `validation_failed` and the list that does — a client wrong about the contract is told so. A
-  *valid* permission the chosen role does not own (`viewUsers` on a Client group) is **dropped**
+  *valid* permission the chosen role does not own (`viewClients` on a Client group) is **dropped**
   — that is a client describing a group, and the server already knows what a Client group may
-  hold. The catalog is `[Flags]` powers of two (`ViewUsers=1, EditUsers=2, ViewUserGroups=4,
-  EditUserGroups=8`), stored as `smallint` in `user_group_permissions`; all four are owned by
-  `Admin` today, so `permissionsForRole` on the frontend answers an empty set for Client and
-  Reseller and their form shows a note instead of four boxes.
+  hold. The catalog is `[Flags]` powers of two stored as `smallint` in
+  `user_group_permissions`, and it now has **ten** members in three groups: the two
+  **group-management** keys (`ViewUserGroups=4`, `EditUserGroups=8`), the six **account** keys
+  split by the role of the account they act on (`ViewClients=16, ViewResellers=32,
+  ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), and the two **stream**
+  keys (`ViewStreams=1024`, `EditStreams=2048`). All ten are owned by `Admin`, so
+  `permissionsForRole` on the frontend answers an empty set for Client and Reseller and their
+  form shows a note instead of boxes.
+  - **The account keys start at 16, not at 1.** The values `1` and `2` were the retired
+    `viewUsers`/`editUsers` of the first version — one pair for accounts in general, replaced
+    by the per-target split above — and the numbers are schema, so renumbering the live ones
+    would reinterpret every stored grant as a grant of something else without a single query
+    being made. `1` and `2` are therefore empty and must not be handed to a new meaning.
+  - **The stream keys are not split by role, because a stream is not an account.** There is
+    one `ViewStreams` and one `EditStreams` and nothing narrower, for the same reason the
+    content categories carry no permission at all: one installation-wide list of streams, one
+    screen that draws it, no second axis to split along. They are a pair rather than one key so
+    that a group which may watch the streams and a group which may run them stay two grants.
+  - **Adding a permission needs no migration.** The catalog is code; the base groups are
+    reconciled with it at startup (the bullet below), so a new member appears on the
+    Administrators row on the next boot. It does need a line in `UserPermissionCatalog.Owner`
+    — an unowned member is a grant nothing ever answers — and the frontend's `ALL_PERMISSIONS`/
+    `OWNER` (`src/lib/permissions.ts`) plus the two locale `permissions.*` blocks, or its
+    checkbox label degrades to the raw key.
 - **The seeder reconciles the base groups at startup**: role and permissions are restored to
   what the catalog says, `name` is left alone (an installation may have renamed them, and that
   is allowed), and permissions are reconciled in both directions so a grant removed from the
@@ -981,6 +1001,102 @@ bodies each refused with the field named; delete → `200`, delete again → `40
 kept (1, 3) and the next create landing at `max + 1` (4); the four types fully independent;
 and cleanup leaving no rows behind. The SQL in the log confirms the reorder is one batch of
 two `UPDATE`s and the create reads `max(sort_order)` in its own query.
+
+## The video streams API: `admin/video-streams`
+
+The first piece of the relaying domain. A stream is a named, typed, ordered entry that the
+relay process plays; the playing itself is not in this API.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/video-streams` | `Permission.ViewStreams` | page: `page`, `pageSize`, `search`, `categoryId`, `status`, `type`, `sortBy`, `sortOrder` |
+| `GET /admin/video-streams/{id}` | `Permission.ViewStreams` | one stream with `sources` and `files`; `404 video_stream_not_found` |
+| `POST /admin/video-streams` | CSRF + `Permission.EditStreams` | `201 video_stream_created` + relative `Location` |
+| `PATCH /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_updated` |
+| `POST /admin/video-streams/{id}/start` / `…/stop` | CSRF + `Permission.EditStreams` | `video_stream_started` / `video_stream_stopped` |
+| `DELETE /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_deleted`, `404` on a second |
+
+- **The type owns the fields only it can use, and the two halves are asymmetric on purpose.**
+  A `Permanent`/`OnDemand`/`Redirect` stream takes `sources`; `OnlineSeries` takes `seriesId`;
+  `VodPlaylist` takes `vodId`; `FilePlaylist` takes `files`. A payload the chosen kind cannot
+  use is **dropped**, not refused — a form whose operator has just changed the type is still
+  carrying the previous kind's values, and refusing them would answer a request nobody meant.
+  The one exception is `archiveDays`: only a `Permanent` stream may keep an archive, and a
+  non-zero value on any other kind is **refused** (`400` naming `archiveDays`), because an
+  archive length is a promise about retention rather than a leftover field. The form mirrors
+  that by greying the field out and zeroing it in `toBody`, so it never builds a body the
+  server would refuse.
+- **A programme guide is two facts or none.** Exactly one of `epgSourceId`/`epgChannelKey` is
+  refused with `validation_failed` naming **both** fields; both set or both empty are the only
+  accepted answers. `hasEpg` on the read side is derived from the pair, never stored.
+- **`status` is absent from the body of both writes.** Only `start`/`stop` write it — an edit
+  form that could set it would make "this stream is running" a claim a form makes rather than
+  a fact about a process. `activeSource` is never written by the service at all: the relaying
+  process reports it and nothing else. `sortOrder` is never caller-supplied; a create reads
+  `max(sort_order)` of its category server-side, and a category change moves the stream to the
+  end of the new one (the old category keeps its gaps, the way a deletion does).
+- **A name is unique within its category** (`UNIQUE(category_id, name)`), compared exactly and
+  case sensitively like username and email. A lost race is caught and mapped to
+  `409 video_stream_already_exists` naming `name`.
+- **Both lists are replaced wholesale, never patched.** Absent keeps, empty clears, a list
+  replaces in the order sent — which is what makes the order on the operator's screen the
+  order the relay plays in, with no position arithmetic to get wrong. An empty `sources` is
+  still refused for a URL kind ("add at least one source address"), matching the form's own
+  whole-list rule.
+- **No captcha, no attempt window** — the recorded admin-area departure: every write is behind
+  an `AdminOnly` session plus the `EditStreams` permission and a fresh antiforgery pair, and
+  `RejectsCsrfAsync()` runs before any body is read.
+- **The list is paged** (`total` counted before paging, the same "the pager must not lie" rule
+  the accounts and session histories follow), `search` is a case-insensitive substring of the
+  name, and the sort fields are the column keys — `name`, `category`, `status`, `type`,
+  `sortOrder` — parsed from plain text case-insensitively.
+
+Layering follows the usual split: `ContentType`-adjacent models in `Fluxy.Core/Models/Streams/`
+(`VideoStream`, `VideoStreamPage`, `VideoStreamDetail`, `NewVideoStream`, `VideoStreamPatch`,
+`VideoStreamOutcome`, `VideoStreamAction`, `VideoStreamSortField`, `VideoStreamSortOrder`,
+`VideoStreamListLimits`) plus `IVideoStreamService` in `Fluxy.Core/Abstractions/`,
+`VideoStreamService` in `Fluxy.Application/Services/Streams/` (Scoped), the three entities and
+their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), and
+the contracts + `VideoStreamsController` in `Fluxy.API/`.
+
+### What running caught: a PATCH that failed on any stream with a list
+
+`dotnet build` was clean and every rule above read correctly. Against a running instance, a
+`PATCH` that renamed a stream — or changed anything at all — answered
+`409 video_stream_already_exists` on a table holding exactly one row, under a name nobody else
+held. Two separate mistakes were stacked, and each one hid the other:
+
+- **`UpdateAsync` loaded the stream without the two collections.** `ReplaceSources`/
+  `ReplaceFiles` decide what to delete by comparing the wanted list against what the row
+  already holds — and an unloaded `ICollection` navigation reads as **empty**, never as null.
+  So the comparison always differed, `RemoveRange` removed nothing, and the fresh rows were
+  inserted straight over the ones still in the table, colliding on
+  `IX_video_stream_sources_stream_id_position` (SQLSTATE 23505). Fixed with
+  `.Include(entry => entry.StreamSources).Include(entry => entry.StreamFiles)` on that load.
+  **The read path deliberately does not do this** — `GetAsync` and the page read the two lists
+  as separate `AsNoTracking` queries, because a page of twenty streams would otherwise be two
+  more collections per row for data the table never draws.
+- **Every unique violation was reported as a name conflict.** `SaveAsync` returns the
+  `DbUpdateException` for *any* 23505, and both `CreateAsync` and `UpdateAsync` answered it
+  with `AlreadyExists(Name)`. Three unique indexes exist here and only one is about the name —
+  the other two are the position columns of the two lists — so a bug in the list writer was
+  announced as "that stream name is already taken", which sent the search to the uniqueness
+  rule instead of to the write. Both now ask `IsNameIndexViolation`, which matches the
+  constraint name `IX_video_streams_category_id_name` inside the message; anything else is
+  **rethrown** rather than dressed up, so a future bug surfaces as the 500 it is instead of a
+  plausible 409.
+
+Both are worth remembering as one rule: a `DbUpdateException` carries *which* constraint
+refused, and mapping all of them to the one outcome the code knows how to explain turns every
+future bug into a confidently wrong answer.
+
+Verified against a running instance: create → `201` with an honest `Location` and both lists
+stored in the order sent; a reorder → `200` and the next read answers the new order; a shorter
+list → wholesale replacement with no orphans; an empty list → `400` with the stored list
+intact; a same-name `PATCH` → `200` (the exclusion that lets a rename keep its own name); a
+rename to a free name → `200`; `start` twice → `200` both times; `archiveDays` on a
+non-Permanent kind → `400` naming it; a half guide → `400` naming both fields; `delete` →
+`200`, `delete` again → `404`.
 
 ## Conventions
 

@@ -30,6 +30,8 @@ import UserGroupsPage from '../src/pages/UserGroupsPage'
 import UserGroupFormPage from '../src/pages/UserGroupFormPage'
 import AdminSessionsPage from '../src/pages/AdminSessionsPage'
 import ContentCategoriesPage from '../src/pages/ContentCategoriesPage'
+import VideoStreamsPage from '../src/pages/VideoStreamsPage'
+import VideoStreamFormPage from '../src/pages/VideoStreamFormPage'
 import LastSeenCell from '../src/components/LastSeenCell'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
@@ -1094,6 +1096,238 @@ async function main() {
       : `one opened something else: ${categoryModules.map((m) => m?.default?.name ?? 'nothing').join(', ')}`,
   )
 
+  // --- The video streams pages -----------------------------------------------
+  //
+  // The first content section whose `add` and `manage` entries open something real, and
+  // the first table here that is neither the accounts' nor the groups'. The facts below
+  // are the ones all three build checks are satisfied by while broken:
+  //
+  // - the heading is the page's own title (`Video streams`) rather than the menu item's
+  //   name, which is the verb `Manage` - a card titled "Manage" over a table would name
+  //   neither the page nor its subject;
+  // - the toolbar offers the search and all three filters, and the auto-refresh is an
+  //   **icon-only** button: the row beside the card title is already the widest toolbar in
+  //   the application, and a Russian `Продолжить автообновление` in it pushed the table
+  //   sideways for a control one glyph wide. Its whole sentence lives in the aria-label
+  //   instead, which is what a keyboard or a screen reader reads - so the assertion is that
+  //   the label is *absent as text* and present as the accessible name;
+  // - all eight columns keep their own width *in order*, summing to the same 1230 the
+  //   other two tables hold beside the sidebar;
+  // - every column carries a keyboard-reachable resize handle, and exactly three headers
+  //   sort - `type` and `sortOrder` are sort fields the endpoint honours but this table
+  //   draws no column for, and the rest are never fields it orders by.
+  const streamsHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/video-streams']}>
+      {withQuery(
+        <AntApp>
+          <VideoStreamsPage sectionKey="nav.items.videoStreamsManage" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the streams table draws its own heading, its toolbar and its table before any rows arrive',
+    streamsHtml.includes('>Video streams<') &&
+      streamsHtml.includes('ant-table') &&
+      !streamsHtml.includes('nav.items.videoStreamsManage'),
+    `rendered ${streamsHtml.length} bytes with the list still being fetched`,
+  )
+
+  check(
+    'the streams toolbar offers the search, all three filters, the width reset and the way to add',
+    streamsHtml.includes('Search by name') &&
+      streamsHtml.includes('Any category') &&
+      streamsHtml.includes('Any status') &&
+      streamsHtml.includes('Any type') &&
+      streamsHtml.includes('Reset widths') &&
+      streamsHtml.includes('Add stream'),
+    streamsHtml.includes('Add stream') ? `rendered ${streamsHtml.length} bytes` : 'the add button went missing',
+  )
+
+  // The auto-refresh, as an icon carrying its sentence rather than a word in the toolbar.
+  // Both halves matter: the state is still readable (through the accessible name, which
+  // names the action *and* the interval), and the row is one glyph narrower for it. A
+  // button that put the label back would push the table sideways again in Russian.
+  //
+  // Matched on the *start* of the name and on the interval rather than on the whole
+  // sentence: the sentence is copy and will be reworded, while the two facts being pinned
+  // are that a name exists at all and that it still says which state it acts on. The last
+  // condition is the one that catches the regression this check is written for - the label
+  // reappearing as *text*, which is what `>Pause auto-refresh<` looks like in the markup
+  // once antd has wrapped a button's children in their own span.
+  const refreshNameAt = streamsHtml.indexOf('aria-label="Pause auto-refresh')
+  const refreshButtonAt = streamsHtml.lastIndexOf('<button', refreshNameAt)
+  const refreshButtonEnd = streamsHtml.indexOf('</button>', refreshNameAt)
+  const refreshButtonTag = streamsHtml.slice(refreshButtonAt, refreshButtonEnd)
+  check(
+    'the auto-refresh is an icon whose accessible name carries the state and the interval',
+    refreshNameAt !== -1 &&
+      refreshNameAt > refreshButtonAt &&
+      streamsHtml.includes('30 seconds') &&
+      !streamsHtml.includes('>Pause auto-refresh<'),
+    refreshNameAt === -1
+      ? 'THE AUTO-REFRESH BUTTON HAS NO ACCESSIBLE NAME'
+      : `button: ${streamsHtml.slice(refreshButtonAt, refreshButtonAt + 160)} (${refreshButtonTag.length} bytes to its close)`,
+  )
+
+  const streamsCols = [...streamsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const streamsWidths = streamsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const streamsTotal = streamsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  // Eight columns and no selection column in front of them - this table has no bulk
+  // actions - so the eight alone are the 1230 the accounts and the groups tables reach
+  // only with their checkbox. `name` is 260 rather than the 170 beside it because it is the
+  // one column nothing truncates a second time; `icon` is 70 because a logo is drawn at a
+  // fixed 28px and a column sized by its widest image changes width when a logo is replaced.
+  check(
+    'the streams table is fixed-layout with its eight deliberate widths, in order',
+    /table-layout:\s*fixed/.test(streamsHtml) &&
+      streamsWidths.join(',') === '100,70,260,170,220,110,90,210' &&
+      streamsTotal === 1230,
+    `${streamsCols.length} columns: [${streamsWidths.join(', ')}] = ${streamsTotal}px`,
+  )
+
+  const streamsHandles = [...streamsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  check(
+    'every streams column carries a keyboard-reachable resize handle, named for resizing',
+    streamsHandles.length === 8 &&
+      streamsHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('tabindex="0"') &&
+          handle.includes('aria-label="Resize the '),
+      ),
+    `${streamsHandles.length} handles: ${
+      streamsHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'
+    }`,
+  )
+
+  const streamsHeaders = [...streamsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'a sortable streams header keeps its own access, and exactly three of the eight sort',
+    streamsHeaders.length === 8 &&
+      streamsHeaders.filter((th) => th.includes('aria-description="sortable"')).length === 3 &&
+      streamsHeaders.some((th) => th.includes('aria-label="Name"') && th.includes('tabindex="0"')),
+    `${streamsHeaders.length} header cells, ${
+      streamsHeaders.filter((th) => th.includes('aria-description="sortable"')).length
+    } sortable`,
+  )
+
+  // The add form, which draws at once under its own title - and the shared ordered-list
+  // editor with it, which is the control the whole payload half of this form rests on. A
+  // form that rendered without it would still compile: `SourceListEditor` is a component
+  // behind a conditional on the chosen kind, and the default kind is the one that draws it.
+  const streamFormHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/video-streams/add']}>
+      {withQuery(
+        <AntApp>
+          <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the stream add form draws its fields at once, with the ordered list and without an id row',
+    streamFormHtml.includes('Add stream') &&
+      streamFormHtml.includes('Create') &&
+      streamFormHtml.includes('What it plays') &&
+      streamFormHtml.includes('Sources, in relay order') &&
+      streamFormHtml.includes('Add a row') &&
+      !streamFormHtml.includes('Edit stream') &&
+      // No id row: the identifier does not exist until the row does, and the copy
+      // affordance is the one thing on this form that would give it away.
+      !streamFormHtml.includes('anticon-copy'),
+    `rendered ${streamFormHtml.length} bytes of the add form`,
+  )
+
+  // The edit address, which waits. `useParams` needs a real route match, so it is rendered
+  // inside `Routes` - the same reason the two forms above needed their own.
+  const streamEditHtml = renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/admin/video-streams/11111111-1111-1111-1111-111111111111']}>
+      {withQuery(
+        <AntApp>
+          <Routes>
+            <Route
+              path="/admin/video-streams/:id"
+              element={<VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />}
+            />
+          </Routes>
+        </AntApp>,
+      )}
+    </MemoryRouter>,
+  )
+  check(
+    'the stream edit address waits for the stream instead of drawing fields against nothing',
+    streamEditHtml.includes('Edit stream') &&
+      streamEditHtml.includes('ant-spin') &&
+      !streamEditHtml.includes('Create'),
+    `rendered ${streamEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // Both menu items have to open the real pages, and the other three sections must still
+  // open the placeholder - the rail deliberately offers real pages for this section alone,
+  // and a `managePage` added to `series` by accident would be a table of video streams at
+  // a series address, which every check above would stay green about.
+  const [streamsAddModule, streamsManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'videoStreamsAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'videoStreamsManage')?.page?.(),
+  ])
+  check(
+    'the admin menu points its two stream items at the real pages rather than the placeholder',
+    streamsAddModule?.default === VideoStreamFormPage &&
+      streamsManageModule?.default === VideoStreamsPage,
+    `videoStreamsAdd opens ${streamsAddModule?.default?.name ?? 'nothing'}, videoStreamsManage opens ${
+      streamsManageModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
+  // The other three sections keep their placeholders for `add` and `manage`: only
+  // `categories` is a real page for all four. Asserted because a loader added to any of
+  // them would render a video-streams table at an audio-streams address, and nothing else
+  // in this file would notice.
+  const otherSectionsStillPlaceholders = [
+    'audioStreams',
+    'videoOnDemand',
+    'series',
+  ].every((sectionKey) => {
+    const add = flatItems('Admin').find((item) => item.key === `${sectionKey}Add`)
+    const manage = flatItems('Admin').find((item) => item.key === `${sectionKey}Manage`)
+    return add?.page === undefined && manage?.page === undefined
+  })
+  check(
+    'the other three content sections still open the placeholder for add and manage',
+    otherSectionsStillPlaceholders,
+    otherSectionsStillPlaceholders
+      ? 'audio, video-on-demand and series offer no add or manage page'
+      : 'A SECTION OFFERS A REAL ADD OR MANAGE PAGE IT WAS NOT BUILT FOR',
+  )
+
+  // The failure this whole script exists for, reached from the other end: a key missing from
+  // **both** locale files is invisible to `tsc`, because `en.ts` is what `Translation` is
+  // built from - a key absent from it is absent from the type, so `ru.ts` being typed
+  // `: Translation` cannot complain either. `t()` keys are deliberately untyped, so nothing
+  // else checks them; lint does not, the build does not. `videoStreamsForm.namePlaceholder`
+  // shipped exactly that way and the form drew the raw key in its input.
+  //
+  // `scripts/i18n-audit.mjs` walks every literal key in the source and is the thorough
+  // answer; this is the same fact asserted where it actually hurts, over the one render
+  // that carries the most of them. A raw key is unmistakable in markup - it arrives as the
+  // untranslated text - so the check is a substring rather than a pattern. The second
+  // condition is deliberately about *a* placeholder rather than this form's wording: the
+  // copy is free to change, and a check that pinned it would fail on an edit nobody meant.
+  const namePlaceholder = /<input[^>]*placeholder="([^"]*)"[^>]*>/
+    .exec(streamFormHtml)?.[1]
+  check(
+    'the stream add form draws translated text rather than raw locale keys',
+    !streamFormHtml.includes('videoStreamsForm.') &&
+      !streamFormHtml.includes('videoStreams.') &&
+      Boolean(namePlaceholder),
+    namePlaceholder
+      ? `the name field asks for "${namePlaceholder}" in ${streamFormHtml.length} bytes`
+      : 'NO PLACEHOLDER ON THE NAME FIELD - a key is being drawn instead',
+  )
+
   // --- The administrator's visit history --------------------------------------
   //
   // The account's own history answered over every account the operator may read, so it gets
@@ -1402,15 +1636,16 @@ async function main() {
     )
   }
 
-  // The three addresses the admin area answers without a menu item beside them. The loops
+  // The four addresses the admin area answers without a menu item beside them. The loops
   // above deliberately exclude them, which leaves them unchecked by anything: a typo in
   // `user-groups/add` would break the button that navigates to it and every other check in
-  // this file would stay green. So they are resolved here the same way, with the catch-all
-  // named as the one answer that must not come back.
+  // this file would stay green. (`video-streams/add` is a *menu* item - `videoStreamsAdd`
+  // - so it is covered by those loops; only its sibling behind a row is not.)
   const EXTRA_ADMIN_ADDRESSES = [
     `/admin/users/11111111-1111-1111-1111-111111111111`,
     `/admin/user-groups/add`,
     `/admin/user-groups/11111111-1111-1111-1111-111111111111`,
+    `/admin/video-streams/11111111-1111-1111-1111-111111111111`,
   ]
   const extraLandedOnNotFound = EXTRA_ADMIN_ADDRESSES.filter((address) => {
     const matched = matchRoutes(routeTable, address)?.[0]?.route

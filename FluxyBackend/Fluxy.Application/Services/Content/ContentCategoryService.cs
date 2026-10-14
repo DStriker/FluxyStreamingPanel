@@ -20,10 +20,12 @@ namespace Fluxy.Application.Services.Content
     /// at all.
     /// </para>
     /// <para>
-    /// What is deliberately <i>not</i> here: an "in use" refusal on delete. No table of
-    /// content items exists yet, so the check would guard an empty set; it arrives with the
-    /// content tables as a foreign key with <c>ON DELETE RESTRICT</c> plus a refusal that
-    /// names the count, not before them.
+    /// Deleting a category that is still filed under is refused with a count rather than
+    /// allowed to strand the rows that name it. The check lives here rather than in the
+    /// controller so that no second endpoint reaching <c>DeleteAsync</c> can forget it, and it
+    /// runs before the write because the foreign key would refuse the write anyway - the
+    /// difference is that the answer is a code and a number rather than a provider's
+    /// exception.
     /// </para>
     /// <para>
     /// Nothing here knows about HTTP. Which <see cref="ContentCategoryAction"/> becomes a 201
@@ -209,6 +211,24 @@ namespace Fluxy.Application.Services.Content
             if (category is null)
             {
                 return NotFound(id);
+            }
+
+            // Counted before the write rather than by catching the foreign key's refusal,
+            // because the two answers are worth very different things to the operator: one is
+            // "this many streams still point at it", the other is a provider's exception
+            // wearing a 500. The key below would refuse the row anyway; this is what turns
+            // that refusal into a sentence.
+            var inUse = await _context.VideoStreams
+                .CountAsync(entry => entry.CategoryId == id, cancellationToken);
+
+            if (inUse > 0)
+            {
+                return new ContentCategoryOutcome
+                {
+                    Action = ContentCategoryAction.InUse,
+                    CategoryId = id,
+                    UsedCount = inUse
+                };
             }
 
             _context.ContentCategories.Remove(category);

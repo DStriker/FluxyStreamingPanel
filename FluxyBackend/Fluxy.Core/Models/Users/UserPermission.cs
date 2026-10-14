@@ -24,6 +24,14 @@ namespace Fluxy.Core.Models.Users
     /// global keys could not express at all.
     /// </para>
     /// <para>
+    /// <b>The stream permissions are not split that way, because a stream is not an account.</b>
+    /// There is one <see cref="ViewStreams"/> and one <see cref="EditStreams"/> and nothing
+    /// narrower, for the same reason the content categories carry no permission at all: there
+    /// is one installation-wide list of streams and one screen that draws it, so there is no
+    /// second axis to split along. They are a pair rather than a single key so that a group
+    /// which may watch the streams and a group which may run them stay two grants.
+    /// </para>
+    /// <para>
     /// The numeric values are powers of two and are stored in <c>user_group_permissions</c>,
     /// so they are part of the schema: adding a member means adding a value nobody has used
     /// yet, and renumbering the existing ones would silently reinterpret rows already
@@ -79,6 +87,18 @@ namespace Fluxy.Core.Models.Users
         /// May change the accounts of a group of administrators - the highest grant in the
         /// system, and deliberately not implied by any of the others.
         /// </summary>
-        EditAdmins = 512
+        EditAdmins = 512,
+
+        /// <summary>
+        /// May read the configured streams: the streams table and one stream in full.
+        /// </summary>
+        ViewStreams = 1024,
+
+        /// <summary>
+        /// May change the configured streams: create, edit, start, stop and delete them.
+        /// Separate from <see cref="ViewStreams"/> so that a group which may watch the streams
+        /// and a group which may run them are two different grants rather than one.
+        /// </summary>
+        EditStreams = 2048
     }
 }

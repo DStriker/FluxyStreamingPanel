@@ -41,6 +41,7 @@ import {
   updateUserGroup,
 } from '../src/lib/api'
 import { getCsrfToken } from '../src/lib/csrf'
+import { ALL_PERMISSIONS } from '../src/lib/permissions'
 
 const BASE = process.env.FLUXY_API ?? 'http://localhost:5159'
 config.API_BASE_URL = BASE
@@ -197,10 +198,16 @@ record(
   groups.filter((g) => g.isBase).length === 3 && !!baseAdmins && !!baseClients,
 )
 
+// The count is not a number this file repeats: it is `ALL_PERMISSIONS.length`, the size of
+// the frontend's own copy of the catalog. Writing `10` here instead is how the check drifted
+// to `8` when the streams pair arrived - the probe asserted a stale fact about a table it
+// does not own, and the only way to notice was to read the backend's catalog by hand. What
+// is actually being asked is whether the *seeder* reconciled the base group to whatever the
+// catalog says today, so the question is asked against the catalog.
 record(
   'the base Admin group grants every permission its role owns',
-  `${baseAdmins?.name} grants ${baseAdmins?.permissionsCount}`,
-  baseAdmins?.permissionsCount === 8,
+  `${baseAdmins?.name} grants ${baseAdmins?.permissionsCount} of ${ALL_PERMISSIONS.length}`,
+  baseAdmins?.permissionsCount === ALL_PERMISSIONS.length,
 )
 
 record(

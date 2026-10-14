@@ -32,6 +32,14 @@ namespace Fluxy.Core.Models.Content
 
         /// <summary>One of the values did not pass validation; which one is in the errors.</summary>
         Invalid,
+
+        /// <summary>
+        /// The category is filed under by at least one content row, so deleting it would
+        /// strand them. The database would refuse it anyway - the key is
+        /// <c>ON DELETE RESTRICT</c> - but the service checks first so that the answer is a
+        /// code and a count rather than a provider's exception.
+        /// </summary>
+        InUse,
     }
 
     /// <summary>
@@ -57,5 +65,17 @@ namespace Fluxy.Core.Models.Content
 
         /// <summary>Rejected fields, when the input was the problem.</summary>
         public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+
+        /// <summary>
+        /// How many rows still file under the category, when <see cref="Action"/> is
+        /// <see cref="ContentCategoryAction.InUse"/>. Zero for every other outcome.
+        /// </summary>
+        /// <remarks>
+        /// A count rather than a list, for the same reason the accounts page reports a
+        /// <c>total</c> and not the whole table: the sentence an operator needs is "this many
+        /// streams still point at it", and the screens that could do something about it are
+        /// the ones that list those streams.
+        /// </remarks>
+        public int UsedCount { get; init; }
     }
 }

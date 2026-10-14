@@ -15,11 +15,12 @@ npm run probe         # exercise src/lib/* against a running backend (needs the 
 npm run probe:session # sign in / refresh / sign out against a running backend (needs FLUXY_ADMIN_PASSWORD)
 npm run probe:groups # exercise the user-group API and its permission gate (needs FLUXY_ADMIN_PASSWORD)
 npm run probe:render  # render every page and assert on the HTML (no backend needed)
+npm run probe:i18n   # every literal t('...') key in src/, checked against both bundles
 ```
 
 `npm run dev` opens a browser by default; for automation/debugging use `npm run dev -- --no-open` (matches the `dev (debug)` VS Code task, which the `launch.json` Chrome/Edge configs depend on).
 
-Verify changes with `npm run typecheck`, `npm run lint` and `npm run build`, then `npm run probe:render` (see "Verifying without a test framework" — typecheck, lint and build all pass on markup that renders nothing).
+Verify changes with `npm run typecheck`, `npm run lint` and `npm run build`, then `npm run probe:render` and `npm run probe:i18n` (see "Verifying without a test framework" — typecheck, lint and build all pass on markup that renders nothing, and on a locale key that exists nowhere).
 
 ## Structure
 
@@ -182,6 +183,38 @@ What it asserts, all against a running backend:
 - **Every code it asserted by name is translated in both locale bundles**, by importing `en.ts` and `ru.ts` and looking each one up — a code that reaches the untranslated fallback is an English sentence on a Russian page.
 
 **It cleans up both groups it creates** (including the wrong-role fixture, whose identifier is kept for that purpose). That is a correctness rule and not tidiness: a leftover `Probe client` would make the *next* run's "a second group with the same name is refused" check pass for the wrong reason, having caused its own 409.
+
+### `npm run probe:i18n` — every literal `t()` key, in both bundles
+
+`scripts/i18n-audit.mjs` walks every `.ts`/`.tsx` under `src/`, collects each literal
+`t('a.b.c')` key, and resolves it against `en.ts` **and** `ru.ts`.
+
+It exists because the `Translation` type cannot see the bug it was written for. `ru.ts`
+declares itself `: Translation` where `Translation = typeof en`, so a key present in one file
+and missing from the other is `TS2353` — but a key missing from **both** is absent from the
+type itself, and a type cannot report what it does not contain. `t()` keys are deliberately
+untyped on the call side (see Gotchas), so `tsc` has nothing to check there either; `lint`
+does not, the build does not, and `probe:render` only walks the keys the shell renders.
+`videoStreamsForm.namePlaceholder` shipped exactly that way and the form drew the raw key
+into its input — in both languages, so it was invisible on the machine it was written on.
+
+A key missing from both bundles is therefore invisible to **every** checker in this repo
+except this one, which is the reason it is a fourth probe rather than a note.
+
+No backend, no render, no credentials. It imports the two bundles directly (esbuild compiles
+the `.ts`) and reads `src/` from disk, so it is the cheapest of the four.
+
+Two limits, both deliberate:
+
+- **Only literal keys are collected.** `t(\`videoStreams.statuses.${value}\`)` is a real call
+  whose key is built at runtime; the audit skips it rather than guessing an enum's members.
+  Those keys are covered by `probe:render`, which renders the pages that build them.
+- **The locale files themselves are skipped as sources.** They call no `t()`, and reading them
+  would only re-report their own keys.
+
+`probe:render` also asserts the *shape* of the failure over one render — the stream add form
+must draw translated text rather than `videoStreamsForm.…` — so a key dropped from both
+bundles still fails the probe most likely to be run.
 
 ### `npm run probe:render` — no backend needed
 

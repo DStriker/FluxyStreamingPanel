@@ -9,6 +9,8 @@ import {
   getUserGroup,
   getUserGroups,
   getUsers,
+  getVideoStream,
+  getVideoStreams,
   ALL_GROUPS_PAGE_SIZE,
   ALL_USERS_PAGE_SIZE,
 } from '../lib/api'
@@ -20,8 +22,10 @@ import type {
   SessionSortOrder,
   UserGroupSortField,
   UserGroupSortOrder,
+  VideoStreamSortField,
+  VideoStreamSortOrder,
 } from '../lib/api'
-import type { Role, UserStatus } from '../types'
+import type { Role, UserStatus, VideoStreamStatus, VideoStreamType } from '../types'
 
 /**
  * The queries the application's pages run, one hook per endpoint, with the query keys in
@@ -160,4 +164,32 @@ export const useContentCategories = (type: ContentTypeParam) =>
   useQuery({
     queryKey: ['contentCategories', type],
     queryFn: ({ signal }) => getContentCategories({ type, signal }),
+  })
+
+/** One page of the streams table, keyed by everything the server filters, sorts and pages by. */
+export const useVideoStreams = (params: {
+  page: number
+  pageSize: number
+  search?: string
+  categoryId?: string | null
+  status?: VideoStreamStatus | null
+  type?: VideoStreamType | null
+  sortBy: VideoStreamSortField
+  sortOrder: VideoStreamSortOrder
+}) =>
+  useQuery({
+    queryKey: ['videoStreams', params],
+    queryFn: ({ signal }) => getVideoStreams({ ...params, signal }),
+  })
+
+/**
+ * One stream in full, for the edit form. Not fetched on the add address, whose `enabled`
+ * is false - a create has nothing to load, and asking would draw a spinner over a form
+ * that is ready.
+ */
+export const useVideoStreamDetail = (id: string | undefined) =>
+  useQuery({
+    queryKey: ['videoStreams', 'detail', id],
+    queryFn: ({ signal }) => getVideoStream(id as string, signal),
+    enabled: id !== undefined,
   })

@@ -13,6 +13,7 @@
     "probe:session": "esbuild --bundle scripts/probe-session.mjs --format=esm --platform=node --jsx=automatic --outfile=node_modules/.cache/probe-session.mjs --log-level=error && node scripts/run-probe.mjs probe-session.mjs",
     "probe:groups": "esbuild --bundle scripts/probe-groups.mjs --format=esm --platform=node --jsx=automatic --outfile=node_modules/.cache/probe-groups.mjs --log-level=error && node scripts/run-probe.mjs probe-groups.mjs",
     "probe:render": "esbuild --bundle scripts/probe-render.jsx --format=cjs --platform=node --jsx=automatic --outfile=node_modules/.cache/probe-render.cjs --log-level=error && node node_modules/.cache/probe-render.cjs",
+    "probe:i18n": "esbuild --bundle scripts/i18n-audit.mjs --format=esm --platform=node --outfile=node_modules/.cache/i18n-audit.mjs --log-level=error && node node_modules/.cache/i18n-audit.mjs",
     "lint": "eslint ."
   },
   "dependencies": {

@@ -269,19 +269,26 @@ namespace Fluxy.API.Controllers
         /// </summary>
         /// <param name="id">Identifier of the category to delete.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>200 <c>content_category_deleted</c>, or 404 when there is no such category.</returns>
+        /// <returns>
+        /// 200 <c>content_category_deleted</c>, 404 when there is no such category, 409
+        /// <c>content_category_in_use</c> naming how many streams are still filed under it.
+        /// </returns>
         /// <remarks>
         /// A <c>DELETE</c> that answers 200 rather than 204, because it has something to say:
         /// the difference between a category that was deleted and one that was not there to
         /// delete is the whole answer, and an empty body cannot say it.
         ///
-        /// No "in use" refusal exists yet, on purpose: no table of content items exists to be
-        /// in it. It arrives with the content tables - a foreign key with
-        /// <c>ON DELETE RESTRICT</c> and a refusal that names the count - not before them.
+        /// The "in use" refusal counts streams rather than every kind of content, because a
+        /// stream is what this installation can file under a category today; the check grows
+        /// a second count when a second kind can. It is a refusal and not a cascade for the
+        /// reason the accounts' group is one: an operator is told which category is standing
+        /// in the way, instead of a category vanishing along with a screenful of rows nobody
+        /// asked about.
         /// </remarks>
         [HttpDelete("{id:guid}")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> DeleteCategory(
             [FromRoute] Guid id,
             CancellationToken cancellationToken)

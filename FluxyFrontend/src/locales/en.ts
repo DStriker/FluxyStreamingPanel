@@ -433,7 +433,7 @@ const en = {
         'Each account and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
     },
   },
-  // The eight permission keys, exactly as the catalog spells them. These strings are the
+  // The ten permission keys, exactly as the catalog spells them. These strings are the
   // labels of the checkboxes on the group form and the values `src/lib/permissions.ts`
   // mirrors from the backend - one name for one thing, spelled the same way in both, so a
   // permission added on the server becomes a box an operator can tick without a translation
@@ -447,6 +447,11 @@ const en = {
     editAdmins: 'Edit administrators',
     viewUserGroups: 'View groups',
     editUserGroups: 'Edit groups',
+    // The streams pair is deliberately not a role pair like the six above: `view*Clients`,
+    // `viewResellers` and friends each name the role they open, and these two name the
+    // domain instead - they belong to every kind of stream, not to one audience of them.
+    viewStreams: 'View video streams',
+    editStreams: 'Edit video streams',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -699,6 +704,180 @@ const en = {
     deleteConfirmBody: 'The category "{{name}}" will be removed. This cannot be undone.',
     deleteConfirmOk: 'Delete',
   },
+  // The admin's streams table: the first page behind the content rail, and the first of
+  // the four content sections whose `add` and `manage` entries actually open something.
+  // Everything here is copy the server does not send.
+  videoStreams: {
+    // The list page's heading. Deliberately *not* `nav.items.videoStreamsManage`, which is
+    // the verb `Manage`/`Управление` - a card titled "Manage" over a table would name
+    // neither the page nor its subject. The pair here is `Video streams` beside `Manage`:
+    // one naming what is looked at, one naming how the visitor got there.
+    listTitle: 'Video streams',
+    // The form's heading, and the label of the add button above the table. One component
+    // serves both addresses, so the title is chosen here rather than read from
+    // `sectionKey`: the same page is this at `video-streams/add` and the edit title at
+    // `video-streams/{id}`, and a key naming only the first would title the second a lie.
+    addTitle: 'Add stream',
+    editTitle: 'Edit stream',
+    create: 'Create',
+    backToList: 'Back to the list',
+    // The nine columns of the table. `type` has no column of its own - it is the header of
+    // the filter rather than a field of a row - but it is named here because the sort field
+    // shares its name and the filter's own accessible label comes from this block too.
+    columns: {
+      id: 'ID',
+      icon: 'Icon',
+      name: 'Name',
+      category: 'Category',
+      activeSource: 'Active source',
+      status: 'Status',
+      epg: 'EPG',
+      actions: 'Actions',
+      type: 'Type',
+    },
+    // Two descriptions, not a ramp: `VideoStreamStatus` is not an ordered scale, so the
+    // words say what the state is rather than how much of it there is.
+    statuses: {
+      Stopped: 'Stopped',
+      Running: 'Running',
+    },
+    // The six kinds, keyed by the enum member the way every other enum in this file is.
+    types: {
+      Permanent: 'Permanent',
+      OnDemand: 'On demand',
+      Redirect: 'Redirect',
+      OnlineSeries: 'Online series',
+      VodPlaylist: 'Video playlist',
+      FilePlaylist: 'File playlist',
+    },
+    // The EPG column answers yes or no about two fields; these are the two words it says.
+    epgOn: 'On',
+    epgOff: 'Off',
+    actions: {
+      start: 'Start',
+      stop: 'Stop',
+      edit: 'Edit',
+      delete: 'Delete',
+      // Why restart and play are greyed out. Both are operations on the relaying process,
+      // and that process does not exist yet - so the reason is stated before the click,
+      // which is the whole point of drawing the button disabled rather than live and
+      // letting a 404 explain it afterwards.
+      notImplemented: 'Not implemented yet.',
+    },
+    searchLabel: 'Search by name',
+    searchPlaceholder: 'Search by name',
+    filterAnyCategory: 'Any category',
+    filterAnyStatus: 'Any status',
+    filterAnyType: 'Any type',
+    resetWidths: 'Reset widths',
+    // The auto-refresh, which is on by default and has a visible pause beside the search.
+    // A page that silently re-reads under a visitor's cursor moves the row they were about
+    // to press, and a pause they cannot find is not a pause.
+    pauseRefresh: 'Pause auto-refresh',
+    resumeRefresh: 'Resume auto-refresh',
+    autoRefreshHint: 're-reads the table every {{seconds}} seconds',
+    // The resize handle's own name, the only text it carries for a keyboard or a screen
+    // reader: the column's own label lives in `columns`, and the handle says what it is
+    // resizing rather than what the column is called.
+    resizeColumn: 'Resize the {{column}} column',
+    range: '{{from}}–{{to}} of {{total}}',
+    empty: 'No streams yet.',
+    noMatches: 'No streams match these filters.',
+    // The one action on the table that asks first. The body quotes the stream's own name,
+    // because that is what the visitor is reading when they press it; what happens to the
+    // *category* is the category's dialog to make - the server refuses to delete one a
+    // stream still files under, and that is a question about the row's category.
+    deleteConfirmTitle: 'Delete this stream?',
+    deleteConfirmBody: 'The stream "{{name}}" will be removed with its sources and files. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form for one stream. Its own block rather than more keys under
+  // `videoStreams`, because the two are not the same copy: the table names what a row
+  // *is*, and the form names what an operator is being asked to *type*.
+  videoStreamsForm: {
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a stream name',
+    // What the field asks for before anything is typed. `maxLength` is the only other hint
+    // the name carries, and it appears once the visitor is already over the limit - so the
+    // shape of a good name is stated up front, in the field itself.
+    namePlaceholder: 'Morning news',
+    typeRequired: 'Choose the kind of stream',
+    categoryRequired: 'Choose a category',
+    // One sentence per kind, drawn under the type picker as the visitor changes it. This
+    // is the whole of what the picker decides - which payload the fields below collect -
+    // so it is stated at the moment the choice is made rather than by the fields quietly
+    // appearing and disappearing.
+    hints: {
+      Permanent: 'Relays from a list of addresses, all the time, and may keep an archive.',
+      OnDemand: 'Relays from a list of addresses, but only when a viewer asks for it.',
+      Redirect: 'Sends viewers on to another address rather than relaying a list.',
+      OnlineSeries: 'Plays one series you select, by its identifier.',
+      VodPlaylist: 'Plays one video-on-demand item, by its identifier.',
+      FilePlaylist: 'Plays a list of stored files, in order.',
+    },
+    // The five dividers. Each names the section it opens rather than a field inside it, so
+    // the visitor can find the group they came for without reading every label.
+    payloadDivider: 'What it plays',
+    scheduleDivider: 'Schedule and guide',
+    identityDivider: 'Identity',
+    restreamDivider: 'Restreaming',
+    // The ordered list of addresses (or of paths), which is one control used twice.
+    sourcesLabel: 'Sources, in relay order',
+    sourcesPlaceholder: 'https://example.com/stream.ts',
+    filesLabel: 'Files, in play order',
+    filesPlaceholder: '/media/news-1900.ts',
+    // The three buttons of one row, plus the one that adds a row underneath. Their names
+    // are the only text those buttons carry.
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    removeRow: 'Remove this row',
+    listAdd: 'Add a row',
+    // The whole-list rule: at least one row has to be filled in. It names the list rather
+    // than any one row, because no particular row is at fault - they are all blank.
+    listRequired: 'Add at least one entry.',
+    // The three identifier fields. Each label doubles as the name inside the "not a
+    // uuid" sentence, so a refusal under two inputs of the guide pair says which fact each
+    // one is missing.
+    seriesId: 'Series identifier',
+    vodId: 'Video-on-demand identifier',
+    epgSourceId: 'EPG source identifier',
+    idPlaceholder: '00000000-0000-0000-0000-000000000000',
+    idHint: 'Leave empty if this stream has none.',
+    idInvalid: '{{field}} must be an identifier.',
+    epgChannelKey: 'EPG channel key',
+    epgChannelKeyPlaceholder: 'channel.key',
+    // The guide is two facts or neither: a half-configured pair would be stored as "no
+    // guide", which tells the operator the form had not been saved. The same sentence
+    // lands under both inputs, because neither one alone is the mistake.
+    epgPair: 'Set both the source and the channel key, or neither.',
+    epgPairHint: 'A programme guide needs both of these. Leave both empty for none.',
+    delayLabel: 'Delay',
+    delayHint: 'How far behind live the relay runs. Zero means no deliberate delay.',
+    archiveLabel: 'Archive length (days)',
+    archiveHint: 'How many days of archive a permanent stream keeps. Zero keeps none.',
+    // Why the field is greyed out for the other five kinds, stated as the fact rather than
+    // as a refusal: it is drawn rather than hidden, so a visitor can see that the control
+    // exists and learn what kind of stream it belongs to.
+    archivePermanentOnly: 'Only a permanent stream keeps an archive.',
+    nonNegative: 'Enter zero or more.',
+    logoUrlLabel: 'Icon address',
+    urlPlaceholder: 'https://example.com/logo.png',
+    enigma2SidLabel: 'Enigma2 service id',
+    sidPlaceholder: '1:0:1:0:0:0:0:0:0:0',
+    userAgentLabel: 'User agent',
+    userAgentPlaceholder: 'Mozilla/5.0 ...',
+    proxyLabel: 'Proxy',
+    proxyPlaceholder: 'http://proxy.example:8080',
+    // Cookies and headers are free text with no length bound on either side: what they
+    // hold is a request line the relay copies verbatim, and a placeholder that invented a
+    // format would be teaching a shape the server never asked for.
+    cookiesLabel: 'Cookies',
+    cookiesPlaceholder: 'session=abc; token=def',
+    headersLabel: 'Extra headers',
+    headersPlaceholder: 'X-Forwarded-For: 1.2.3.4',
+    maxLength: 'Up to {{max}} characters.',
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -797,6 +976,22 @@ const en = {
       content_category_not_found: 'There is no category with that identifier.',
       content_category_already_exists:
         'That category name is already taken within this content type.',
+      // A category streams are still filed under. The server refuses with the count rather
+      // than deleting anything, because the foreign key is RESTRICT and the rows are not
+      // this dialog's to move - the sentence names what to do instead.
+      content_category_in_use: '{{count}} streams still file under this category. Move them first.',
+      // The stream resource: the same three shapes as the accounts, the groups and the
+      // categories above, plus the two state transitions. A start and a stop are answers
+      // about the row rather than about a process, and starting a stream that is already
+      // running is a success rather than a complaint - so a double click is not a failure.
+      video_stream_created: 'The stream has been created.',
+      video_stream_updated: 'The stream has been updated.',
+      video_stream_deleted: 'The stream has been deleted.',
+      video_stream_started: 'The stream has been started.',
+      video_stream_stopped: 'The stream has been stopped.',
+      video_stream_not_found: 'There is no stream with that identifier.',
+      video_stream_already_exists:
+        'That stream name is already taken within this category.',
       // A bulk run: one code for the run as a whole, because the run as a whole *was*
       // carried out - every identifier it named came back with a verdict, and those verdicts
       // are in `items` with the codes above rather than folded into one status. The counts

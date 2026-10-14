@@ -76,19 +76,43 @@ interface NavGroup {
  * drifting: a fifth kind is one entry here plus its labels in the locale files, not a
  * hand-written fourth of a rail.
  *
- * Only `categories` is a real page today. `add` and `manage` carry no `page`, so the
- * router renders `SectionPage` for them - the placeholder that says the section is still
- * under construction, which is the honest answer for entries this pass deliberately did
- * not build. Their menu keys exist so that filling them in later is a loader away, not a
- * re-reading of the rail.
+ * `categories` is a real page for all four. `add` and `manage` are real pages for
+ * **`videoStreams` alone** - this pass built the streams table and its form - and carry no
+ * `page` for the other three, so the router renders `SectionPage` for them: the placeholder
+ * that says the section is still under construction, which is the honest answer for entries
+ * this pass deliberately did not build. Their menu keys exist either way, so filling them in
+ * later is one optional loader away rather than a re-reading of the rail.
+ *
+ * The optional loaders are typed by an interface rather than inferred from `as const`,
+ * because an array of objects where only one carries a field is a *union* of two shapes and
+ * `section.addPage` would then not exist on three of its four members. Stating the optionality
+ * once here is what lets one table hold a real page and three placeholders at the same time.
  */
-const CONTENT_SECTIONS = [
+interface ContentSection {
+  /** Item-key prefix: `videoStreams` makes `videoStreamsAdd`, `videoStreamsManage`, … */
+  key: string
+  /** Address under the area's prefix: `video-streams` becomes `/admin/video-streams`. */
+  path: string
+  /** Locale key of the category's own label. */
+  labelKey: string
+  icon: NavIcon
+  /** The categories page, the one entry all four sections have in common. */
+  categoriesPage: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /** The add form, present only where one has been built. */
+  addPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /** The table, present only where one has been built. */
+  managePage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+}
+
+const CONTENT_SECTIONS: ContentSection[] = [
   {
     key: 'videoStreams',
     path: 'video-streams',
     labelKey: 'nav.groups.videoStreams',
     icon: VideoCameraOutlined,
     categoriesPage: () => import('../pages/ContentCategoriesPage'),
+    addPage: () => import('../pages/VideoStreamFormPage'),
+    managePage: () => import('../pages/VideoStreamsPage'),
   },
   {
     key: 'audioStreams',
@@ -111,7 +135,7 @@ const CONTENT_SECTIONS = [
     icon: UnorderedListOutlined,
     categoriesPage: () => import('../pages/ContentCategoriesPage'),
   },
-] as const
+]
 
 const contentGroups = (): NavGroup[] =>
   CONTENT_SECTIONS.map((section) => ({
@@ -124,12 +148,14 @@ const contentGroups = (): NavGroup[] =>
         path: `${section.path}/add`,
         labelKey: `nav.items.${section.key}Add`,
         icon: PlusOutlined,
+        page: section.addPage,
       },
       {
         key: `${section.key}Manage`,
         path: section.path,
         labelKey: `nav.items.${section.key}Manage`,
         icon: TableOutlined,
+        page: section.managePage,
       },
       {
         key: `${section.key}Categories`,

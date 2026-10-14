@@ -64,6 +64,12 @@ namespace Fluxy.API.Configuration
         /// <summary>Policy that accepts an operator who may change the groups.</summary>
         public const string EditUserGroupsPolicy = "Permission.EditUserGroups";
 
+        /// <summary>Policy that accepts an operator who may read the configured streams.</summary>
+        public const string ViewStreamsPolicy = "Permission.ViewStreams";
+
+        /// <summary>Policy that accepts an operator who may change the configured streams.</summary>
+        public const string EditStreamsPolicy = "Permission.EditStreams";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -155,7 +161,24 @@ namespace Fluxy.API.Configuration
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUserGroups)));
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUserGroups)))
+
+                // The two stream policies are single-key rather than "any of", the way the
+                // group ones are: there is one list of streams and one screen that draws it,
+                // so unlike the accounts there is no second axis to be coarse about. The role
+                // requirement is still on top of the permission for the same reason it is on
+                // the group policies - a permission only means anything once the role gate
+                // ahead of it has already let the caller into the admin area.
+                .AddPolicy(ViewStreamsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewStreams)))
+                .AddPolicy(EditStreamsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditStreams)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

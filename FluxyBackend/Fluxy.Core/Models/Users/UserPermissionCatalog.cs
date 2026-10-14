@@ -33,8 +33,8 @@ namespace Fluxy.Core.Models.Users
         /// <summary>
         /// The whole catalog, in a stable order so a form, a log line and a migration can
         /// agree on how the permissions are listed. Grouped by subject - the accounts, then
-        /// the groups - and inside each subject as a read beside its write, which is the shape
-        /// the first two permissions had.
+        /// the groups, then the streams - and inside each subject as a read beside its write,
+        /// which is the shape the first two permissions had.
         /// </summary>
         public static IReadOnlyList<UserPermission> All { get; } =
         [
@@ -45,7 +45,9 @@ namespace Fluxy.Core.Models.Users
             UserPermission.ViewAdmins,
             UserPermission.EditAdmins,
             UserPermission.ViewUserGroups,
-            UserPermission.EditUserGroups
+            UserPermission.EditUserGroups,
+            UserPermission.ViewStreams,
+            UserPermission.EditStreams
         ];
 
         /// <summary>
@@ -85,7 +87,9 @@ namespace Fluxy.Core.Models.Users
                 [UserPermission.ViewAdmins] = UserRole.Admin,
                 [UserPermission.EditAdmins] = UserRole.Admin,
                 [UserPermission.ViewUserGroups] = UserRole.Admin,
-                [UserPermission.EditUserGroups] = UserRole.Admin
+                [UserPermission.EditUserGroups] = UserRole.Admin,
+                [UserPermission.ViewStreams] = UserRole.Admin,
+                [UserPermission.EditStreams] = UserRole.Admin
             };
 
         /// <summary>
