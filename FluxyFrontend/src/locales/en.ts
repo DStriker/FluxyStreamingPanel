@@ -30,6 +30,15 @@ const en = {
       'The page failed to render. Reloading usually brings it back — nothing that already reached the server was affected.',
     reload: 'Reload the page',
   },
+  // The guard on every form that edits something: a move away from a page with unsaved
+  // edits is asked about first. The reload/close half is answered by the browser's own
+  // dialog, which no page can word; these strings cover the in-app dialog.
+  unsavedChanges: {
+    title: 'You have unsaved changes',
+    content: 'Leaving this page will discard what you have edited.',
+    leave: 'Leave',
+    stay: 'Stay',
+  },
   validation: {
     usernameRequired: 'Enter your username',
     usernameLength: 'Between 5 and 20 characters',

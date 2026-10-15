@@ -24,6 +24,7 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import SourceListEditor from '../components/SourceListEditor'
 import { useContentCategories, useVideoStreamDetail } from '../hooks/queries'
+import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../types'
 
 /**
@@ -286,6 +287,15 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
   const [submitting, setSubmitting] = useState(false)
 
+  // Whether anything on this form was edited by hand - what the unsaved-changes guard asks
+  // about before letting the page be left. Only hand edits count: `onValuesChange` is not
+  // reached by the `setFieldsValue` calls in code below (painting the stream, defaulting the
+  // category) or by the two effects that write a value *because* a hand edit made them
+  // untrue - which is what keeps a form that was merely *loaded* from asking about edits
+  // nobody made.
+  const [dirty, setDirty] = useState(false)
+  const allowNavigation = useUnsavedChangesWarning(dirty)
+
   /**
    * The categories the picker draws, in a query of its own from the table's.
    *
@@ -435,6 +445,10 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
       // The server's own sentence where this build translates the code, its English
       // `message` where it does not - the rule every other page follows.
       message.success(textForCode(result.code) ?? result.message)
+      // Saved, so this is the one navigation out of here that must not be questioned: the
+      // form is still marked dirty in this same event, and the guard would ask about edits
+      // that have just been stored.
+      allowNavigation()
       navigate(listPath)
     } catch (error) {
       const fields = fieldErrors(error instanceof ApiError ? error.errors : null)
@@ -493,6 +507,7 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
           layout="vertical"
           initialValues={CREATE_VALUES}
           onFinish={handleFinish}
+          onValuesChange={() => setDirty(true)}
           style={{ maxWidth: 720 }}
         >
           {detail && (

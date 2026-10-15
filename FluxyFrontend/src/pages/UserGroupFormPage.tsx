@@ -22,6 +22,7 @@ import { permissionsForRole } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { useUserGroupDetail } from '../hooks/queries'
+import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
 
 /**
@@ -180,6 +181,15 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
   const [submitting, setSubmitting] = useState(false)
 
+  // Whether anything on this form was edited by hand - what the unsaved-changes guard asks
+  // about before letting the page be left. Only hand edits count: `onValuesChange` is not
+  // reached by `setFieldsValue` calls made in code, which is what keeps a form that was
+  // merely *loaded* from asking about edits nobody made. The two bulk buttons write in code
+  // and say so themselves; the prune of permissions the level no longer offers follows a
+  // hand edit and has nothing of its own to report.
+  const [dirty, setDirty] = useState(false)
+  const allowNavigation = useUnsavedChangesWarning(dirty)
+
   // The area this page hangs from - both buttons below go back into it. `null` only under
   // the probes, which render no provider: `RequireAuth` publishes one for every visitor
   // this page can have, and without it the navigation is inert rather than wrong.
@@ -275,8 +285,14 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
    * `clearAll` writes `[]` rather than filtering the watched list, because "none" has no
    * exceptions and the shorter write is the one that cannot disagree with itself.
    */
-  const selectAllPermissions = () => form.setFieldsValue({ permissions: [...offered] })
-  const clearPermissions = () => form.setFieldsValue({ permissions: [] })
+  const selectAllPermissions = () => {
+    form.setFieldsValue({ permissions: [...offered] })
+    setDirty(true)
+  }
+  const clearPermissions = () => {
+    form.setFieldsValue({ permissions: [] })
+    setDirty(true)
+  }
 
   const handleFinish = async (values: GroupFormValues) => {
     setSubmitting(true)
@@ -312,6 +328,10 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
       // The server's own sentence where this build translates the code, its English `message`
       // where it does not - the rule every other page follows.
       message.success(textForCode(result.code) ?? result.message)
+      // Saved, so this is the one navigation out of here that must not be questioned: the
+      // form is still marked dirty in this same event, and the guard would ask about edits
+      // that have just been stored.
+      allowNavigation()
       navigate(listPath)
     } catch (error) {
       const fields = fieldErrors(error instanceof ApiError ? error.errors : null)
@@ -378,6 +398,7 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
           layout="vertical"
           initialValues={CREATE_VALUES}
           onFinish={handleFinish}
+          onValuesChange={() => setDirty(true)}
           style={{ maxWidth: 640 }}
         >
           {detail?.isBase && (

@@ -40,6 +40,7 @@ import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
 import { useAllUserGroups, useProfile, useUserDetail } from '../hooks/queries'
+import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
 import type {
   AdminUserDetail,
   LoginGuardSettings,
@@ -240,6 +241,14 @@ export default function UserFormPage(_props: UserFormPageProps) {
   // a state two places think they own. Opened by `handleGeneratePassword` below.
   const [passwordVisible, setPasswordVisible] = useState(false)
 
+  // Whether anything on this form was edited by hand - what the unsaved-changes guard asks
+  // about before letting the page be left. Only hand edits count: `onValuesChange` is not
+  // reached by the two `setFieldsValue` calls below (painting the account, defaulting the
+  // group), which is what keeps a form that was merely *loaded* from asking about edits
+  // nobody made. The one write that is an edit - the generate button - says so itself.
+  const [dirty, setDirty] = useState(false)
+  const allowNavigation = useUnsavedChangesWarning(dirty)
+
   /**
    * The groups the picker draws, as a query of their own, plus the reason it could not
    * read them. Not an `alert` over the whole form: the rest of the account is editable
@@ -420,6 +429,9 @@ export default function UserFormPage(_props: UserFormPageProps) {
   const handleGeneratePassword = () => {
     form.setFields([{ name: 'password', value: generatePassword(), errors: [] }])
     setPasswordVisible(true)
+    // `setFields` is not the visitor typing, so `onValuesChange` stays silent - but a
+    // generated password is an edit like any other and has to count as one.
+    setDirty(true)
   }
 
   const handleFinish = async (values: UserFormValues) => {
@@ -472,6 +484,10 @@ export default function UserFormPage(_props: UserFormPageProps) {
       // The server's own sentence where this build translates the code, its English `message`
       // where it does not - the rule every other page follows.
       message.success(textForCode(result.code) ?? result.message)
+      // Saved, so this is the one navigation out of here that must not be questioned: the
+      // form is still marked dirty in this same event, and the guard would ask about edits
+      // that have just been stored.
+      allowNavigation()
       navigate(listPath)
     } catch (error) {
       const fields = fieldErrors(error instanceof ApiError ? error.errors : null)
@@ -544,6 +560,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
           layout="vertical"
           initialValues={CREATE_VALUES}
           onFinish={handleFinish}
+          onValuesChange={() => setDirty(true)}
           style={{ maxWidth: 640 }}
           // The `on` every guest form already gets from `AuthCard` - this page renders its
           // own `Form` and had none, which means antd 6 draws the `<form>` with no

@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { matchRoutes, MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, matchRoutes, RouterProvider } from 'react-router-dom'
 import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryClientProvider } from '@tanstack/react-query'
 import i18n from '../src/i18n'
@@ -74,15 +74,34 @@ const withQuery = (children) => (
   <QueryClientProvider client={createQueryClient()}>{children}</QueryClientProvider>
 )
 
+// One data router per render, built and thrown away inside the single synchronous call.
+// The probe has to go through one because the unsaved-changes guard on the three forms
+// reaches for `useBlocker`, which throws outside a data router - so a bare render of a
+// guarded form would take the probe down instead of describing the page. The route is a
+// catch-all: the pages that use this helper read nothing from the match, and `*` is the
+// smallest route that satisfies the router. Nothing navigates anywhere - no effect runs
+// under `renderToStaticMarkup` - so the initial entry is the only location there is.
+const withRouter = (path, element) => (
+  <RouterProvider
+    router={createMemoryRouter([{ path: '*', element }], { initialEntries: [path] })}
+  />
+)
+
+// The same router, handed the routes instead of a catch-all, for the three pages that read
+// `useParams`: a `*` match has no `:id` in it to find, so the edit address would quietly
+// render the *add* form at a URL whose whole meaning is "this one, by id". The routes are
+// the same `:id` patterns the application's own table declares.
+const withRoutes = (path, routes) => (
+  <RouterProvider router={createMemoryRouter(routes, { initialEntries: [path] })} />
+)
+
 const render = (Page, path) =>
   renderToStaticMarkup(
-    <MemoryRouter initialEntries={[path]}>
-      {withQuery(
-        <AntApp>
-          <Page />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter(path, withQuery(
+      <AntApp>
+        <Page />
+      </AntApp>,
+    )),
   )
 
 let failed = 0
@@ -191,11 +210,12 @@ async function main() {
   // The second step is a component, not a route, so nothing else renders it. Rendering it
   // directly is the only way to prove it is not dead code.
   const confirmHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/register']}>
+    withRouter(
+      '/register',
       <AntApp>
         <ConfirmCodeForm email="probe@example.com" onSubmit={() => {}} onBack={() => {}} />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   check(
     'the confirmation form renders its code field and action',
@@ -212,13 +232,14 @@ async function main() {
   // appearing here is what pins that choice. A spinner or a blank page would fail it, and
   // so would a guard that swallowed its children.
   const guardedHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/login']}>
+    withRouter(
+      '/login',
       <AntApp>
         <GuestOnly>
           <ClientLoginPage />
         </GuestOnly>
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   check(
     'the guest guard shows the form while it is still asking the server',
@@ -258,13 +279,11 @@ async function main() {
   // to come back resolved, and a raw `nav.items.sessions` in the markup would mean the
   // label was written in the menu and never defined in the locale files.
   const sessionsHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/client/sessions']}>
-      {withQuery(
-        <AntApp>
-          <SessionsPage sectionKey="nav.items.sessions" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/client/sessions', withQuery(
+      <AntApp>
+        <SessionsPage sectionKey="nav.items.sessions" />
+      </AntApp>,
+    )),
   )
   check(
     'the visit history page draws its heading and its table before any rows arrive',
@@ -360,13 +379,11 @@ async function main() {
   // state is itself the correct one here: with no answer in hand the page does not know how
   // many other sessions exist, and a bulk revoke offered from ignorance could end them all.
   const activeSessionsHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/client/sessions/active']}>
-      {withQuery(
-        <AntApp>
-          <ActiveSessionsPage sectionKey="nav.items.activeSessions" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/client/sessions/active', withQuery(
+      <AntApp>
+        <ActiveSessionsPage sectionKey="nav.items.activeSessions" />
+      </AntApp>,
+    )),
   )
   // Where the bulk button's own markup starts, found by walking back from its label: antd
   // wraps the text in a `<span>`, so a regex that expects `>label` to follow the attributes
@@ -431,11 +448,12 @@ async function main() {
   // heading, its hint and the zone the account actually stored, rather than accepting the
   // props and putting nothing on the page.
   const timezoneHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/profile']}>
+    withRouter(
+      '/profile',
       <AntApp>
         <TimeZoneCard value="Europe/Moscow" saving={false} onChange={() => {}} />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   check(
     'the profile offers a time zone card with the stored zone selected',
@@ -455,7 +473,8 @@ async function main() {
   // directly, this is what proves it draws its heading, its hint, the stored lists and
   // both switches, rather than accepting the guard and putting nothing on the page.
   const guardHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/profile']}>
+    withRouter(
+      '/profile',
       <AntApp>
         <LoginGuardCard
           value={{
@@ -469,8 +488,8 @@ async function main() {
           onSubmitted={() => {}}
           onApplied={() => Promise.resolve()}
         />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   // The stored country now arrives as a *selection* rather than as two letters in an
   // input: `RU` is in the markup only as its name, because the code is what the form
@@ -501,7 +520,8 @@ async function main() {
   // because `useWatch` never runs under `renderToStaticMarkup`: what is rendered below is
   // the stored value underneath it, which is the same answer the watcher gives after mount.
   const guardOffHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/profile']}>
+    withRouter(
+      '/profile',
       <AntApp>
         <LoginGuardCard
           value={{
@@ -515,8 +535,8 @@ async function main() {
           onSubmitted={() => {}}
           onApplied={() => Promise.resolve()}
         />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   const disabledCount = guardOffHtml.split('disabled').length - 1
   check(
@@ -579,13 +599,11 @@ async function main() {
   )
 
   const usersHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users']}>
-      {withQuery(
-        <AntApp>
-          <UsersPage sectionKey="nav.items.usersManage" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/users', withQuery(
+      <AntApp>
+        <UsersPage sectionKey="nav.items.usersManage" />
+      </AntApp>,
+    )),
   )
 
   // The heading is the page's own title, not the menu item's name: "Manage users" says
@@ -710,13 +728,11 @@ async function main() {
   )
 
   const userFormHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users/add']}>
-      {withQuery(
-        <AntApp>
-          <UserFormPage />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/users/add', withQuery(
+      <AntApp>
+        <UserFormPage />
+      </AntApp>,
+    )),
   )
   check(
     'the add form draws its fields at once, under the add title, with the shared guard',
@@ -775,15 +791,16 @@ async function main() {
   // router's match, and without one there is no `:id` to be found - the page would quietly
   // render its *add* mode at a URL whose whole meaning is "this one, by id".
   const userEditHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users/11111111-1111-1111-1111-111111111111']}>
-      {withQuery(
-        <AntApp>
-          <Routes>
-            <Route path="/admin/users/:id" element={<UserFormPage />} />
-          </Routes>
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRoutes('/admin/users/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/users/:id',
+        element: withQuery(
+          <AntApp>
+            <UserFormPage />
+          </AntApp>,
+        ),
+      },
+    ]),
   )
   check(
     'the edit address waits for the account instead of drawing fields against nothing',
@@ -799,13 +816,11 @@ async function main() {
   // a page answering a question the visitor never asked and would keep answering it while
   // every check above stayed green.
   const groupsHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/user-groups']}>
-      {withQuery(
-        <AntApp>
-          <UserGroupsPage sectionKey="nav.items.userGroups" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/user-groups', withQuery(
+      <AntApp>
+        <UserGroupsPage sectionKey="nav.items.userGroups" />
+      </AntApp>,
+    )),
   )
 
   // The heading is the page's own title rather than the menu item's name, for the reason
@@ -894,13 +909,11 @@ async function main() {
   )
 
   const groupFormHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/user-groups/add']}>
-      {withQuery(
-        <AntApp>
-          <UserGroupFormPage sectionKey="nav.items.userGroups" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/user-groups/add', withQuery(
+      <AntApp>
+        <UserGroupFormPage sectionKey="nav.items.userGroups" />
+      </AntApp>,
+    )),
   )
 
   // The add form opens at the least privileged level on purpose, and the visible
@@ -933,13 +946,11 @@ async function main() {
   // would land on the unfiltered list looking like it had done nothing - which no other
   // check here could see, since every render of this page also arrives with no rows.
   const groupArrivalHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users?groupId=22222222-2222-2222-2222-222222222222']}>
-      {withQuery(
-        <AntApp>
-          <UsersPage sectionKey="nav.items.usersManage" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/users?groupId=22222222-2222-2222-2222-222222222222', withQuery(
+      <AntApp>
+        <UsersPage sectionKey="nav.items.usersManage" />
+      </AntApp>,
+    )),
   )
   check(
     'the accounts page picks its group filter up from the address it was opened at',
@@ -989,20 +1000,19 @@ async function main() {
   )
 
   // The edit address of a group, with the same rule the accounts edit address follows: it
-  // waits. `useParams` needs a real route match, so this one is rendered inside `Routes`.
+  // waits. `useParams` needs a real route match, so the router is handed the same `:id`
+  // route the application's own table declares.
   const groupEditHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/user-groups/11111111-1111-1111-1111-111111111111']}>
-      {withQuery(
-        <AntApp>
-          <Routes>
-            <Route
-              path="/admin/user-groups/:id"
-              element={<UserGroupFormPage sectionKey="nav.items.userGroups" />}
-            />
-          </Routes>
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRoutes('/admin/user-groups/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/user-groups/:id',
+        element: withQuery(
+          <AntApp>
+            <UserGroupFormPage sectionKey="nav.items.userGroups" />
+          </AntApp>,
+        ),
+      },
+    ]),
   )
   check(
     'the group edit address waits for the group instead of drawing fields against nothing',
@@ -1021,13 +1031,11 @@ async function main() {
   // unsaved-order controls draw before any row arrives, and every render here lands in
   // the state where the list has no rows yet and the drag handles therefore none.
   const categoriesHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/video-streams/categories']}>
-      {withQuery(
-        <AntApp>
-          <ContentCategoriesPage sectionKey="nav.items.videoStreamsCategories" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/video-streams/categories', withQuery(
+      <AntApp>
+        <ContentCategoriesPage sectionKey="nav.items.videoStreamsCategories" />
+      </AntApp>,
+    )),
   )
   check(
     'the video stream categories page draws its typed heading, its add action and its table before any rows arrive',
@@ -1061,13 +1069,11 @@ async function main() {
   // the video stream kind silently, so only reading what a *different* key renders tells
   // the two apart.
   const seriesCategoriesHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/series/categories']}>
-      {withQuery(
-        <AntApp>
-          <ContentCategoriesPage sectionKey="nav.items.seriesCategories" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/series/categories', withQuery(
+      <AntApp>
+        <ContentCategoriesPage sectionKey="nav.items.seriesCategories" />
+      </AntApp>,
+    )),
   )
   check(
     'a different section key renders the same page for its own kind of content',
@@ -1118,13 +1124,11 @@ async function main() {
   //   sort - `type` and `sortOrder` are sort fields the endpoint honours but this table
   //   draws no column for, and the rest are never fields it orders by.
   const streamsHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/video-streams']}>
-      {withQuery(
-        <AntApp>
-          <VideoStreamsPage sectionKey="nav.items.videoStreamsManage" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/video-streams', withQuery(
+      <AntApp>
+        <VideoStreamsPage sectionKey="nav.items.videoStreamsManage" />
+      </AntApp>,
+    )),
   )
   check(
     'the streams table draws its own heading, its toolbar and its table before any rows arrive',
@@ -1220,13 +1224,11 @@ async function main() {
   // form that rendered without it would still compile: `SourceListEditor` is a component
   // behind a conditional on the chosen kind, and the default kind is the one that draws it.
   const streamFormHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/video-streams/add']}>
-      {withQuery(
-        <AntApp>
-          <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/video-streams/add', withQuery(
+      <AntApp>
+        <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />
+      </AntApp>,
+    )),
   )
   check(
     'the stream add form draws its fields at once, with the ordered list and without an id row',
@@ -1242,21 +1244,19 @@ async function main() {
     `rendered ${streamFormHtml.length} bytes of the add form`,
   )
 
-  // The edit address, which waits. `useParams` needs a real route match, so it is rendered
-  // inside `Routes` - the same reason the two forms above needed their own.
+  // The edit address, which waits. `useParams` needs a real route match, so the router is
+  // handed the same `:id` route the two forms above use.
   const streamEditHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/video-streams/11111111-1111-1111-1111-111111111111']}>
-      {withQuery(
-        <AntApp>
-          <Routes>
-            <Route
-              path="/admin/video-streams/:id"
-              element={<VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />}
-            />
-          </Routes>
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRoutes('/admin/video-streams/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/video-streams/:id',
+        element: withQuery(
+          <AntApp>
+            <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
   )
   check(
     'the stream edit address waits for the stream instead of drawing fields against nothing',
@@ -1337,13 +1337,11 @@ async function main() {
   // rail - plus the two this page adds: the account filter, which is read out of the address
   // on the way in, and the account column, which is the whole difference between the two.
   const adminSessionsHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/user-sessions']}>
-      {withQuery(
-        <AntApp>
-          <AdminSessionsPage sectionKey="nav.items.adminSessions" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/user-sessions', withQuery(
+      <AntApp>
+        <AdminSessionsPage sectionKey="nav.items.adminSessions" />
+      </AntApp>,
+    )),
   )
   check(
     'the installation visit history draws its own heading and its table before any rows arrive',
@@ -1413,13 +1411,11 @@ async function main() {
   // this component's state instead would be gone by the time it mounted and the link would
   // open an unfiltered list, looking as if it had done nothing.
   const adminSessionsArrivalHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/user-sessions?userId=44444444-4444-4444-4444-444444444444']}>
-      {withQuery(
-        <AntApp>
-          <AdminSessionsPage sectionKey="nav.items.adminSessions" />
-        </AntApp>,
-      )}
-    </MemoryRouter>,
+    withRouter('/admin/user-sessions?userId=44444444-4444-4444-4444-444444444444', withQuery(
+      <AntApp>
+        <AdminSessionsPage sectionKey="nav.items.adminSessions" />
+      </AntApp>,
+    )),
   )
   check(
     'the visit-history account filter picks its user up from the address it was opened at',
@@ -1434,19 +1430,26 @@ async function main() {
   // arrives before the first answer does. So the cell is a component and is rendered here
   // directly, for the same reason `ConfirmCodeForm` and the two display helpers are: nothing
   // else in this repository would notice it rendering nothing at all.
+  //
+  // The area is passed exactly as `UsersPage` passes it - `areaForRole(role)`, which is
+  // `/admin` with the leading slash, not the bare segment. That is load-bearing rather than
+  // cosmetic: the link is built from this string, and a value without the slash would be a
+  // *relative* address whose resolution depends on the route rendering it - the one input
+  // the page would never produce.
   const probeVisit = '2026-10-11T10:46:52Z'
   const probeVisitText = formatTimestamp(probeVisit, 'en', null)
   const lastSeenHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users']}>
+    withRouter(
+      '/admin/users',
       <AntApp>
         <LastSeenCell
-          area="admin"
+          area="/admin"
           user={{ id: '33333333-3333-3333-3333-333333333333', username: 'probeuser' }}
           value={probeVisit}
           format={(v) => formatTimestamp(v, 'en', null)}
         />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   const lastSeenLinkText = /<a[^>]*user-sessions[^>]*>([^<]*)</.exec(lastSeenHtml)?.[1]
   check(
@@ -1464,16 +1467,17 @@ async function main() {
   // And the account that has never signed in: a dash, and nothing to click. A link over a
   // dash would name a history the server has none of.
   const lastSeenEmptyHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/admin/users']}>
+    withRouter(
+      '/admin/users',
       <AntApp>
         <LastSeenCell
-          area="admin"
+          area="/admin"
           user={{ id: '33333333-3333-3333-3333-333333333333', username: 'probeuser' }}
           value={null}
           format={(v) => formatTimestamp(v, 'en', null)}
         />
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   check(
     'an account that has never signed in draws a dash where the link would be',
@@ -1800,13 +1804,14 @@ async function main() {
   // login form has no side effects until it is submitted, while an admin sidebar shown
   // before the role has been confirmed is the expensive way to be wrong.
   const inFlightHtml = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/client/index']}>
+    withRouter(
+      '/client/index',
       <AntApp>
         <RequireAuth role="Client">
           <AccountLayout titleKey="titles.clientArea" />
         </RequireAuth>
-      </AntApp>
-    </MemoryRouter>,
+      </AntApp>,
+    ),
   )
   check(
     'the area guard withholds the shell while it is still asking the server',
@@ -1816,9 +1821,12 @@ async function main() {
       : 'GUARD RENDERED THE SHELL BEFORE THE ROLE WAS CONFIRMED',
   )
 
-  // The shell itself, with the session `RequireAuth` would have published. The router is
-  // not involved because the guard above has already decided; what is under test here is
-  // that the frame draws and that it shows this role's own menu.
+  // The shell itself, with the session `RequireAuth` would have published - the guard is
+  // not involved because it has already decided above; what is under test here is that the
+  // frame draws and that it shows this role's own menu. The router *is* involved, as it is
+  // for every render in this script: the menu's links, the sidebar's own navigation and the
+  // unsaved-changes guard all read the router, and `withRouter` gives them one at the
+  // landing path this session would have opened.
   //
   // The theme is told at both ends, because neither end reads the other: `appTheme` is what
   // `ConfigProvider` paints with, and `setThemeChoice` is what `useIsDark` reads to decide
@@ -1828,7 +1836,8 @@ async function main() {
   const renderShell = (session, dark = false) => {
     setThemeChoice(dark ? ThemeChoice.Dark : ThemeChoice.Light)
     return renderToStaticMarkup(
-      <MemoryRouter initialEntries={[homeForRole(session.role)]}>
+      withRouter(
+        homeForRole(session.role),
         <ConfigProvider theme={appTheme(dark).config}>
           {/* The header now reaches for the query client - it drops every cached row
               before a sign-out moves the page - so the probe has to hand it the same
@@ -1840,8 +1849,8 @@ async function main() {
               </SessionContext.Provider>
             </AntApp>,
           )}
-        </ConfigProvider>
-      </MemoryRouter>,
+        </ConfigProvider>,
+      ),
     )
   }
 
