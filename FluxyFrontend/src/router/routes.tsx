@@ -5,6 +5,7 @@ import config, { areaOf, insideArea, routePath } from '../config'
 import GuestOnly from '../components/GuestOnly'
 import RequireAuth from '../components/RequireAuth'
 import AccountLayout from '../components/AccountLayout'
+import ErrorFallback from '../components/ErrorFallback'
 import NotFoundPage from '../pages/NotFoundPage'
 import { flatItems } from '../lib/navigation'
 import type { Role } from '../types'
@@ -178,6 +179,11 @@ const area = (
       <AccountLayout titleKey={titleKey} />
     </RequireAuth>
   ),
+  // Everything under this area fails into the same screen. Without an `errorElement` the
+  // data router draws its own bare English error page - it *does* catch the error, which
+  // is why this is a theming and translation gap rather than a blank one - and the crash
+  // a page threw while rendering deserves at least the theme the visitor chose.
+  errorElement: <ErrorFallback />,
   children: [...sectionRoutes(role, homeRoute), ...extra],
 })
 
@@ -189,11 +195,18 @@ const area = (
  * both a `path` and an `index` is a contradiction the union can only report once a union
  * is being asked for - which, unannotated, would be the first consumer of the table rather
  * than the line the entry sits on.
+ *
+ * Every entry carries `errorElement: <ErrorFallback />`, including the areas (see the
+ * builder above). A page that throws while rendering is a bug rather than a refusal, and
+ * without a fallback of its own the data router answers it with its own unlocalized
+ * screen; `probe:render` asserts the property holds for every top-level entry so a route
+ * added later cannot quietly drop it.
  */
 export const routes: RouteObject[] = [
   {
     path: '/',
     element: <Navigate to={routePath(config.CLIENT_LOGIN_ROUTE)} replace />,
+    errorElement: <ErrorFallback />,
   },
   {
     path: routePath(config.REGISTER_ROUTE),
@@ -202,6 +215,7 @@ export const routes: RouteObject[] = [
         <RegisterPage />
       </GuestOnly>
     ),
+    errorElement: <ErrorFallback />,
   },
   {
     path: routePath(config.FORGOT_PASSWORD_ROUTE),
@@ -210,6 +224,7 @@ export const routes: RouteObject[] = [
         <ForgotPasswordPage />
       </GuestOnly>
     ),
+    errorElement: <ErrorFallback />,
   },
   {
     path: routePath(config.CLIENT_LOGIN_ROUTE),
@@ -218,6 +233,7 @@ export const routes: RouteObject[] = [
         <ClientLoginPage />
       </GuestOnly>
     ),
+    errorElement: <ErrorFallback />,
   },
   {
     path: routePath(config.RESELLER_LOGIN_ROUTE),
@@ -226,6 +242,7 @@ export const routes: RouteObject[] = [
         <ResellerLoginPage />
       </GuestOnly>
     ),
+    errorElement: <ErrorFallback />,
   },
   {
     path: routePath(config.ADMIN_LOGIN_ROUTE),
@@ -234,6 +251,7 @@ export const routes: RouteObject[] = [
         <AdminLoginPage />
       </GuestOnly>
     ),
+    errorElement: <ErrorFallback />,
   },
   area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea'),
   area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea'),
@@ -270,5 +288,6 @@ export const routes: RouteObject[] = [
         <NotFoundPage />
       </RequireAuth>
     ),
+    errorElement: <ErrorFallback />,
   },
 ]

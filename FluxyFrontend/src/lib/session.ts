@@ -82,3 +82,27 @@ export const sessionOpensArea = (
   if (!session) return false
   return role === undefined || role === null || session.role === role
 }
+
+/**
+ * The sign-in entrance that belongs to the area a path sits in - `/admin/users` opens
+ * `/admin/login`, and anything else opens the public client form.
+ *
+ * Used by the session-expiry reaction, which runs after the session is gone and therefore
+ * cannot ask who the visitor was: the address they were reading is the only remaining
+ * evidence of which area they belonged to. It is the guest guard's rule - by role, never
+ * by entrance - read backwards from the door an account of that area signs in at.
+ *
+ * The keys are the areas rather than the landing paths, the same split `areaForRole` is
+ * built around: `/admin/dashboard/profile` is a page inside `admin`, and the entrance is
+ * chosen per area. A path that names no area falls back to the client form, which is the
+ * way back every non-guest page already uses.
+ */
+const LOGIN_BY_AREA: Record<string, string> = {
+  [areaOf(config.ADMIN_HOME_ROUTE)]: config.ADMIN_LOGIN_ROUTE,
+  [areaOf(config.RESELLER_HOME_ROUTE)]: config.RESELLER_LOGIN_ROUTE,
+  [areaOf(config.CLIENT_HOME_ROUTE)]: config.CLIENT_LOGIN_ROUTE,
+}
+
+/** The sign-in entrance for a browser path - or rather, for the area its first segment names. */
+export const loginRouteForPath = (pathname: string): string =>
+  routePath(LOGIN_BY_AREA[areaOf(pathname.replace(/^\/+/, ''))] ?? config.CLIENT_LOGIN_ROUTE)

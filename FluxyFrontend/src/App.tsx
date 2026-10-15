@@ -6,6 +6,7 @@ import { RouterProvider } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import './i18n'
+import SessionExpiredWatcher from './components/SessionExpiredWatcher'
 import { appTheme, useIsDark } from './lib/theme'
 import { createQueryClient } from './lib/queryClient'
 import { router } from './router'
@@ -45,6 +46,11 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ConfigProvider locale={antdLocale} theme={config}>
         <AntApp>
+        {/* Renders nothing; subscribes to the one signal `http.ts` publishes when a
+            session is refused for good, and answers it with a toast and the sign-in
+            form of the area being read. It lives here rather than inside the router
+            because it must survive any page, including one that never renders. */}
+        <SessionExpiredWatcher />
         {/* The pages are route-level chunks (`src/router/routes.tsx`), so the first visit
             to any of them arrives a moment after the navigation does. This is the boundary
             those imports resolve into, placed above the router rather than inside a route

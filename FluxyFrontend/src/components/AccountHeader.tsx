@@ -10,6 +10,7 @@ import {
   SunOutlined,
   UserOutlined,
 } from '@ant-design/icons'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from './LanguageSwitcher'
 import config, { routePath } from '../config'
@@ -49,6 +50,7 @@ export default function AccountHeader({
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { message } = App.useApp()
+  const queryClient = useQueryClient()
   const session = useSession()
   const storedTheme = useThemeChoice()
 
@@ -77,6 +79,12 @@ export default function AccountHeader({
     // to tell "nothing happened" from "something went wrong".
     try {
       const result = await signOut()
+      // The cache is dropped before the page moves. Every entry in it belongs to the
+      // account whose session just ended, and `staleTime: 0` only marks an entry stale -
+      // it does not stop the next sign-in on this machine from painting the previous
+      // account's rows while their refetch is on its way. The same clearing runs when a
+      // session ends by itself, in `SessionExpiredWatcher`.
+      queryClient.clear()
       message.success(t('messages.api.signed_out'))
       // The sign-in form is where a sign-out belongs even when the server names no
       // destination, so `internalPath` here only has to refuse what is not walkable -

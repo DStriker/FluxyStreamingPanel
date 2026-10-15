@@ -281,3 +281,14 @@ body.table-col-resizing {
   align-items: center;
   justify-content: center;
 }
+
+/* The screen both error boundaries draw. `min-height: 100vh` for the reason the fallback
+   above gives - and here it is load-bearing twice over, because the class boundary in
+   `main.tsx` renders this without the shell, so nothing else gives the page a height. */
+.error-fallback {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}

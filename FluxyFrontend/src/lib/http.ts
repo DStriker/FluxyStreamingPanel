@@ -1,5 +1,6 @@
 import i18n from '../i18n'
 import { csrfHeader, getCsrfToken } from './csrf'
+import { emitSessionExpired } from './sessionEvents'
 import { apiUrl, internalPath } from './url'
 import type { TOptions } from 'i18next'
 import type { FieldErrors, MessageResponse } from '../types'
@@ -154,28 +155,40 @@ export const textForCode = (code: unknown, options?: TOptions): string | null =>
  * whole session. So the promise is kept here: the first caller starts the attempt, the rest
  * await the same one, and the result is the same for all of them.
  */
-let refreshInFlight: Promise<boolean> | null = null
+let refreshInFlight: Promise<RefreshOutcome> | null = null
+
+/**
+ * The three answers a refresh attempt can produce.
+ *
+ * Only `refused` - the server answering with a 4xx - means the session is over: the
+ * refresh token is spent, revoked, or was never there. `unreachable` is every other way
+ * the attempt can fail - a 5xx, a proxy error page, no connection at all - and it is kept
+ * apart on purpose, because it must not sign anybody out: a visitor who loses their
+ * network for a minute would otherwise be sent to the sign-in form by the reaction in
+ * `sessionEvents` while their session was never touched.
+ */
+type RefreshOutcome = 'refreshed' | 'refused' | 'unreachable'
 
 /**
  * Exchanges the stored refresh token for a new pair, at most one attempt at a time.
- *
- * @returns whether a new pair was issued.
  */
-async function refreshSession(): Promise<boolean> {
+async function refreshSession(): Promise<RefreshOutcome> {
   if (!refreshInFlight) {
-    refreshInFlight = (async () => {
+    refreshInFlight = (async (): Promise<RefreshOutcome> => {
       try {
         await rawFetch('/auth/refresh', {
           method: 'POST',
           csrfToken: await getCsrfToken(),
         })
 
-        return true
-      } catch {
-        // Deliberately not rethrown. The caller only needs to know whether the retry is
-        // worth making, and the failure that mattered - the original 401 - is already on
-        // its way to the page that made the call.
-        return false
+        return 'refreshed'
+      } catch (error) {
+        // Deliberately not rethrown. The caller only needs to know how the attempt went,
+        // and the failure that mattered - the original 401 - is already on its way to the
+        // page that made the call.
+        return error instanceof ApiError && error.status >= 400 && error.status < 500
+          ? 'refused'
+          : 'unreachable'
       } finally {
         refreshInFlight = null
       }
@@ -183,6 +196,34 @@ async function refreshSession(): Promise<boolean> {
   }
 
   return refreshInFlight
+}
+
+/**
+ * The one refresh attempt a failing call is allowed, and the signal it sends when the
+ * session is truly over.
+ *
+ * `apiFetch` and `apiGet` share this rather than each writing the conditions, so the
+ * rules are stated once: only a 401 whose code says the session is gone is recoverable;
+ * never `refresh` itself (a retry would present the token the first attempt just spent,
+ * which the server reads as a replay) and never the sign-in forms, where a 401 *is* the
+ * answer rather than a symptom; and only a refresh that actually succeeded earns the
+ * caller a retry. A refusal that survives the attempt is published through
+ * `emitSessionExpired` - see that module for what reacts to it - and the caller then
+ * rethrows the original error, which is what the page is already built to show.
+ */
+async function recoverFromExpiry(error: ApiError, path: string): Promise<boolean> {
+  const recoverable =
+    error.status === 401 &&
+    (error.code === SessionExpiredCode || error.code === AuthRequiredCode) &&
+    !NO_REFRESH_PATHS.has(path) &&
+    !NO_RETRY_PATHS.has(path)
+
+  if (!recoverable) return false
+
+  const outcome = await refreshSession()
+  if (outcome === 'refused') emitSessionExpired()
+
+  return outcome === 'refreshed'
 }
 
 /**
@@ -213,16 +254,7 @@ export async function apiFetch<T = MessageResponse>(
     return await rawFetch<T>(path, { body, csrfToken, captchaToken, method, signal })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
-
-    const recoverable =
-      error.status === 401 &&
-      (error.code === SessionExpiredCode || error.code === AuthRequiredCode) &&
-      !NO_REFRESH_PATHS.has(path) &&
-      !NO_RETRY_PATHS.has(path)
-
-    if (!recoverable || !(await refreshSession())) {
-      throw error
-    }
+    if (!(await recoverFromExpiry(error, path))) throw error
 
     // The CSRF pair does not change when the session is rotated - it is a separate scheme
     // with its own cookie - but a token is minted again anyway, because the one the failed
@@ -251,15 +283,7 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
     return await rawFetch<T>(path, { method: 'GET', signal })
   } catch (error) {
     if (!(error instanceof ApiError)) throw error
-
-    const recoverable =
-      error.status === 401 &&
-      (error.code === SessionExpiredCode || error.code === AuthRequiredCode) &&
-      !NO_RETRY_PATHS.has(path)
-
-    if (!recoverable || !(await refreshSession())) {
-      throw error
-    }
+    if (!(await recoverFromExpiry(error, path))) throw error
 
     return rawFetch<T>(path, { method: 'GET', signal })
   }

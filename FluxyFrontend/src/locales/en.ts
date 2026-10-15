@@ -21,6 +21,15 @@ const en = {
   common: {
     loading: 'Loading',
   },
+  // The last-resort screen of an error boundary - a route that threw while rendering, or a
+  // failure above the router. Its own section rather than a page's, because the page it
+  // would have belonged to is the one that just failed to draw.
+  errors: {
+    title: 'Something went wrong',
+    description:
+      'The page failed to render. Reloading usually brings it back — nothing that already reached the server was affected.',
+    reload: 'Reload the page',
+  },
   validation: {
     usernameRequired: 'Enter your username',
     usernameLength: 'Between 5 and 20 characters',

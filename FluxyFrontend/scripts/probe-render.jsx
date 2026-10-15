@@ -38,11 +38,12 @@ import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
 import GuestOnly from '../src/components/GuestOnly'
 import RequireAuth from '../src/components/RequireAuth'
+import ErrorFallback from '../src/components/ErrorFallback'
 import AccountLayout from '../src/components/AccountLayout'
 import { routes as routeTable } from '../src/router/routes'
 import { SessionContext } from '../src/lib/sessionContext'
 import { NAVIGATION, flatItems } from '../src/lib/navigation'
-import { areaForRole, homeForRole, sessionOpensArea } from '../src/lib/session'
+import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../src/lib/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
 import { countryName } from '../src/lib/countryName'
 import { describeUserAgent } from '../src/lib/userAgent'
@@ -1659,6 +1660,65 @@ async function main() {
       : `${EXTRA_ADMIN_ADDRESSES.length} extra addresses resolved`,
   )
 
+  // The screen a page that threw would draw, and the table that hands it out. Rendering
+  // the fallback itself is the only way to see that its three strings resolve - a key
+  // missing from *both* bundles is invisible to `tsc`, to `lint` and to the build - and it
+  // is rendered with no router and no query client around it on purpose: that is exactly
+  // how the class boundary in `main.tsx` draws it, so this call failing would mean the
+  // last-resort screen itself throws.
+  const errorHtml = renderToStaticMarkup(
+    <AntApp>
+      <ErrorFallback />
+    </AntApp>,
+  )
+  check(
+    'the error fallback offers a reload and a door to the sign-in form, translated',
+    errorHtml.includes('Something went wrong') &&
+      errorHtml.includes('Reload the page') &&
+      errorHtml.includes('href="/login"') &&
+      !errorHtml.includes('errors.'),
+    errorHtml.includes('errors.')
+      ? 'THE RAW KEY REACHED THE PAGE'
+      : `rendered ${errorHtml.length} bytes`,
+  )
+
+  // Every route carries that screen. A route added later that forgets the property would
+  // be answered by the data router's own unlocalized page - a gap nothing else here can
+  // see, because it is a property of the table rather than of any page it renders.
+  const routesWithoutFallback = routeTable.filter((route) => !route.errorElement)
+  check(
+    'every top-level route hands the same screen to a page that threw',
+    routesWithoutFallback.length === 0 && routeTable.length > 0,
+    routesWithoutFallback.length
+      ? `routes without a fallback: ${routesWithoutFallback
+          .map((route) => route.path ?? String(route.index))
+          .join(', ')}`
+      : `${routeTable.length} routes carry the fallback`,
+  )
+
+  // The expiry reaction's choice of door. The session is gone by the time it runs, so the
+  // path being read is the only evidence of the area it belonged to - and an admin-era
+  // address has to open the admin form rather than the public one, which is the same
+  // by-role-never-by-entrance rule `homeForRole` answers from the other side.
+  const loginFor = [
+    ['/admin/users', '/admin/login'],
+    ['/admin/dashboard/profile', '/admin/login'],
+    ['/reseller/dashboard', '/reseller/login'],
+    ['/client/index', '/login'],
+    ['/somewhere-else', '/login'],
+    ['/', '/login'],
+  ]
+  const wrongDoor = loginFor.filter(([path, expected]) => loginRouteForPath(path) !== expected)
+  check(
+    'a session that ended sends each area to its own sign-in entrance',
+    wrongDoor.length === 0,
+    wrongDoor.length
+      ? `wrong door: ${wrongDoor
+          .map(([path, expected]) => `${path} -> ${loginRouteForPath(path)} (expected ${expected})`)
+          .join('; ')}`
+      : `${loginFor.length} paths resolved`,
+  )
+
   // Keys the shell reads, in both languages. i18next falls back to `en`, so a string
   // added to one file only fails here and not in the build - and the raw key then shows on
   // every page in the other language.
@@ -1675,6 +1735,9 @@ async function main() {
     'actions.backHome',
     'messages.notFound',
     'messages.areaNotBuilt',
+    'errors.title',
+    'errors.description',
+    'errors.reload',
     'dashboard.greeting',
     'dashboard.stats.today',
     'dashboard.stats.week',
@@ -1767,11 +1830,16 @@ async function main() {
     return renderToStaticMarkup(
       <MemoryRouter initialEntries={[homeForRole(session.role)]}>
         <ConfigProvider theme={appTheme(dark).config}>
-          <AntApp>
-            <SessionContext.Provider value={session}>
-              <AccountLayout titleKey={`titles.${session.role.toLowerCase()}Area`} />
-            </SessionContext.Provider>
-          </AntApp>
+          {/* The header now reaches for the query client - it drops every cached row
+              before a sign-out moves the page - so the probe has to hand it the same
+              client `App.tsx` does, or it throws instead of rendering. */}
+          {withQuery(
+            <AntApp>
+              <SessionContext.Provider value={session}>
+                <AccountLayout titleKey={`titles.${session.role.toLowerCase()}Area`} />
+              </SessionContext.Provider>
+            </AntApp>,
+          )}
         </ConfigProvider>
       </MemoryRouter>,
     )
