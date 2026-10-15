@@ -24,7 +24,7 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import SourceListEditor from '../components/SourceListEditor'
 import { useContentCategories, useVideoStreamDetail } from '../hooks/queries'
-import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../types'
 
 /**

@@ -22,7 +22,7 @@ import { permissionsForRole } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { useUserGroupDetail } from '../hooks/queries'
-import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
 
 /**

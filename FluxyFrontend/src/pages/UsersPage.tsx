@@ -15,7 +15,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import type { MenuProps, TableColumnsType, TableProps } from 'antd'
+import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CheckOutlined,
@@ -34,7 +34,7 @@ import {
   setUserBlocked,
   setUserUnblocked,
 } from '../lib/api'
-import type { AdminUserSortField, AdminUserSortOrder, BulkUserAction } from '../lib/api'
+import type { AdminUserSortField, BulkUserAction } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
@@ -48,23 +48,13 @@ import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
+import { useServerTable } from '../hooks/useServerTable'
 import type {
   AdminUser,
   BulkOperationResponse,
   MessageResponse,
   UserStatus,
 } from '../types'
-
-/**
- * How many accounts one page holds. The server's own default, kept in step by hand because
- * the two are one contract written twice - and because a page size the pager draws from has
- * to be known before the first answer arrives, or the pager would show one row per page
- * until it did.
- */
-const PAGE_SIZE = 20
-
-/** The sizes the visitor may pick, in the same order the pager shows them. The server's ceiling is 100. */
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
 /** The eight columns, in the order they are drawn, named by their own keys. */
 type UsersColumnKey =
@@ -213,13 +203,17 @@ export default function UsersPage(_props: UsersPageProps) {
   const { message, modal } = App.useApp()
   const session = useSession()
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE)
-  // What is typed and what the server has been asked are two different things: one request
-  // per keystroke would be a request per character of an email address, and the answer to
-  // the first nine would arrive after the tenth and put a stale page on screen.
-  const [searchText, setSearchText] = useState('')
-  const [search, setSearch] = useState('')
+  /**
+   * The five request parameters, the pager and the six sortable headers - all of that is
+   * `useServerTable`, which the other server-paged tables call too. The mapping needs no
+   * help here: the sortable columns are keyed by the server's own field names, so a click
+   * hands its own key over as the field. `id` and `actions` have no sorter and never produce
+   * an event at all.
+   */
+  const table = useServerTable<AdminUser, AdminUserSortField>({
+    defaultSort: { by: 'username', order: 'asc' },
+  })
+
   /**
    * The group filter, which lives in the address rather than in this component's state.
    *
@@ -233,8 +227,6 @@ export default function UsersPage(_props: UsersPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const groupFilter = searchParams.get('groupId')
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
-  const [sortBy, setSortBy] = useState<AdminUserSortField>('username')
-  const [sortOrder, setSortOrder] = useState<AdminUserSortOrder>('asc')
   // The row whose action is in flight - its buttons show a spinner and refuse a second
   // click, and nothing else about the page changes until the answer lands.
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -263,13 +255,9 @@ export default function UsersPage(_props: UsersPageProps) {
    * re-read through `refetch()` rather than by bumping a counter.
    */
   const usersQuery = useUsers({
-    page,
-    pageSize,
-    search,
+    ...table.query,
     groupId: groupFilter,
     status: statusFilter,
-    sortBy,
-    sortOrder,
   })
   const users = usersQuery.data
   const loadError = usersQuery.isError ? messageForError(usersQuery.error) : null
@@ -362,20 +350,6 @@ export default function UsersPage(_props: UsersPageProps) {
   }, [users])
 
   /**
-   * Applies what is in the search box, from the field itself rather than from a button, so
-   * the empty box empties the list the moment it becomes empty.
-   */
-  const applySearch = (value: string) => {
-    const next = value.trim()
-    const current = search.trim()
-
-    if (next === current) return
-
-    setSearch(next)
-    setPage(1)
-  }
-
-  /**
    * The two filters, each starting the pager over: a different list is a different pager,
    * and leaving the visitor on page 3 of a filter that admits one page would show them an
    * empty table while `total` above it said 1.
@@ -391,58 +365,12 @@ export default function UsersPage(_props: UsersPageProps) {
     else next.delete('groupId')
 
     setSearchParams(next, { replace: true })
-    setPage(1)
+    table.resetPage()
   }
 
   const chooseStatus = (value: UserStatus | undefined) => {
     setStatusFilter(value ?? null)
-    setPage(1)
-  }
-
-  /**
-   * Reads the pager and the sortable headers together, because antd reports both through one
-   * handler and the two behave differently: a new page keeps the order, a new order starts
-   * the pages over.
-   */
-  const handleTableChange: TableProps<AdminUser>['onChange'] = (
-    pagination,
-    _filters,
-    sorter,
-    extra,
-  ) => {
-    const nextPageSize = pagination.pageSize ?? PAGE_SIZE
-
-    if (nextPageSize !== pageSize) {
-      setPageSize(nextPageSize)
-      setPage(1)
-      return
-    }
-
-    if (extra.action === 'paginate') {
-      setPage(pagination.current ?? 1)
-      return
-    }
-
-    setPage(1)
-
-    const single = Array.isArray(sorter) ? sorter[0] : sorter
-
-    if (!single?.order) {
-      // The header was clicked through its sorted state to none, which is the visitor asking
-      // for no order in particular. The default is then what the server is being sent, and the
-      // header has to say so - a table quietly applying its default order while no arrow is
-      // showing would tell them the column is unsorted when it is not.
-      setSortBy('username')
-      setSortOrder('asc')
-      return
-    }
-
-    // The sortable columns are keyed by the server's own field names, so the key *is* the
-    // field and no mapping table exists to get wrong. The two unsortable columns (`id`,
-    // `actions`) never produce a sorter event at all - `sorter` is only set on the six that
-    // the endpoint can order by - which is why the cast below never sees them.
-    setSortBy(single.columnKey as AdminUserSortField)
-    setSortOrder(single.order === 'ascend' ? 'asc' : 'desc')
+    table.resetPage()
   }
 
   /**
@@ -455,18 +383,6 @@ export default function UsersPage(_props: UsersPageProps) {
   /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
   const orDash = (value: string | number | null | undefined): string =>
     value === null || value === undefined || value === '' ? '—' : String(value)
-
-  /**
-   * Which order a column is in, or nothing when it is not the one the page is sorted by.
-   *
-   * Controlled rather than left to antd: the server always applies an order, so a header
-   * that showed no arrow while rows arrived A-to-Z would be describing a table that does not
-   * exist. Six of the eight can be sorted - the other two are not fields the endpoint orders
-   * by, and a header that flipped its arrow and changed nothing would be worse than a header
-   * with no arrow at all.
-   */
-  const orderOf = (key: AdminUserSortField) =>
-    sortBy === key ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null
 
   /**
    * One column's resize handle, with this page's name for the column.
@@ -529,7 +445,7 @@ export default function UsersPage(_props: UsersPageProps) {
           // server would answer it empty - a blank table under a pager still offering the
           // page the visitor is standing on. Back a page instead, which re-runs the query
           // anyway, so the list and the pager agree again without a second call.
-          if (users?.items.length === 1 && page > 1) setPage(page - 1)
+          if (users?.items.length === 1 && table.page > 1) table.setPage(table.page - 1)
           else void usersQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
@@ -705,7 +621,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'username',
       width: widths.username,
       sorter: true,
-      sortOrder: orderOf('username'),
+      sortOrder: table.orderOf('username'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('username'),
       render: (value: string) => <TruncatedCell text={value} full={value} />,
@@ -719,7 +635,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'email',
       width: widths.email,
       sorter: true,
-      sortOrder: orderOf('email'),
+      sortOrder: table.orderOf('email'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('email'),
       render: (value: string) => <TruncatedCell text={value} full={value} />,
@@ -735,7 +651,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'group',
       width: widths.group,
       sorter: true,
-      sortOrder: orderOf('group'),
+      sortOrder: table.orderOf('group'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('group'),
       render: (value: string) => <TruncatedCell text={value} full={value} />,
@@ -750,7 +666,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'status',
       width: widths.status,
       sorter: true,
-      sortOrder: orderOf('status'),
+      sortOrder: table.orderOf('status'),
       onHeaderCell: () => resizer('status'),
       render: (value: UserStatus) => (
         <Tag color={STATUS_COLOR[value]} style={{ marginInlineEnd: 0 }}>
@@ -773,7 +689,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'lastSeenAt',
       width: widths.lastSeenAt,
       sorter: true,
-      sortOrder: orderOf('lastSeenAt'),
+      sortOrder: table.orderOf('lastSeenAt'),
       onHeaderCell: () => resizer('lastSeenAt'),
       render: (value: string | null, user: AdminUser) => (
         <LastSeenCell area={area} user={user} value={value} format={formatMoment} />
@@ -788,7 +704,7 @@ export default function UsersPage(_props: UsersPageProps) {
       key: 'ip',
       width: widths.ip,
       sorter: true,
-      sortOrder: orderOf('ip'),
+      sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
       render: (value: string | null) => (
@@ -987,16 +903,16 @@ export default function UsersPage(_props: UsersPageProps) {
             aria-label={t('users.searchLabel')}
             placeholder={t('users.searchPlaceholder')}
             style={{ width: 200 }}
-            value={searchText}
+            value={table.searchText}
             onChange={(event) => {
-              setSearchText(event.target.value)
+              table.setSearchText(event.target.value)
 
               // An emptied box empties the list straight away. Waiting for Enter would mean
               // the visitor clears the field, sees the old filter still applied, and has to
               // press something they just finished typing into.
-              if (event.target.value === '') applySearch('')
+              if (event.target.value === '') table.applySearch('')
             }}
-            onSearch={applySearch}
+            onSearch={table.applySearch}
           />
           <Select
             allowClear
@@ -1078,18 +994,15 @@ export default function UsersPage(_props: UsersPageProps) {
           // being smuggled into the hook's sum - which would make the stored widths and the
           // reset disagree with the eight headers they are supposed to describe.
           scroll={{ x: tableWidth + SELECTION_WIDTH }}
-          onChange={handleTableChange}
+          onChange={table.handleTableChange}
           locale={{
             emptyText: t(
-              groupFilter || statusFilter || search ? 'users.noMatches' : 'users.empty',
+              groupFilter || statusFilter || table.query.search ? 'users.noMatches' : 'users.empty',
             ),
           }}
           pagination={{
-            current: page,
-            pageSize,
+            ...table.pagination,
             total: users?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: PAGE_SIZE_OPTIONS,
             showTotal: (total, range) => t('users.range', { from: range[0], to: range[1], total }),
           }}
         />

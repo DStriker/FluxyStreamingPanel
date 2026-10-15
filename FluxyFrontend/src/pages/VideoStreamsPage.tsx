@@ -12,7 +12,7 @@ import {
   Table,
   Tag,
 } from 'antd'
-import type { TableColumnsType, TableProps } from 'antd'
+import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CaretRightOutlined,
@@ -31,7 +31,7 @@ import {
   stopVideoStream,
   VIDEO_STREAMS_PAGE_SIZE,
 } from '../lib/api'
-import type { VideoStreamSortField, VideoStreamSortOrder } from '../lib/api'
+import type { VideoStreamSortField } from '../lib/api'
 import type { MessageResponse, VideoStream, VideoStreamStatus, VideoStreamType } from '../types'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
@@ -43,12 +43,7 @@ import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useContentCategories, useVideoStreams } from '../hooks/queries'
-
-/** How many streams one page holds. The server's own default, kept in step by hand. */
-const PAGE_SIZE = VIDEO_STREAMS_PAGE_SIZE
-
-/** The sizes the visitor may pick. The server's ceiling is 100 - asking for 500 is refused. */
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+import { useServerTable } from '../hooks/useServerTable'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000
@@ -167,18 +162,24 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const { message, modal } = App.useApp()
   const session = useSession()
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE)
-  // What is typed and what the server has been asked are two different things: one request
-  // per keystroke would be a request per character of a name, and the answer to the first
-  // nine would arrive after the tenth and put a stale page on screen.
-  const [searchText, setSearchText] = useState('')
-  const [search, setSearch] = useState('')
+  /**
+   * The five request parameters, the pager and the three sortable headers - all of that is
+   * `useServerTable`, which the other server-paged tables call too. The mapping needs no
+   * help here: the sortable columns are keyed by the server's own field names, so a click
+   * hands its own key over as the field. `type` and `sortOrder` are fields the endpoint
+   * honours but no header can offer, and the rest of the columns never produce an event at
+   * all.
+   */
+  const table = useServerTable<VideoStream, VideoStreamSortField>({
+    defaultSort: { by: 'name', order: 'asc' },
+    // The one page that names its own size rather than taking the shared default:
+    // `VIDEO_STREAMS_PAGE_SIZE` is what the endpoint documents, and the two are 20 only
+    // because two files currently agree.
+    pageSize: VIDEO_STREAMS_PAGE_SIZE,
+  })
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VideoStreamStatus | null>(null)
   const [typeFilter, setTypeFilter] = useState<VideoStreamType | null>(null)
-  const [sortBy, setSortBy] = useState<VideoStreamSortField>('name')
-  const [sortOrder, setSortOrder] = useState<VideoStreamSortOrder>('asc')
   // The row whose action is in flight - its buttons show a spinner and refuse a second
   // click, and nothing else about the page changes until the answer lands.
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -191,14 +192,10 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
    * action re-reads through `refetch()` rather than by bumping an `attempt` counter.
    */
   const streamsQuery = useVideoStreams({
-    page,
-    pageSize,
-    search,
+    ...table.query,
     categoryId: categoryFilter,
     status: statusFilter,
     type: typeFilter,
-    sortBy,
-    sortOrder,
   })
   const streams = streamsQuery.data
   const loadError = streamsQuery.isError ? messageForError(streamsQuery.error) : null
@@ -262,97 +259,24 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   }, [autoRefresh])
 
   /**
-   * Applies what is in the search box, from the field itself rather than from a button, so
-   * the empty box empties the list the moment it becomes empty.
-   */
-  const applySearch = (value: string) => {
-    const next = value.trim()
-    const current = search.trim()
-
-    if (next === current) return
-
-    setSearch(next)
-    setPage(1)
-  }
-
-  /**
    * The three filters, each starting the pager over: a different list is a different pager,
    * and leaving the visitor on page 3 of a filter that admits one page would show them an
    * empty table while `total` above it said 1.
    */
   const chooseCategory = (value: string | undefined) => {
     setCategoryFilter(value ?? null)
-    setPage(1)
+    table.resetPage()
   }
 
   const chooseStatus = (value: VideoStreamStatus | undefined) => {
     setStatusFilter(value ?? null)
-    setPage(1)
+    table.resetPage()
   }
 
   const chooseType = (value: VideoStreamType | undefined) => {
     setTypeFilter(value ?? null)
-    setPage(1)
+    table.resetPage()
   }
-
-  /**
-   * Reads the pager and the sortable headers together, because antd reports both through one
-   * handler and the two behave differently: a new page keeps the order, a new order starts
-   * the pages over.
-   */
-  const handleTableChange: TableProps<VideoStream>['onChange'] = (
-    pagination,
-    _filters,
-    sorter,
-    extra,
-  ) => {
-    const nextPageSize = pagination.pageSize ?? PAGE_SIZE
-
-    if (nextPageSize !== pageSize) {
-      setPageSize(nextPageSize)
-      setPage(1)
-      return
-    }
-
-    if (extra.action === 'paginate') {
-      setPage(pagination.current ?? 1)
-      return
-    }
-
-    setPage(1)
-
-    const single = Array.isArray(sorter) ? sorter[0] : sorter
-
-    if (!single?.order) {
-      // The header was clicked through its sorted state to none, which is the visitor asking
-      // for no order in particular. The default is then what the server is being sent, and the
-      // header has to say so - a table quietly applying its default order while no arrow is
-      // showing would tell them the column is unsorted when it is not.
-      setSortBy('name')
-      setSortOrder('asc')
-      return
-    }
-
-    // The sortable columns are keyed by the server's own field names, so the key *is* the
-    // field and no mapping table exists to get wrong. The five unsortable columns never
-    // produce a sorter event at all - `sorter` is only set on the three the endpoint can
-    // offer a header for - which is why the cast below never sees them.
-    setSortBy(single.columnKey as VideoStreamSortField)
-    setSortOrder(single.order === 'ascend' ? 'asc' : 'desc')
-  }
-
-  /**
-   * Which order a column is in, or nothing when it is not the one the page is sorted by.
-   *
-   * Controlled rather than left to antd: the server always applies an order, so a header
-   * that showed no arrow while rows arrived A-to-Z would be describing a table that does not
-   * exist. Only three of the eight can be sorted - `type` and `sortOrder` are sort fields
-   * the endpoint honours but this table draws no column for, and the rest are never fields
-   * it orders by, so a header that flipped its arrow and changed nothing would be worse than
-   * a header with no arrow at all.
-   */
-  const orderOf = (key: StreamsColumnKey) =>
-    sortBy === key ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null
 
   /**
    * One column's resize handle, with this page's name for the column.
@@ -421,7 +345,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           // server would answer it empty - a blank table under a pager still offering the
           // page the visitor is standing on. Back a page instead, which re-runs the query
           // anyway, so the list and the pager agree again without a second call.
-          if (streams?.items.length === 1 && page > 1) setPage(page - 1)
+          if (streams?.items.length === 1 && table.page > 1) table.setPage(table.page - 1)
           else void streamsQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
@@ -479,7 +403,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       key: 'name',
       width: widths.name,
       sorter: true,
-      sortOrder: orderOf('name'),
+      sortOrder: table.orderOf('name'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('name'),
       render: (value: string) => <TruncatedCell text={value} full={value} />,
@@ -493,7 +417,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       key: 'category',
       width: widths.category,
       sorter: true,
-      sortOrder: orderOf('category'),
+      sortOrder: table.orderOf('category'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('category'),
       render: (value: string) => <TruncatedCell text={value} full={value} />,
@@ -526,7 +450,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       key: 'status',
       width: widths.status,
       sorter: true,
-      sortOrder: orderOf('status'),
+      sortOrder: table.orderOf('status'),
       onHeaderCell: () => resizer('status'),
       render: (value: VideoStreamStatus) => (
         <Tag color={STATUS_COLOR[value]} style={{ marginInlineEnd: 0 }}>
@@ -669,7 +593,9 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   )
 
   /** Whether anything at all is being filtered - what the empty state says the table is. */
-  const filtered = Boolean(search || categoryFilter || statusFilter || typeFilter)
+  const filtered = Boolean(
+    table.query.search || categoryFilter || statusFilter || typeFilter,
+  )
 
   /**
    * What the auto-refresh button says while it is greyed *or* live.
@@ -711,16 +637,16 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
             aria-label={t('videoStreams.searchLabel')}
             placeholder={t('videoStreams.searchPlaceholder')}
             style={{ width: 180 }}
-            value={searchText}
+            value={table.searchText}
             onChange={(event) => {
-              setSearchText(event.target.value)
+              table.setSearchText(event.target.value)
 
               // An emptied box empties the list straight away. Waiting for Enter would mean
               // the visitor clears the field, sees the old filter still applied, and has to
               // press something they just finished typing into.
-              if (event.target.value === '') applySearch('')
+              if (event.target.value === '') table.applySearch('')
             }}
-            onSearch={applySearch}
+            onSearch={table.applySearch}
           />
           <Select
             allowClear
@@ -795,16 +721,13 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           // `tableWidth` is the eight columns this page owns. There is no selection column
           // here - this table has no bulk actions - so nothing is added to it.
           scroll={{ x: tableWidth }}
-          onChange={handleTableChange}
+          onChange={table.handleTableChange}
           locale={{
             emptyText: t(filtered ? 'videoStreams.noMatches' : 'videoStreams.empty'),
           }}
           pagination={{
-            current: page,
-            pageSize,
+            ...table.pagination,
             total: streams?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: PAGE_SIZE_OPTIONS,
             showTotal: (total, [from, to]) => t('videoStreams.range', { from, to, total }),
           }}
         />

@@ -40,7 +40,7 @@ import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
 import { useAllUserGroups, useProfile, useUserDetail } from '../hooks/queries'
-import useUnsavedChangesWarning from '../hooks/useUnsavedChangesWarning'
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type {
   AdminUserDetail,
   LoginGuardSettings,

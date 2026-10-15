@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next'
  * the guard trusts it exactly: a page that forgets to flip it back after loading a record
  * into the form would ask about edits nobody made.
  */
-export default function useUnsavedChangesWarning(dirty: boolean): () => void {
+export function useUnsavedChangesWarning(dirty: boolean): () => void {
   const { modal } = App.useApp()
   const { t } = useTranslation()
   /** Set by the returned function; read by the blocker predicate when a move is attempted. */

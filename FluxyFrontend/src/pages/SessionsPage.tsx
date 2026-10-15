@@ -1,8 +1,7 @@
-import { useState } from 'react'
 import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
-import type { TableColumnsType, TableProps } from 'antd'
+import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
-import type { SessionSortField, SessionSortOrder } from '../lib/api'
+import type { SessionSortField } from '../lib/api'
 import { messageForError } from '../lib/http'
 import { countryName } from '../lib/countryName'
 import { formatTimestamp } from '../lib/dateFormat'
@@ -12,17 +11,8 @@ import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useProfile, useSessionHistory } from '../hooks/queries'
+import { useServerTable } from '../hooks/useServerTable'
 import type { SessionVisit } from '../types'
-
-/**
- * How many visits one page holds. The server's own default, kept in step by hand because the
- * two are one contract written twice - and because a page size the pager draws from has to be
- * known before the first answer arrives, or the pager would show one row per page until it did.
- */
-const PAGE_SIZE = 20
-
-/** The sizes the visitor may pick, in the same order the pager shows them. */
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
 /** The five columns, in the order they are drawn, named by their own keys. */
 type SessionColumnKey = 'when' | 'ip' | 'country' | 'network' | 'agent'
@@ -103,15 +93,18 @@ const COLUMN_WIDTHS_KEY = 'fluxy.sessions.columnWidths'
 export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   const { t, i18n } = useTranslation()
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE)
-  // What is typed and what the server has been asked are two different things: one request per
-  // keystroke would be a request per character of a user agent, and the answer to the first
-  // nine would arrive after the tenth and put a stale page on screen.
-  const [searchText, setSearchText] = useState('')
-  const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState<SessionSortField>('visitedAt')
-  const [sortOrder, setSortOrder] = useState<SessionSortOrder>('desc')
+  /**
+   * The five request parameters, the pager and the two headers - all of that is
+   * `useServerTable`, which the four other server-paged tables call too. What this page adds
+   * is the one thing a shared hook cannot know: the "When" column is keyed `when` for its
+   * width and its handle, while the endpoint orders by `visitedAt`; the geo columns offer no
+   * sorter at all (see `SessionSortField`), so `ip` is the only other key that can arrive
+   * here, and anything that is not `ip` came from clicking "When".
+   */
+  const table = useServerTable<SessionVisit, SessionSortField>({
+    defaultSort: { by: 'visitedAt', order: 'desc' },
+    sortFieldOf: (columnKey) => (columnKey === 'ip' ? 'ip' : 'visitedAt'),
+  })
 
   /**
    * The page of visits, fetched through a query whose key **is** the five parameters.
@@ -124,7 +117,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * is what the per-run flag was for. A failure is the query's own `error`; the retry button
    * calls `refetch` rather than bumping a counter.
    */
-  const historyQuery = useSessionHistory({ page, pageSize, search, sortBy, sortOrder })
+  const historyQuery = useSessionHistory(table.query)
   const history = historyQuery.data
   const loadError = historyQuery.isError ? messageForError(historyQuery.error) : null
   // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
@@ -163,64 +156,6 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   const locale = i18n.resolvedLanguage ?? i18n.language
 
   /**
-   * Applies what is in the search box, from the field itself rather than from a button, so the
-   * empty box empties the list the moment it becomes empty.
-   */
-  const applySearch = (value: string) => {
-    const next = value.trim()
-    const current = search.trim()
-
-    if (next === current) return
-
-    setSearch(next)
-    setPage(1)
-  }
-
-  /**
-   * Reads the pager and the sortable headers together, because antd reports both through one
-   * handler and the two behave differently: a new page keeps the order, a new order starts the
-   * pages over.
-   */
-  const handleTableChange: TableProps<SessionVisit>['onChange'] = (
-    pagination,
-    _filters,
-    sorter,
-    extra,
-  ) => {
-    const nextPageSize = pagination.pageSize ?? PAGE_SIZE
-
-    if (nextPageSize !== pageSize) {
-      // A different page size is a different pager, so this starts again at the first page
-      // rather than leaving the visitor on a page number that no longer means what it did.
-      setPageSize(nextPageSize)
-      setPage(1)
-      return
-    }
-
-    if (extra.action === 'paginate') {
-      setPage(pagination.current ?? 1)
-      return
-    }
-
-    setPage(1)
-
-    const single = Array.isArray(sorter) ? sorter[0] : sorter
-
-    if (!single?.order) {
-      // The header was clicked through its sorted state to none, which is the visitor asking
-      // for no order in particular. The default is then what the server is being sent, and the
-      // header has to say so - a table that quietly applies its default order while no arrow is
-      // showing is telling them the column is unsorted when it is not.
-      setSortBy('visitedAt')
-      setSortOrder('desc')
-      return
-    }
-
-    setSortBy(single.columnKey === 'ip' ? 'ip' : 'visitedAt')
-    setSortOrder(single.order === 'ascend' ? 'asc' : 'desc')
-  }
-
-  /**
    * A date as this account's own zone and the page's own language show it, falling back to the
    * browser's zone when the stored one is absent or is one this ICU build refuses to format in.
    */
@@ -229,17 +164,6 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
   /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
   const orDash = (value: string | number | null | undefined): string =>
     value === null || value === undefined || value === '' ? '—' : String(value)
-
-  /**
-   * Which order a column is in, or nothing when it is not the one the page is sorted by.
-   *
-   * The arrows are controlled rather than left to antd: the server always applies an order, so
-   * a header that showed no arrow while rows arrived newest-first would be describing a table
-   * that does not exist. Only the two stored columns can be sorted at all - see the note on
-   * `SessionSortField`.
-   */
-  const orderOf = (key: SessionSortField) =>
-    sortBy === key ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null
 
   /**
    * One column's resize handle, with this page's name for the column.
@@ -257,7 +181,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       key: 'when',
       width: widths.when,
       sorter: true,
-      sortOrder: orderOf('visitedAt'),
+      sortOrder: table.orderOf('visitedAt'),
       onHeaderCell: () => resizer('when'),
       render: (_, visit) => (
         <Space size={8} wrap>
@@ -276,7 +200,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       key: 'ip',
       width: widths.ip,
       sorter: true,
-      sortOrder: orderOf('ip'),
+      sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
       render: (value: string | null) => (
@@ -358,16 +282,16 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
             aria-label={t('sessions.searchLabel')}
             placeholder={t('sessions.searchPlaceholder')}
             style={{ width: 320 }}
-            value={searchText}
+            value={table.searchText}
             onChange={(event) => {
-              setSearchText(event.target.value)
+              table.setSearchText(event.target.value)
 
               // An emptied box empties the list straight away. Waiting for Enter would mean the
               // visitor clears the field, sees the old filter still applied, and has to press
               // something they just finished typing into.
-              if (event.target.value === '') applySearch('')
+              if (event.target.value === '') table.applySearch('')
             }}
-            onSearch={applySearch}
+            onSearch={table.applySearch}
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
@@ -406,14 +330,11 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
           // pointer with it.
           components={{ header: { cell: ResizableHeaderCell } }}
           scroll={{ x: tableWidth }}
-          onChange={handleTableChange}
-          locale={{ emptyText: t(search ? 'sessions.noMatches' : 'sessions.empty') }}
+          onChange={table.handleTableChange}
+          locale={{ emptyText: t(table.query.search ? 'sessions.noMatches' : 'sessions.empty') }}
           pagination={{
-            current: page,
-            pageSize,
+            ...table.pagination,
             total: history?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: PAGE_SIZE_OPTIONS,
             showTotal: (total, range) =>
               t('sessions.range', { from: range[0], to: range[1], total }),
           }}

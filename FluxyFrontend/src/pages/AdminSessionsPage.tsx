@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Alert, App, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import type { TableColumnsType, TableProps } from 'antd'
+import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { revokeAdminSession } from '../lib/api'
-import type { SessionSortField, SessionSortOrder } from '../lib/api'
+import type { SessionSortField } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
@@ -16,17 +16,8 @@ import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell
 import TruncatedCell from '../components/TruncatedCell'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAdminSessionHistory, useAllUsers, useProfile } from '../hooks/queries'
+import { useServerTable } from '../hooks/useServerTable'
 import type { AdminSessionVisit } from '../types'
-
-/**
- * How many visits one page holds. The server's own default, kept in step by hand because the
- * two are one contract written twice - and because a page size the pager draws from has to be
- * known before the first answer arrives, or the pager would show one row per page until it did.
- */
-const PAGE_SIZE = 20
-
-/** The sizes the visitor may pick, in the same order the pager shows them. The server's ceiling is 100. */
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
 /** The seven columns, in the order they are drawn, named by their own keys. */
 type AdminSessionColumnKey =
@@ -143,13 +134,20 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   const { t, i18n } = useTranslation()
   const { message } = App.useApp()
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(PAGE_SIZE)
-  // What is typed and what the server has been asked are two different things: one request
-  // per keystroke would be a request per character of a user agent, and the answer to the
-  // first nine would arrive after the tenth and put a stale page on screen.
-  const [searchText, setSearchText] = useState('')
-  const [search, setSearch] = useState('')
+  /**
+   * The five request parameters, the pager and the two headers - all of that is
+   * `useServerTable`, which the four other server-paged tables call too. What this page adds
+   * is the one thing a shared hook cannot know: the "When" column is keyed `when` for its
+   * width and its handle, while the endpoint orders by `visitedAt`. The account column is a
+   * join and the three geo columns are resolved from GeoIP while a page is built, so there
+   * is nothing in the row for the endpoint to order by: `ip` is the only other key that can
+   * arrive here, and anything that is not `ip` came from clicking "When".
+   */
+  const table = useServerTable<AdminSessionVisit, SessionSortField>({
+    defaultSort: { by: 'visitedAt', order: 'desc' },
+    sortFieldOf: (columnKey) => (columnKey === 'ip' ? 'ip' : 'visitedAt'),
+  })
+
   /**
    * The account filter, which lives in the address rather than in this component's state -
    * the same decision the accounts table makes about `?groupId=`, and the same reasons: a
@@ -160,8 +158,6 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    */
   const [searchParams, setSearchParams] = useSearchParams()
   const userFilter = searchParams.get('userId')
-  const [sortBy, setSortBy] = useState<SessionSortField>('visitedAt')
-  const [sortOrder, setSortOrder] = useState<SessionSortOrder>('desc')
   // The session whose button is in flight. One id rather than a boolean, so the other rows
   // stay clickable while one revoke runs - and every row of that same session shows the
   // spinner, which is the truth: the act is on the chain, not on the row that was pressed.
@@ -173,14 +169,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    * revoke re-reads through `refetch()` rather than by bumping a counter, and it has to be a
    * re-read, because one revoke ends every row of that session.
    */
-  const historyQuery = useAdminSessionHistory({
-    page,
-    pageSize,
-    search,
-    userId: userFilter,
-    sortBy,
-    sortOrder,
-  })
+  const historyQuery = useAdminSessionHistory({ ...table.query, userId: userFilter })
   const history = historyQuery.data
   const loadError = historyQuery.isError ? messageForError(historyQuery.error) : null
   // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
@@ -241,20 +230,6 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   const locale = i18n.resolvedLanguage ?? i18n.language
 
   /**
-   * Applies what is in the search box, from the field itself rather than from a button, so
-   * the empty box empties the list the moment it becomes empty.
-   */
-  const applySearch = (value: string) => {
-    const next = value.trim()
-    const current = search.trim()
-
-    if (next === current) return
-
-    setSearch(next)
-    setPage(1)
-  }
-
-  /**
    * The account filter, starting the pager over: a different list is a different pager, and
    * leaving the visitor on page 3 of a filter that admits one page would show them an empty
    * table while `total` above it said 1.
@@ -270,51 +245,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
     else next.delete('userId')
 
     setSearchParams(next, { replace: true })
-    setPage(1)
-  }
-
-  /**
-   * Reads the pager and the sortable headers together, because antd reports both through one
-   * handler and the two behave differently: a new page keeps the order, a new order starts
-   * the pages over.
-   */
-  const handleTableChange: TableProps<AdminSessionVisit>['onChange'] = (
-    pagination,
-    _filters,
-    sorter,
-    extra,
-  ) => {
-    const nextPageSize = pagination.pageSize ?? PAGE_SIZE
-
-    if (nextPageSize !== pageSize) {
-      // A different page size is a different pager, so this starts again at the first page
-      // rather than leaving the visitor on a page number that no longer means what it did.
-      setPageSize(nextPageSize)
-      setPage(1)
-      return
-    }
-
-    if (extra.action === 'paginate') {
-      setPage(pagination.current ?? 1)
-      return
-    }
-
-    setPage(1)
-
-    const single = Array.isArray(sorter) ? sorter[0] : sorter
-
-    if (!single?.order) {
-      // The header was clicked through its sorted state to none, which is the visitor asking
-      // for no order in particular. The default is then what the server is being sent, and the
-      // header has to say so - a table that quietly applies its default order while no arrow is
-      // showing is telling them the column is unsorted when it is not.
-      setSortBy('visitedAt')
-      setSortOrder('desc')
-      return
-    }
-
-    setSortBy(single.columnKey === 'ip' ? 'ip' : 'visitedAt')
-    setSortOrder(single.order === 'ascend' ? 'asc' : 'desc')
+    table.resetPage()
   }
 
   /**
@@ -357,18 +288,6 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
   const orDash = (value: string | number | null | undefined): string =>
     value === null || value === undefined || value === '' ? '—' : String(value)
-
-  /**
-   * Which order a column is in, or nothing when it is not the one the page is sorted by.
-   *
-   * The arrows are controlled rather than left to antd: the server always applies an order,
-   * so a header that showed no arrow while rows arrived newest-first would be describing a
-   * table that does not exist. Only the two stored columns can be sorted at all - the
-   * account column is a join and the three geo columns are resolved from GeoIP while a page
-   * is built, so there is nothing in the row for the endpoint to order by.
-   */
-  const orderOf = (key: SessionSortField) =>
-    sortBy === key ? (sortOrder === 'asc' ? 'ascend' : 'descend') : null
 
   /**
    * One column's resize handle, with this page's name for the column.
@@ -426,7 +345,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       key: 'when',
       width: widths.when,
       sorter: true,
-      sortOrder: orderOf('visitedAt'),
+      sortOrder: table.orderOf('visitedAt'),
       onHeaderCell: () => resizer('when'),
       render: (_, visit) => (
         <Space size={4} wrap>
@@ -452,7 +371,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       key: 'ip',
       width: widths.ip,
       sorter: true,
-      sortOrder: orderOf('ip'),
+      sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
       render: (value: string | null) => (
@@ -550,16 +469,16 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
             aria-label={t('adminSessions.searchLabel')}
             placeholder={t('adminSessions.searchPlaceholder')}
             style={{ width: 220 }}
-            value={searchText}
+            value={table.searchText}
             onChange={(event) => {
-              setSearchText(event.target.value)
+              table.setSearchText(event.target.value)
 
               // An emptied box empties the list straight away. Waiting for Enter would mean
               // the visitor clears the field, sees the old filter still applied, and has to
               // press something they just finished typing into.
-              if (event.target.value === '') applySearch('')
+              if (event.target.value === '') table.applySearch('')
             }}
-            onSearch={applySearch}
+            onSearch={table.applySearch}
           />
           <Select
             allowClear
@@ -606,16 +525,17 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
           // mid-drag, dropping the pointer with it.
           components={{ header: { cell: ResizableHeaderCell } }}
           scroll={{ x: tableWidth }}
-          onChange={handleTableChange}
+          onChange={table.handleTableChange}
           locale={{
-            emptyText: t(userFilter || search ? 'adminSessions.noMatches' : 'adminSessions.empty'),
+            emptyText: t(
+              userFilter || table.query.search
+                ? 'adminSessions.noMatches'
+                : 'adminSessions.empty',
+            ),
           }}
           pagination={{
-            current: page,
-            pageSize,
+            ...table.pagination,
             total: history?.total ?? 0,
-            showSizeChanger: true,
-            pageSizeOptions: PAGE_SIZE_OPTIONS,
             showTotal: (total, range) =>
               t('adminSessions.range', { from: range[0], to: range[1], total }),
           }}
