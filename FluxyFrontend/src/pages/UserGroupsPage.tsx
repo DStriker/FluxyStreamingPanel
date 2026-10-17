@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { App, Button, Card, Dropdown, Select, Space, Table, Tag } from 'antd'
+import { App, Button, Card, Dropdown, Select, Space, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -17,15 +17,15 @@ import type {
   UserGroupSortField,
 } from '../lib/api'
 import type { Role, UserGroup, UserStatus } from '../types'
-import { hinted } from '../lib/hinted'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { idCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import LoadErrorAlert from '../components/LoadErrorAlert'
-import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import RowActions from '../components/RowActions'
+import type { RowAction } from '../components/RowActions'
+import ServerTable from '../components/ServerTable'
 import TableSearch from '../components/TableSearch'
 import {
   useBulkUserGroups,
@@ -76,13 +76,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<GroupsColumnKey, number> = {
   permissionsCount: 140,
   actions: 200,
 }
-
-/**
- * The width of the checkbox column antd prepends, which is not one of the six and is
- * therefore not part of the hook's sum or its memory - the same fact `UsersPage` records
- * about its own eight.
- */
-const SELECTION_WIDTH = 40
 
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.userGroups.columnWidths'
@@ -437,71 +430,59 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
         const locked = group.isBase
         const busy = busyId === group.id
 
-        return (
-          <Space size={4}>
-            {hinted(
-              t('userGroups.actions.edit'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`${area}/user-groups/${group.id}`)}
-              />,
-            )}
+        const actions: RowAction[] = [
+          {
+            key: 'edit',
+            label: t('userGroups.actions.edit'),
+            icon: <EditOutlined />,
+            onClick: () => navigate(`${area}/user-groups/${group.id}`),
+          },
+          // Straight to the accounts list with this group already on it. The filter lives in
+          // the address (`?groupId=`), so this is the whole of the interaction - no state to
+          // hand over, nothing to remember, and the resulting page is one the visitor can
+          // reload or send to somebody else and still be looking at the same list.
+          {
+            key: 'accounts',
+            label: t('userGroups.actions.showAccounts'),
+            icon: <TeamOutlined />,
+            onClick: () => navigate(`${area}/users?groupId=${encodeURIComponent(group.id)}`),
+          },
+        ]
 
-            {hinted(
-              t('userGroups.actions.showAccounts'),
-              <Button
-                type="text"
-                size="small"
-                icon={<TeamOutlined />}
-                // Straight to the accounts list with this group already on it. The filter
-                // lives in the address (`?groupId=`), so this is the whole of the
-                // interaction - no state to hand over, nothing to remember, and the
-                // resulting page is one the visitor can reload or send to somebody else
-                // and still be looking at the same list.
-                onClick={() => navigate(`${area}/users?groupId=${encodeURIComponent(group.id)}`)}
-              />,
-            )}
-
-            {group.status === 'Blocked' ? (
-              hinted(
-                locked ? t('userGroups.baseImmutable') : t('userGroups.actions.unblock'),
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<UnlockOutlined />}
-                  loading={busy}
-                  disabled={locked || busy}
-                  onClick={() => setStatus(group, 'Registered')}
-                />,
-              )
-            ) : (
-              hinted(
-                locked ? t('userGroups.baseImmutable') : t('userGroups.actions.block'),
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LockOutlined />}
-                  disabled={locked || busy}
-                  onClick={() => setStatus(group, 'Blocked')}
-                />,
-              )
-            )}
-
-            {hinted(
-              locked ? t('userGroups.baseUndeletable') : t('userGroups.actions.delete'),
-              <Button
-                danger
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                disabled={locked || busy}
-                onClick={() => confirmDelete(group)}
-              />,
-            )}
-          </Space>
+        // Block and unblock are one button that means the opposite depending on which side
+        // of the state the row is on, and both are disabled on a base group with the reason
+        // still attached: the server answers `409 user_group_immutable` for them.
+        actions.push(
+          group.status === 'Blocked'
+            ? {
+                key: 'unblock',
+                label: locked
+                  ? t('userGroups.baseImmutable')
+                  : t('userGroups.actions.unblock'),
+                icon: <UnlockOutlined />,
+                loading: busy,
+                disabled: locked || busy,
+                onClick: () => setStatus(group, 'Registered'),
+              }
+            : {
+                key: 'block',
+                label: locked ? t('userGroups.baseImmutable') : t('userGroups.actions.block'),
+                icon: <LockOutlined />,
+                disabled: locked || busy,
+                onClick: () => setStatus(group, 'Blocked'),
+              },
         )
+
+        actions.push({
+          key: 'delete',
+          label: locked ? t('userGroups.baseUndeletable') : t('userGroups.actions.delete'),
+          icon: <DeleteOutlined />,
+          danger: true,
+          disabled: locked || busy,
+          onClick: () => confirmDelete(group),
+        })
+
+        return <RowActions actions={actions} />
       },
     },
   ]
@@ -611,50 +592,23 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
         </Space>
       }
     >
-      {loadError ? (
-        <LoadErrorAlert
-          message={loadError}
-          loading={loading}
-          onRetry={() => groupsQuery.refetch()}
-        />
-      ) : (
-        <Table<UserGroup>
-          rowKey="id"
-          columns={columns}
-          dataSource={groups?.items ?? []}
-          loading={loading}
-          // `ResizableHeaderCell` rather than the default cell: the handles are a sibling of
-          // the header's own content, and the only way to put them there without nesting a
-          // focusable span inside antd's sortable `<button>` is to own the cell. It is a
-          // module-level function on purpose - a component type created inside this one would
-          // be a new type on every repaint, and React would then unmount the handle mid-drag,
-          // dropping the pointer with it.
-          components={{ header: { cell: ResizableHeaderCell } }}
-          rowSelection={{
-            selectedRowKeys: selectedIds,
-            onChange: (keys) => setSelectedIds(keys),
-            columnWidth: SELECTION_WIDTH,
-          }}
-          // `tableWidth` is the six columns this page owns; the checkbox column antd
-          // prepends is a seventh with a width of its own, so it is added here rather than
-          // being smuggled into the hook's sum - which would make the stored widths and the
-          // reset disagree with the six headers they are supposed to describe.
-          scroll={{ x: tableWidth + SELECTION_WIDTH }}
-          onChange={table.handleTableChange}
-          locale={{
-            emptyText: t(
-              table.query.search || roleFilter || statusFilter
-                ? 'userGroups.noMatches'
-                : 'userGroups.empty',
-            ),
-          }}
-          pagination={{
-            ...table.pagination,
-            total: groups?.total ?? 0,
-            showTotal: (total, [from, to]) => t('userGroups.range', { from, to, total }),
-          }}
-        />
-      )}
+      <ServerTable<UserGroup, UserGroupSortField>
+        table={table}
+        columns={columns}
+        rows={groups?.items ?? []}
+        total={groups?.total ?? 0}
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => groupsQuery.refetch()}
+        tableWidth={tableWidth}
+        emptyText={t(
+          table.query.search || roleFilter || statusFilter
+            ? 'userGroups.noMatches'
+            : 'userGroups.empty',
+        )}
+        showTotal={(total, [from, to]) => t('userGroups.range', { from, to, total })}
+        selection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }}
+      />
     </Card>
   )
 }

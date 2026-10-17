@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { App, Button, Card, Select, Space, Table, Tag } from 'antd'
+import { App, Button, Card, Select, Space, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionSortField } from '../lib/api'
@@ -9,9 +9,8 @@ import { formatTimestamp } from '../lib/dateFormat'
 import { tableResults } from '../lib/tableResults'
 import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../lib/tableCells'
 import { withFilter } from '../lib/tableParams'
-import LoadErrorAlert from '../components/LoadErrorAlert'
-import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import ServerTable from '../components/ServerTable'
 import TableSearch from '../components/TableSearch'
 import { useRevokeAdminSession } from '../hooks/mutations'
 import { useColumnWidths } from '../hooks/useColumnWidths'
@@ -457,42 +456,24 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
         </Space>
       }
     >
-      {loadError ? (
-        <LoadErrorAlert
-          message={loadError}
-          loading={loading}
-          onRetry={() => historyQuery.refetch()}
-        />
-      ) : (
-        <Table<AdminSessionVisit>
-          rowKey="id"
-          columns={columns}
-          dataSource={history?.items ?? []}
-          loading={loading}
-          // `ResizableHeaderCell` rather than the default cell: the handles are a sibling of
-          // the header's own content, and the only way to put them there without nesting a
-          // focusable span inside antd's sortable `<button>` is to own the cell. It is a
-          // module-level function on purpose - a component type created inside this one would
-          // be a new type on every repaint, and React would then unmount the handle
-          // mid-drag, dropping the pointer with it.
-          components={{ header: { cell: ResizableHeaderCell } }}
-          scroll={{ x: tableWidth }}
-          onChange={table.handleTableChange}
-          locale={{
-            emptyText: t(
-              userFilter || table.query.search
-                ? 'adminSessions.noMatches'
-                : 'adminSessions.empty',
-            ),
-          }}
-          pagination={{
-            ...table.pagination,
-            total: history?.total ?? 0,
-            showTotal: (total, range) =>
-              t('adminSessions.range', { from: range[0], to: range[1], total }),
-          }}
-        />
-      )}
+      <ServerTable<AdminSessionVisit, SessionSortField>
+        table={table}
+        columns={columns}
+        rows={history?.items ?? []}
+        total={history?.total ?? 0}
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => historyQuery.refetch()}
+        tableWidth={tableWidth}
+        emptyText={t(
+          userFilter || table.query.search
+            ? 'adminSessions.noMatches'
+            : 'adminSessions.empty',
+        )}
+        showTotal={(total, range) =>
+          t('adminSessions.range', { from: range[0], to: range[1], total })
+        }
+      />
     </Card>
   )
 }

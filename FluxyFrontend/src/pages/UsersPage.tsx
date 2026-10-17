@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { App, Button, Card, Dropdown, Modal, Select, Space, Table, Tag } from 'antd'
+import { App, Button, Card, Dropdown, Modal, Select, Space, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -23,9 +23,10 @@ import { tableResults } from '../lib/tableResults'
 import { idCell, ipCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
 import LastSeenCell from '../components/LastSeenCell'
-import LoadErrorAlert from '../components/LoadErrorAlert'
-import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import RowActions from '../components/RowActions'
+import type { RowAction } from '../components/RowActions'
+import ServerTable from '../components/ServerTable'
 import TableSearch from '../components/TableSearch'
 import {
   useBulkUsers,
@@ -99,16 +100,6 @@ const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
   ip: 130,
   actions: 150,
 }
-
-/**
- * The width of the checkbox column antd prepends, which is not one of the eight and is
- * therefore not part of the hook's sum or its memory.
- *
- * `scroll.x` is that sum **plus** this, so the eight keep their own widths, their own
- * reset and their own storage while the table as a whole still fills the same 1230 it
- * filled before a selection column existed.
- */
-const SELECTION_WIDTH = 40
 
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.users.columnWidths'
@@ -577,78 +568,69 @@ export default function UsersPage(_props: UsersPageProps) {
         const editable = canEdit(granted, user.role)
         const refused = t('users.noPermission')
 
-        return (
-          <Space size={4}>
-            {/* Never gated on `editable`: opening the form is a read, and the row only
-                arrived because `canView` already holds for its role. The form greys its own
-                submit for the same reason this one greys its buttons. */}
-            {hinted(
-              t('users.actions.edit'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`${area}/users/${user.id}`)}
-              />,
-            )}
+        const actions: RowAction[] = [
+          // Never gated on `editable`: opening the form is a read, and the row only arrived
+          // because `canView` already holds for its role. The form greys its own submit for
+          // the same reason this one greys its buttons.
+          {
+            key: 'edit',
+            label: t('users.actions.edit'),
+            icon: <EditOutlined />,
+            onClick: () => navigate(`${area}/users/${user.id}`),
+          },
+        ]
 
-            {user.status === 'Unregistered' &&
-              hinted(
-                editable ? t('users.actions.confirm') : refused,
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CheckOutlined />}
-                  loading={busy}
-                  disabled={busy || !editable}
-                  onClick={() => runAction(() => confirmRegistration.mutateAsync({ id: user.id }), user)}
-                />,
-              )}
+        // Confirming is only a move an `Unregistered` row can make.
+        if (user.status === 'Unregistered') {
+          actions.push({
+            key: 'confirm',
+            label: editable ? t('users.actions.confirm') : refused,
+            icon: <CheckOutlined />,
+            loading: busy,
+            disabled: busy || !editable,
+            onClick: () => runAction(() => confirmRegistration.mutateAsync({ id: user.id }), user),
+          })
+        }
 
-            {user.status === 'Blocked' ? (
-              hinted(
-                editable ? t('users.actions.unblock') : refused,
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<UnlockOutlined />}
-                  loading={busy}
-                  disabled={busy || !editable}
-                  onClick={() => runAction(() => setUnblocked.mutateAsync({ id: user.id }), user)}
-                />,
-              )
-            ) : hinted(
-                !editable
+        // Block and unblock are one button that means the opposite depending on which side
+        // of the state the row is on.
+        actions.push(
+          user.status === 'Blocked'
+            ? {
+                key: 'unblock',
+                label: editable ? t('users.actions.unblock') : refused,
+                icon: <UnlockOutlined />,
+                loading: busy,
+                disabled: busy || !editable,
+                onClick: () => runAction(() => setUnblocked.mutateAsync({ id: user.id }), user),
+              }
+            : {
+                key: 'block',
+                label: !editable
                   ? refused
                   : isSelf
                     ? t('users.selfProtected')
                     : t('users.actions.block'),
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LockOutlined />}
-                  disabled={isSelf || busy || !editable}
-                  onClick={() => runAction(() => setBlocked.mutateAsync({ id: user.id }), user)}
-                />,
-              )}
-
-            {hinted(
-              !editable
-                ? refused
-                : isSelf
-                  ? t('users.selfProtected')
-                  : t('users.actions.delete'),
-              <Button
-                danger
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                disabled={isSelf || busy || !editable}
-                onClick={() => confirmDelete(user)}
-              />,
-            )}
-          </Space>
+                icon: <LockOutlined />,
+                disabled: isSelf || busy || !editable,
+                onClick: () => runAction(() => setBlocked.mutateAsync({ id: user.id }), user),
+              },
         )
+
+        actions.push({
+          key: 'delete',
+          label: !editable
+            ? refused
+            : isSelf
+              ? t('users.selfProtected')
+              : t('users.actions.delete'),
+          icon: <DeleteOutlined />,
+          danger: true,
+          disabled: isSelf || busy || !editable,
+          onClick: () => confirmDelete(user),
+        })
+
+        return <RowActions actions={actions} />
       },
     },
   ]
@@ -790,48 +772,21 @@ export default function UsersPage(_props: UsersPageProps) {
         </Space>
       }
     >
-      {loadError ? (
-        <LoadErrorAlert
-          message={loadError}
-          loading={loading}
-          onRetry={() => usersQuery.refetch()}
-        />
-      ) : (
-        <Table<AdminUser>
-          rowKey="id"
-          columns={columns}
-          dataSource={users?.items ?? []}
-          loading={loading}
-          // `ResizableHeaderCell` rather than the default cell: the handles are a sibling of
-          // the header's own content, and the only way to put them there without nesting a
-          // focusable span inside antd's sortable `<button>` is to own the cell. It is a
-          // module-level function on purpose - a component type created inside this one would
-          // be a new type on every repaint, and React would then unmount the handle mid-drag,
-          // dropping the pointer with it.
-          components={{ header: { cell: ResizableHeaderCell } }}
-          rowSelection={{
-            selectedRowKeys: selectedIds,
-            onChange: (keys) => setSelectedIds(keys),
-            columnWidth: SELECTION_WIDTH,
-          }}
-          // `tableWidth` is the eight columns this page owns; the checkbox column antd
-          // prepends is a ninth with a width of its own, so it is added here rather than
-          // being smuggled into the hook's sum - which would make the stored widths and the
-          // reset disagree with the eight headers they are supposed to describe.
-          scroll={{ x: tableWidth + SELECTION_WIDTH }}
-          onChange={table.handleTableChange}
-          locale={{
-            emptyText: t(
-              groupFilter || statusFilter || table.query.search ? 'users.noMatches' : 'users.empty',
-            ),
-          }}
-          pagination={{
-            ...table.pagination,
-            total: users?.total ?? 0,
-            showTotal: (total, range) => t('users.range', { from: range[0], to: range[1], total }),
-          }}
-        />
-      )}
+      <ServerTable<AdminUser, AdminUserSortField>
+        table={table}
+        columns={columns}
+        rows={users?.items ?? []}
+        total={users?.total ?? 0}
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => usersQuery.refetch()}
+        tableWidth={tableWidth}
+        emptyText={t(
+          groupFilter || statusFilter || table.query.search ? 'users.noMatches' : 'users.empty',
+        )}
+        showTotal={(total, range) => t('users.range', { from: range[0], to: range[1], total })}
+        selection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }}
+      />
       {/* The move, as a dialog rather than a control in the toolbar: the destination is one
           decision about the whole selection, and a select dropped into the toolbar would be
           answering it for a menu that has already closed. The list is the same one the group

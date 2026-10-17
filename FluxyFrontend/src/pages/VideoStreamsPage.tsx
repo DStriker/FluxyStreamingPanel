@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Image, Select, Space, Table, Tag } from 'antd'
+import { Button, Card, Image, Select, Space, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -22,9 +22,10 @@ import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { dashedCell, idCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import LoadErrorAlert from '../components/LoadErrorAlert'
-import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import RowActions from '../components/RowActions'
+import type { RowAction } from '../components/RowActions'
+import ServerTable from '../components/ServerTable'
 import TableSearch from '../components/TableSearch'
 import {
   useDeleteVideoStream,
@@ -462,79 +463,56 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       render: (_, stream) => {
         const busy = busyId === stream.id
 
-        return (
-          <Space size={4}>
-            {stream.status === 'Running' ? (
-              hinted(
-                t('videoStreams.actions.stop'),
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<StopOutlined />}
-                  loading={busy}
-                  disabled={busy}
-                  onClick={() => runAction(() => stopStream.mutateAsync({ id: stream.id }), stream)}
-                />,
-              )
-            ) : (
-              hinted(
-                t('videoStreams.actions.start'),
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<CaretRightOutlined />}
-                  loading={busy}
-                  disabled={busy}
-                  onClick={() => runAction(() => startStream.mutateAsync({ id: stream.id }), stream)}
-                />,
-              )
-            )}
+        const actions: RowAction[] = [
+          stream.status === 'Running'
+            ? {
+                key: 'stop',
+                label: t('videoStreams.actions.stop'),
+                icon: <StopOutlined />,
+                loading: busy,
+                disabled: busy,
+                onClick: () => runAction(() => stopStream.mutateAsync({ id: stream.id }), stream),
+              }
+            : {
+                key: 'start',
+                label: t('videoStreams.actions.start'),
+                icon: <CaretRightOutlined />,
+                loading: busy,
+                disabled: busy,
+                onClick: () => runAction(() => startStream.mutateAsync({ id: stream.id }), stream),
+              },
+          // The relaying process behind these two does not exist yet: a greyed button with a
+          // sentence says that before the click, where a live button answering 404 would only
+          // say something failed after it.
+          {
+            key: 'restart',
+            label: t('videoStreams.actions.notImplemented'),
+            icon: <ReloadOutlined />,
+            disabled: true,
+          },
+          {
+            key: 'play',
+            label: t('videoStreams.actions.notImplemented'),
+            icon: <EyeOutlined />,
+            disabled: true,
+          },
+          {
+            key: 'edit',
+            label: t('videoStreams.actions.edit'),
+            icon: <EditOutlined />,
+            onClick: () => navigate(`${area}/video-streams/${stream.id}`),
+          },
+          {
+            key: 'delete',
+            label: t('videoStreams.actions.delete'),
+            icon: <DeleteOutlined />,
+            danger: true,
+            disabled: busy,
+            onClick: () => confirmDelete(stream),
+          },
+        ]
 
-            {hinted(
-              t('videoStreams.actions.notImplemented'),
-              <Button
-                type="text"
-                size="small"
-                icon={<ReloadOutlined />}
-                disabled
-                onClick={() => undefined}
-              />,
-            )}
-
-            {hinted(
-              t('videoStreams.actions.notImplemented'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                disabled
-                onClick={() => undefined}
-              />,
-            )}
-
-            {hinted(
-              t('videoStreams.actions.edit'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => navigate(`${area}/video-streams/${stream.id}`)}
-              />,
-            )}
-
-            {hinted(
-              t('videoStreams.actions.delete'),
-              <Button
-                danger
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                disabled={busy}
-                onClick={() => confirmDelete(stream)}
-              />,
-            )}
-          </Space>
-        )
+        return <RowActions actions={actions} />
       },
     },
   ]
@@ -653,38 +631,18 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
         </Space>
       }
     >
-      {loadError ? (
-        <LoadErrorAlert
-          message={loadError}
-          loading={loading}
-          onRetry={() => streamsQuery.refetch()}
-        />
-      ) : (
-        <Table<VideoStream>
-          rowKey="id"
-          columns={columns}
-          dataSource={streams?.items ?? []}
-          loading={loading}
-          // `ResizableHeaderCell` rather than the default cell: the handles are a sibling of
-          // the header's own content, and the only way to put them there without nesting a
-          // focusable span inside antd's sortable `<button>` is to own the cell. It is a
-          // module-level component on purpose - a type created inside this one would be a new
-          // type on every repaint, and React would then unmount the handle mid-drag.
-          components={{ header: { cell: ResizableHeaderCell } }}
-          // `tableWidth` is the eight columns this page owns. There is no selection column
-          // here - this table has no bulk actions - so nothing is added to it.
-          scroll={{ x: tableWidth }}
-          onChange={table.handleTableChange}
-          locale={{
-            emptyText: t(filtered ? 'videoStreams.noMatches' : 'videoStreams.empty'),
-          }}
-          pagination={{
-            ...table.pagination,
-            total: streams?.total ?? 0,
-            showTotal: (total, [from, to]) => t('videoStreams.range', { from, to, total }),
-          }}
-        />
-      )}
+      <ServerTable<VideoStream, VideoStreamSortField>
+        table={table}
+        columns={columns}
+        rows={streams?.items ?? []}
+        total={streams?.total ?? 0}
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => streamsQuery.refetch()}
+        tableWidth={tableWidth}
+        emptyText={t(filtered ? 'videoStreams.noMatches' : 'videoStreams.empty')}
+        showTotal={(total, [from, to]) => t('videoStreams.range', { from, to, total })}
+      />
     </Card>
   )
 }

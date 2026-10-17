@@ -30,8 +30,9 @@ import { CSS } from '@dnd-kit/utilities'
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { CONTENT_TYPE_PARAMS } from '../lib/api'
 import type { ContentCategory, ContentType } from '../types'
-import { hinted } from '../lib/hinted'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
+import RowActions from '../components/RowActions'
+import type { RowAction } from '../components/RowActions'
 import {
   useCreateContentCategory,
   useDeleteContentCategory,
@@ -391,45 +392,36 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
       render: (_, category) => {
         const busy = busyId === category.id
 
-        return (
-          <Space size={4}>
-            {hinted(
-              t('contentCategories.membersSoon'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EyeOutlined />}
-                // Disabled rather than hidden, for the reason every disabled control on
-                // this application's tables gives: a button that vanishes teaches nothing
-                // about why it was there, and "the content list is not built yet" is the
-                // fact an operator is owed before they go looking for it.
-                disabled
-              />,
-            )}
-            {hinted(
-              t('contentCategories.actions.edit'),
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                disabled={busy || reorder.isPending}
-                onClick={() => openEdit(category)}
-              />,
-            )}
-            {hinted(
-              t('contentCategories.actions.delete'),
-              <Button
-                danger
-                type="text"
-                size="small"
-                icon={<DeleteOutlined />}
-                loading={busy}
-                disabled={busy || reorder.isPending}
-                onClick={() => confirmDelete(category)}
-              />,
-            )}
-          </Space>
-        )
+        const actions: RowAction[] = [
+          // Disabled rather than hidden, for the reason every disabled control on this
+          // application's tables gives: a button that vanishes teaches nothing about why it
+          // was there, and "the content list is not built yet" is the fact an operator is
+          // owed before they go looking for it.
+          {
+            key: 'members',
+            label: t('contentCategories.membersSoon'),
+            icon: <EyeOutlined />,
+            disabled: true,
+          },
+          {
+            key: 'edit',
+            label: t('contentCategories.actions.edit'),
+            icon: <EditOutlined />,
+            disabled: busy || reorder.isPending,
+            onClick: () => openEdit(category),
+          },
+          {
+            key: 'delete',
+            label: t('contentCategories.actions.delete'),
+            icon: <DeleteOutlined />,
+            danger: true,
+            loading: busy,
+            disabled: busy || reorder.isPending,
+            onClick: () => confirmDelete(category),
+          },
+        ]
+
+        return <RowActions actions={actions} />
       },
     },
   ]

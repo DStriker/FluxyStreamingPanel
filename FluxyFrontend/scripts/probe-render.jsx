@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, matchRoutes, RouterProvider } from 'react-router-dom'
 import { App as AntApp, ConfigProvider } from 'antd'
+import { DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons'
 import { QueryClientProvider } from '@tanstack/react-query'
 import i18n from '../src/i18n'
 import RegisterPage from '../src/pages/RegisterPage'
@@ -33,6 +34,7 @@ import ContentCategoriesPage from '../src/pages/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/VideoStreamsPage'
 import VideoStreamFormPage from '../src/pages/VideoStreamFormPage'
 import LastSeenCell from '../src/components/LastSeenCell'
+import RowActions from '../src/components/RowActions'
 import TimeZoneCard from '../src/components/TimeZoneCard'
 import LoginGuardCard from '../src/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/components/ConfirmCodeForm'
@@ -1513,6 +1515,36 @@ async function main() {
     'an account that has never signed in draws a dash where the link would be',
     lastSeenEmptyHtml.includes('—') && !lastSeenEmptyHtml.includes('user-sessions'),
     `${lastSeenEmptyHtml.length} bytes: ${lastSeenEmptyHtml.slice(0, 120)}`,
+  )
+
+  // The other render no page reach in this probe gets to: a row-action cluster is drawn by a
+  // column's `render`, which runs only once a row exists, and every table render above lands
+  // before the first answer arrives - so a cluster that rendered nothing at all, or one that
+  // quietly stopped passing `disabled` through, would look exactly like a healthy one.
+  //
+  // What cannot be asserted here is the tooltip text: a `Tooltip` keeps its title in a popup
+  // that exists only after a hover, so the label an icon button lives by is invisible to
+  // static markup. What can be asserted is what the cluster draws: one button per action, the
+  // disabled state the `hinted` wrapper exists for, and the danger styling of the one
+  // destructive move.
+  const rowActionsHtml = renderToStaticMarkup(
+    <AntApp>
+      <RowActions
+        actions={[
+          { key: 'edit', label: 'Edit', icon: <EditOutlined />, onClick: () => undefined },
+          { key: 'block', label: 'Refused for this row', icon: <LockOutlined />, disabled: true },
+          { key: 'delete', label: 'Delete', icon: <DeleteOutlined />, danger: true },
+        ]}
+      />
+    </AntApp>,
+  )
+  const rowActionItems = (rowActionsHtml.match(/ant-space-item/g) ?? []).length
+  const rowActionDisabled = /<button[^>]*disabled/.test(rowActionsHtml)
+  const rowActionDanger = rowActionsHtml.includes('ant-btn-dangerous')
+  check(
+    'a row-action cluster draws one icon-only button per action, disabled and danger kept',
+    rowActionItems === 3 && rowActionDisabled && rowActionDanger,
+    `${rowActionItems} item(s), disabled ${rowActionDisabled}, danger ${rowActionDanger}: ${rowActionsHtml.slice(0, 200)}`,
   )
 
   // The same failure the profile item's check below exists for: `sectionRoutes` falls back
