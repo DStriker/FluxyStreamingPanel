@@ -13,25 +13,25 @@ import {
   ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import { CONTENT_TYPE_PARAMS, VIDEO_STREAMS_PAGE_SIZE } from '../lib/api'
-import type { VideoStreamSortField } from '../lib/api'
-import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../types'
-import { hinted } from '../lib/hinted'
-import { areaForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
-import { tableResults } from '../lib/tableResults'
-import { dashedCell, idCell, textCell } from '../lib/tableCells'
-import { enumParam, withFilter } from '../lib/tableParams'
-import { RowActions, ServerTable, TableSearch } from '../components/table'
-import type { ResizableHeaderCellProps, RowAction } from '../components/table'
-import { useContentCategories } from '../features/content-categories/hooks/queries'
+import { CONTENT_TYPE_PARAMS, VIDEO_STREAMS_PAGE_SIZE } from '../../lib/api'
+import type { VideoStreamSortField } from '../../lib/api'
+import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../../types'
+import { hinted } from '../../lib/hinted'
+import { areaForRole } from '../../lib/session'
+import { useSession } from '../../lib/sessionContext'
+import { tableResults } from '../../lib/tableResults'
+import { dashedCell, idCell, textCell } from '../../lib/tableCells'
+import { enumParam, withFilter } from '../../lib/tableParams'
+import { RowActions, ServerTable, TableSearch } from '../../components/table'
+import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
+import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import {
   useDeleteVideoStream,
   useStartVideoStream,
   useStopVideoStream,
-} from '../features/video-streams/hooks/mutations'
-import { useVideoStreams } from '../features/video-streams/hooks/queries'
-import { useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
+} from '../../features/video-streams/hooks/mutations'
+import { useVideoStreams } from '../../features/video-streams/hooks/queries'
+import { useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000

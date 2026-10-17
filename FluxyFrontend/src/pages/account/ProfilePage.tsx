@@ -13,10 +13,10 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getCaptchaToken } from '../lib/recaptcha'
-import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../lib/api'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
-import { useSession } from '../lib/sessionContext'
+import { getCaptchaToken } from '../../lib/recaptcha'
+import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../../lib/api'
+import { ApiError, fieldErrors, messageForError, textForCode } from '../../lib/http'
+import { useSession } from '../../lib/sessionContext'
 import {
   useChangeEmail,
   useChangeLoginGuard,
@@ -24,10 +24,10 @@ import {
   useChangeUsername,
   useConfirmProfileChange,
   useUpdateTimezone,
-} from '../features/profile/hooks/mutations'
-import { useProfile } from '../features/profile/hooks/queries'
-import TimeZoneCard from '../features/profile/components/TimeZoneCard'
-import LoginGuardCard from '../features/profile/components/LoginGuardCard'
+} from '../../features/profile/hooks/mutations'
+import { useProfile } from '../../features/profile/hooks/queries'
+import TimeZoneCard from '../../features/profile/components/TimeZoneCard'
+import LoginGuardCard from '../../features/profile/components/LoginGuardCard'
 import {
   CODE_LENGTH,
   PASSWORD_MAX,
@@ -35,7 +35,7 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../lib/policy'
+} from '../../lib/policy'
 
 /** The codes that decide what happens next. */
 const Submitted = 'profile_change_submitted'

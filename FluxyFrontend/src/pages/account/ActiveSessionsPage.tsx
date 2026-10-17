@@ -13,16 +13,16 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { messageForError, textForCode } from '../lib/http'
-import { countryName } from '../lib/countryName'
-import { describeUserAgent } from '../lib/userAgent'
-import { useProfile } from '../features/profile/hooks/queries'
+import { messageForError, textForCode } from '../../lib/http'
+import { countryName } from '../../lib/countryName'
+import { describeUserAgent } from '../../lib/userAgent'
+import { useProfile } from '../../features/profile/hooks/queries'
 import {
   useRevokeActiveSession,
   useRevokeOtherActiveSessions,
-} from '../features/sessions/hooks/mutations'
-import { useActiveSessions } from '../features/sessions/hooks/queries'
-import type { ActiveSession, ActiveSessionList } from '../types'
+} from '../../features/sessions/hooks/mutations'
+import { useActiveSessions } from '../../features/sessions/hooks/queries'
+import type { ActiveSession, ActiveSessionList } from '../../types'
 
 /**
  * Dates, by locale and zone, remembered.

@@ -2,24 +2,24 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
-import AuthForm from '../features/auth/components/AuthForm'
+import AuthForm from '../../features/auth/components/AuthForm'
 import ConfirmCodeForm, {
   type RegistrationConfirmValues,
-} from '../features/auth/components/ConfirmCodeForm'
-import config, { routePath } from '../config'
-import { RegisterCaptchaAction, type RegistrationValues } from '../lib/api'
-import { ApiError } from '../lib/http'
-import { internalPath } from '../lib/url'
-import type { MessageResponse } from '../types'
+} from '../../features/auth/components/ConfirmCodeForm'
+import config, { routePath } from '../../config'
+import { RegisterCaptchaAction, type RegistrationValues } from '../../lib/api'
+import { ApiError } from '../../lib/http'
+import { internalPath } from '../../lib/url'
+import type { MessageResponse } from '../../types'
 import {
   forgetPendingEmail,
   readPendingEmail,
   rememberPendingEmail,
-} from '../lib/pendingRegistration'
+} from '../../lib/pendingRegistration'
 import {
   useConfirmRegistration,
   useSubmitRegistration,
-} from '../features/auth/hooks/mutations'
+} from '../../features/auth/hooks/mutations'
 
 /** The codes that mean the confirmation step has nothing left to confirm. */
 const CodeExpired = 'code_expired'

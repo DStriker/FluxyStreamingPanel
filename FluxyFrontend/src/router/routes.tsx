@@ -26,11 +26,11 @@ import type { Role } from '../types'
  * `App` supplies the `Suspense` boundary these resolve into; without it a first visit to
  * any of these routes would throw instead of waiting.
  */
-const RegisterPage = lazy(() => import('../pages/RegisterPage'))
-const ClientLoginPage = lazy(() => import('../pages/ClientLoginPage'))
-const ResellerLoginPage = lazy(() => import('../pages/ResellerLoginPage'))
-const AdminLoginPage = lazy(() => import('../pages/AdminLoginPage'))
-const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
+const RegisterPage = lazy(() => import('../pages/auth/RegisterPage'))
+const ClientLoginPage = lazy(() => import('../pages/auth/ClientLoginPage'))
+const ResellerLoginPage = lazy(() => import('../pages/auth/ResellerLoginPage'))
+const AdminLoginPage = lazy(() => import('../pages/auth/AdminLoginPage'))
+const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'))
 const SectionPage = lazy(() => import('../pages/SectionPage'))
 
 /**
@@ -47,7 +47,7 @@ const SectionPage = lazy(() => import('../pages/SectionPage'))
  * makes a move between the two addresses remount the form instead of carrying a half-filled
  * one across - which is what you want when the id underneath it just changed.
  */
-const UserFormPage = lazy(() => import('../pages/UserFormPage'))
+const UserFormPage = lazy(() => import('../pages/admin/UserFormPage'))
 
 /**
  * The group form, for the same reason and with the same two-address shape as the one above.
@@ -67,7 +67,7 @@ const UserFormPage = lazy(() => import('../pages/UserFormPage'))
  * form instead of carrying a half-filled one across - which is what you want when the id
  * underneath it just changed.
  */
-const UserGroupFormPage = lazy(() => import('../pages/UserGroupFormPage'))
+const UserGroupFormPage = lazy(() => import('../pages/admin/UserGroupFormPage'))
 
 /**
  * The streams form, for the same reason and with the same two-address shape as the two
@@ -82,7 +82,7 @@ const UserGroupFormPage = lazy(() => import('../pages/UserGroupFormPage'))
  * addresses remounts the form instead of carrying a half-filled one across - which is what
  * you want when the id underneath it just changed.
  */
-const VideoStreamFormPage = lazy(() => import('../pages/VideoStreamFormPage'))
+const VideoStreamFormPage = lazy(() => import('../pages/admin/VideoStreamFormPage'))
 
 /**
  * The three sign-in areas, each of which has to answer the path the backend names in its

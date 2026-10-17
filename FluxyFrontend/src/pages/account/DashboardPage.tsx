@@ -1,6 +1,6 @@
 import { Card, Col, Row, Space, Statistic, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useSession } from '../lib/sessionContext'
+import { useSession } from '../../lib/sessionContext'
 
 /**
  * The landing page of an area: a greeting and a row of widget slots.

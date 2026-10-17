@@ -14,12 +14,12 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
-import { hinted } from '../lib/hinted'
-import { canEdit } from '../lib/permissions'
-import { areaForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
-import { combineStatus } from '../lib/userStatus'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../lib/http'
+import { hinted } from '../../lib/hinted'
+import { canEdit } from '../../lib/permissions'
+import { areaForRole } from '../../lib/session'
+import { useSession } from '../../lib/sessionContext'
+import { combineStatus } from '../../lib/userStatus'
 import {
   EMAIL_MAX,
   GENERATED_PASSWORD_LENGTH,
@@ -29,21 +29,21 @@ import {
   PASSWORD_MIN,
   USERNAME_MAX,
   USERNAME_MIN,
-} from '../lib/policy'
-import { AutoTimeZone, knownZones } from '../lib/timeZones'
-import LoginGuardFields from '../features/profile/components/LoginGuardFields'
-import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
-import type { GuardFieldValues } from '../lib/loginGuardForm'
-import { useProfile } from '../features/profile/hooks/queries'
-import { useAllUserGroups } from '../features/user-groups/hooks/queries'
-import { useCreateUser, useUpdateUser } from '../features/users/hooks/mutations'
-import { useUserDetail } from '../features/users/hooks/queries'
-import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
+} from '../../lib/policy'
+import { AutoTimeZone, knownZones } from '../../lib/timeZones'
+import LoginGuardFields from '../../features/profile/components/LoginGuardFields'
+import { formValuesToGuard, guardToFormValues } from '../../lib/loginGuardForm'
+import type { GuardFieldValues } from '../../lib/loginGuardForm'
+import { useProfile } from '../../features/profile/hooks/queries'
+import { useAllUserGroups } from '../../features/user-groups/hooks/queries'
+import { useCreateUser, useUpdateUser } from '../../features/users/hooks/mutations'
+import { useUserDetail } from '../../features/users/hooks/queries'
+import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import type {
   AdminUserDetail,
   LoginGuardSettings,
   UserStatus,
-} from '../types'
+} from '../../types'
 
 /**
  * What the form collects.

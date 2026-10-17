@@ -15,22 +15,22 @@ import {
 import type {
   BulkUserGroupAction,
   UserGroupSortField,
-} from '../lib/api'
-import type { Role, UserGroup, UserStatus } from '../types'
-import { areaForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
-import { tableResults } from '../lib/tableResults'
-import { idCell, textCell } from '../lib/tableCells'
-import { enumParam, withFilter } from '../lib/tableParams'
-import { RowActions, ServerTable, TableSearch } from '../components/table'
-import type { ResizableHeaderCellProps, RowAction } from '../components/table'
+} from '../../lib/api'
+import type { Role, UserGroup, UserStatus } from '../../types'
+import { areaForRole } from '../../lib/session'
+import { useSession } from '../../lib/sessionContext'
+import { tableResults } from '../../lib/tableResults'
+import { idCell, textCell } from '../../lib/tableCells'
+import { enumParam, withFilter } from '../../lib/tableParams'
+import { RowActions, ServerTable, TableSearch } from '../../components/table'
+import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import {
   useBulkUserGroups,
   useDeleteUserGroup,
   useUpdateUserGroup,
-} from '../features/user-groups/hooks/mutations'
-import { useUserGroups } from '../features/user-groups/hooks/queries'
-import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
+} from '../../features/user-groups/hooks/mutations'
+import { useUserGroups } from '../../features/user-groups/hooks/queries'
+import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 
 /** The six columns, in the order they are drawn, named by their own keys. */
 type GroupsColumnKey = 'id' | 'name' | 'role' | 'status' | 'permissionsCount' | 'actions'

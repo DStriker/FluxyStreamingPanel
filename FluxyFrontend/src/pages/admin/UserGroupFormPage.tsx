@@ -15,17 +15,17 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
-import { permissionsForRole } from '../lib/permissions'
-import { areaForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../lib/http'
+import { permissionsForRole } from '../../lib/permissions'
+import { areaForRole } from '../../lib/session'
+import { useSession } from '../../lib/sessionContext'
 import {
   useCreateUserGroup,
   useUpdateUserGroup,
-} from '../features/user-groups/hooks/mutations'
-import { useUserGroupDetail } from '../features/user-groups/hooks/queries'
-import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
-import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
+} from '../../features/user-groups/hooks/mutations'
+import { useUserGroupDetail } from '../../features/user-groups/hooks/queries'
+import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
+import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../../types'
 
 /**
  * What the form collects.

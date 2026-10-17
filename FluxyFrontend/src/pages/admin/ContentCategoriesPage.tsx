@@ -28,19 +28,19 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
-import { CONTENT_TYPE_PARAMS } from '../lib/api'
-import type { ContentCategory, ContentType } from '../types'
-import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
-import { RowActions } from '../components/table'
-import type { RowAction } from '../components/table'
+import { CONTENT_TYPE_PARAMS } from '../../lib/api'
+import type { ContentCategory, ContentType } from '../../types'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../lib/http'
+import { RowActions } from '../../components/table'
+import type { RowAction } from '../../components/table'
 import {
   useCreateContentCategory,
   useDeleteContentCategory,
   useReorderContentCategories,
   useUpdateContentCategory,
-} from '../features/content-categories/hooks/mutations'
-import { useContentCategories } from '../features/content-categories/hooks/queries'
-import { useRowAction } from '../hooks/table'
+} from '../../features/content-categories/hooks/mutations'
+import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useRowAction } from '../../hooks/table'
 
 /**
  * Which kind of content each of the four section pages works on, keyed by the menu key
