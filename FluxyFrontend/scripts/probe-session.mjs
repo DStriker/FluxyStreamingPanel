@@ -3,7 +3,7 @@
  * itself, refresh rotation with reuse detection, and sign out.
  *
  * Not a copy of the frontend: it imports `src/lib/csrf.ts`, `src/lib/http.ts` and
- * `src/lib/api.ts`, so what answers here is the same code the browser runs. It exists
+ * `src/lib/api`, so what answers here is the same code the browser runs. It exists
  * because the sign-out button was reported as doing nothing with `csrf_invalid`, and the
  * only way to tell whether that is the client, the transport or the server is to drive
  * the real modules end to end and look at the answer.

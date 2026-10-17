@@ -2,9 +2,10 @@
  * Every API path this application requests, checked against the prefixes the dev server
  * proxies to the backend.
  *
- * Like `probe:i18n`, this one needs no backend and no browser: it reads `src/lib/api.ts`,
- * `src/lib/csrf.ts` and `src/lib/http.ts` from disk, takes the first segment of every path
- * a request is made with, and compares that set with `backendPaths` in `vite.config.js`.
+ * Like `probe:i18n`, this one needs no backend and no browser: it reads every module under
+ * `src/lib/api/`, plus `src/lib/csrf.ts` and `src/lib/http.ts`, from disk, takes the first
+ * segment of every path a request is made with, and compares that set with `backendPaths`
+ * in `vite.config.js`.
  *
  * It exists because the failure it catches is silent twice over. An endpoint outside every
  * proxied prefix is answered by Vite's own HTML fallback with a **200**: `res.ok` is true,
@@ -22,9 +23,21 @@
  * to the working directory, so a run from anywhere else finds no sources; that case is a
  * FAIL rather than an empty pass, for the reason `probe:i18n` gives about its own guard.
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 
-const API_SOURCES = ['src/lib/api.ts', 'src/lib/csrf.ts', 'src/lib/http.ts']
+/**
+ * Every endpoint module under the folder, plus the two files outside it that make requests.
+ * The folder is listed rather than named file by file so a module added to it is audited
+ * the day it appears, instead of the day somebody remembers this list exists.
+ */
+const API_SOURCES = [
+  ...readdirSync('src/lib/api')
+    .filter((name) => name.endsWith('.ts'))
+    .sort()
+    .map((name) => `src/lib/api/${name}`),
+  'src/lib/csrf.ts',
+  'src/lib/http.ts',
+]
 const CONFIG_SOURCE = 'vite.config.js'
 
 /**

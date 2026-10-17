@@ -45,7 +45,7 @@ import { getCsrfToken } from '../lib/csrf'
  * One hook per write endpoint, named after it. The contract of every hook built on
  * `useWrite` below is the same: `mutateAsync` takes the endpoint's own arguments
  * **without the antiforgery token**, which is minted at call time inside the hook.
- * `api.ts` and `csrf.ts` both document why a token is minted immediately before the
+ * `src/lib/api` and `csrf.ts` both document why a token is minted immediately before the
  * request and never remembered - the antiforgery service binds it to the identity that
  * was current when it was minted, and one carried across a session change comes back
  * `csrf_invalid` - and this layer is where that rule is now structural: a caller cannot
@@ -99,7 +99,7 @@ export const useConfirmPasswordReset = () => useWrite(confirmPasswordReset)
 
 /**
  * Ends the session. `signOut` mints its own token on purpose - see the note above it in
- * `api.ts` - so this hook takes no arguments at all.
+ * `src/lib/api/auth.ts` - so this hook takes no arguments at all.
  */
 export const useSignOut = () => useMutation({ mutationFn: () => signOut() })
 
