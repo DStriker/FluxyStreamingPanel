@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TdHTMLAttributes } from 'react'
 
 /**
@@ -74,11 +75,41 @@ export default function ResizableHeaderCell(props: ResizableHeaderCellProps) {
     ...cellProps
   } = props
 
+  const handleRef = useRef<HTMLSpanElement>(null)
+
+  /**
+   * Keeps a click on the handle from reaching the sortable header's own click handler.
+   *
+   * The listener sits here, in the *capture* phase on the cell, rather than as `onClick` on
+   * the handle - and the placement is the point twice over. A sortable header sorts on any
+   * click that bubbles to it, so the click has to be stopped before it arrives; stopping it
+   * on the way *down* means the handle never sees it either, and the handle therefore
+   * carries no click listener for a linter (or a reader) to mistake for an interaction a
+   * keyboard cannot perform. The handle's keyboard half is the arrow keys, which the cell
+   * handles as the key event bubbles up from the focused handle; a `click` is not what
+   * resizes anything.
+   *
+   * `preventDefault` on `pointerdown` is deliberately *not* relied on for this - whether it
+   * suppresses the compatibility mouse events is left to the implementation - and
+   * suppressing those events would also cost the double-click that restores this one
+   * column, which is why only the click is stopped.
+   */
+  const stopHandleClick = (event: ReactMouseEvent<HTMLTableCellElement>) => {
+    const target = event.target
+    if (target instanceof Node && handleRef.current?.contains(target)) event.stopPropagation()
+  }
+
   return (
-    <th {...cellProps} className={className} style={{ ...style, position: 'relative' }}>
+    <th
+      {...cellProps}
+      className={className}
+      style={{ ...style, position: 'relative' }}
+      onClickCapture={stopHandleClick}
+    >
       {children}
       {resizeLabel === undefined ? null : (
         <span
+          ref={handleRef}
           className="table-col-resizer"
           role={role}
           aria-orientation={orientation}
@@ -94,12 +125,6 @@ export default function ResizableHeaderCell(props: ResizableHeaderCellProps) {
           tabIndex={0}
           onPointerDown={onPointerDown}
           onDoubleClick={onDoubleClick}
-          /* A sortable header sorts on any click that bubbles to it, and a click on the handle
-             sorted nothing. `preventDefault` on `pointerdown` is deliberately *not* relied on
-             for this - whether it suppresses the compatibility mouse events is left to the
-             implementation - and suppressing those events would also cost the double-click that
-             restores this one column. Stopping propagation here is the guarantee instead. */
-          onClick={(event) => event.stopPropagation()}
         />
       )}
     </th>

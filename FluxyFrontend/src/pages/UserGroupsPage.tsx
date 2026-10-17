@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Key } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Dropdown,
-  Input,
-  Select,
-  Space,
-  Table,
-  Tag,
-} from 'antd'
+import { App, Button, Card, Dropdown, Select, Space, Table, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -29,23 +18,21 @@ import type {
   BulkUserGroupAction,
   UserGroupSortField,
 } from '../lib/api'
-import type {
-  BulkOperationResponse,
-  MessageResponse,
-  Role,
-  UserGroup,
-  UserStatus,
-} from '../types'
+import type { BulkOperationResponse, Role, UserGroup, UserStatus } from '../types'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, textForCode } from '../lib/http'
+import { messageForError, successTextFor, textForCode } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
+import { tableResults } from '../lib/tableResults'
+import { idCell, textCell } from '../lib/tableCells'
+import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import TruncatedCell from '../components/TruncatedCell'
+import TableSearch from '../components/TableSearch'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useUserGroups } from '../hooks/queries'
+import { useRowAction } from '../hooks/useRowAction'
 import { useServerTable } from '../hooks/useServerTable'
 
 /** The six columns, in the order they are drawn, named by their own keys. */
@@ -169,9 +156,6 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   })
   const [roleFilter, setRoleFilter] = useState<Role | null>(null)
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
-  // The row whose action is in flight - its buttons show a spinner and refuse a second
-  // click, and nothing else about the page changes until the answer lands.
-  const [busyId, setBusyId] = useState<string | null>(null)
   /**
    * The rows the checkboxes on **this page** have marked, held by id rather than by row -
    * the same scope, and for the same reason, as the accounts table's selection: an id list
@@ -201,11 +185,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     role: roleFilter,
     status: statusFilter,
   })
-  const groups = groupsQuery.data
-  const loadError = groupsQuery.isError ? messageForError(groupsQuery.error) : null
-  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
-  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
-  const loading = groupsQuery.isFetching
+  const { data: groups, loadError, loading } = tableResults(groupsQuery)
 
   /**
    * The six widths: their state, their memory between visits, and the drag that changes them
@@ -267,33 +247,12 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     handleFor(key, t('userGroups.resizeColumn', { column: t(`userGroups.columns.${key}`) }))
 
   /**
-   * One row action, run and reported the way every other page reports one: the server's own
-   * sentence on success, `messageForError` on a refusal, and the list **re-read** afterwards
-   * rather than patched here - a transition changes what the server considers the row to be
-   * (a blocked group now refuses its own members' sign-ins), and the page draws what it is
-   * told, not what it guesses.
-   *
-   * The block and unblock moves go through `PATCH` rather than a dedicated action because
-   * the server has no dedicated action: a group's state *is* its status field, so asking for
-   * a state is the whole request. That is also why the antiforgery token is minted here -
-   * `PATCH` is a write and `GET` above is not.
+   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
+   * and the reporting are `useRowAction`'s, which the accounts table calls too.
    */
-  const runAction = async (
-    action: (args: { id: string; csrfToken: string | null }) => Promise<MessageResponse>,
-    group: UserGroup,
-  ) => {
-    setBusyId(group.id)
-
-    try {
-      const result = await action({ id: group.id, csrfToken: await getCsrfToken() })
-      message.success(textForCode(result.code) ?? result.message)
-      void groupsQuery.refetch()
-    } catch (error) {
-      message.error(messageForError(error))
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const { busyId, setBusyId, runAction } = useRowAction<UserGroup>(
+    () => void groupsQuery.refetch(),
+  )
 
   /** Sets a group's state, which is all "block" and "unblock" mean for a group. */
   const setStatus = (group: UserGroup, status: UserStatus) =>
@@ -329,7 +288,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           const csrfToken = await getCsrfToken()
           const result = await deleteUserGroup({ id: group.id, csrfToken })
 
-          message.success(textForCode(result.code) ?? result.message)
+          message.success(successTextFor(result))
 
           // The last row of a later page: with it gone, that page no longer exists and the
           // server would answer it empty - a blank table under a pager still offering the
@@ -382,8 +341,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
 
     if (refusals.length === 0) {
       message.success(
-        textForCode(result.code, { done: result.succeeded, total: result.items.length }) ??
-          result.message,
+        successTextFor(result, { done: result.succeeded, total: result.items.length }),
       )
       return
     }
@@ -482,7 +440,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
       width: widths.id,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('id'),
-      render: (value: string) => <TruncatedCell text={`${value.slice(0, 8)}…`} full={value} />,
+      render: idCell,
     },
     {
       // The name is what the whole page is read by - it is what the account form's picker
@@ -497,7 +455,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
       sortOrder: table.orderOf('name'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('name'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // The level rather than the group's own state, drawn from the enum member the server
@@ -705,21 +663,13 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
               three are: this row has to fit beside the card's title on one Full HD screen,
               and in Russian it did not. What each loses in room it keeps in its aria-label,
               which still names the whole field. */}
-          <Input.Search
-            allowClear
-            aria-label={t('userGroups.searchLabel')}
-            placeholder={t('userGroups.searchPlaceholder')}
-            style={{ width: 190 }}
+          <TableSearch
             value={table.searchText}
-            onChange={(event) => {
-              table.setSearchText(event.target.value)
-
-              // An emptied box empties the list straight away. Waiting for Enter would mean
-              // the visitor clears the field, sees the old filter still applied, and has to
-              // press something they just finished typing into.
-              if (event.target.value === '') table.applySearch('')
-            }}
+            onChange={table.setSearchText}
             onSearch={table.applySearch}
+            labelKey="userGroups.searchLabel"
+            placeholderKey="userGroups.searchPlaceholder"
+            width={190}
           />
           <Select
             allowClear
@@ -760,15 +710,10 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
       }
     >
       {loadError ? (
-        <Alert
-          type="error"
-          showIcon
+        <LoadErrorAlert
           message={loadError}
-          action={
-            <Button size="small" onClick={() => groupsQuery.refetch()} loading={loading}>
-              {t('actions.retry')}
-            </Button>
-          }
+          loading={loading}
+          onRetry={() => groupsQuery.refetch()}
         />
       ) : (
         <Table<UserGroup>

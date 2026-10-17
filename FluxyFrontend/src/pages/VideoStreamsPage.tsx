@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Image,
-  Input,
-  Select,
-  Space,
-  Table,
-  Tag,
-} from 'antd'
+import { App, Button, Card, Image, Select, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -32,17 +21,21 @@ import {
   VIDEO_STREAMS_PAGE_SIZE,
 } from '../lib/api'
 import type { VideoStreamSortField } from '../lib/api'
-import type { MessageResponse, VideoStream, VideoStreamStatus, VideoStreamType } from '../types'
+import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../types'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, textForCode } from '../lib/http'
+import { messageForError, successTextFor } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
+import { tableResults } from '../lib/tableResults'
+import { dashedCell, idCell, textCell } from '../lib/tableCells'
+import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import TruncatedCell from '../components/TruncatedCell'
+import TableSearch from '../components/TableSearch'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useContentCategories, useVideoStreams } from '../hooks/queries'
+import { useRowAction } from '../hooks/useRowAction'
 import { useServerTable } from '../hooks/useServerTable'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
@@ -180,9 +173,6 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VideoStreamStatus | null>(null)
   const [typeFilter, setTypeFilter] = useState<VideoStreamType | null>(null)
-  // The row whose action is in flight - its buttons show a spinner and refuse a second
-  // click, and nothing else about the page changes until the answer lands.
-  const [busyId, setBusyId] = useState<string | null>(null)
   /** Whether the table re-reads itself. On by default, and pausing is one press. */
   const [autoRefresh, setAutoRefresh] = useState(true)
 
@@ -197,12 +187,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
     status: statusFilter,
     type: typeFilter,
   })
-  const streams = streamsQuery.data
-  const loadError = streamsQuery.isError ? messageForError(streamsQuery.error) : null
-  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
-  // on the table under the spinner, which is what an effect's `setLoading(true)` would have
-  // replaced with a blank table.
-  const loading = streamsQuery.isFetching
+  const { data: streams, loadError, loading } = tableResults(streamsQuery)
 
   /**
    * The categories the filter and the add button choose from, in a query of its own rather
@@ -289,30 +274,12 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
     handleFor(key, t('videoStreams.resizeColumn', { column: t(`videoStreams.columns.${key}`) }))
 
   /**
-   * One row action, run and reported the way every other page reports one: the server's own
-   * sentence on success, `messageForError` on a refusal, and the list **re-read** afterwards
-   * rather than patched here - a start or a stop changes what the server considers the row
-   * to be, and the page draws what it is told, not what it guesses.
-   *
-   * Both are antiforgery-guarded writes, which is why the token is minted here rather than
-   * on submit: there is no form on this page, and the token belongs to the click.
+   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
+   * and the reporting are `useRowAction`'s, which the two account tables call too.
    */
-  const runAction = async (
-    action: (args: { id: string; csrfToken: string | null }) => Promise<MessageResponse>,
-    stream: VideoStream,
-  ) => {
-    setBusyId(stream.id)
-
-    try {
-      const result = await action({ id: stream.id, csrfToken: await getCsrfToken() })
-      message.success(textForCode(result.code) ?? result.message)
-      void streamsQuery.refetch()
-    } catch (error) {
-      message.error(messageForError(error))
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const { busyId, setBusyId, runAction } = useRowAction<VideoStream>(
+    () => void streamsQuery.refetch(),
+  )
 
   /**
    * Asks before deleting, because this is the only action here that cannot be undone: the
@@ -339,7 +306,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           const csrfToken = await getCsrfToken()
           const result = await deleteVideoStream({ id: stream.id, csrfToken })
 
-          message.success(textForCode(result.code) ?? result.message)
+          message.success(successTextFor(result))
 
           // The last row of a later page: with it gone, that page no longer exists and the
           // server would answer it empty - a blank table under a pager still offering the
@@ -367,7 +334,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       width: widths.id,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('id'),
-      render: (value: string) => <TruncatedCell text={`${value.slice(0, 8)}…`} full={value} />,
+      render: idCell,
     },
     {
       // The icon, drawn at a fixed size because an operator's logo can be any shape they
@@ -406,7 +373,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       sortOrder: table.orderOf('name'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('name'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // The category's display name rather than its identifier, for the same reason the
@@ -420,7 +387,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       sortOrder: table.orderOf('category'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('category'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // The one column whose value nothing in the interface writes. It is what the relaying
@@ -437,8 +404,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       width: widths.activeSource,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('activeSource'),
-      render: (value: string | null) =>
-        value ? <TruncatedCell text={value} full={value} /> : <span>—</span>,
+      render: dashedCell,
     },
     {
       // A tag rather than coloured text, for the reason the other tables use one: two states
@@ -632,21 +598,13 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           {/* Narrower than they might be, for the reason the other two tables' three are:
               this row has to fit beside the card's title on one Full HD screen. What each
               loses in room it keeps in its aria-label, which still names the whole field. */}
-          <Input.Search
-            allowClear
-            aria-label={t('videoStreams.searchLabel')}
-            placeholder={t('videoStreams.searchPlaceholder')}
-            style={{ width: 180 }}
+          <TableSearch
             value={table.searchText}
-            onChange={(event) => {
-              table.setSearchText(event.target.value)
-
-              // An emptied box empties the list straight away. Waiting for Enter would mean
-              // the visitor clears the field, sees the old filter still applied, and has to
-              // press something they just finished typing into.
-              if (event.target.value === '') table.applySearch('')
-            }}
+            onChange={table.setSearchText}
             onSearch={table.applySearch}
+            labelKey="videoStreams.searchLabel"
+            placeholderKey="videoStreams.searchPlaceholder"
+            width={180}
           />
           <Select
             allowClear
@@ -696,15 +654,10 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       }
     >
       {loadError ? (
-        <Alert
-          type="error"
-          showIcon
+        <LoadErrorAlert
           message={loadError}
-          action={
-            <Button size="small" onClick={() => streamsQuery.refetch()} loading={loading}>
-              {t('actions.retry')}
-            </Button>
-          }
+          loading={loading}
+          onRetry={() => streamsQuery.refetch()}
         />
       ) : (
         <Table<VideoStream>

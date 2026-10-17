@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Key } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Dropdown,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Card, Dropdown, Modal, Select, Space, Table, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -37,24 +24,23 @@ import {
 import type { AdminUserSortField, BulkUserAction } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, textForCode } from '../lib/http'
+import { messageForError, successTextFor, textForCode } from '../lib/http'
 import { canEdit, canEditAny } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { formatTimestamp } from '../lib/dateFormat'
+import { tableResults } from '../lib/tableResults'
+import { idCell, ipCell, textCell } from '../lib/tableCells'
 import LastSeenCell from '../components/LastSeenCell'
+import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import TruncatedCell from '../components/TruncatedCell'
+import TableSearch from '../components/TableSearch'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
+import { useRowAction } from '../hooks/useRowAction'
 import { useServerTable } from '../hooks/useServerTable'
-import type {
-  AdminUser,
-  BulkOperationResponse,
-  MessageResponse,
-  UserStatus,
-} from '../types'
+import type { AdminUser, BulkOperationResponse, UserStatus } from '../types'
 
 /** The eight columns, in the order they are drawn, named by their own keys. */
 type UsersColumnKey =
@@ -227,9 +213,6 @@ export default function UsersPage(_props: UsersPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const groupFilter = searchParams.get('groupId')
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
-  // The row whose action is in flight - its buttons show a spinner and refuse a second
-  // click, and nothing else about the page changes until the answer lands.
-  const [busyId, setBusyId] = useState<string | null>(null)
   /**
    * The rows the checkboxes on **this page** have marked, held by id rather than by row.
    *
@@ -259,11 +242,7 @@ export default function UsersPage(_props: UsersPageProps) {
     groupId: groupFilter,
     status: statusFilter,
   })
-  const users = usersQuery.data
-  const loadError = usersQuery.isError ? messageForError(usersQuery.error) : null
-  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
-  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
-  const loading = usersQuery.isFetching
+  const { data: users, loadError, loading } = tableResults(usersQuery)
 
   /**
    * The reading account's zone and grants, answered by the shared `['profile']` query -
@@ -380,10 +359,6 @@ export default function UsersPage(_props: UsersPageProps) {
    */
   const formatMoment = (value: string): string => formatTimestamp(value, locale, timeZone)
 
-  /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
-  const orDash = (value: string | number | null | undefined): string =>
-    value === null || value === undefined || value === '' ? '—' : String(value)
-
   /**
    * One column's resize handle, with this page's name for the column.
    *
@@ -395,28 +370,10 @@ export default function UsersPage(_props: UsersPageProps) {
     handleFor(key, t('users.resizeColumn', { column: t(`users.columns.${key}`) }))
 
   /**
-   * One row action, run and reported the way every other page reports one: the server's own
-   * sentence on success, `messageForError` on a refusal, and the list **re-read** afterwards
-   * rather than patched here - a transition changes what the server considers the row to be
-   * (a stamped `registeredAt`, revoked sessions), and the page draws what it is told, not
-   * what it guesses.
+   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
+   * and the reporting are `useRowAction`'s, which the group table calls too.
    */
-  const runAction = async (
-    action: (args: { id: string; csrfToken: string | null }) => Promise<MessageResponse>,
-    user: AdminUser,
-  ) => {
-    setBusyId(user.id)
-
-    try {
-      const result = await action({ id: user.id, csrfToken: await getCsrfToken() })
-      message.success(textForCode(result.code) ?? result.message)
-      void usersQuery.refetch()
-    } catch (error) {
-      message.error(messageForError(error))
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const { busyId, setBusyId, runAction } = useRowAction<AdminUser>(() => void usersQuery.refetch())
 
   /**
    * Asks before deleting, because this is the only action here that cannot be undone: the
@@ -439,7 +396,7 @@ export default function UsersPage(_props: UsersPageProps) {
           const csrfToken = await getCsrfToken()
           const result = await deleteUser({ id: user.id, csrfToken })
 
-          message.success(textForCode(result.code) ?? result.message)
+          message.success(successTextFor(result))
 
           // The last row of a later page: with it gone, that page no longer exists and the
           // server would answer it empty - a blank table under a pager still offering the
@@ -494,8 +451,7 @@ export default function UsersPage(_props: UsersPageProps) {
 
     if (refusals.length === 0) {
       message.success(
-        textForCode(result.code, { done: result.succeeded, total: result.items.length }) ??
-          result.message,
+        successTextFor(result, { done: result.succeeded, total: result.items.length }),
       )
       return
     }
@@ -610,7 +566,7 @@ export default function UsersPage(_props: UsersPageProps) {
       width: widths.id,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('id'),
-      render: (value: string) => <TruncatedCell text={`${value.slice(0, 8)}…`} full={value} />,
+      render: idCell,
     },
     {
       // Bounded at 20 characters by the server, but 20 characters still do not fit the
@@ -624,7 +580,7 @@ export default function UsersPage(_props: UsersPageProps) {
       sortOrder: table.orderOf('username'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('username'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // The column with the widest natural content on the page: an address is bounded at 254
@@ -638,7 +594,7 @@ export default function UsersPage(_props: UsersPageProps) {
       sortOrder: table.orderOf('email'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('email'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // The group rather than the level it grants. The level *is* the group's, so a column
@@ -654,7 +610,7 @@ export default function UsersPage(_props: UsersPageProps) {
       sortOrder: table.orderOf('group'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('group'),
-      render: (value: string) => <TruncatedCell text={value} full={value} />,
+      render: textCell,
     },
     {
       // A tag rather than coloured text: three states of one account read as three labels
@@ -707,11 +663,7 @@ export default function UsersPage(_props: UsersPageProps) {
       sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
-      render: (value: string | null) => (
-        <Typography.Text code>
-          <TruncatedCell text={orDash(value)} full={value} />
-        </Typography.Text>
-      ),
+      render: ipCell,
     },
     {
       // The four actions as icons with tooltips - icons carry no text of their own, so the
@@ -898,21 +850,13 @@ export default function UsersPage(_props: UsersPageProps) {
               `Действия` are all longer than their English twins, so the budget the English
               layout never noticed is the one the Russian one spends. What the search loses in
               room it keeps in its aria-label, which still names the whole field. */}
-          <Input.Search
-            allowClear
-            aria-label={t('users.searchLabel')}
-            placeholder={t('users.searchPlaceholder')}
-            style={{ width: 200 }}
+          <TableSearch
             value={table.searchText}
-            onChange={(event) => {
-              table.setSearchText(event.target.value)
-
-              // An emptied box empties the list straight away. Waiting for Enter would mean
-              // the visitor clears the field, sees the old filter still applied, and has to
-              // press something they just finished typing into.
-              if (event.target.value === '') table.applySearch('')
-            }}
+            onChange={table.setSearchText}
             onSearch={table.applySearch}
+            labelKey="users.searchLabel"
+            placeholderKey="users.searchPlaceholder"
+            width={200}
           />
           <Select
             allowClear
@@ -961,15 +905,10 @@ export default function UsersPage(_props: UsersPageProps) {
       }
     >
       {loadError ? (
-        <Alert
-          type="error"
-          showIcon
+        <LoadErrorAlert
           message={loadError}
-          action={
-            <Button size="small" onClick={() => usersQuery.refetch()} loading={loading}>
-              {t('actions.retry')}
-            </Button>
-          }
+          loading={loading}
+          onRetry={() => usersQuery.refetch()}
         />
       ) : (
         <Table<AdminUser>

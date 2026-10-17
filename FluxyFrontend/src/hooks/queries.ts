@@ -115,11 +115,26 @@ export const useAllUsers = () =>
       getUsers({ page: 1, pageSize: ALL_USERS_PAGE_SIZE, sortBy: 'username', sortOrder: 'asc', signal }),
   })
 
+/**
+ * The id a detail query was enabled for, or a thrown error for the state `enabled` makes
+ * unreachable.
+ *
+ * `getUser(id as string, signal)` was a cast, and a cast is a claim the compiler cannot
+ * check - it held only because `enabled: id !== undefined` kept the query from running on
+ * an add address. This states the invariant in code instead: a query that somehow runs
+ * without an id reports the mistake rather than requesting `/users/undefined`, which the
+ * server would answer with a 404 that reads like the row is gone.
+ */
+const detailId = (id: string | undefined): string => {
+  if (id === undefined) throw new Error('a detail query ran without an id')
+  return id
+}
+
 /** One account in full, for the edit form. Not fetched on the add address, whose `enabled` is false. */
 export const useUserDetail = (id: string | undefined) =>
   useQuery({
     queryKey: ['users', 'detail', id],
-    queryFn: ({ signal }) => getUser(id as string, signal),
+    queryFn: ({ signal }) => getUser(detailId(id), signal),
     enabled: id !== undefined,
   })
 
@@ -149,7 +164,7 @@ export const useAllUserGroups = () =>
 export const useUserGroupDetail = (id: string | undefined) =>
   useQuery({
     queryKey: ['userGroups', 'detail', id],
-    queryFn: ({ signal }) => getUserGroup(id as string, signal),
+    queryFn: ({ signal }) => getUserGroup(detailId(id), signal),
     enabled: id !== undefined,
   })
 
@@ -190,6 +205,6 @@ export const useVideoStreams = (params: {
 export const useVideoStreamDetail = (id: string | undefined) =>
   useQuery({
     queryKey: ['videoStreams', 'detail', id],
-    queryFn: ({ signal }) => getVideoStream(id as string, signal),
+    queryFn: ({ signal }) => getVideoStream(detailId(id), signal),
     enabled: id !== undefined,
   })

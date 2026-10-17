@@ -19,7 +19,7 @@ import {
   updateUser,
 } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { hinted } from '../lib/hinted'
 import { canEdit } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
@@ -483,7 +483,7 @@ export default function UserFormPage(_props: UserFormPageProps) {
 
       // The server's own sentence where this build translates the code, its English `message`
       // where it does not - the rule every other page follows.
-      message.success(textForCode(result.code) ?? result.message)
+      message.success(successTextFor(result))
       // Saved, so this is the one navigation out of here that must not be questioned: the
       // form is still marked dirty in this same event, and the guard would ask about edits
       // that have just been stored.

@@ -40,12 +40,32 @@ i18n.use(initReactI18next).init({
   react: { useSuspense: false },
 })
 
+/**
+ * Keeps the document's own language in step with the bundle being shown.
+ *
+ * `index.html` carries a static `lang` for the moment before this module runs, and from
+ * here on the attribute is i18next's: `resolvedLanguage` rather than `language`, for the
+ * reason the session tables use it - it names the bundle that is actually being read after
+ * a fallback, not the one that was asked for.
+ *
+ * Guarded because this module is bundled into the probes, which run under Node where there
+ * is no `document` at all.
+ */
+const publishLanguage = (): void => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = i18n.resolvedLanguage ?? i18n.language
+  }
+}
+
+publishLanguage()
+
 i18n.on('languageChanged', (lng) => {
   try {
     localStorage.setItem(STORAGE_KEY, lng)
   } catch {
     // localStorage isn't available
   }
+  publishLanguage()
 })
 
 export default i18n

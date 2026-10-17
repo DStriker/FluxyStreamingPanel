@@ -146,6 +146,38 @@ export const textForCode = (code: unknown, options?: TOptions): string | null =>
 }
 
 /**
+ * The two fields of a success body this helper reads. Narrower than `MessageResponse` on
+ * purpose: the bulk endpoints answer with a shape of their own (`BulkOperationResponse`)
+ * that carries both fields without being a `MessageResponse`.
+ */
+interface SuccessBody {
+  code?: unknown
+  message?: unknown
+}
+
+/**
+ * The text to show for a success: this build's translation of the code the server named,
+ * the server's own sentence when there is no translation for it yet, and a generic line
+ * when even that is missing.
+ *
+ * The counterpart of {@link messageForError} for the other direction. It exists because
+ * `textForCode(result.code) ?? result.message` is one rule - a code this build has not
+ * translated yet must degrade to the server's English sentence rather than to a raw key
+ * or to silence - and it used to be written out at fourteen call sites.
+ */
+export function successTextFor(
+  result: SuccessBody | null | undefined,
+  options?: TOptions,
+): string {
+  const translated = textForCode(result?.code, options)
+
+  if (translated !== null) return translated
+  if (result && typeof result.message === 'string') return result.message
+
+  return i18n.t('messages.sent')
+}
+
+/**
  * The one refresh attempt that several failing calls share.
  *
  * A page that loads six things at once will get six 401s from six access tokens that all

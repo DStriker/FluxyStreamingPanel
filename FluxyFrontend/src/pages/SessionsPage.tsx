@@ -1,14 +1,14 @@
-import { Alert, Button, Card, Input, Space, Table, Tag, Typography } from 'antd'
+import { Button, Card, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionSortField } from '../lib/api'
-import { messageForError } from '../lib/http'
-import { countryName } from '../lib/countryName'
 import { formatTimestamp } from '../lib/dateFormat'
-import { describeUserAgent } from '../lib/userAgent'
+import { tableResults } from '../lib/tableResults'
+import { agentCell, countryCell, ipCell, networkCell } from '../lib/tableCells'
+import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import TruncatedCell from '../components/TruncatedCell'
+import TableSearch from '../components/TableSearch'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useProfile, useSessionHistory } from '../hooks/queries'
 import { useServerTable } from '../hooks/useServerTable'
@@ -118,11 +118,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * calls `refetch` rather than bumping a counter.
    */
   const historyQuery = useSessionHistory(table.query)
-  const history = historyQuery.data
-  const loadError = historyQuery.isError ? messageForError(historyQuery.error) : null
-  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
-  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
-  const loading = historyQuery.isFetching
+  const { data: history, loadError, loading } = tableResults(historyQuery)
 
   /**
    * The zone, shared with every other page that prints a date - one `['profile']` query per
@@ -160,10 +156,6 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    * browser's zone when the stored one is absent or is one this ICU build refuses to format in.
    */
   const formatMoment = (value: string): string => formatTimestamp(value, locale, timeZone)
-
-  /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
-  const orDash = (value: string | number | null | undefined): string =>
-    value === null || value === undefined || value === '' ? '—' : String(value)
 
   /**
    * One column's resize handle, with this page's name for the column.
@@ -203,11 +195,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
-      render: (value: string | null) => (
-        <Typography.Text code>
-          <TruncatedCell text={orDash(value)} full={value} />
-        </Typography.Text>
-      ),
+      render: ipCell,
     },
     {
       // A code is what GeoIP produces and what the allow lists are written against, but nobody
@@ -223,10 +211,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       width: widths.country,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('country'),
-      render: (value: string | null) => {
-        const name = countryName(value, locale)
-        return name === null ? '—' : <TruncatedCell text={name} full={name} />
-      },
+      render: (value: string | null) => countryCell(value, locale),
     },
     {
       // The one column whose content the server does not bound. An organisation name is a
@@ -238,20 +223,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       width: widths.network,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('network'),
-      render: (_, visit) => {
-        const { organization, autonomousSystemNumber } = visit
-
-        if (organization === null && autonomousSystemNumber === null) return '—'
-
-        const label =
-          autonomousSystemNumber === null
-            ? (organization as string)
-            : organization === null
-              ? `AS${autonomousSystemNumber}`
-              : `${organization} · AS${autonomousSystemNumber}`
-
-        return <TruncatedCell text={label} full={label} />
-      },
+      render: (_, visit) => networkCell(visit),
     },
     {
       // The summary replaces the raw string rather than joining it, and the tooltip carries the
@@ -265,10 +237,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       width: widths.agent,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('agent'),
-      render: (value: string | null) => {
-        if (!value) return '—'
-        return <TruncatedCell text={describeUserAgent(value) ?? value} full={value} />
-      },
+      render: agentCell,
     },
   ]
 
@@ -277,21 +246,13 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       title={t(sectionKey)}
       extra={
         <Space wrap>
-          <Input.Search
-            allowClear
-            aria-label={t('sessions.searchLabel')}
-            placeholder={t('sessions.searchPlaceholder')}
-            style={{ width: 320 }}
+          <TableSearch
             value={table.searchText}
-            onChange={(event) => {
-              table.setSearchText(event.target.value)
-
-              // An emptied box empties the list straight away. Waiting for Enter would mean the
-              // visitor clears the field, sees the old filter still applied, and has to press
-              // something they just finished typing into.
-              if (event.target.value === '') table.applySearch('')
-            }}
+            onChange={table.setSearchText}
             onSearch={table.applySearch}
+            labelKey="sessions.searchLabel"
+            placeholderKey="sessions.searchPlaceholder"
+            width={320}
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
@@ -306,15 +267,10 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
       }
     >
       {loadError ? (
-        <Alert
-          type="error"
-          showIcon
+        <LoadErrorAlert
           message={loadError}
-          action={
-            <Button size="small" onClick={() => historyQuery.refetch()} loading={loading}>
-              {t('actions.retry')}
-            </Button>
-          }
+          loading={loading}
+          onRetry={() => historyQuery.refetch()}
         />
       ) : (
         <Table<SessionVisit>

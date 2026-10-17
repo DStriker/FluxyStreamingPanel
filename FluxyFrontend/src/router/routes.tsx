@@ -179,12 +179,23 @@ const area = (
       <AccountLayout titleKey={titleKey} />
     </RequireAuth>
   ),
-  // Everything under this area fails into the same screen. Without an `errorElement` the
-  // data router draws its own bare English error page - it *does* catch the error, which
-  // is why this is a theming and translation gap rather than a blank one - and the crash
-  // a page threw while rendering deserves at least the theme the visitor chose.
-  errorElement: <ErrorFallback />,
   children: [...sectionRoutes(role, homeRoute), ...extra],
+})
+
+/**
+ * A top-level entry with the shared crash screen attached.
+ *
+ * Every address carries `errorElement: <ErrorFallback />`, including the areas: a page that
+ * throws while rendering is a bug rather than a refusal, and without a fallback of its own
+ * the data router answers it with its own bare English error page - it *does* catch the
+ * error, which is why this is a theming and translation gap rather than a blank one - and
+ * the crash deserves at least the theme the visitor chose. One builder rather than nine
+ * copies of the line is what keeps a route added later from silently dropping it;
+ * `probe:render` asserts the property holds for every top-level entry.
+ */
+const withFallback = (route: RouteObject): RouteObject => ({
+  ...route,
+  errorElement: <ErrorFallback />,
 })
 
 /**
@@ -196,98 +207,90 @@ const area = (
  * is being asked for - which, unannotated, would be the first consumer of the table rather
  * than the line the entry sits on.
  *
- * Every entry carries `errorElement: <ErrorFallback />`, including the areas (see the
- * builder above). A page that throws while rendering is a bug rather than a refusal, and
- * without a fallback of its own the data router answers it with its own unlocalized
- * screen; `probe:render` asserts the property holds for every top-level entry so a route
- * added later cannot quietly drop it.
+ * Every entry is built through `withFallback` above, so the crash screen cannot be
+ * forgotten on the next route; `probe:render` asserts the property holds for each of them.
  */
 export const routes: RouteObject[] = [
-  {
+  withFallback({
     path: '/',
     element: <Navigate to={routePath(config.CLIENT_LOGIN_ROUTE)} replace />,
-    errorElement: <ErrorFallback />,
-  },
-  {
+  }),
+  withFallback({
     path: routePath(config.REGISTER_ROUTE),
     element: (
       <GuestOnly>
         <RegisterPage />
       </GuestOnly>
     ),
-    errorElement: <ErrorFallback />,
-  },
-  {
+  }),
+  withFallback({
     path: routePath(config.FORGOT_PASSWORD_ROUTE),
     element: (
       <GuestOnly>
         <ForgotPasswordPage />
       </GuestOnly>
     ),
-    errorElement: <ErrorFallback />,
-  },
-  {
+  }),
+  withFallback({
     path: routePath(config.CLIENT_LOGIN_ROUTE),
     element: (
       <GuestOnly>
         <ClientLoginPage />
       </GuestOnly>
     ),
-    errorElement: <ErrorFallback />,
-  },
-  {
+  }),
+  withFallback({
     path: routePath(config.RESELLER_LOGIN_ROUTE),
     element: (
       <GuestOnly>
         <ResellerLoginPage />
       </GuestOnly>
     ),
-    errorElement: <ErrorFallback />,
-  },
-  {
+  }),
+  withFallback({
     path: routePath(config.ADMIN_LOGIN_ROUTE),
     element: (
       <GuestOnly>
         <AdminLoginPage />
       </GuestOnly>
     ),
-    errorElement: <ErrorFallback />,
-  },
-  area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea'),
-  area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea'),
-  area('Admin', config.ADMIN_HOME_ROUTE, 'titles.adminArea', [
-    {
-      path: 'users/:id',
-      element: <UserFormPage sectionKey="nav.items.usersAdd" />,
-    },
-    // The group form's two addresses. `add` is written first and is a static segment, so
-    // react-router ranks it above `:id` - the same reason `users/add` can be a menu item
-    // while `users/:id` is not. Neither has a menu item: the rail offers the table alone,
-    // and both forms are reached from buttons on it (see the loader above for why).
-    {
-      path: 'user-groups/add',
-      element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
-    },
-    {
-      path: 'user-groups/:id',
-      element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
-    },
-    // The streams form's edit address. `video-streams/add` is a menu item and is a static
-    // segment, so react-router ranks it above `:id` - the same reason `users/add` can be a
-    // menu item while `users/:id` is not. This one has no menu item: it is reached only by
-    // choosing a row of the streams table (see the loader above for why).
-    {
-      path: 'video-streams/:id',
-      element: <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />,
-    },
-  ]),
-  {
+  }),
+  withFallback(area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea')),
+  withFallback(area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea')),
+  withFallback(
+    area('Admin', config.ADMIN_HOME_ROUTE, 'titles.adminArea', [
+      {
+        path: 'users/:id',
+        element: <UserFormPage sectionKey="nav.items.usersAdd" />,
+      },
+      // The group form's two addresses. `add` is written first and is a static segment, so
+      // react-router ranks it above `:id` - the same reason `users/add` can be a menu item
+      // while `users/:id` is not. Neither has a menu item: the rail offers the table alone,
+      // and both forms are reached from buttons on it (see the loader above for why).
+      {
+        path: 'user-groups/add',
+        element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
+      },
+      {
+        path: 'user-groups/:id',
+        element: <UserGroupFormPage sectionKey="nav.items.userGroups" />,
+      },
+      // The streams form's edit address. `video-streams/add` is a menu item and is a static
+      // segment, so react-router ranks it above `:id` - the same reason `users/add` can be a
+      // menu item while `users/:id` is not. This one has no menu item: it is reached only by
+      // choosing a row of the streams table (see the loader above for why).
+      {
+        path: 'video-streams/:id',
+        element: <VideoStreamFormPage sectionKey="nav.items.videoStreamsAdd" />,
+      },
+    ]),
+  ),
+  withFallback({
     path: '*',
     element: (
       <RequireAuth>
         <NotFoundPage />
       </RequireAuth>
     ),
-    errorElement: <ErrorFallback />,
-  },
+  }),
 ]

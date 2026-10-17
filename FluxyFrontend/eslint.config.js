@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
@@ -80,6 +81,26 @@ export default [
     files: ['**/*.jsx'],
     languageOptions: {
       parser: tsBase.languageOptions.parser,
+    },
+  },
+  {
+    // Accessibility rules for every JSX element in the repo - `src/**/*.tsx` and
+    // `scripts/probe-render.jsx`, which renders the pages under Node. The set is the
+    // plugin's flat `recommended`, not `strict`: this is hand-written markup around antd
+    // components, and the recommended set is what catches the *silent* mistakes - an image
+    // without alt text, a click handler on a `<div>` - while the strict set would ask for
+    // roles antd's own components already carry. Both parsers are already attached by the
+    // blocks above; this one only adds the plugin and its verdicts.
+    files: ['**/*.{jsx,tsx}'],
+    plugins: { 'jsx-a11y': jsxA11y },
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      // `RequireAuth` and `GuestOnly` take a `role` prop that names a *user* role, not an
+      // ARIA one - `role="Client"` in the probe would be reported as an invalid ARIA role
+      // by a linter that cannot know what the component does with the value. The rule's
+      // own `ignoreNonDOM` is the switch for exactly this: custom components are skipped
+      // while a real DOM element with an invalid role is still reported.
+      'jsx-a11y/aria-role': ['error', { ignoreNonDOM: true }],
     },
   },
   {

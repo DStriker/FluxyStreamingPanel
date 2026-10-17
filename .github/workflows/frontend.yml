@@ -1,0 +1,51 @@
+name: Frontend
+
+# Verification for FluxyFrontend: everything that needs neither a backend nor credentials.
+#
+# That boundary is deliberate. `probe`, `probe:session` and `probe:groups` drive a running
+# backend with real accounts and rate limits, so they stay local; what runs here is the
+# compiler, the linter, the unit tests, the build and the three static probes -
+# `probe:render` renders every page under Node, `probe:i18n` and `probe:paths` read `src/`
+# and the config from disk. Together they are the strongest gate that can be run on every
+# push.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'FluxyFrontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    paths:
+      - 'FluxyFrontend/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch:
+
+# One run per branch: pushing again while an earlier run is still going cancels the old one
+# rather than making the two race for the same verdict.
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FluxyFrontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # The same floor `engines` states (vitest 5 needs `^22.12.0`) and the version the
+          # repository is developed on, read from the one file that names it.
+          node-version-file: FluxyFrontend/.nvmrc
+          cache: npm
+          cache-dependency-path: FluxyFrontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run probe:render
+      - run: npm run probe:i18n
+      - run: npm run probe:paths

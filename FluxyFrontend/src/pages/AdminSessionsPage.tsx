@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, App, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Card, Select, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { revokeAdminSession } from '../lib/api'
@@ -8,12 +8,13 @@ import type { SessionSortField } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
-import { countryName } from '../lib/countryName'
 import { formatTimestamp } from '../lib/dateFormat'
-import { describeUserAgent } from '../lib/userAgent'
+import { tableResults } from '../lib/tableResults'
+import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../lib/tableCells'
+import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import TruncatedCell from '../components/TruncatedCell'
+import TableSearch from '../components/TableSearch'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAdminSessionHistory, useAllUsers, useProfile } from '../hooks/queries'
 import { useServerTable } from '../hooks/useServerTable'
@@ -170,11 +171,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    * re-read, because one revoke ends every row of that session.
    */
   const historyQuery = useAdminSessionHistory({ ...table.query, userId: userFilter })
-  const history = historyQuery.data
-  const loadError = historyQuery.isError ? messageForError(historyQuery.error) : null
-  // `isFetching` rather than `isPending`: a page turn re-reads with the previous rows still
-  // on the table under the spinner, which is what the old effect's `setLoading(true)` did.
-  const loading = historyQuery.isFetching
+  const { data: history, loadError, loading } = tableResults(historyQuery)
 
   /**
    * The zone, from the shared `['profile']` query - one fetch per installation rather than
@@ -285,10 +282,6 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    */
   const formatMoment = (value: string): string => formatTimestamp(value, locale, timeZone)
 
-  /** A value the server could not determine, drawn as a dash rather than as an empty cell. */
-  const orDash = (value: string | number | null | undefined): string =>
-    value === null || value === undefined || value === '' ? '—' : String(value)
-
   /**
    * One column's resize handle, with this page's name for the column.
    *
@@ -338,7 +331,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       // The name rather than the identifier: this column answers "whose visit is this" and
       // a GUID answers nothing to a person scanning twenty rows. The identifier is one
       // filter away - the account picker above the table is the same value.
-      render: (value: string) => <TruncatedCell text={orDash(value)} full={value} />,
+      render: dashedCell,
     },
     {
       title: t('adminSessions.columns.when'),
@@ -374,11 +367,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('ip'),
-      render: (value: string | null) => (
-        <Typography.Text code>
-          <TruncatedCell text={orDash(value)} full={value} />
-        </Typography.Text>
-      ),
+      render: ipCell,
     },
     {
       // A name rather than the code GeoIP produces, for the reason the account's own
@@ -392,10 +381,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       width: widths.country,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('country'),
-      render: (value: string | null) => {
-        const name = countryName(value, locale)
-        return name === null ? '—' : <TruncatedCell text={name} full={name} />
-      },
+      render: (value: string | null) => countryCell(value, locale),
     },
     {
       // The one column whose content the server does not bound. An organisation name is a
@@ -407,20 +393,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       width: widths.network,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('network'),
-      render: (_, visit) => {
-        const { organization, autonomousSystemNumber } = visit
-
-        if (organization === null && autonomousSystemNumber === null) return '—'
-
-        const label =
-          autonomousSystemNumber === null
-            ? (organization as string)
-            : organization === null
-              ? `AS${autonomousSystemNumber}`
-              : `${organization} · AS${autonomousSystemNumber}`
-
-        return <TruncatedCell text={label} full={label} />
-      },
+      render: (_, visit) => networkCell(visit),
     },
     {
       // The summary replaces the raw string rather than joining it, and the tooltip carries
@@ -435,10 +408,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       width: widths.agent,
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('agent'),
-      render: (value: string | null) => {
-        if (!value) return '—'
-        return <TruncatedCell text={describeUserAgent(value) ?? value} full={value} />
-      },
+      render: agentCell,
     },
     {
       title: t('adminSessions.columns.actions'),
@@ -464,21 +434,13 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
               table's toolbar spends: this row has to fit beside the card's own title on one
               Full HD screen, and in Russian it does not. What the search loses in room it
               keeps in its aria-label, which still names the whole field. */}
-          <Input.Search
-            allowClear
-            aria-label={t('adminSessions.searchLabel')}
-            placeholder={t('adminSessions.searchPlaceholder')}
-            style={{ width: 220 }}
+          <TableSearch
             value={table.searchText}
-            onChange={(event) => {
-              table.setSearchText(event.target.value)
-
-              // An emptied box empties the list straight away. Waiting for Enter would mean
-              // the visitor clears the field, sees the old filter still applied, and has to
-              // press something they just finished typing into.
-              if (event.target.value === '') table.applySearch('')
-            }}
+            onChange={table.setSearchText}
             onSearch={table.applySearch}
+            labelKey="adminSessions.searchLabel"
+            placeholderKey="adminSessions.searchPlaceholder"
+            width={220}
           />
           <Select
             allowClear
@@ -501,15 +463,10 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       }
     >
       {loadError ? (
-        <Alert
-          type="error"
-          showIcon
+        <LoadErrorAlert
           message={loadError}
-          action={
-            <Button size="small" onClick={() => historyQuery.refetch()} loading={loading}>
-              {t('actions.retry')}
-            </Button>
-          }
+          loading={loading}
+          onRetry={() => historyQuery.refetch()}
         />
       ) : (
         <Table<AdminSessionVisit>

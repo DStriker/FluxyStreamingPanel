@@ -38,7 +38,7 @@ import {
 import type { ContentCategory, ContentType } from '../types'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { useContentCategories } from '../hooks/queries'
 
 /**
@@ -282,7 +282,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
         csrfToken: await getCsrfToken(),
       })
 
-      message.success(textForCode(result.code) ?? result.message)
+      message.success(successTextFor(result))
       setPendingIds(null)
       void categoriesQuery.refetch()
     } catch (error) {
@@ -319,7 +319,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
         ? await updateContentCategory({ id: editing.id, name: values.name, csrfToken })
         : await createContentCategory({ values: { name: values.name, type: typeParam }, csrfToken })
 
-      message.success(textForCode(result.code) ?? result.message)
+      message.success(successTextFor(result))
       setCreating(false)
       setEditing(null)
       void categoriesQuery.refetch()
@@ -365,7 +365,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
             csrfToken: await getCsrfToken(),
           })
 
-          message.success(textForCode(result.code) ?? result.message)
+          message.success(successTextFor(result))
           void categoriesQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
