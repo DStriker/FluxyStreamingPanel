@@ -22,11 +22,8 @@ import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { dashedCell, idCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import type { ResizableHeaderCellProps } from '../components/table/ResizableHeaderCell'
-import RowActions from '../components/table/RowActions'
-import type { RowAction } from '../components/table/RowActions'
-import ServerTable from '../components/table/ServerTable'
-import TableSearch from '../components/table/TableSearch'
+import { RowActions, ServerTable, TableSearch } from '../components/table'
+import type { ResizableHeaderCellProps, RowAction } from '../components/table'
 import {
   useDeleteVideoStream,
   useStartVideoStream,

@@ -23,11 +23,8 @@ import { tableResults } from '../lib/tableResults'
 import { idCell, ipCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
 import LastSeenCell from '../features/users/LastSeenCell'
-import type { ResizableHeaderCellProps } from '../components/table/ResizableHeaderCell'
-import RowActions from '../components/table/RowActions'
-import type { RowAction } from '../components/table/RowActions'
-import ServerTable from '../components/table/ServerTable'
-import TableSearch from '../components/table/TableSearch'
+import { RowActions, ServerTable, TableSearch } from '../components/table'
+import type { ResizableHeaderCellProps, RowAction } from '../components/table'
 import {
   useBulkUsers,
   useConfirmUserRegistration,

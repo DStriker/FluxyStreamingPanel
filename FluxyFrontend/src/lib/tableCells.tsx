@@ -1,6 +1,6 @@
 import { Typography } from 'antd'
 import type { ReactNode } from 'react'
-import TruncatedCell from '../components/table/TruncatedCell'
+import { TruncatedCell } from '../components/table'
 import { countryName } from './countryName'
 import { describeUserAgent } from './userAgent'
 
