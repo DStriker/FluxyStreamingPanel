@@ -7,12 +7,7 @@ import ConfirmCodeForm, {
   type RegistrationConfirmValues,
 } from '../components/ConfirmCodeForm'
 import config, { routePath } from '../config'
-import {
-  RegisterCaptchaAction,
-  confirmRegistration,
-  submitRegistration,
-  type RegistrationValues,
-} from '../lib/api'
+import { RegisterCaptchaAction, type RegistrationValues } from '../lib/api'
 import { ApiError } from '../lib/http'
 import { internalPath } from '../lib/url'
 import type { MessageResponse } from '../types'
@@ -21,6 +16,10 @@ import {
   readPendingEmail,
   rememberPendingEmail,
 } from '../lib/pendingRegistration'
+import {
+  useConfirmRegistration,
+  useSubmitRegistration,
+} from '../hooks/mutations'
 
 /** The codes that mean the confirmation step has nothing left to confirm. */
 const CodeExpired = 'code_expired'
@@ -37,6 +36,8 @@ const CodeExpired = 'code_expired'
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const confirm = useConfirmRegistration()
+  const register = useSubmitRegistration()
 
   const [email, setEmail] = useState(readPendingEmail)
   const [step, setStep] = useState(() => (readPendingEmail() ? 'code' : 'details'))
@@ -69,14 +70,9 @@ export default function RegisterPage() {
       <ConfirmCodeForm<RegistrationConfirmValues>
         email={email}
         onBack={backToDetails}
-        onSubmit={async ({ email: address, code, csrfToken, captchaToken }) => {
+        onSubmit={async ({ email: address, code, captchaToken }) => {
           try {
-            const result = await confirmRegistration({
-              email: address,
-              code,
-              csrfToken,
-              captchaToken,
-            })
+            const result = await confirm.mutateAsync({ email: address, code, captchaToken })
             handleConfirmed(result)
           } catch (err) {
             // An expired code cannot be revived by typing a better one, so the step is
@@ -97,9 +93,7 @@ export default function RegisterPage() {
       action={RegisterCaptchaAction}
       register
       submitText={t('actions.register')}
-      onSubmit={({ values, csrfToken, captchaToken }) =>
-        submitRegistration({ values, csrfToken, captchaToken })
-      }
+      onSubmit={({ values, captchaToken }) => register.mutateAsync({ values, captchaToken })}
       onSuccess={handleRegistered}
       footer={
         <Button

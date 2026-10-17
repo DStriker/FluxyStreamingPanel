@@ -1,11 +1,8 @@
-import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Select, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { revokeAdminSession } from '../lib/api'
 import type { SessionSortField } from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { messageForError, textForCode } from '../lib/http'
 import { formatTimestamp } from '../lib/dateFormat'
@@ -15,6 +12,7 @@ import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TableSearch from '../components/TableSearch'
+import { useRevokeAdminSession } from '../hooks/mutations'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAdminSessionHistory, useAllUsers, useProfile } from '../hooks/queries'
 import { useServerTable } from '../hooks/useServerTable'
@@ -159,10 +157,20 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    */
   const [searchParams, setSearchParams] = useSearchParams()
   const userFilter = searchParams.get('userId')
-  // The session whose button is in flight. One id rather than a boolean, so the other rows
-  // stay clickable while one revoke runs - and every row of that same session shows the
-  // spinner, which is the truth: the act is on the chain, not on the row that was pressed.
-  const [busySessionId, setBusySessionId] = useState<string | null>(null)
+  /**
+   * The one revoke this page makes, from `mutations.ts` - the token is minted inside it at
+   * call time, never remembered: the server binds a token to the identity that was current
+   * when it was minted, and one from before a refresh would be refused as `csrf_invalid`.
+   *
+   * The id whose button is in flight is read off the mutation itself, as one id rather than
+   * a boolean, so the other rows stay clickable while one revoke runs - and every row of
+   * that same session shows the spinner, which is the truth: the act is on the chain, not
+   * on the row that was pressed.
+   */
+  const revokeSession = useRevokeAdminSession()
+  const busySessionId = revokeSession.isPending
+    ? (revokeSession.variables?.sessionId ?? null)
+    : null
 
   /**
    * The page of visits, fetched through a query whose key **is** the parameters - the
@@ -255,23 +263,14 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    * shorter, it did not move.
    */
   const endSession = async (sessionId: string) => {
-    setBusySessionId(sessionId)
-
     try {
-      // Minted here rather than remembered: the server binds a token to the identity that
-      // was current when it was minted, and a token from before a refresh would be refused
-      // as `csrf_invalid`. Every submit of this application mints at call time for that
-      // reason.
-      const csrfToken = await getCsrfToken()
-      const result = await revokeAdminSession({ sessionId, csrfToken })
+      const result = await revokeSession.mutateAsync({ sessionId })
 
       message.success(textForCode(result.code) ?? t('adminSessions.revoked'))
 
       void historyQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
-    } finally {
-      setBusySessionId(null)
     }
   }
 

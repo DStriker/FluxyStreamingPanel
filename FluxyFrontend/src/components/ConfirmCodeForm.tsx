@@ -4,11 +4,9 @@ import { App, Button, Form, Input } from 'antd'
 import type { FormRule, InputProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
-import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError } from '../lib/http'
 import { ConfirmCaptchaAction } from '../lib/api'
-import type { CallOptions } from '../lib/api'
 import { CODE_LENGTH, EMAIL_MAX } from '../lib/policy'
 
 /** What the registration confirm step submits: the address it was mailed to, and the code. */
@@ -49,8 +47,12 @@ interface ConfirmCodeFormProps<Values extends { code: string }> {
   title?: ReactNode
   /** The captcha action for this endpoint. One per endpoint, fixed by the server. */
   captchaAction?: string
-  /** Performs the call with the form's values and both tokens, in one object. */
-  onSubmit: (args: Values & CallOptions) => Promise<unknown>
+  /**
+   * Performs the call with the form's values and the captcha token, in one object. The
+   * antiforgery token is deliberately **not** part of it - the page's mutation hook
+   * (`mutations.ts`) mints that at call time, the rule every write follows.
+   */
+  onSubmit: (args: Values & { captchaToken: string | null }) => Promise<unknown>
   /** Goes back a step - the visitor's own change of mind, and an expired code. */
   onBack: () => void
 }
@@ -103,9 +105,10 @@ export default function ConfirmCodeForm<Values extends { code: string }>({
     ],
   }
 
-  // No `getCsrfToken()` on mount here either, and for the same reason as `AuthForm`: the
-  // submit below mints a fresh one immediately before sending, so a token requested while
-  // the form was loading would only ever be the one that gets thrown away.
+  // No token is minted on mount here either, and for the same reason as `AuthForm`: the
+  // submit below mints the captcha token immediately before sending, while the antiforgery
+  // token is minted inside the page's mutation hook at that same moment - a token obtained
+  // while the form was loading would only ever be the one that gets thrown away.
 
   const handleFinish = async (values: Values) => {
     setSubmitting(true)
@@ -115,14 +118,11 @@ export default function ConfirmCodeForm<Values extends { code: string }>({
     ])
 
     try {
-      const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken(),
-        // A fixed action per endpoint, not a free choice: the token the browser asks for
-        // has to be the one the server expects for this route. The two steps of a flow
-        // that ask for a code under one session do not share theirs either.
-        getCaptchaToken(captchaAction),
-      ])
-      await onSubmit({ ...values, csrfToken, captchaToken })
+      // A fixed action per endpoint, not a free choice: the token the browser asks for
+      // has to be the one the server expects for this route. The two steps of a flow
+      // that ask for a code under one session do not share theirs either.
+      const captchaToken = await getCaptchaToken(captchaAction)
+      await onSubmit({ ...values, captchaToken })
     } catch (err) {
       const fields = fieldErrors(err instanceof ApiError ? err.errors : null)
       if (fields.length > 0) {

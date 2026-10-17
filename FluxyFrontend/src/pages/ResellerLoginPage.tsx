@@ -3,20 +3,22 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { ResellerLoginCaptchaAction, submitAuth, type SignInValues } from '../lib/api'
+import { ResellerLoginCaptchaAction, type SignInValues } from '../lib/api'
 import { internalPath } from '../lib/url'
+import { useSubmitAuth } from '../hooks/mutations'
 
 export default function ResellerLoginPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const signIn = useSubmitAuth()
 
   return (
     <AuthForm<SignInValues>
       title={t('titles.resellerLogin')}
       action={ResellerLoginCaptchaAction}
       submitText={t('actions.login')}
-      onSubmit={({ values, csrfToken, captchaToken }) =>
-        submitAuth({ action: 'reseller-login', values, csrfToken, captchaToken })
+      onSubmit={({ values, captchaToken }) =>
+        signIn.mutateAsync({ action: 'reseller-login', values, captchaToken })
       }
       // The server names the destination, in `redirect` - see ClientLoginPage. A
       // candidate path, not an instruction: `internalPath` keeps only one this router

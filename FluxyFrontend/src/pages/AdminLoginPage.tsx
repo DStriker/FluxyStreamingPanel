@@ -3,20 +3,22 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { AdminLoginCaptchaAction, submitAuth, type SignInValues } from '../lib/api'
+import { AdminLoginCaptchaAction, type SignInValues } from '../lib/api'
 import { internalPath } from '../lib/url'
+import { useSubmitAuth } from '../hooks/mutations'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const signIn = useSubmitAuth()
 
   return (
     <AuthForm<SignInValues>
       title={t('titles.adminLogin')}
       action={AdminLoginCaptchaAction}
       submitText={t('actions.login')}
-      onSubmit={({ values, csrfToken, captchaToken }) =>
-        submitAuth({ action: 'admin-login', values, csrfToken, captchaToken })
+      onSubmit={({ values, captchaToken }) =>
+        signIn.mutateAsync({ action: 'admin-login', values, captchaToken })
       }
       // The server names the destination, in `redirect` - see ClientLoginPage. The path
       // is still only a candidate: `internalPath` decides it is one this router has.

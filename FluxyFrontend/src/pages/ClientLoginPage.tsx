@@ -3,20 +3,22 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../components/AuthForm'
 import config, { routePath } from '../config'
-import { ClientLoginCaptchaAction, submitAuth, type SignInValues } from '../lib/api'
+import { ClientLoginCaptchaAction, type SignInValues } from '../lib/api'
 import { internalPath } from '../lib/url'
+import { useSubmitAuth } from '../hooks/mutations'
 
 export default function ClientLoginPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const signIn = useSubmitAuth()
 
   return (
     <AuthForm<SignInValues>
       title={t('titles.clientLogin')}
       action={ClientLoginCaptchaAction}
       submitText={t('actions.login')}
-      onSubmit={({ values, csrfToken, captchaToken }) =>
-        submitAuth({ action: 'client-login', values, csrfToken, captchaToken })
+      onSubmit={({ values, captchaToken }) =>
+        signIn.mutateAsync({ action: 'client-login', values, captchaToken })
       }
       // The server names the destination, in `redirect`, because only it knows what the
       // account's role is and the three areas do not share a layout. Following it rather

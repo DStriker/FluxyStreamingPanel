@@ -234,11 +234,16 @@ async function main() {
   const guardedHtml = renderToStaticMarkup(
     withRouter(
       '/login',
-      <AntApp>
-        <GuestOnly>
-          <ClientLoginPage />
-        </GuestOnly>
-      </AntApp>,
+      // `withQuery`, because the page's own submit hook is a `useMutation` and reads the
+      // client at render time - the same client `App.tsx` puts above the router. The
+      // guard is not the reason; it is what this render is here to observe.
+      withQuery(
+        <AntApp>
+          <GuestOnly>
+            <ClientLoginPage />
+          </GuestOnly>
+        </AntApp>,
+      ),
     ),
   )
   check(

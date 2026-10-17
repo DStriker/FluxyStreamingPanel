@@ -16,13 +16,13 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CONTENT_TYPE_PARAMS, createVideoStream, updateVideoStream } from '../lib/api'
+import { CONTENT_TYPE_PARAMS } from '../lib/api'
 import type { VideoStreamValues } from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import SourceListEditor from '../components/SourceListEditor'
+import { useCreateVideoStream, useUpdateVideoStream } from '../hooks/mutations'
 import { useContentCategories, useVideoStreamDetail } from '../hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../types'
@@ -285,7 +285,18 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const detail = detailQuery.data ?? null
   const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
-  const [submitting, setSubmitting] = useState(false)
+  /**
+   * The two writes this form makes, from `mutations.ts` - one hook per endpoint, each
+   * minting its antiforgery token at call time, never remembered: the server binds a token
+   * to the identity that was current when it was minted, and one from before a refresh is
+   * refused as `csrf_invalid`.
+   *
+   * The submit button spins on whichever half is running, and which half that is is not
+   * known until submit time - the same address adds and edits.
+   */
+  const create = useCreateVideoStream()
+  const update = useUpdateVideoStream()
+  const submitting = create.isPending || update.isPending
 
   // Whether anything on this form was edited by hand - what the unsaved-changes guard asks
   // about before letting the page be left. Only hand edits count: `onValuesChange` is not
@@ -424,23 +435,18 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   })
 
   const handleFinish = async (values: VideoStreamValues) => {
-    setSubmitting(true)
     // Every previous refusal goes before the new attempt is judged: a field the visitor has
     // already fixed would otherwise keep the red the old answer left under it, and would
     // look broken while passing every rule the form has for it.
     form.setFields(FIELD_NAMES.map((name) => ({ name, errors: [] })))
 
     try {
-      // Minted here rather than remembered - the server binds a token to the identity that
-      // was current when it was minted, so a token from before a refresh would come back
-      // `csrf_invalid`. Every submit in this application mints at call time for that reason.
-      const csrfToken = await getCsrfToken()
       const body = toBody(values)
 
       const result =
         isEdit && detail
-          ? await updateVideoStream({ id: detail.id, values: body, csrfToken })
-          : await createVideoStream({ values: body, csrfToken })
+          ? await update.mutateAsync({ id: detail.id, values: body })
+          : await create.mutateAsync({ values: body })
 
       // The server's own sentence where this build translates the code, its English
       // `message` where it does not - the rule every other page follows.
@@ -463,8 +469,6 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
           })),
         )
       message.error(messageForError(error))
-    } finally {
-      setSubmitting(false)
     }
   }
 

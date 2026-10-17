@@ -13,20 +13,18 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
-import {
-  ProfileChangeCaptchaAction,
-  ProfileConfirmCaptchaAction,
-  changeEmail,
-  changeLoginGuard,
-  changePassword,
-  changeUsername,
-  confirmProfileChange,
-  updateTimezone,
-} from '../lib/api'
+import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../lib/api'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { useSession } from '../lib/sessionContext'
+import {
+  useChangeEmail,
+  useChangeLoginGuard,
+  useChangePassword,
+  useChangeUsername,
+  useConfirmProfileChange,
+  useUpdateTimezone,
+} from '../hooks/mutations'
 import { useProfile } from '../hooks/queries'
 import TimeZoneCard from '../components/TimeZoneCard'
 import LoginGuardCard from '../components/LoginGuardCard'
@@ -126,8 +124,26 @@ export default function ProfilePage() {
   const load = profileQuery.refetch
 
   const [kind, setKind] = useState<Kind>('username')
-  const [submitting, setSubmitting] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+
+  /**
+   * The writes this page makes, from `mutations.ts` - one hook per endpoint, each minting
+   * its antiforgery token at call time, never remembered: the server binds a token to the
+   * identity that was current when it was minted, and one from before a refresh is refused
+   * as `csrf_invalid`. The captcha token is not theirs - it is minted here, for the action
+   * each step owns.
+   *
+   * Each in-flight flag is the mutation's own rather than a second copy: `submitting` is
+   * whichever of the three change endpoints the switch names, `confirming` is the
+   * confirmation step, and the time-zone card's spinner is `saveTimeZone.isPending`.
+   */
+  const changeName = useChangeUsername()
+  const changeAddress = useChangeEmail()
+  const changeSecret = useChangePassword()
+  const confirmChange = useConfirmProfileChange()
+  const saveTimeZone = useUpdateTimezone()
+  const saveGuard = useChangeLoginGuard()
+  const submitting = changeName.isPending || changeAddress.isPending || changeSecret.isPending
+  const confirming = confirmChange.isPending
   // The change waiting for its code, and where the code was sent - both are needed to tell
   // the visitor what to look for, and the address differs by kind: an address change is
   // confirmed at the address it is moving *to*.
@@ -139,7 +155,6 @@ export default function ProfilePage() {
   // `null` is a real pick ("automatic"), which is why the two are different values and the
   // draft cannot simply start at `null`.
   const [timeZoneDraft, setTimeZoneDraft] = useState<string | null | undefined>(undefined)
-  const [savingTimeZone, setSavingTimeZone] = useState(false)
 
   /**
    * Puts a new login name in front of the visitor where they can see it.
@@ -177,10 +192,8 @@ export default function ProfilePage() {
 
     if (next === stored) return
 
-    setSavingTimeZone(true)
     try {
-      const csrfToken = await getCsrfToken()
-      const result = await updateTimezone({ timeZone: next, csrfToken })
+      const result = await saveTimeZone.mutateAsync({ timeZone: next })
 
       message.success(textForCode(result.code) ?? t('profile.timezoneSaved'))
       await load()
@@ -188,13 +201,10 @@ export default function ProfilePage() {
     } catch (err) {
       message.error(messageForError(err))
       setTimeZoneDraft(undefined)
-    } finally {
-      setSavingTimeZone(false)
     }
   }
 
   const handleFinish = async (values: ProfileFormValues) => {
-    setSubmitting(true)
     form.setFields(
       ['currentPassword', 'username', 'email', 'newPassword'].map((name) => ({
         name,
@@ -203,18 +213,15 @@ export default function ProfilePage() {
     )
 
     try {
-      const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken(),
-        getCaptchaToken(ProfileChangeCaptchaAction),
-      ])
-      const args = { currentPassword: values.currentPassword, csrfToken, captchaToken }
+      const captchaToken = await getCaptchaToken(ProfileChangeCaptchaAction)
+      const args = { currentPassword: values.currentPassword, captchaToken }
 
       const result =
         kind === 'username'
-          ? await changeUsername({ ...args, username: values.username })
+          ? await changeName.mutateAsync({ ...args, username: values.username })
           : kind === 'email'
-            ? await changeEmail({ ...args, email: values.email })
-            : await changePassword({ ...args, newPassword: values.newPassword })
+            ? await changeAddress.mutateAsync({ ...args, email: values.email })
+            : await changeSecret.mutateAsync({ ...args, newPassword: values.newPassword })
 
       if (result?.code === Submitted) {
         message.success(textForCode(result.code) ?? t('profile.codeSent'))
@@ -239,8 +246,6 @@ export default function ProfilePage() {
       const fields = fieldErrors(err instanceof ApiError ? err.errors : null)
       if (fields.length > 0) form.setFields(fields)
       message.error(messageForError(err))
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -260,20 +265,13 @@ export default function ProfilePage() {
     await load()
   }
 
-  const handleConfirm = async (values: { code: string }) => {    const wasKind = pending?.kind
-    setConfirming(true)
+  const handleConfirm = async (values: { code: string }) => {
+    const wasKind = pending?.kind
     codeForm.setFields([{ name: 'code', errors: [] }])
 
     try {
-      const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken(),
-        getCaptchaToken(ProfileConfirmCaptchaAction),
-      ])
-      const result = await confirmProfileChange({
-        code: values.code,
-        csrfToken,
-        captchaToken,
-      })
+      const captchaToken = await getCaptchaToken(ProfileConfirmCaptchaAction)
+      const result = await confirmChange.mutateAsync({ code: values.code, captchaToken })
 
       if (result?.code !== Confirmed) return
 
@@ -287,8 +285,6 @@ export default function ProfilePage() {
       const fields = fieldErrors(err instanceof ApiError ? err.errors : null)
       if (fields.length > 0) codeForm.setFields(fields)
       message.error(messageForError(err))
-    } finally {
-      setConfirming(false)
     }
   }
 
@@ -379,7 +375,7 @@ export default function ProfilePage() {
 
       <TimeZoneCard
         value={timeZoneDraft === undefined ? (profile?.timeZone ?? null) : timeZoneDraft}
-        saving={savingTimeZone}
+        saving={saveTimeZone.isPending}
         onChange={handleTimeZoneChange}
       />
 
@@ -392,7 +388,7 @@ export default function ProfilePage() {
             allowedCountry: profile.allowedCountry,
             allowedAutonomousSystemNumber: profile.allowedAutonomousSystemNumber,
           }}
-          onSubmit={changeLoginGuard}
+          onSubmit={saveGuard.mutateAsync}
           onSubmitted={handleGuardSubmitted}
           onApplied={handleGuardApplied}
         />

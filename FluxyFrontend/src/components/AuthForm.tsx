@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
-import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import {
@@ -23,10 +22,14 @@ import type { MessageResponse } from '../types'
  */
 const SERVER_FIELDS = ['username', 'email', 'password']
 
-/** What a page's `onSubmit` is handed, in the same shape `api.ts` expects. */
+/**
+ * What a page's `onSubmit` is handed: the form's values and the captcha token minted for
+ * this form's action. The antiforgery half is deliberately absent - the page's mutation
+ * hook (`mutations.ts`) mints it at call time, the rule every write in this application
+ * follows.
+ */
 interface SubmitArgs<Values> {
   values: Values
-  csrfToken: string | null
   captchaToken: string | null
 }
 
@@ -80,12 +83,12 @@ export default function AuthForm<Values>({
   const { message } = App.useApp()
   const [submitting, setSubmitting] = useState(false)
 
-  // No token is minted here on mount, deliberately. `getCsrfToken` always asks for a fresh
-  // one and `handleFinish` mints immediately before sending - a token obtained while the
-  // form was still loading would be stale by the time it was used, and the antiforgery
-  // service binds it to the identity that was current when it was minted. The warm-up call
-  // that used to sit here was therefore a guaranteed extra `GET /auth/csrf` per page that
-  // nothing ever read.
+  // No token is minted here on mount, deliberately. The captcha token is the only one this
+  // form still handles - `handleFinish` mints it immediately before sending - while the
+  // antiforgery token is minted inside the page's mutation hook at that same moment. A
+  // token obtained while the form was still loading would be stale by the time it was
+  // used: the antiforgery service binds its token to the identity that was current when
+  // it was minted.
 
   // The fields the server can name in `errors`. Clearing anything more would wipe a rule
   // the visitor has not satisfied yet, which is a different complaint than a stale one.
@@ -100,11 +103,8 @@ export default function AuthForm<Values>({
     // what the visitor typed is still what they want.
     clearServerErrors()
     try {
-      const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken(),
-        getCaptchaToken(captchaAction),
-      ])
-      const result = await onSubmit({ values, csrfToken, captchaToken })
+      const captchaToken = await getCaptchaToken(captchaAction)
+      const result = await onSubmit({ values, captchaToken })
       // The server names its own outcome, so the wording follows the response rather than
       // asserting a generic success for any 2xx. `successText` covers an endpoint that
       // answers without a code.

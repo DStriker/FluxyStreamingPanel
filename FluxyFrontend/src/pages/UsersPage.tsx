@@ -13,17 +13,8 @@ import {
   TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import {
-  bulkUsers,
-  confirmUserRegistration,
-  deleteUser,
-  setUserBlocked,
-  setUserUnblocked,
-} from '../lib/api'
 import type { AdminUserSortField, BulkUserAction } from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, successTextFor } from '../lib/http'
 import { canEdit, canEditAny } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
@@ -35,6 +26,13 @@ import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TableSearch from '../components/TableSearch'
+import {
+  useBulkUsers,
+  useConfirmUserRegistration,
+  useDeleteUser,
+  useSetUserBlocked,
+  useSetUserUnblocked,
+} from '../hooks/mutations'
 import { useBulkAction } from '../hooks/useBulkAction'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
@@ -186,7 +184,7 @@ interface UsersPageProps {
 export default function UsersPage(_props: UsersPageProps) {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const { message, modal } = App.useApp()
+  const { modal } = App.useApp()
   const session = useSession()
 
   /**
@@ -350,10 +348,22 @@ export default function UsersPage(_props: UsersPageProps) {
     handleFor(key, t('users.resizeColumn', { column: t(`users.columns.${key}`) }))
 
   /**
-   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
-   * and the reporting are `useRowAction`'s, which the group table calls too.
+   * One row action, and the id whose own buttons spin while it runs - the reporting and the
+   * re-read are `useRowAction`'s, which the group table calls too. The writes behind the
+   * actions are `mutations.ts`'s, one hook per endpoint, so none of them mints a token here.
    */
-  const { busyId, setBusyId, runAction } = useRowAction<AdminUser>(() => void usersQuery.refetch())
+  const confirmRegistration = useConfirmUserRegistration()
+  const setBlocked = useSetUserBlocked()
+  const setUnblocked = useSetUserUnblocked()
+  const removeUser = useDeleteUser()
+  const bulk = useBulkUsers()
+
+  const { busyId, runAction, confirmDelete: askDelete } = useRowAction<AdminUser>({
+    refetch: () => void usersQuery.refetch(),
+    rows: users?.items,
+    page: table.page,
+    setPage: table.setPage,
+  })
 
   /**
    * Asks before deleting, because this is the only action here that cannot be undone: the
@@ -361,37 +371,18 @@ export default function UsersPage(_props: UsersPageProps) {
    * login-guard rules and its pending changes with it. No password step and no captcha - the
    * admin session plus a fresh antiforgery token are the gate, the same as every other write
    * on this page - but a question first, because one misread row is not recoverable.
+   *
+   * The question itself, the re-read and the step back off an emptied page are
+   * `useRowAction`'s; what is left here is the wording and the write.
    */
-  const confirmDelete = (user: AdminUser) => {
-    modal.confirm({
-      title: t('users.deleteConfirmTitle'),
-      content: t('users.deleteConfirmBody', { name: user.username }),
-      okText: t('users.deleteConfirmOk'),
-      okButtonProps: { danger: true },
-      cancelText: t('actions.cancel'),
-      onOk: async () => {
-        setBusyId(user.id)
-
-        try {
-          const csrfToken = await getCsrfToken()
-          const result = await deleteUser({ id: user.id, csrfToken })
-
-          message.success(successTextFor(result))
-
-          // The last row of a later page: with it gone, that page no longer exists and the
-          // server would answer it empty - a blank table under a pager still offering the
-          // page the visitor is standing on. Back a page instead, which re-runs the query
-          // anyway, so the list and the pager agree again without a second call.
-          if (users?.items.length === 1 && table.page > 1) table.setPage(table.page - 1)
-          else void usersQuery.refetch()
-        } catch (error) {
-          message.error(messageForError(error))
-        } finally {
-          setBusyId(null)
-        }
-      },
+  const confirmDelete = (user: AdminUser) =>
+    askDelete(user, {
+      name: user.username,
+      titleKey: 'users.deleteConfirmTitle',
+      bodyKey: 'users.deleteConfirmBody',
+      okKey: 'users.deleteConfirmOk',
+      run: () => removeUser.mutateAsync({ id: user.id }),
     })
-  }
 
   /** Closes the move dialog, whether its run landed, was refused or was cancelled. */
   const closeAssign = () => {
@@ -400,21 +391,15 @@ export default function UsersPage(_props: UsersPageProps) {
   }
 
   /**
-   * Runs one operation over the selection: the ids, the token, the reporting and the re-read
-   * are `useBulkAction`'s. What is left here is which endpoint each action names -
-   * `groupId` belongs to `assign-group` alone and is what the move dialog hands over; the
-   * other four never see it - and the dialog that closes on any answer, because once the
-   * answer has arrived there is nothing left to ask.
+   * Runs one operation over the selection: the ids, the reporting and the re-read are
+   * `useBulkAction`'s and the request is `useBulkUsers`'s. What is left here is which
+   * endpoint each action names - `groupId` belongs to `assign-group` alone and is what the
+   * move dialog hands over; the other four never see it - and the dialog that closes on any
+   * answer, because once the answer has arrived there is nothing left to ask.
    */
   const runBulk = (action: BulkUserAction, groupId: string | null = null) =>
     applyBulk(
-      async () =>
-        bulkUsers({
-          ids: selectedIds.map(String),
-          action,
-          groupId,
-          csrfToken: await getCsrfToken(),
-        }),
+      () => bulk.mutateAsync({ ids: selectedIds.map(String), action, groupId }),
       closeAssign,
     )
 
@@ -620,7 +605,7 @@ export default function UsersPage(_props: UsersPageProps) {
                   icon={<CheckOutlined />}
                   loading={busy}
                   disabled={busy || !editable}
-                  onClick={() => runAction(confirmUserRegistration, user)}
+                  onClick={() => runAction(() => confirmRegistration.mutateAsync({ id: user.id }), user)}
                 />,
               )}
 
@@ -633,7 +618,7 @@ export default function UsersPage(_props: UsersPageProps) {
                   icon={<UnlockOutlined />}
                   loading={busy}
                   disabled={busy || !editable}
-                  onClick={() => runAction(setUserUnblocked, user)}
+                  onClick={() => runAction(() => setUnblocked.mutateAsync({ id: user.id }), user)}
                 />,
               )
             ) : hinted(
@@ -647,7 +632,7 @@ export default function UsersPage(_props: UsersPageProps) {
                   size="small"
                   icon={<LockOutlined />}
                   disabled={isSelf || busy || !editable}
-                  onClick={() => runAction(setUserBlocked, user)}
+                  onClick={() => runAction(() => setBlocked.mutateAsync({ id: user.id }), user)}
                 />,
               )}
 

@@ -14,12 +14,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitcher from './LanguageSwitcher'
 import config, { routePath } from '../config'
-import { signOut } from '../lib/api'
 import { messageForError } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { ThemeChoice, setThemeChoice, useThemeChoice } from '../lib/theme'
 import { internalPath } from '../lib/url'
+import { useSignOut } from '../hooks/mutations'
 
 /**
  * The pinned top bar: where this area is, who is signed in, how to get to their settings,
@@ -53,6 +53,7 @@ export default function AccountHeader({
   const queryClient = useQueryClient()
   const session = useSession()
   const storedTheme = useThemeChoice()
+  const signOut = useSignOut()
 
   // Only `RequireAuth` renders this bar, and it always publishes a session - so `null` here
   // means the guard was bypassed rather than that nobody happens to be signed in. An empty
@@ -71,14 +72,15 @@ export default function AccountHeader({
 
   const handleSignOut = async () => {
     // The tokens are in cookies the page cannot see, so the only way out is to ask the
-    // server to end the session. `signOut` mints its own antiforgery token immediately
-    // before sending - a token carried over from the sign-in page was minted before the
-    // session existed and the server refuses it, which is what once made this button look
-    // dead. A failure is reported rather than swallowed for the same reason: with no
-    // `catch` the rejection disappeared, the page did not move, and the visitor had no way
-    // to tell "nothing happened" from "something went wrong".
+    // server to end the session. `signOut` - through `useSignOut`, which is what mints
+    // the antiforgery token and calls it - mints that token immediately before sending: a
+    // token carried over from the sign-in page was minted before the session existed and
+    // the server refuses it, which is what once made this button look dead. A failure is
+    // reported rather than swallowed for the same reason: with no `catch` the rejection
+    // disappeared, the page did not move, and the visitor had no way to tell "nothing
+    // happened" from "something went wrong".
     try {
-      const result = await signOut()
+      const result = await signOut.mutateAsync()
       // The cache is dropped before the page moves. Every entry in it belongs to the
       // account whose session just ended, and `staleTime: 0` only marks an entry stale -
       // it does not stop the next sign-in on this machine from painting the previous

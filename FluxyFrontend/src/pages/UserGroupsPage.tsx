@@ -12,15 +12,12 @@ import {
   TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import { bulkUserGroups, deleteUserGroup, updateUserGroup } from '../lib/api'
 import type {
   BulkUserGroupAction,
   UserGroupSortField,
 } from '../lib/api'
 import type { Role, UserGroup, UserStatus } from '../types'
-import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, successTextFor } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
@@ -29,6 +26,11 @@ import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TableSearch from '../components/TableSearch'
+import {
+  useBulkUserGroups,
+  useDeleteUserGroup,
+  useUpdateUserGroup,
+} from '../hooks/mutations'
 import { useBulkAction } from '../hooks/useBulkAction'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useUserGroups } from '../hooks/queries'
@@ -141,7 +143,7 @@ interface UserGroupsPageProps {
 export default function UserGroupsPage(_props: UserGroupsPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { message, modal } = App.useApp()
+  const { modal } = App.useApp()
   const session = useSession()
 
   /**
@@ -230,19 +232,24 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
     handleFor(key, t('userGroups.resizeColumn', { column: t(`userGroups.columns.${key}`) }))
 
   /**
-   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
-   * and the reporting are `useRowAction`'s, which the accounts table calls too.
+   * One row action, and the id whose own buttons spin while it runs - the reporting and the
+   * re-read are `useRowAction`'s, which the accounts table calls too. The writes behind the
+   * actions are `mutations.ts`'s, one hook per endpoint, so none of them mints a token here.
    */
-  const { busyId, setBusyId, runAction } = useRowAction<UserGroup>(
-    () => void groupsQuery.refetch(),
-  )
+  const updateGroup = useUpdateUserGroup()
+  const removeGroup = useDeleteUserGroup()
+  const bulk = useBulkUserGroups()
+
+  const { busyId, runAction, confirmDelete: askDelete } = useRowAction<UserGroup>({
+    refetch: () => void groupsQuery.refetch(),
+    rows: groups?.items,
+    page: table.page,
+    setPage: table.setPage,
+  })
 
   /** Sets a group's state, which is all "block" and "unblock" mean for a group. */
   const setStatus = (group: UserGroup, status: UserStatus) =>
-    runAction(
-      ({ id, csrfToken }) => updateUserGroup({ id, patch: { status }, csrfToken }),
-      group,
-    )
+    runAction(() => updateGroup.mutateAsync({ id: group.id, patch: { status } }), group)
 
   /**
    * Asks before deleting, because this is the only action here that cannot be undone: the
@@ -256,41 +263,22 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
    * group, and a dialog that only said "delete?" would leave the visitor to learn that from
    * the error. The `members` count lives on the edit form rather than here - the row would
    * have to fetch it, and the form already has it.
+   *
+   * The question itself, the re-read and the step back off an emptied page are
+   * `useRowAction`'s; what is left here is the wording and the write.
    */
-  const confirmDelete = (group: UserGroup) => {
-    modal.confirm({
-      title: t('userGroups.deleteConfirmTitle'),
-      content: t('userGroups.deleteConfirmBody', { name: group.name }),
-      okText: t('userGroups.deleteConfirmOk'),
-      okButtonProps: { danger: true },
-      cancelText: t('actions.cancel'),
-      onOk: async () => {
-        setBusyId(group.id)
-
-        try {
-          const csrfToken = await getCsrfToken()
-          const result = await deleteUserGroup({ id: group.id, csrfToken })
-
-          message.success(successTextFor(result))
-
-          // The last row of a later page: with it gone, that page no longer exists and the
-          // server would answer it empty - a blank table under a pager still offering the
-          // page the visitor is standing on. Back a page instead, which re-runs the query
-          // anyway, so the list and the pager agree again without a second call.
-          if (groups?.items.length === 1 && table.page > 1) table.setPage(table.page - 1)
-          else void groupsQuery.refetch()
-        } catch (error) {
-          message.error(messageForError(error))
-        } finally {
-          setBusyId(null)
-        }
-      },
+  const confirmDelete = (group: UserGroup) =>
+    askDelete(group, {
+      name: group.name,
+      titleKey: 'userGroups.deleteConfirmTitle',
+      bodyKey: 'userGroups.deleteConfirmBody',
+      okKey: 'userGroups.deleteConfirmOk',
+      run: () => removeGroup.mutateAsync({ id: group.id }),
     })
-  }
 
   /**
-   * Runs one operation over the selection: the ids, the token, the reporting and the re-read
-   * are `useBulkAction`'s.
+   * Runs one operation over the selection: the ids, the reporting and the re-read are
+   * `useBulkAction`'s and the request is `useBulkUserGroups`'s.
    *
    * Block and unblock are names rather than a `status` patch for the same reason the row
    * buttons name them: what the operator means is "block these", and the service decides
@@ -299,13 +287,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
    * the two to disagree.
    */
   const runBulk = (action: BulkUserGroupAction) =>
-    applyBulk(async () =>
-      bulkUserGroups({
-        ids: selectedIds.map(String),
-        action,
-        csrfToken: await getCsrfToken(),
-      }),
-    )
+    applyBulk(() => bulk.mutateAsync({ ids: selectedIds.map(String), action }))
 
   /**
    * Asks before a bulk deletion, for the reason only deletion asks first on a single row:

@@ -15,12 +15,11 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { createUserGroup, updateUserGroup } from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { permissionsForRole } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
+import { useCreateUserGroup, useUpdateUserGroup } from '../hooks/mutations'
 import { useUserGroupDetail } from '../hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
@@ -179,7 +178,18 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
   const detail = detailQuery.data ?? null
   const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
-  const [submitting, setSubmitting] = useState(false)
+  /**
+   * The two writes this form makes, from `mutations.ts` - one hook per endpoint, each
+   * minting its antiforgery token at call time, never remembered: the server binds a token
+   * to the identity that was current when it was minted, and one from before a refresh is
+   * refused as `csrf_invalid`.
+   *
+   * The submit button spins on whichever half is running, and which half that is is not
+   * known until submit time - the same address adds and edits.
+   */
+  const create = useCreateUserGroup()
+  const update = useUpdateUserGroup()
+  const submitting = create.isPending || update.isPending
 
   // Whether anything on this form was edited by hand - what the unsaved-changes guard asks
   // about before letting the page be left. Only hand edits count: `onValuesChange` is not
@@ -295,14 +305,9 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
   }
 
   const handleFinish = async (values: GroupFormValues) => {
-    setSubmitting(true)
     form.setFields(FIELD_NAMES.map((name) => ({ name, errors: [] })))
 
     try {
-      // Minted here rather than remembered - the server binds a token to the identity that
-      // was current when it was minted, so a token from before a refresh would come back
-      // `csrf_invalid`. Every submit in this application mints at call time for that reason.
-      const csrfToken = await getCsrfToken()
       const name = values.name.trim()
       const permissions = (values.permissions ?? []).filter((permission) =>
         offeredSet.has(permission),
@@ -310,9 +315,8 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
 
       const result =
         isEdit && detail
-          ? await updateUserGroup({
+          ? await update.mutateAsync({
               id: detail.id,
-              csrfToken,
               // A base group is renamed and nothing else: sending the other three would be
               // sending a request the server answers `409 user_group_immutable` for, and the
               // controls are disabled above precisely so this body says only what is true.
@@ -320,9 +324,8 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
                 ? { name }
                 : { name, role: values.role, status: values.status, permissions },
             })
-          : await createUserGroup({
+          : await create.mutateAsync({
               values: { name, role: values.role, status: values.status, permissions },
-              csrfToken,
             })
 
       // The server's own sentence where this build translates the code, its English `message`
@@ -347,8 +350,6 @@ export default function UserGroupFormPage(_props: UserGroupFormPageProps) {
           })),
         )
       message.error(messageForError(error))
-    } finally {
-      setSubmitting(false)
     }
   }
 

@@ -14,11 +14,6 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import {
-  createUser,
-  updateUser,
-} from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { hinted } from '../lib/hinted'
 import { canEdit } from '../lib/permissions'
@@ -39,6 +34,7 @@ import { AutoTimeZone, knownZones } from '../lib/timeZones'
 import LoginGuardFields from '../components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
+import { useCreateUser, useUpdateUser } from '../hooks/mutations'
 import { useAllUserGroups, useProfile, useUserDetail } from '../hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type {
@@ -235,7 +231,18 @@ export default function UserFormPage(_props: UserFormPageProps) {
   const detail = detailQuery.data ?? null
   const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
-  const [submitting, setSubmitting] = useState(false)
+  /**
+   * The two writes this form makes, from `mutations.ts` - one hook per endpoint, each
+   * minting its antiforgery token at call time, never remembered: the server binds a token
+   * to the identity that was current when it was minted, and one from before a refresh is
+   * refused as `csrf_invalid`.
+   *
+   * The submit button spins on whichever half is running, and which half that is is not
+   * known until submit time - the same address adds and edits.
+   */
+  const create = useCreateUser()
+  const update = useUpdateUser()
+  const submitting = create.isPending || update.isPending
   // The eye over the password, controlled from the first paint rather than switched to
   // controlled later - an uncontrolled antd input becoming controlled is a warning about
   // a state two places think they own. Opened by `handleGeneratePassword` below.
@@ -435,20 +442,15 @@ export default function UserFormPage(_props: UserFormPageProps) {
   }
 
   const handleFinish = async (values: UserFormValues) => {
-    setSubmitting(true)
     form.setFields(FIELD_NAMES.map((name) => ({ name, errors: [] })))
 
     try {
-      // Minted here rather than remembered - the server binds a token to the identity that
-      // was current when it was minted, so a token from before a refresh would come back
-      // `csrf_invalid`. Every submit in this application mints at call time for that reason.
-      const csrfToken = await getCsrfToken()
       const loginGuard = formValuesToGuard(values)
       const timeZone = values.timeZone === AutoTimeZone ? '' : values.timeZone
 
       const result =
         isEdit && detail
-          ? await updateUser({
+          ? await update.mutateAsync({
               id: detail.id,
               patch: {
                 username: values.username,
@@ -464,9 +466,8 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 timeZone,
                 loginGuard,
               },
-              csrfToken,
             })
-          : await createUser({
+          : await create.mutateAsync({
               values: {
                 username: values.username,
                 email: values.email,
@@ -478,7 +479,6 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 timeZone: values.timeZone === AutoTimeZone ? null : values.timeZone,
                 loginGuard,
               },
-              csrfToken,
             })
 
       // The server's own sentence where this build translates the code, its English `message`
@@ -503,8 +503,6 @@ export default function UserFormPage(_props: UserFormPageProps) {
           })),
         )
       message.error(messageForError(error))
-    } finally {
-      setSubmitting(false)
     }
   }
 

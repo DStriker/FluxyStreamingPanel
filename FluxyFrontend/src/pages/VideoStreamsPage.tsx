@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Button, Card, Image, Select, Space, Table, Tag } from 'antd'
+import { Button, Card, Image, Select, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -13,18 +13,10 @@ import {
   ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import {
-  CONTENT_TYPE_PARAMS,
-  deleteVideoStream,
-  startVideoStream,
-  stopVideoStream,
-  VIDEO_STREAMS_PAGE_SIZE,
-} from '../lib/api'
+import { CONTENT_TYPE_PARAMS, VIDEO_STREAMS_PAGE_SIZE } from '../lib/api'
 import type { VideoStreamSortField } from '../lib/api'
 import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../types'
-import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, successTextFor } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
@@ -33,6 +25,11 @@ import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TableSearch from '../components/TableSearch'
+import {
+  useDeleteVideoStream,
+  useStartVideoStream,
+  useStopVideoStream,
+} from '../hooks/mutations'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useContentCategories, useVideoStreams } from '../hooks/queries'
 import { useRowAction } from '../hooks/useRowAction'
@@ -152,7 +149,6 @@ interface VideoStreamsPageProps {
 export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { message, modal } = App.useApp()
   const session = useSession()
 
   /**
@@ -274,12 +270,21 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
     handleFor(key, t('videoStreams.resizeColumn', { column: t(`videoStreams.columns.${key}`) }))
 
   /**
-   * One row action, and the id whose own buttons spin while it runs - the token, the re-read
-   * and the reporting are `useRowAction`'s, which the two account tables call too.
+   * One row action, and the id whose own buttons spin while it runs - the reporting and the
+   * re-read are `useRowAction`'s, which the other administrator tables call too. The writes
+   * behind the actions are `mutations.ts`'s, one hook per endpoint, so none of them mints a
+   * token here.
    */
-  const { busyId, setBusyId, runAction } = useRowAction<VideoStream>(
-    () => void streamsQuery.refetch(),
-  )
+  const startStream = useStartVideoStream()
+  const stopStream = useStopVideoStream()
+  const removeStream = useDeleteVideoStream()
+
+  const { busyId, runAction, confirmDelete: askDelete } = useRowAction<VideoStream>({
+    refetch: () => void streamsQuery.refetch(),
+    rows: streams?.items,
+    page: table.page,
+    setPage: table.setPage,
+  })
 
   /**
    * Asks before deleting, because this is the only action here that cannot be undone: the
@@ -291,37 +296,18 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
    * they press it. What happens to the *category* is the category's dialog to make: the
    * server refuses to delete one a stream still files under, and that is a question about
    * this row's category rather than about this row.
+   *
+   * The question itself, the re-read and the step back off an emptied page are
+   * `useRowAction`'s; what is left here is the wording and the write.
    */
-  const confirmDelete = (stream: VideoStream) => {
-    modal.confirm({
-      title: t('videoStreams.deleteConfirmTitle'),
-      content: t('videoStreams.deleteConfirmBody', { name: stream.name }),
-      okText: t('videoStreams.deleteConfirmOk'),
-      okButtonProps: { danger: true },
-      cancelText: t('actions.cancel'),
-      onOk: async () => {
-        setBusyId(stream.id)
-
-        try {
-          const csrfToken = await getCsrfToken()
-          const result = await deleteVideoStream({ id: stream.id, csrfToken })
-
-          message.success(successTextFor(result))
-
-          // The last row of a later page: with it gone, that page no longer exists and the
-          // server would answer it empty - a blank table under a pager still offering the
-          // page the visitor is standing on. Back a page instead, which re-runs the query
-          // anyway, so the list and the pager agree again without a second call.
-          if (streams?.items.length === 1 && table.page > 1) table.setPage(table.page - 1)
-          else void streamsQuery.refetch()
-        } catch (error) {
-          message.error(messageForError(error))
-        } finally {
-          setBusyId(null)
-        }
-      },
+  const confirmDelete = (stream: VideoStream) =>
+    askDelete(stream, {
+      name: stream.name,
+      titleKey: 'videoStreams.deleteConfirmTitle',
+      bodyKey: 'videoStreams.deleteConfirmBody',
+      okKey: 'videoStreams.deleteConfirmOk',
+      run: () => removeStream.mutateAsync({ id: stream.id }),
     })
-  }
 
   const columns: TableColumnsType<VideoStream> = [
     {
@@ -473,7 +459,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
                   icon={<StopOutlined />}
                   loading={busy}
                   disabled={busy}
-                  onClick={() => runAction(stopVideoStream, stream)}
+                  onClick={() => runAction(() => stopStream.mutateAsync({ id: stream.id }), stream)}
                 />,
               )
             ) : (
@@ -485,7 +471,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
                   icon={<CaretRightOutlined />}
                   loading={busy}
                   disabled={busy}
-                  onClick={() => runAction(startVideoStream, stream)}
+                  onClick={() => runAction(() => startStream.mutateAsync({ id: stream.id }), stream)}
                 />,
               )
             )}

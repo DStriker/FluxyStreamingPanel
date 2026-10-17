@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { App, Button, Card, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getCsrfToken } from '../lib/csrf'
 import { getCaptchaToken } from '../lib/recaptcha'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
 import { ProfileChangeCaptchaAction, lookupGeo } from '../lib/api'
-import type { CallOptions, LoginGuardValues } from '../lib/api'
+import type { LoginGuardValues } from '../lib/api'
 import { isCountryCode } from '../lib/countries'
 import { LOGIN_GUARD_MAX_IPS } from '../lib/policy'
 import LoginGuardFields from './LoginGuardFields'
@@ -33,10 +32,12 @@ interface LoginGuardCardProps {
   /** The guard stored on the account - the draft starts here and returns here. */
   value: LoginGuardSettings
   /**
-   * Performs the call with the form's values and both tokens, in one object. Answered
+   * Performs the call with the form's values and the captcha token, in one object. The
+   * antiforgery token is deliberately **not** part of it: the profile page's mutation hook
+   * mints that at call time, which is the rule the whole write layer follows. Answered
    * with the outcome; the card branches on its code the way the change form does.
    */
-  onSubmit: (args: LoginGuardValues & CallOptions) => Promise<{ code: string }>
+  onSubmit: (args: LoginGuardValues & { captchaToken: string | null }) => Promise<{ code: string }>
   /** A code is on its way - the page swaps the form for the confirmation step. */
   onSubmitted: () => void
   /** The change is already on the account - the page re-reads it. */
@@ -160,14 +161,12 @@ export default function LoginGuardCard({ value, onSubmit, onSubmitted, onApplied
     )
 
     try {
-      const [csrfToken, captchaToken] = await Promise.all([
-        getCsrfToken(),
-        getCaptchaToken(ProfileChangeCaptchaAction),
-      ])
+      // The captcha token is this card's to mint - it is the action the profile's change
+      // flow owns; the antiforgery half belongs to the mutation hook the page hands in.
+      const captchaToken = await getCaptchaToken(ProfileChangeCaptchaAction)
       const result = await onSubmit({
         currentPassword: values.currentPassword,
         guard: formValuesToGuard(values),
-        csrfToken,
         captchaToken,
       })
 

@@ -28,18 +28,18 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
-import {
-  CONTENT_TYPE_PARAMS,
-  createContentCategory,
-  deleteContentCategory,
-  reorderContentCategories,
-  updateContentCategory,
-} from '../lib/api'
+import { CONTENT_TYPE_PARAMS } from '../lib/api'
 import type { ContentCategory, ContentType } from '../types'
-import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
+import {
+  useCreateContentCategory,
+  useDeleteContentCategory,
+  useReorderContentCategories,
+  useUpdateContentCategory,
+} from '../hooks/mutations'
 import { useContentCategories } from '../hooks/queries'
+import { useRowAction } from '../hooks/useRowAction'
 
 /**
  * Which kind of content each of the four section pages works on, keyed by the menu key
@@ -180,7 +180,7 @@ function DragHandle({ label }: { label: string }) {
  */
 export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesPageProps) {
   const { t } = useTranslation()
-  const { message, modal } = App.useApp()
+  const { message } = App.useApp()
 
   const type = SECTION_TYPES[sectionKey] ?? 'VideoStream'
   const typeParam = CONTENT_TYPE_PARAMS[type]
@@ -190,10 +190,21 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
   const loadError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
   const loading = categoriesQuery.isFetching
 
-  /** The row whose delete is in flight - its button shows a spinner and refuses a second click. */
-  const [busyId, setBusyId] = useState<string | null>(null)
-  /** Whether the order PUT is in flight. One save at a time, and the toolbar says so. */
-  const [savingOrder, setSavingOrder] = useState(false)
+  /**
+   * The writes this page names, from `mutations.ts` - one hook per endpoint, so none of them
+   * mints a token here, and each half of the dialog reads its own in-flight state. The row
+   * whose delete is in flight, and the question the delete asks, are `useRowAction`'s: this
+   * table has no pager, so there are no rows/page/setPage to hand over.
+   */
+  const createCategory = useCreateContentCategory()
+  const updateCategory = useUpdateContentCategory()
+  const reorder = useReorderContentCategories()
+  const removeCategory = useDeleteContentCategory()
+
+  const { busyId, confirmDelete: askDelete } = useRowAction<ContentCategory>({
+    refetch: () => void categoriesQuery.refetch(),
+  })
+
   /**
    * The arrangement the visitor has built and not saved yet, as the identifiers of the
    * type's categories in screen order - or null while the screen still shows the server's
@@ -204,7 +215,8 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
   /** Whether the add dialog is open, and the one it renames when open. */
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<ContentCategory | null>(null)
-  const [saving, setSaving] = useState(false)
+  /** Whether the dialog's own write is in flight - either half of it, since one dialog submits both. */
+  const saving = createCategory.isPending || updateCategory.isPending
 
   const [form] = Form.useForm<DialogValues>()
 
@@ -251,7 +263,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
 
-    if (!over || active.id === over.id || savingOrder) return
+    if (!over || active.id === over.id || reorder.isPending) return
 
     const ids = items.map((category) => category.id)
     const oldIndex = ids.indexOf(String(active.id))
@@ -271,15 +283,12 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
    * arrangement is already on screen, and the re-read below is what confirms it.
    */
   const saveOrder = async () => {
-    if (!dirty || savingOrder) return
-
-    setSavingOrder(true)
+    if (!dirty || reorder.isPending) return
 
     try {
-      const result = await reorderContentCategories({
+      const result = await reorder.mutateAsync({
         type: typeParam,
         orderedIds: items.map((category) => category.id),
-        csrfToken: await getCsrfToken(),
       })
 
       message.success(successTextFor(result))
@@ -287,8 +296,6 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
       void categoriesQuery.refetch()
     } catch (error) {
       message.error(messageForError(error))
-    } finally {
-      setSavingOrder(false)
     }
   }
 
@@ -311,13 +318,10 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
   const submitDialog = async () => {
     const values = await form.validateFields()
 
-    setSaving(true)
-
     try {
-      const csrfToken = await getCsrfToken()
       const result = editing
-        ? await updateContentCategory({ id: editing.id, name: values.name, csrfToken })
-        : await createContentCategory({ values: { name: values.name, type: typeParam }, csrfToken })
+        ? await updateCategory.mutateAsync({ id: editing.id, name: values.name })
+        : await createCategory.mutateAsync({ values: { name: values.name, type: typeParam } })
 
       message.success(successTextFor(result))
       setCreating(false)
@@ -339,8 +343,6 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
       } else {
         message.error(messageForError(error))
       }
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -348,33 +350,18 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
    * Asks before deleting, because this is the only action here that cannot be undone -
    * and, until the content tables exist, the only guard there is: the server refuses
    * nothing, so the question is not a habit but the whole of the protection.
+   *
+   * The question itself and the re-read are `useRowAction`'s - this table has no pager, so
+   * there is no step back to ask of it; what is left here is the wording and the write.
    */
-  const confirmDelete = (category: ContentCategory) => {
-    modal.confirm({
-      title: t('contentCategories.deleteConfirmTitle'),
-      content: t('contentCategories.deleteConfirmBody', { name: category.name }),
-      okText: t('contentCategories.deleteConfirmOk'),
-      okButtonProps: { danger: true },
-      cancelText: t('actions.cancel'),
-      onOk: async () => {
-        setBusyId(category.id)
-
-        try {
-          const result = await deleteContentCategory({
-            id: category.id,
-            csrfToken: await getCsrfToken(),
-          })
-
-          message.success(successTextFor(result))
-          void categoriesQuery.refetch()
-        } catch (error) {
-          message.error(messageForError(error))
-        } finally {
-          setBusyId(null)
-        }
-      },
+  const confirmDelete = (category: ContentCategory) =>
+    askDelete(category, {
+      name: category.name,
+      titleKey: 'contentCategories.deleteConfirmTitle',
+      bodyKey: 'contentCategories.deleteConfirmBody',
+      okKey: 'contentCategories.deleteConfirmOk',
+      run: () => removeCategory.mutateAsync({ id: category.id }),
     })
-  }
 
   const columns: TableColumnsType<ContentCategory> = [
     {
@@ -425,7 +412,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
                 type="text"
                 size="small"
                 icon={<EditOutlined />}
-                disabled={busy || savingOrder}
+                disabled={busy || reorder.isPending}
                 onClick={() => openEdit(category)}
               />,
             )}
@@ -437,7 +424,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
                 size="small"
                 icon={<DeleteOutlined />}
                 loading={busy}
-                disabled={busy || savingOrder}
+                disabled={busy || reorder.isPending}
                 onClick={() => confirmDelete(category)}
               />,
             )}
@@ -459,13 +446,13 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
           {/* Drawn while disabled, for the reason the bulk menu and the width reset are:
               a control that appears and disappears reads as a broken one, and the greyed
               state is what says the order on screen is the order on the server. */}
-          <Button disabled={!dirty || savingOrder} onClick={discardOrder}>
+          <Button disabled={!dirty || reorder.isPending} onClick={discardOrder}>
             {t('contentCategories.discardOrder')}
           </Button>
           <Button
             type="primary"
-            disabled={!dirty || savingOrder}
-            loading={savingOrder}
+            disabled={!dirty || reorder.isPending}
+            loading={reorder.isPending}
             onClick={() => void saveOrder()}
           >
             {t('contentCategories.saveOrder')}

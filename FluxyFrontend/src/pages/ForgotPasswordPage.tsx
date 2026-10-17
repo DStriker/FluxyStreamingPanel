@@ -9,9 +9,7 @@ import config, { routePath } from '../config'
 import {
   PasswordResetCaptchaAction,
   PasswordResetConfirmCaptchaAction,
-  confirmPasswordReset,
   passwordResetStatus,
-  requestPasswordReset,
   type RegistrationValues,
 } from '../lib/api'
 import { ApiError } from '../lib/http'
@@ -21,6 +19,10 @@ import {
   readPendingReset,
   rememberPendingReset,
 } from '../lib/pendingReset'
+import {
+  useConfirmPasswordReset,
+  useRequestPasswordReset,
+} from '../hooks/mutations'
 
 /** The codes that decide what this page is showing. */
 const Submitted = 'password_reset_submitted'
@@ -50,6 +52,8 @@ export default function ForgotPasswordPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { message } = App.useApp()
+  const confirmReset = useConfirmPasswordReset()
+  const requestReset = useRequestPasswordReset()
 
   // `null` is "still asking", which is also the state a plain render produces - see the
   // render probe, which pins the spinner rather than a form appearing before the answer.
@@ -121,12 +125,11 @@ export default function ForgotPasswordPage() {
         }}
         captchaAction={PasswordResetConfirmCaptchaAction}
         onBack={backToDetails}
-        onSubmit={async ({ username: name, code, csrfToken, captchaToken }) => {
+        onSubmit={async ({ username: name, code, captchaToken }) => {
           try {
-            const result = await confirmPasswordReset({
+            const result = await confirmReset.mutateAsync({
               username: name,
               code,
-              csrfToken,
               captchaToken,
             })
             if (result?.code === Confirmed) {
@@ -155,9 +158,9 @@ export default function ForgotPasswordPage() {
       action={PasswordResetCaptchaAction}
       register
       submitText={t('actions.resetPassword')}
-      onSubmit={async (args) => {
+      onSubmit={async ({ values, captchaToken }) => {
         try {
-          return await requestPasswordReset(args)
+          return await requestReset.mutateAsync({ values, captchaToken })
         } catch (err) {
           // The server refuses up front when there is no mail server to finish with - the
           // form stops being offered rather than being left to fail the same way twice.

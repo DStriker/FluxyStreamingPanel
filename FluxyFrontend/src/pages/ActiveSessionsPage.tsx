@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   Alert,
   App,
@@ -14,11 +13,13 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { revokeActiveSession, revokeOtherActiveSessions } from '../lib/api'
-import { getCsrfToken } from '../lib/csrf'
 import { messageForError, textForCode } from '../lib/http'
 import { countryName } from '../lib/countryName'
 import { describeUserAgent } from '../lib/userAgent'
+import {
+  useRevokeActiveSession,
+  useRevokeOtherActiveSessions,
+} from '../hooks/mutations'
 import { useActiveSessions, useProfile } from '../hooks/queries'
 import type { ActiveSession, ActiveSessionList } from '../types'
 
@@ -107,10 +108,21 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
   const loadError = listQuery.isError ? messageForError(listQuery.error) : null
   const profileQuery = useProfile()
   const timeZone = profileQuery.data?.timeZone ?? null
-  // Which card's button is in flight, if any - one id rather than a boolean, so the other
-  // cards stay clickable while one revoke runs and a second cannot be pressed twice.
-  const [revoking, setRevoking] = useState<string | null>(null)
-  const [revokingAll, setRevokingAll] = useState(false)
+
+  /**
+   * The two revokes this page makes, from `mutations.ts`. Each mints its antiforgery token
+   * at call time, never remembered: the server binds a token to the identity that was
+   * current when it was minted, and one from before a refresh is refused as `csrf_invalid`.
+   *
+   * The in-flight state is the mutations' own: the card whose button spins is the one whose
+   * id the single-session revoke is carrying - one id rather than a boolean, so the other
+   * cards stay clickable while one revoke runs - and the toolbar's spinner is the exclusion
+   * revoke's `isPending`.
+   */
+  const revokeSession = useRevokeActiveSession()
+  const revokeOthers = useRevokeOtherActiveSessions()
+  const revoking = revokeSession.isPending ? (revokeSession.variables?.sessionId ?? null) : null
+  const revokingAll = revokeOthers.isPending
 
   /**
    * `resolvedLanguage` rather than `language`: the two differ whenever the requested language
@@ -167,15 +179,8 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
    * whether it was ended after all.
    */
   const endSession = async (session: ActiveSession) => {
-    setRevoking(session.id)
-
     try {
-      // Minted here rather than remembered: the server binds a token to the identity that
-      // was current when it was minted, and a token from before a refresh would be refused
-      // as `csrf_invalid`. Every submit of this application mints at call time for that
-      // reason.
-      const csrfToken = await getCsrfToken()
-      const result = await revokeActiveSession({ sessionId: session.id, csrfToken })
+      const result = await revokeSession.mutateAsync({ sessionId: session.id })
 
       message.success(textForCode(result.code) ?? t('activeSessions.revoked'))
 
@@ -186,8 +191,6 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
       )
     } catch (error) {
       message.error(messageForError(error))
-    } finally {
-      setRevoking(null)
     }
   }
 
@@ -206,8 +209,6 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
     const others = list ? list.items.filter((item) => !item.isCurrent).length : 0
     if (others === 0) return
 
-    setRevokingAll(true)
-
     modal.confirm({
       title: t('activeSessions.endAllConfirmTitle'),
       content: t('activeSessions.endAllConfirmBody'),
@@ -216,8 +217,7 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
       cancelText: t('actions.cancel'),
       onOk: async () => {
         try {
-          const csrfToken = await getCsrfToken()
-          const result = await revokeOtherActiveSessions({ csrfToken })
+          const result = await revokeOthers.mutateAsync()
 
           message.success(
             result.revokedCount > 0
@@ -231,11 +231,8 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
           void listQuery.refetch()
         } catch (error) {
           message.error(messageForError(error))
-        } finally {
-          setRevokingAll(false)
         }
       },
-      onCancel: () => setRevokingAll(false),
     })
   }
 
