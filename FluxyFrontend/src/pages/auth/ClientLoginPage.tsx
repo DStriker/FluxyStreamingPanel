@@ -3,7 +3,7 @@ import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthForm from '../../features/auth/components/AuthForm'
 import config, { routePath } from '../../config'
-import { ClientLoginCaptchaAction, type SignInValues } from '../../lib/api'
+import { ClientLoginCaptchaAction, type SignInValues } from '../../features/auth/api'
 import { internalPath } from '../../lib/url'
 import { useSubmitAuth } from '../../features/auth/hooks/mutations'
 

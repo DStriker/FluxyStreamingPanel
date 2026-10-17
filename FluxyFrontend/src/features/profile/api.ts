@@ -1,6 +1,6 @@
-import { apiFetch, apiGet } from '../http'
+import { apiFetch, apiGet } from '../../lib/http'
 import type { GeoLookup, LoginGuardSettings, MessageResponse, ProfileResponse } from '../../types'
-import type { CallOptions } from './common'
+import type { CallOptions } from '../../lib/http'
 
 /**
  * The signed-in account's own profile: the four changes it can make, the login guard, and

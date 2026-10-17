@@ -3,7 +3,7 @@ import {
   deleteContentCategory,
   reorderContentCategories,
   updateContentCategory,
-} from '../../../lib/api'
+} from '../api'
 import { useWrite } from '../../../hooks/useWrite'
 
 /**

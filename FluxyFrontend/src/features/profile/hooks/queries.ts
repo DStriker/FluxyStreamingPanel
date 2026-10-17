@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { getProfile } from '../../../lib/api'
+import { getProfile } from '../api'
 
 /**
  * The profile feature's one read.

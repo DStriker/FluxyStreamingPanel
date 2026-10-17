@@ -1,7 +1,7 @@
 import { Button, Card, Space, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
-import type { SessionSortField } from '../../lib/api'
+import type { SessionSortField } from '../../features/sessions/api'
 import { formatTimestamp } from '../../lib/dateFormat'
 import { tableResults } from '../../lib/tableResults'
 import { agentCell, countryCell, ipCell, networkCell } from '../../lib/tableCells'

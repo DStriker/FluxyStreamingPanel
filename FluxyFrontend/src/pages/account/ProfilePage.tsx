@@ -14,7 +14,7 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { getCaptchaToken } from '../../lib/recaptcha'
-import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../../lib/api'
+import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../../features/profile/api'
 import { ApiError, fieldErrors, messageForError, textForCode } from '../../lib/http'
 import { useSession } from '../../lib/sessionContext'
 import {

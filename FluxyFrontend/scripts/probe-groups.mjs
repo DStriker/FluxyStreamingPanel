@@ -32,14 +32,13 @@ import { apiFetch } from '../src/lib/http'
 import {
   createUserGroup,
   deleteUserGroup,
-  getProfile,
-  getUser,
   getUserGroup,
   getUserGroups,
-  getUsers,
-  submitAuth,
   updateUserGroup,
-} from '../src/lib/api'
+} from '../src/features/user-groups/api'
+import { getProfile } from '../src/features/profile/api'
+import { getUser, getUsers } from '../src/features/users/api'
+import { submitAuth } from '../src/features/auth/api'
 import { getCsrfToken } from '../src/lib/csrf'
 import { ALL_PERMISSIONS } from '../src/lib/permissions'
 

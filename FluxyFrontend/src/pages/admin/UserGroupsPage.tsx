@@ -15,7 +15,7 @@ import {
 import type {
   BulkUserGroupAction,
   UserGroupSortField,
-} from '../../lib/api'
+} from '../../features/user-groups/api'
 import type { Role, UserGroup, UserStatus } from '../../types'
 import { areaForRole } from '../../lib/session'
 import { useSession } from '../../lib/sessionContext'

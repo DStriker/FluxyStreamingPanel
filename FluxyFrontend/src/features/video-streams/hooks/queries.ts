@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { getVideoStream, getVideoStreams } from '../../../lib/api'
-import type { VideoStreamSortField, VideoStreamSortOrder } from '../../../lib/api'
+import { getVideoStream, getVideoStreams } from '../api'
+import type { VideoStreamSortField, VideoStreamSortOrder } from '../api'
 import { detailId } from '../../../lib/detailId'
 import type { VideoStreamStatus, VideoStreamType } from '../../../types'
 

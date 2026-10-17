@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { currentSession } from '../../../lib/api'
+import { currentSession } from '../api'
 import { homeForRole } from '../../../lib/session'
 
 /**

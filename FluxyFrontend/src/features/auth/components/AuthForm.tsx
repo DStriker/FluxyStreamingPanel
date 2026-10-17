@@ -65,7 +65,7 @@ interface AuthFormProps<Values> {
  * `string` that turns out to be `undefined`. The type argument states what the page's form
  * actually holds - `SignInValues` for an entrance, `RegistrationValues` for a flow that
  * also takes an address - and from there everything downstream is checked: the call into
- * `src/lib/api`, and any field the page reads off `values` in `onSuccess`.
+ * `src/features/auth/api.ts`, and any field the page reads off `values` in `onSuccess`.
  */
 export default function AuthForm<Values>({
   title,

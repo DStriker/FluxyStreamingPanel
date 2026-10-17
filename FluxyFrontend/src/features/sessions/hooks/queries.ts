@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { getActiveSessions, getAdminSessionHistory, getSessionHistory } from '../../../lib/api'
-import type { SessionSortField, SessionSortOrder } from '../../../lib/api'
+import { getActiveSessions, getAdminSessionHistory, getSessionHistory } from '../api'
+import type { SessionSortField, SessionSortOrder } from '../api'
 
 /**
  * The sessions feature's reads: the account's own visit history and active list, and the

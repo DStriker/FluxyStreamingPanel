@@ -13,8 +13,9 @@ import {
   ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons'
-import { CONTENT_TYPE_PARAMS, VIDEO_STREAMS_PAGE_SIZE } from '../../lib/api'
-import type { VideoStreamSortField } from '../../lib/api'
+import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
+import { VIDEO_STREAMS_PAGE_SIZE } from '../../features/video-streams/api'
+import type { VideoStreamSortField } from '../../features/video-streams/api'
 import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../../types'
 import { hinted } from '../../lib/hinted'
 import { areaForRole } from '../../lib/session'

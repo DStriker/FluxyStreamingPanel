@@ -11,7 +11,7 @@ import {
   PasswordResetConfirmCaptchaAction,
   passwordResetStatus,
   type RegistrationValues,
-} from '../../lib/api'
+} from '../../features/auth/api'
 import { ApiError } from '../../lib/http'
 import type { MessageResponse } from '../../types'
 import {

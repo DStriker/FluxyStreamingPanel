@@ -7,7 +7,7 @@ import ConfirmCodeForm, {
   type RegistrationConfirmValues,
 } from '../../features/auth/components/ConfirmCodeForm'
 import config, { routePath } from '../../config'
-import { RegisterCaptchaAction, type RegistrationValues } from '../../lib/api'
+import { RegisterCaptchaAction, type RegistrationValues } from '../../features/auth/api'
 import { ApiError } from '../../lib/http'
 import { internalPath } from '../../lib/url'
 import type { MessageResponse } from '../../types'

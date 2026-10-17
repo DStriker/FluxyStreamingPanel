@@ -3,7 +3,7 @@ import {
   revokeActiveSession,
   revokeAdminSession,
   revokeOtherActiveSessions,
-} from '../../../lib/api'
+} from '../api'
 import { getCsrfToken } from '../../../lib/csrf'
 import { useWrite } from '../../../hooks/useWrite'
 

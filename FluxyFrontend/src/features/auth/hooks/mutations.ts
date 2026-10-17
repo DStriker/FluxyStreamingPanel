@@ -6,7 +6,7 @@ import {
   signOut,
   submitAuth,
   submitRegistration,
-} from '../../../lib/api'
+} from '../api'
 import { useWrite } from '../../../hooks/useWrite'
 
 /**
@@ -16,7 +16,7 @@ import { useWrite } from '../../../hooks/useWrite'
  * All but the last are built on `useWrite` (`src/hooks/useWrite.ts`), so the antiforgery
  * token is minted at call time and the call sites hand over only the values and the
  * captcha token. `useSignOut` is the special case its endpoint forces: `signOut` mints
- * its own token because it must - see the note above it in `src/lib/api/auth.ts` - so
+ * its own token because it must - see the note above it in `src/features/auth/api.ts` - so
  * this hook takes no arguments at all.
  */
 
@@ -37,6 +37,6 @@ export const useConfirmPasswordReset = () => useWrite(confirmPasswordReset)
 
 /**
  * Ends the session. `signOut` mints its own token on purpose - see the note above it in
- * `src/lib/api/auth.ts` - so this hook takes no arguments at all.
+ * `src/features/auth/api.ts` - so this hook takes no arguments at all.
  */
 export const useSignOut = () => useMutation({ mutationFn: () => signOut() })

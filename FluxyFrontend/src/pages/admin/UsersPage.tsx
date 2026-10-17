@@ -13,7 +13,7 @@ import {
   TeamOutlined,
   UnlockOutlined,
 } from '@ant-design/icons'
-import type { AdminUserSortField, BulkUserAction } from '../../lib/api'
+import type { AdminUserSortField, BulkUserAction } from '../../features/users/api'
 import { hinted } from '../../lib/hinted'
 import { canEdit, canEditAny } from '../../lib/permissions'
 import { areaForRole } from '../../lib/session'

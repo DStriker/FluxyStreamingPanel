@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { ALL_USERS_PAGE_SIZE, getUser, getUsers } from '../../../lib/api'
-import type { AdminUserSortField, AdminUserSortOrder } from '../../../lib/api'
+import { ALL_USERS_PAGE_SIZE, getUser, getUsers } from '../api'
+import type { AdminUserSortField, AdminUserSortOrder } from '../api'
 import { detailId } from '../../../lib/detailId'
 import type { UserStatus } from '../../../types'
 

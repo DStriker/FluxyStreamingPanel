@@ -1,4 +1,4 @@
-import { apiFetch, apiGet } from '../http'
+import { apiFetch, apiGet } from '../../lib/http'
 import type { ContentCategoryList, ContentType, MessageResponse } from '../../types'
 
 /**

@@ -2,8 +2,8 @@
  * Every API path this application requests, checked against the prefixes the dev server
  * proxies to the backend.
  *
- * Like `probe:i18n`, this one needs no backend and no browser: it reads every module under
- * `src/lib/api/`, plus `src/lib/csrf.ts` and `src/lib/http.ts`, from disk, takes the first
+ * Like `probe:i18n`, this one needs no backend and no browser: it reads every feature's
+ * `api.ts`, plus `src/lib/csrf.ts` and `src/lib/http.ts`, from disk, takes the first
  * segment of every path a request is made with, and compares that set with `backendPaths`
  * in `vite.config.js`.
  *
@@ -23,18 +23,19 @@
  * to the working directory, so a run from anywhere else finds no sources; that case is a
  * FAIL rather than an empty pass, for the reason `probe:i18n` gives about its own guard.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 /**
- * Every endpoint module under the folder, plus the two files outside it that make requests.
- * The folder is listed rather than named file by file so a module added to it is audited
- * the day it appears, instead of the day somebody remembers this list exists.
+ * Every feature's endpoint module, plus the two files outside them that make requests.
+ * The feature directory is listed rather than named feature by feature so a module added to
+ * it is audited the day it appears, instead of the day somebody remembers this list exists.
  */
 const API_SOURCES = [
-  ...readdirSync('src/lib/api')
-    .filter((name) => name.endsWith('.ts'))
-    .sort()
-    .map((name) => `src/lib/api/${name}`),
+  ...readdirSync('src/features', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `src/features/${entry.name}/api.ts`)
+    .filter((file) => existsSync(file))
+    .sort(),
   'src/lib/csrf.ts',
   'src/lib/http.ts',
 ]
