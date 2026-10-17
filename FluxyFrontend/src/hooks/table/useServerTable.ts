@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { TablePaginationConfig, TableProps } from 'antd'
-import { enumParam } from '../lib/tableParams'
+import { enumParam } from '../../lib/tableParams'
 
 /** The two orders the server understands, spelled the way a query parameter spells them. */
 type SortOrder = 'asc' | 'desc'

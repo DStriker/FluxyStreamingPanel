@@ -7,9 +7,8 @@ import { tableResults } from '../lib/tableResults'
 import { agentCell, countryCell, ipCell, networkCell } from '../lib/tableCells'
 import { ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps } from '../components/table'
-import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useProfile, useSessionHistory } from '../hooks/queries'
-import { useServerTable } from '../hooks/useServerTable'
+import { useColumnWidths, useServerTable } from '../hooks/table'
 import type { SessionVisit } from '../types'
 
 /** The five columns, in the order they are drawn, named by their own keys. */

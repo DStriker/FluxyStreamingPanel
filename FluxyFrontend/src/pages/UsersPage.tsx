@@ -32,11 +32,8 @@ import {
   useSetUserBlocked,
   useSetUserUnblocked,
 } from '../hooks/mutations'
-import { useBulkAction } from '../hooks/useBulkAction'
-import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
-import { useRowAction } from '../hooks/useRowAction'
-import { useServerTable } from '../hooks/useServerTable'
+import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 import type { AdminUser, UserStatus } from '../types'
 
 /** The eight columns, in the order they are drawn, named by their own keys. */

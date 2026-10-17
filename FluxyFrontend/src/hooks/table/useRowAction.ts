@@ -1,8 +1,8 @@
 import { App } from 'antd'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { messageForError, successTextFor } from '../lib/http'
-import type { MessageResponse } from '../types'
+import { messageForError, successTextFor } from '../../lib/http'
+import type { MessageResponse } from '../../types'
 
 /** The question a delete asks before it runs, in the page's own words. */
 export interface RowDeleteQuestion {

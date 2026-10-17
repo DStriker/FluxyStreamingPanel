@@ -29,11 +29,8 @@ import {
   useDeleteUserGroup,
   useUpdateUserGroup,
 } from '../hooks/mutations'
-import { useBulkAction } from '../hooks/useBulkAction'
-import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useUserGroups } from '../hooks/queries'
-import { useRowAction } from '../hooks/useRowAction'
-import { useServerTable } from '../hooks/useServerTable'
+import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 
 /** The six columns, in the order they are drawn, named by their own keys. */
 type GroupsColumnKey = 'id' | 'name' | 'role' | 'status' | 'permissionsCount' | 'actions'

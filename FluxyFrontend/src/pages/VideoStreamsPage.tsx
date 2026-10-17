@@ -29,10 +29,8 @@ import {
   useStartVideoStream,
   useStopVideoStream,
 } from '../hooks/mutations'
-import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useContentCategories, useVideoStreams } from '../hooks/queries'
-import { useRowAction } from '../hooks/useRowAction'
-import { useServerTable } from '../hooks/useServerTable'
+import { useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000

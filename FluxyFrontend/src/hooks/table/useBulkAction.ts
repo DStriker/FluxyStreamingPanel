@@ -2,9 +2,9 @@ import { App } from 'antd'
 import { useEffect, useState } from 'react'
 import type { Key } from 'react'
 import { useTranslation } from 'react-i18next'
-import { bulkRefusalList } from '../lib/bulkRefusalList'
-import { messageForError, successTextFor } from '../lib/http'
-import type { BulkOperationResponse } from '../types'
+import { bulkRefusalList } from '../../lib/bulkRefusalList'
+import { messageForError, successTextFor } from '../../lib/http'
+import type { BulkOperationResponse } from '../../types'
 
 /**
  * The selection a bulk table acts on, and the one run that acts on it.

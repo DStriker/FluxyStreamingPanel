@@ -40,7 +40,7 @@ import {
   useUpdateContentCategory,
 } from '../hooks/mutations'
 import { useContentCategories } from '../hooks/queries'
-import { useRowAction } from '../hooks/useRowAction'
+import { useRowAction } from '../hooks/table'
 
 /**
  * Which kind of content each of the four section pages works on, keyed by the menu key

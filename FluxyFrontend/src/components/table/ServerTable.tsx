@@ -1,7 +1,7 @@
 import { Table } from 'antd'
 import type { TableColumnsType, TablePaginationConfig } from 'antd'
 import type { Key } from 'react'
-import type { useServerTable } from '../../hooks/useServerTable'
+import type { useServerTable } from '../../hooks/table'
 import LoadErrorAlert from './LoadErrorAlert'
 import ResizableHeaderCell from './ResizableHeaderCell'
 

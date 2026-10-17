@@ -12,9 +12,8 @@ import { withFilter } from '../lib/tableParams'
 import { ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps } from '../components/table'
 import { useRevokeAdminSession } from '../hooks/mutations'
-import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAdminSessionHistory, useAllUsers, useProfile } from '../hooks/queries'
-import { useServerTable } from '../hooks/useServerTable'
+import { useColumnWidths, useServerTable } from '../hooks/table'
 import type { AdminSessionVisit } from '../types'
 
 /** The seven columns, in the order they are drawn, named by their own keys. */
