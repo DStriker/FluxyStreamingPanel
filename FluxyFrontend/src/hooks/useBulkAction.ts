@@ -2,7 +2,8 @@ import { App } from 'antd'
 import { useEffect, useState } from 'react'
 import type { Key } from 'react'
 import { useTranslation } from 'react-i18next'
-import { messageForError, successTextFor, textForCode } from '../lib/http'
+import { bulkRefusalList } from '../lib/bulkRefusalList'
+import { messageForError, successTextFor } from '../lib/http'
 import type { BulkOperationResponse } from '../types'
 
 /**
@@ -70,34 +71,12 @@ export function useBulkAction<Row extends { id: string }>({
    * have said *before* a click (`cannot_block_self` above all) is exactly the reason that now
    * has to arrive after one. Every line is the server's own sentence for that row's code,
    * already translated, so this summarises rather than invents: the same code in the same
-   * words the single-row path would have shown.
-   *
-   * The lines are grouped by code with a count, because a run over thirty rows refusing all
-   * thirty for one reason is one sentence, not thirty.
+   * words the single-row path would have shown. The lines themselves - one per code with a
+   * count, because thirty rows refused for one reason are one sentence - are
+   * `bulkRefusalList`'s; this decides only that there is a dialog to draw.
    */
   const reportBulk = (result: BulkOperationResponse) => {
-    const refusals: { code: string; count: number }[] = []
-    const at = new Map<string, number>()
-
-    for (const item of result.items) {
-      if (item.ok) continue
-
-      const index = at.get(item.code)
-
-      if (index === undefined) {
-        at.set(item.code, refusals.length)
-        refusals.push({ code: item.code, count: 1 })
-      } else {
-        // `refusals[index]` is looked up once rather than read twice: under
-        // `noUncheckedIndexedAccess` an index that came from a `Map` is still an index, and
-        // the compiler is right that nothing here proves the slot is filled.
-        const previous = refusals[index]
-
-        if (previous) refusals[index] = { code: item.code, count: previous.count + 1 }
-      }
-    }
-
-    if (refusals.length === 0) {
+    if (result.items.every((item) => item.ok)) {
       message.success(
         successTextFor(result, { done: result.succeeded, total: result.items.length }),
       )
@@ -110,16 +89,7 @@ export function useBulkAction<Row extends { id: string }>({
         total: result.items.length,
       }),
       okText: t('actions.ok'),
-      content: (
-        <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-          {refusals.map((refusal) => (
-            <li key={refusal.code}>
-              {textForCode(refusal.code) ?? refusal.code}
-              {refusal.count > 1 ? ` (${refusal.count})` : ''}
-            </li>
-          ))}
-        </ul>
-      ),
+      content: bulkRefusalList(result.items),
     })
   }
 
