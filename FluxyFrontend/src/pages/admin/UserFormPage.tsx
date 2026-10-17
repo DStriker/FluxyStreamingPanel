@@ -39,11 +39,8 @@ import { useAllUserGroups } from '../../features/user-groups/hooks/queries'
 import { useCreateUser, useUpdateUser } from '../../features/users/hooks/mutations'
 import { useUserDetail } from '../../features/users/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type {
-  AdminUserDetail,
-  LoginGuardSettings,
-  UserStatus,
-} from '../../types'
+import type { AdminUserDetail } from '../../features/users/types/AdminUserDetail'
+import type { LoginGuardSettings, UserStatus } from '../../types'
 
 /**
  * What the form collects.

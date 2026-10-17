@@ -3,11 +3,11 @@ import type {
   BulkOperationResponse,
   MessageResponse,
   Role,
-  UserGroupDetail,
-  UserGroupList,
   UserPermission,
   UserStatus,
 } from '../../types'
+import type { UserGroupDetail } from './types/UserGroupDetail'
+import type { UserGroupList } from './types/UserGroupList'
 
 /**
  * The group table: reading a page and a group, creating, changing and deleting one, and the

@@ -25,7 +25,8 @@ import {
 } from '../../features/user-groups/hooks/mutations'
 import { useUserGroupDetail } from '../../features/user-groups/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../../types'
+import type { UserGroupDetail } from '../../features/user-groups/types/UserGroupDetail'
+import type { Role, UserPermission, UserStatus } from '../../types'
 
 /**
  * What the form collects.

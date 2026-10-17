@@ -1,5 +1,7 @@
 import { apiFetch, apiGet } from '../../lib/http'
-import type { GeoLookup, LoginGuardSettings, MessageResponse, ProfileResponse } from '../../types'
+import type { LoginGuardSettings, MessageResponse } from '../../types'
+import type { GeoLookup } from './types/GeoLookup'
+import type { ProfileResponse } from './types/ProfileResponse'
 import type { CallOptions } from '../../lib/http'
 
 /**

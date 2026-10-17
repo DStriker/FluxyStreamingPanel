@@ -36,7 +36,8 @@ import {
 } from '../../features/users/hooks/mutations'
 import { useUsers } from '../../features/users/hooks/queries'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
-import type { AdminUser, UserStatus } from '../../types'
+import type { AdminUser } from '../../features/users/types/AdminUser'
+import type { UserStatus } from '../../types'
 
 /** The eight columns, in the order they are drawn, named by their own keys. */
 type UsersColumnKey =

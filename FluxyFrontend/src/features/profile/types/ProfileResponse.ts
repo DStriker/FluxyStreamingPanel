@@ -1,5 +1,4 @@
-import type { Role } from './Role'
-import type { UserPermission } from './UserPermission'
+import type { Role, UserPermission } from '../../../types'
 
 /** `GET /auth/profile` - the facts the profile page shows. */
 export interface ProfileResponse {

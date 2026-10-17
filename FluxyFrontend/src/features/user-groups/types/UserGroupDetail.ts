@@ -1,6 +1,4 @@
-import type { Role } from './Role'
-import type { UserStatus } from './UserStatus'
-import type { UserPermission } from './UserPermission'
+import type { Role, UserPermission, UserStatus } from '../../../types'
 
 /**
  * `GET /admin/user-groups/{id}` - one group in full, for the edit form.

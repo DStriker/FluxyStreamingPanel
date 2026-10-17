@@ -1,6 +1,4 @@
-import type { LoginGuardSettings } from './LoginGuardSettings'
-import type { Role } from './Role'
-import type { UserStatus } from './UserStatus'
+import type { LoginGuardSettings, Role, UserStatus } from '../../../types'
 
 /**
  * `GET /admin/users/{id}` - one account in full, for the edit form.

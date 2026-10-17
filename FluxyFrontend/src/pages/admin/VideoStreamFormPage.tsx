@@ -29,7 +29,7 @@ import {
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreamDetail } from '../../features/video-streams/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type { VideoStreamType } from '../../types'
+import type { VideoStreamType } from '../../features/video-streams/types/VideoStreamType'
 
 /**
  * The column widths the other side of these fields already fixed, written here rather than

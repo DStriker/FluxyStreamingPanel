@@ -1,12 +1,12 @@
 import { apiFetch, apiGet } from '../../lib/http'
 import type {
-  AdminUserDetail,
-  AdminUserList,
   BulkOperationResponse,
   LoginGuardSettings,
   MessageResponse,
   UserStatus,
 } from '../../types'
+import type { AdminUserDetail } from './types/AdminUserDetail'
+import type { AdminUserList } from './types/AdminUserList'
 
 /**
  * The accounts table: reading a page and a row, creating, changing, confirming, blocking and

@@ -16,7 +16,7 @@ import { useRevokeAdminSession } from '../../features/sessions/hooks/mutations'
 import { useAdminSessionHistory } from '../../features/sessions/hooks/queries'
 import { useAllUsers } from '../../features/users/hooks/queries'
 import { useColumnWidths, useServerTable } from '../../hooks/table'
-import type { AdminSessionVisit } from '../../types'
+import type { AdminSessionVisit } from '../../features/sessions/types/AdminSessionVisit'
 
 /** The seven columns, in the order they are drawn, named by their own keys. */
 type AdminSessionColumnKey =

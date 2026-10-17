@@ -1,5 +1,4 @@
-import type { Role } from './Role'
-import type { UserStatus } from './UserStatus'
+import type { Role, UserStatus } from '../../../types'
 
 /**
  * One row of the admin group table: the six things a line of it draws.

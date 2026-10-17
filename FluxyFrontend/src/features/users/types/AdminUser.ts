@@ -1,5 +1,4 @@
-import type { Role } from './Role'
-import type { UserStatus } from './UserStatus'
+import type { Role, UserStatus } from '../../../types'
 
 /**
  * One row of the admin's user table: the ten things a line of it draws.
