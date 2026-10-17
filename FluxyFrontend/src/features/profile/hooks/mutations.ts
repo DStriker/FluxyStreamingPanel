@@ -5,8 +5,8 @@ import {
   changeUsername,
   confirmProfileChange,
   updateTimezone,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The profile feature's writes: the six changes the profile page starts.

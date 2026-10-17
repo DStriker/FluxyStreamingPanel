@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { App } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { router } from '../../router'
-import { subscribeToSessionExpired } from '../../lib/sessionEvents'
-import { loginRouteForPath } from '../../lib/session'
+import { router } from '../../../router'
+import { subscribeToSessionExpired } from '../../../lib/sessionEvents'
+import { loginRouteForPath } from '../../../lib/session'
 
 /**
  * The reaction to a session that ended while a page was open on top of it.

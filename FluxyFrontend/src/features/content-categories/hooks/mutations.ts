@@ -3,8 +3,8 @@ import {
   deleteContentCategory,
   reorderContentCategories,
   updateContentCategory,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The content-categories feature's writes: the four the table and its dialog run.

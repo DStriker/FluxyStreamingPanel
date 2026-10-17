@@ -3,9 +3,9 @@ import {
   revokeActiveSession,
   revokeAdminSession,
   revokeOtherActiveSessions,
-} from '../../lib/api'
-import { getCsrfToken } from '../../lib/csrf'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { getCsrfToken } from '../../../lib/csrf'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The sessions feature's writes: the administrator's history row action, and the two

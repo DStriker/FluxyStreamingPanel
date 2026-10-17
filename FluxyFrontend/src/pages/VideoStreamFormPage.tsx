@@ -21,13 +21,13 @@ import type { VideoStreamValues } from '../lib/api'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
-import SourceListEditor from '../features/video-streams/SourceListEditor'
-import { useContentCategories } from '../features/content-categories/queries'
+import SourceListEditor from '../features/video-streams/components/SourceListEditor'
+import { useContentCategories } from '../features/content-categories/hooks/queries'
 import {
   useCreateVideoStream,
   useUpdateVideoStream,
-} from '../features/video-streams/mutations'
-import { useVideoStreamDetail } from '../features/video-streams/queries'
+} from '../features/video-streams/hooks/mutations'
+import { useVideoStreamDetail } from '../features/video-streams/hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../types'
 

@@ -38,8 +38,8 @@ import {
   useDeleteContentCategory,
   useReorderContentCategories,
   useUpdateContentCategory,
-} from '../features/content-categories/mutations'
-import { useContentCategories } from '../features/content-categories/queries'
+} from '../features/content-categories/hooks/mutations'
+import { useContentCategories } from '../features/content-categories/hooks/queries'
 import { useRowAction } from '../hooks/table'
 
 /**

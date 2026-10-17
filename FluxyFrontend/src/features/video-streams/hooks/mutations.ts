@@ -4,8 +4,8 @@ import {
   startVideoStream,
   stopVideoStream,
   updateVideoStream,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The video-streams feature's writes: the form's create/update pair and the three row

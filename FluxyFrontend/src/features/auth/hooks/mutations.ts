@@ -6,8 +6,8 @@ import {
   signOut,
   submitAuth,
   submitRegistration,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The auth feature's writes: the guest flows in the order a visitor walks them, and the

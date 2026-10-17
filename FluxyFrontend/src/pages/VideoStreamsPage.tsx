@@ -24,13 +24,13 @@ import { dashedCell, idCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
 import { RowActions, ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../components/table'
-import { useContentCategories } from '../features/content-categories/queries'
+import { useContentCategories } from '../features/content-categories/hooks/queries'
 import {
   useDeleteVideoStream,
   useStartVideoStream,
   useStopVideoStream,
-} from '../features/video-streams/mutations'
-import { useVideoStreams } from '../features/video-streams/queries'
+} from '../features/video-streams/hooks/mutations'
+import { useVideoStreams } from '../features/video-streams/hooks/queries'
 import { useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */

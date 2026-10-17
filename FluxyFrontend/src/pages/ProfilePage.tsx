@@ -24,10 +24,10 @@ import {
   useChangeUsername,
   useConfirmProfileChange,
   useUpdateTimezone,
-} from '../features/profile/mutations'
-import { useProfile } from '../features/profile/queries'
-import TimeZoneCard from '../features/profile/TimeZoneCard'
-import LoginGuardCard from '../features/profile/LoginGuardCard'
+} from '../features/profile/hooks/mutations'
+import { useProfile } from '../features/profile/hooks/queries'
+import TimeZoneCard from '../features/profile/components/TimeZoneCard'
+import LoginGuardCard from '../features/profile/components/LoginGuardCard'
 import {
   CODE_LENGTH,
   PASSWORD_MAX,

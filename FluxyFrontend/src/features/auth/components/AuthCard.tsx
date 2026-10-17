@@ -1,7 +1,7 @@
 import { Card, Form, Image } from 'antd'
 import type { FormInstance } from 'antd'
 import type { ReactNode } from 'react'
-import LanguageSwitcher from '../../components/LanguageSwitcher'
+import LanguageSwitcher from '../../../components/LanguageSwitcher'
 
 /**
  * The frame every unauthenticated page shares: the language switcher, the logo, and a

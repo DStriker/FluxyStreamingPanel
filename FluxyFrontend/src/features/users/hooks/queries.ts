@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { ALL_USERS_PAGE_SIZE, getUser, getUsers } from '../../lib/api'
-import type { AdminUserSortField, AdminUserSortOrder } from '../../lib/api'
-import { detailId } from '../../lib/detailId'
-import type { UserStatus } from '../../types'
+import { ALL_USERS_PAGE_SIZE, getUser, getUsers } from '../../../lib/api'
+import type { AdminUserSortField, AdminUserSortOrder } from '../../../lib/api'
+import { detailId } from '../../../lib/detailId'
+import type { UserStatus } from '../../../types'
 
 /**
  * The users feature's reads: the paged accounts table, the whole-list picker, and the

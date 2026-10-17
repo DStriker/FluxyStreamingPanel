@@ -22,8 +22,8 @@ import { useSession } from '../lib/sessionContext'
 import {
   useCreateUserGroup,
   useUpdateUserGroup,
-} from '../features/user-groups/mutations'
-import { useUserGroupDetail } from '../features/user-groups/queries'
+} from '../features/user-groups/hooks/mutations'
+import { useUserGroupDetail } from '../features/user-groups/hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
 

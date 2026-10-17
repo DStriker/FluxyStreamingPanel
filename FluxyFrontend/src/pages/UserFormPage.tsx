@@ -31,13 +31,13 @@ import {
   USERNAME_MIN,
 } from '../lib/policy'
 import { AutoTimeZone, knownZones } from '../lib/timeZones'
-import LoginGuardFields from '../features/profile/LoginGuardFields'
+import LoginGuardFields from '../features/profile/components/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
-import { useProfile } from '../features/profile/queries'
-import { useAllUserGroups } from '../features/user-groups/queries'
-import { useCreateUser, useUpdateUser } from '../features/users/mutations'
-import { useUserDetail } from '../features/users/queries'
+import { useProfile } from '../features/profile/hooks/queries'
+import { useAllUserGroups } from '../features/user-groups/hooks/queries'
+import { useCreateUser, useUpdateUser } from '../features/users/hooks/mutations'
+import { useUserDetail } from '../features/users/hooks/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type {
   AdminUserDetail,

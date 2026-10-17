@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Card, Select, Space, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { AutoTimeZone, knownZones } from '../../lib/timeZones'
+import { AutoTimeZone, knownZones } from '../../../lib/timeZones'
 
 interface TimeZoneCardProps {
   /** The zone stored on the account, or null for "follow the browser". */

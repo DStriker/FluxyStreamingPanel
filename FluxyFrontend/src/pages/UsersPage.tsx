@@ -22,19 +22,19 @@ import { formatTimestamp } from '../lib/dateFormat'
 import { tableResults } from '../lib/tableResults'
 import { idCell, ipCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import LastSeenCell from '../features/users/LastSeenCell'
+import LastSeenCell from '../features/users/components/LastSeenCell'
 import { RowActions, ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../components/table'
-import { useProfile } from '../features/profile/queries'
-import { useAllUserGroups } from '../features/user-groups/queries'
+import { useProfile } from '../features/profile/hooks/queries'
+import { useAllUserGroups } from '../features/user-groups/hooks/queries'
 import {
   useBulkUsers,
   useConfirmUserRegistration,
   useDeleteUser,
   useSetUserBlocked,
   useSetUserUnblocked,
-} from '../features/users/mutations'
-import { useUsers } from '../features/users/queries'
+} from '../features/users/hooks/mutations'
+import { useUsers } from '../features/users/hooks/queries'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 import type { AdminUser, UserStatus } from '../types'
 

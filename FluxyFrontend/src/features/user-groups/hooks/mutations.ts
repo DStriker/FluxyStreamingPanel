@@ -3,8 +3,8 @@ import {
   createUserGroup,
   deleteUserGroup,
   updateUserGroup,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The user-groups feature's writes: the create/update form's two endpoints, the row

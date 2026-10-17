@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { ALL_GROUPS_PAGE_SIZE, getUserGroup, getUserGroups } from '../../lib/api'
-import type { UserGroupSortField, UserGroupSortOrder } from '../../lib/api'
-import { detailId } from '../../lib/detailId'
-import type { Role, UserStatus } from '../../types'
+import { ALL_GROUPS_PAGE_SIZE, getUserGroup, getUserGroups } from '../../../lib/api'
+import type { UserGroupSortField, UserGroupSortOrder } from '../../../lib/api'
+import { detailId } from '../../../lib/detailId'
+import type { Role, UserStatus } from '../../../types'
 
 /**
  * The user-groups feature's reads: the paged groups table, the whole-list picker the

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { getContentCategories } from '../../lib/api'
-import type { ContentTypeParam } from '../../lib/api'
+import { getContentCategories } from '../../../lib/api'
+import type { ContentTypeParam } from '../../../lib/api'
 
 /**
  * The content-categories feature's one read - one endpoint asked by four section pages.

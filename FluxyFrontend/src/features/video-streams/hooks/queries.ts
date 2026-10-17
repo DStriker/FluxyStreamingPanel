@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { getVideoStream, getVideoStreams } from '../../lib/api'
-import type { VideoStreamSortField, VideoStreamSortOrder } from '../../lib/api'
-import { detailId } from '../../lib/detailId'
-import type { VideoStreamStatus, VideoStreamType } from '../../types'
+import { getVideoStream, getVideoStreams } from '../../../lib/api'
+import type { VideoStreamSortField, VideoStreamSortOrder } from '../../../lib/api'
+import { detailId } from '../../../lib/detailId'
+import type { VideoStreamStatus, VideoStreamType } from '../../../types'
 
 /**
  * The video-streams feature's reads: the paged streams table and the detail read the edit

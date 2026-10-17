@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, Spin, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import AuthCard from '../features/auth/AuthCard'
-import AuthForm from '../features/auth/AuthForm'
-import ConfirmCodeForm, { type ResetConfirmValues } from '../features/auth/ConfirmCodeForm'
+import AuthCard from '../features/auth/components/AuthCard'
+import AuthForm from '../features/auth/components/AuthForm'
+import ConfirmCodeForm, { type ResetConfirmValues } from '../features/auth/components/ConfirmCodeForm'
 import config, { routePath } from '../config'
 import {
   PasswordResetCaptchaAction,
@@ -22,7 +22,7 @@ import {
 import {
   useConfirmPasswordReset,
   useRequestPasswordReset,
-} from '../features/auth/mutations'
+} from '../features/auth/hooks/mutations'
 
 /** The codes that decide what this page is showing. */
 const Submitted = 'password_reset_submitted'

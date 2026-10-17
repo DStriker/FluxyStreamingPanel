@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { currentSession } from '../../lib/api'
-import { homeForRole } from '../../lib/session'
+import { currentSession } from '../../../lib/api'
+import { homeForRole } from '../../../lib/session'
 
 /**
  * Keeps a signed-in visitor off the pages that exist only for somebody who is not.

@@ -6,8 +6,8 @@ import {
   setUserBlocked,
   setUserUnblocked,
   updateUser,
-} from '../../lib/api'
-import { useWrite } from '../../hooks/useWrite'
+} from '../../../lib/api'
+import { useWrite } from '../../../hooks/useWrite'
 
 /**
  * The users feature's writes: the create/update form, the row actions and the bulk run.
