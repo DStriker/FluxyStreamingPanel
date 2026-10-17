@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { Key } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Dropdown, Modal, Select, Space, Table, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
@@ -24,7 +23,7 @@ import {
 import type { AdminUserSortField, BulkUserAction } from '../lib/api'
 import { getCsrfToken } from '../lib/csrf'
 import { hinted } from '../lib/hinted'
-import { messageForError, successTextFor, textForCode } from '../lib/http'
+import { messageForError, successTextFor } from '../lib/http'
 import { canEdit, canEditAny } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
@@ -36,11 +35,12 @@ import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
 import TableSearch from '../components/TableSearch'
+import { useBulkAction } from '../hooks/useBulkAction'
 import { useColumnWidths } from '../hooks/useColumnWidths'
 import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
 import { useRowAction } from '../hooks/useRowAction'
 import { useServerTable } from '../hooks/useServerTable'
-import type { AdminUser, BulkOperationResponse, UserStatus } from '../types'
+import type { AdminUser, UserStatus } from '../types'
 
 /** The eight columns, in the order they are drawn, named by their own keys. */
 type UsersColumnKey =
@@ -213,22 +213,9 @@ export default function UsersPage(_props: UsersPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const groupFilter = searchParams.get('groupId')
   const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
-  /**
-   * The rows the checkboxes on **this page** have marked, held by id rather than by row.
-   *
-   * The scope is the page, and that is the whole decision: an id list is what the endpoint
-   * takes, the server bounds it at one page's worth, and the alternative - "everything that
-   * matches this filter" - would mean asking for rows nobody has looked at, some of which
-   * the operator may not even be allowed to change. So the header checkbox selects what is
-   * drawn, and moving to another page drops the ids that are no longer there (see the prune
-   * below) rather than keeping a selection the visitor cannot see.
-   */
-  const [selectedIds, setSelectedIds] = useState<Key[]>([])
   /** The move dialog, and the group chosen in it. Separate from the selection because it outlives the menu that opened it. */
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignGroupId, setAssignGroupId] = useState<string | null>(null)
-  /** Whether a bulk run is in flight. One run at a time, and the toolbar says so. */
-  const [bulkBusy, setBulkBusy] = useState(false)
 
   /**
    * The page of accounts, fetched through a query whose key **is** the parameters -
@@ -311,22 +298,15 @@ export default function UsersPage(_props: UsersPageProps) {
    */
   const ownId = session?.userId ?? null
 
-  useEffect(() => {
-    // The selection is this page's, so it is pruned to the ids the page still holds.
-    // Returning the same array when nothing moved is not an optimisation but the
-    // termination condition: a fresh array on every answer is a fresh reference, a
-    // re-render, and - on a page whose list is re-read after every action - a loop.
-    if (!users) return
-
-    setSelectedIds((current) => {
-      if (current.length === 0) return current
-
-      const present = new Set(users.items.map((user) => user.id))
-      const kept = current.filter((id) => present.has(String(id)))
-
-      return kept.length === current.length ? current : kept
-    })
-  }, [users])
+  /**
+   * The selection and the run over it: the ids, the scope, the prune, the busy flag and the
+   * summary dialog are `useBulkAction`'s, which the group table calls too.
+   */
+  const { selectedIds, setSelectedIds, bulkBusy, applyBulk } = useBulkAction({
+    rows: users?.items,
+    refetch: () => void usersQuery.refetch(),
+    partialTitleKey: 'users.bulk.partialTitle',
+  })
 
   /**
    * The two filters, each starting the pager over: a different list is a different pager,
@@ -413,105 +393,30 @@ export default function UsersPage(_props: UsersPageProps) {
     })
   }
 
-  /**
-   * Reads the answer to a bulk run out loud: a toast when every row landed, and a dialog
-   * listing the refusals when at least one did not.
-   *
-   * The dialog exists because a count is not a reason. "Changed 4 of 5" tells the operator
-   * that something was refused and nothing about what - and the reason the row buttons would
-   * have said *before* a click (`cannot_block_self` above all) is exactly the reason that
-   * now has to arrive after one. Every line is the server's own sentence for that row's
-   * code, already translated, so this summarises rather than invents: the same code in the
-   * same words the single-row path would have shown.
-   *
-   * The lines are grouped by code with a count, because a run over thirty rows refusing all
-   * thirty for one reason is one sentence, not thirty.
-   */
-  const reportBulk = (result: BulkOperationResponse) => {
-    const refusals: { code: string; count: number }[] = []
-    const at = new Map<string, number>()
-
-    for (const item of result.items) {
-      if (item.ok) continue
-
-      const index = at.get(item.code)
-
-      if (index === undefined) {
-        at.set(item.code, refusals.length)
-        refusals.push({ code: item.code, count: 1 })
-      } else {
-        // `refusals[index]` is looked up once rather than read twice: under
-        // `noUncheckedIndexedAccess` an index that came from a `Map` is still an index, and
-        // the compiler is right that nothing here proves the slot is filled.
-        const previous = refusals[index]
-
-        if (previous) refusals[index] = { code: item.code, count: previous.count + 1 }
-      }
-    }
-
-    if (refusals.length === 0) {
-      message.success(
-        successTextFor(result, { done: result.succeeded, total: result.items.length }),
-      )
-      return
-    }
-
-    modal.info({
-      title: t('users.bulk.partialTitle', {
-        done: result.succeeded,
-        total: result.items.length,
-      }),
-      okText: t('actions.ok'),
-      content: (
-        <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-          {refusals.map((refusal) => (
-            <li key={refusal.code}>
-              {textForCode(refusal.code) ?? refusal.code}
-              {refusal.count > 1 ? ` (${refusal.count})` : ''}
-            </li>
-          ))}
-        </ul>
-      ),
-    })
+  /** Closes the move dialog, whether its run landed, was refused or was cancelled. */
+  const closeAssign = () => {
+    setAssignOpen(false)
+    setAssignGroupId(null)
   }
 
   /**
-   * Runs one operation over the selection.
-   *
+   * Runs one operation over the selection: the ids, the token, the reporting and the re-read
+   * are `useBulkAction`'s. What is left here is which endpoint each action names -
    * `groupId` belongs to `assign-group` alone and is what the move dialog hands over; the
-   * other four never see it. Afterwards the list is **re-read** rather than patched, for
-   * the reason every single-row action on this page re-reads it: a transition changes what
-   * the server considers each row to be (a stamped `registeredAt`, revoked sessions, a
-   * different group), and the page draws what it is told rather than what it guesses.
-   *
-   * The selection is cleared on the way through - not because the rows are gone (only
-   * deletion guarantees that) but because the run is over, and leaving thirty boxes ticked
-   * after "blocked" was reported would invite the same operation a second time.
+   * other four never see it - and the dialog that closes on any answer, because once the
+   * answer has arrived there is nothing left to ask.
    */
-  const runBulk = async (action: BulkUserAction, groupId: string | null = null) => {
-    if (selectedIds.length === 0) return
-
-    setBulkBusy(true)
-
-    try {
-      const result = await bulkUsers({
-        ids: selectedIds.map(String),
-        action,
-        groupId,
-        csrfToken: await getCsrfToken(),
-      })
-
-      reportBulk(result)
-      setSelectedIds([])
-      void usersQuery.refetch()
-    } catch (error) {
-      message.error(messageForError(error))
-    } finally {
-      setBulkBusy(false)
-      setAssignOpen(false)
-      setAssignGroupId(null)
-    }
-  }
+  const runBulk = (action: BulkUserAction, groupId: string | null = null) =>
+    applyBulk(
+      async () =>
+        bulkUsers({
+          ids: selectedIds.map(String),
+          action,
+          groupId,
+          csrfToken: await getCsrfToken(),
+        }),
+      closeAssign,
+    )
 
   /**
    * Asks before a bulk deletion, for the reason only deletion asks first on a single row:
@@ -959,10 +864,7 @@ export default function UsersPage(_props: UsersPageProps) {
         okButtonProps={{ disabled: !assignGroupId, loading: bulkBusy }}
         cancelText={t('actions.cancel')}
         onOk={() => runBulk('assign-group', assignGroupId)}
-        onCancel={() => {
-          setAssignOpen(false)
-          setAssignGroupId(null)
-        }}
+        onCancel={closeAssign}
       >
         <Select
           showSearch
