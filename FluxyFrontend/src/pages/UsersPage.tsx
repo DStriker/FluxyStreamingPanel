@@ -21,6 +21,7 @@ import { useSession } from '../lib/sessionContext'
 import { formatTimestamp } from '../lib/dateFormat'
 import { tableResults } from '../lib/tableResults'
 import { idCell, ipCell, textCell } from '../lib/tableCells'
+import { enumParam, withFilter } from '../lib/tableParams'
 import LastSeenCell from '../components/LastSeenCell'
 import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
@@ -196,21 +197,24 @@ export default function UsersPage(_props: UsersPageProps) {
    */
   const table = useServerTable<AdminUser, AdminUserSortField>({
     defaultSort: { by: 'username', order: 'asc' },
+    sortFields: ['username', 'email', 'group', 'status', 'lastSeenAt', 'ip'],
   })
 
   /**
-   * The group filter, which lives in the address rather than in this component's state.
+   * The two filters, both in the address rather than in this component's state.
    *
    * `?groupId=` is how the groups table sends a visitor over here (its "show accounts"
    * button), and a filter that only existed in memory would be gone by the time the page
    * mounted - the button would land on the unfiltered list and look like it had done
-   * nothing. Making the query string the single source rather than seeding state from it
-   * also means the address is shareable and a reload keeps the filter, with no effect
-   * anywhere keeping the two in step.
+   * nothing. `?status=` follows it for the same reason everything the table shows does: the
+   * address is the single source, so it is shareable and a reload keeps the filter, with no
+   * effect anywhere keeping two copies in step. `enumParam` judges the status by the values
+   * this page's own control can produce, so a hand-edited word draws the unfiltered table
+   * rather than a `validation_failed` from the endpoint.
    */
   const [searchParams, setSearchParams] = useSearchParams()
-  const groupFilter = searchParams.get('groupId')
-  const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
+  const groupFilter = searchParams.get('groupId') || null
+  const statusFilter = enumParam(searchParams, 'status', STATUSES)
   /** The move dialog, and the group chosen in it. Separate from the selection because it outlives the menu that opened it. */
   const [assignOpen, setAssignOpen] = useState(false)
   const [assignGroupId, setAssignGroupId] = useState<string | null>(null)
@@ -307,28 +311,20 @@ export default function UsersPage(_props: UsersPageProps) {
   })
 
   /**
-   * The two filters, each starting the pager over: a different list is a different pager,
-   * and leaving the visitor on page 3 of a filter that admits one page would show them an
-   * empty table while `total` above it said 1.
+   * The two filters, each one address and one navigation: `withFilter` writes the filter and
+   * drops `page` in the same write - a different list is a different pager, and leaving the
+   * visitor on page 3 of a filter that admits one page would show them an empty table while
+   * `total` above it said 1.
    *
-   * The group one writes to the address rather than to state, and with `replace`: it is a
-   * change to what is being looked at rather than a step worth a history entry, so the back
-   * button takes the visitor off the page instead of back through every group they tried.
+   * `replace` because a change to what is being looked at is not a step worth a history
+   * entry, so the back button takes the visitor off the page instead of back through every
+   * group they tried.
    */
-  const chooseGroup = (value: string | undefined) => {
-    const next = new URLSearchParams(searchParams)
+  const chooseGroup = (value: string | undefined) =>
+    setSearchParams(withFilter(searchParams, 'groupId', value), { replace: true })
 
-    if (value) next.set('groupId', value)
-    else next.delete('groupId')
-
-    setSearchParams(next, { replace: true })
-    table.resetPage()
-  }
-
-  const chooseStatus = (value: UserStatus | undefined) => {
-    setStatusFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseStatus = (value: UserStatus | undefined) =>
+    setSearchParams(withFilter(searchParams, 'status', value), { replace: true })
 
   /**
    * A date as this account's own zone and the page's own language show it, falling back to

@@ -8,6 +8,7 @@ import { messageForError, textForCode } from '../lib/http'
 import { formatTimestamp } from '../lib/dateFormat'
 import { tableResults } from '../lib/tableResults'
 import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../lib/tableCells'
+import { withFilter } from '../lib/tableParams'
 import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
@@ -144,19 +145,19 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
    */
   const table = useServerTable<AdminSessionVisit, SessionSortField>({
     defaultSort: { by: 'visitedAt', order: 'desc' },
+    sortFields: ['visitedAt', 'ip'],
     sortFieldOf: (columnKey) => (columnKey === 'ip' ? 'ip' : 'visitedAt'),
   })
 
   /**
-   * The account filter, which lives in the address rather than in this component's state -
-   * the same decision the accounts table makes about `?groupId=`, and the same reasons: a
-   * filter that only existed in memory would be gone by the time the page mounted, so a
-   * "show this account" link would land on the unfiltered list and look like it had done
-   * nothing. The query string is the single source, which also makes the address shareable
-   * and a reload keep the filter, with no effect anywhere keeping the two in step.
+   * The account filter, in the address rather than in this component's state. `?userId=` is
+   * how the accounts table's last-visit cell sends a visitor to that account's visits, and a
+   * filter that existed only in memory would be gone by the time the page mounted: the link
+   * would land on the unfiltered list and look like it had done nothing. It is also what a
+   * reload keeps and what can be sent to somebody else.
    */
   const [searchParams, setSearchParams] = useSearchParams()
-  const userFilter = searchParams.get('userId')
+  const userFilter = searchParams.get('userId') || null
   /**
    * The one revoke this page makes, from `mutations.ts` - the token is minted inside it at
    * call time, never remembered: the server binds a token to the identity that was current
@@ -235,22 +236,17 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   const locale = i18n.resolvedLanguage ?? i18n.language
 
   /**
-   * The account filter, starting the pager over: a different list is a different pager, and
-   * leaving the visitor on page 3 of a filter that admits one page would show them an empty
-   * table while `total` above it said 1.
+   * The account filter, one address and one navigation: `withFilter` writes the filter and
+   * drops `page` in the same write - a different list is a different pager, and leaving the
+   * visitor on page 3 of a filter that admits one page would show them an empty table while
+   * `total` above it said 1.
    *
-   * It writes to the address and with `replace`: a change to what is being looked at rather
-   * than a step worth a history entry, so the back button takes the visitor off the page
-   * instead of back through every account they tried.
+   * `replace` because a change to what is being looked at is not a step worth a history
+   * entry: the back button takes the visitor off the page instead of back through every
+   * account they tried.
    */
   const chooseUser = (value: string | undefined) => {
-    const next = new URLSearchParams(searchParams)
-
-    if (value) next.set('userId', value)
-    else next.delete('userId')
-
-    setSearchParams(next, { replace: true })
-    table.resetPage()
+    setSearchParams(withFilter(searchParams, 'userId', value), { replace: true })
   }
 
   /**

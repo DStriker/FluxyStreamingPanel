@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Image, Select, Space, Table, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +21,7 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { dashedCell, idCell, textCell } from '../lib/tableCells'
+import { enumParam, withFilter } from '../lib/tableParams'
 import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
@@ -161,14 +162,28 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
    */
   const table = useServerTable<VideoStream, VideoStreamSortField>({
     defaultSort: { by: 'name', order: 'asc' },
+    // Every field the endpoint orders by, not only the three headers below it: `type` and
+    // `sortOrder` have no sorter on this table, but an address may legitimately name them.
+    sortFields: ['name', 'category', 'status', 'type', 'sortOrder'],
     // The one page that names its own size rather than taking the shared default:
     // `VIDEO_STREAMS_PAGE_SIZE` is what the endpoint documents, and the two are 20 only
     // because two files currently agree.
     pageSize: VIDEO_STREAMS_PAGE_SIZE,
   })
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<VideoStreamStatus | null>(null)
-  const [typeFilter, setTypeFilter] = useState<VideoStreamType | null>(null)
+
+  /**
+   * The three filters, in the address rather than in this component's state - the decision
+   * every server-paged table makes about what it is showing: the address is the single
+   * source, so it is shareable and a reload keeps the filter, with no effect anywhere
+   * keeping two copies in step. The two enums are judged by the values this page's own
+   * controls can produce, so a hand-edited word draws the unfiltered table rather than a
+   * `validation_failed` from the endpoint; the category is an identifier, and the categories
+   * endpoint is the only thing that knows which ones exist.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const categoryFilter = searchParams.get('categoryId') || null
+  const statusFilter = enumParam(searchParams, 'status', STATUSES)
+  const typeFilter = enumParam(searchParams, 'type', TYPES)
   /** Whether the table re-reads itself. On by default, and pausing is one press. */
   const [autoRefresh, setAutoRefresh] = useState(true)
 
@@ -240,24 +255,23 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   }, [autoRefresh])
 
   /**
-   * The three filters, each starting the pager over: a different list is a different pager,
-   * and leaving the visitor on page 3 of a filter that admits one page would show them an
-   * empty table while `total` above it said 1.
+   * The three filters, each one address and one navigation: `withFilter` writes the filter
+   * and drops `page` in the same write - a different list is a different pager, and leaving
+   * the visitor on page 3 of a filter that admits one page would show them an empty table
+   * while `total` above it said 1.
+   *
+   * `replace` because a change to what is being looked at is not a step worth a history
+   * entry, so the back button takes the visitor off the page instead of back through every
+   * filter they tried.
    */
-  const chooseCategory = (value: string | undefined) => {
-    setCategoryFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseCategory = (value: string | undefined) =>
+    setSearchParams(withFilter(searchParams, 'categoryId', value), { replace: true })
 
-  const chooseStatus = (value: VideoStreamStatus | undefined) => {
-    setStatusFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseStatus = (value: VideoStreamStatus | undefined) =>
+    setSearchParams(withFilter(searchParams, 'status', value), { replace: true })
 
-  const chooseType = (value: VideoStreamType | undefined) => {
-    setTypeFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseType = (value: VideoStreamType | undefined) =>
+    setSearchParams(withFilter(searchParams, 'type', value), { replace: true })
 
   /**
    * One column's resize handle, with this page's name for the column.

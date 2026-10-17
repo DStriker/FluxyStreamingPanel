@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Dropdown, Select, Space, Table, Tag } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -22,6 +22,7 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { idCell, textCell } from '../lib/tableCells'
+import { enumParam, withFilter } from '../lib/tableParams'
 import LoadErrorAlert from '../components/LoadErrorAlert'
 import ResizableHeaderCell from '../components/ResizableHeaderCell'
 import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
@@ -155,9 +156,20 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
    */
   const table = useServerTable<UserGroup, UserGroupSortField>({
     defaultSort: { by: 'name', order: 'asc' },
+    sortFields: ['name', 'role', 'status', 'permissionsCount', 'createdAt'],
   })
-  const [roleFilter, setRoleFilter] = useState<Role | null>(null)
-  const [statusFilter, setStatusFilter] = useState<UserStatus | null>(null)
+
+  /**
+   * The two filters, in the address rather than in this component's state - the decision
+   * every server-paged table makes about what it is showing, and here it buys what it buys
+   * everywhere: the address is the single source, so it is shareable and a reload keeps the
+   * filter, with no effect anywhere keeping two copies in step. `enumParam` judges each one
+   * by the values this page's own control can produce, so a hand-edited word draws the
+   * unfiltered table rather than a `validation_failed` from the endpoint.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const roleFilter = enumParam(searchParams, 'role', ROLES)
+  const statusFilter = enumParam(searchParams, 'status', STATUSES)
 
   /**
    * The page of groups, fetched through a query whose key **is** the parameters - the same
@@ -207,19 +219,20 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
   })
 
   /**
-   * The two filters, each starting the pager over: a different list is a different pager,
-   * and leaving the visitor on page 3 of a filter that admits one page would show them an
-   * empty table while `total` above it said 1.
+   * The two filters, each one address and one navigation: `withFilter` writes the filter and
+   * drops `page` in the same write - a different list is a different pager, and leaving the
+   * visitor on page 3 of a filter that admits one page would show them an empty table while
+   * `total` above it said 1.
+   *
+   * `replace` because a change to what is being looked at is not a step worth a history
+   * entry, so the back button takes the visitor off the page instead of back through every
+   * filter they tried.
    */
-  const chooseRole = (value: Role | undefined) => {
-    setRoleFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseRole = (value: Role | undefined) =>
+    setSearchParams(withFilter(searchParams, 'role', value), { replace: true })
 
-  const chooseStatus = (value: UserStatus | undefined) => {
-    setStatusFilter(value ?? null)
-    table.resetPage()
-  }
+  const chooseStatus = (value: UserStatus | undefined) =>
+    setSearchParams(withFilter(searchParams, 'status', value), { replace: true })
 
   /**
    * One column's resize handle, with this page's name for the column.

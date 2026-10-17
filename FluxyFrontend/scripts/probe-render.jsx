@@ -965,6 +965,31 @@ async function main() {
       : 'THE ARRIVING GROUP WAS DROPPED - the button would open an unfiltered list',
   )
 
+  // The table's own state arrives the same way the filters do: `page`, `pageSize`, `search`,
+  // `sortBy` and `sortOrder` are read back from the address rather than kept beside it, so a
+  // reload keeps the view and the address can be sent to somebody else. Three of the five are
+  // visible before the first answer arrives, and each of them would silently draw its default
+  // if the read were dropped: the search box's text, the filter's selection, and the sorted
+  // header's arrow. The pager's own page number is the fourth, and it is not asserted here
+  // because antd draws it from `total`, which is 0 in every render this probe makes.
+  const stateArrivalHtml = renderToStaticMarkup(
+    withRouter('/admin/users?search=ann&status=Blocked&sortBy=email&sortOrder=desc', withQuery(
+      <AntApp>
+        <UsersPage sectionKey="nav.items.usersManage" />
+      </AntApp>,
+    )),
+  )
+  const arrivalSorters = [
+    ...stateArrivalHtml.matchAll(/<span[^>]*ant-table-column-sorter-[a-z]+[^>]*>/g),
+  ].map((m) => m[0])
+  check(
+    'the accounts page picks its search, filter and order up from the address it was opened at',
+    stateArrivalHtml.includes('value="ann"') &&
+      stateArrivalHtml.includes('title="Blocked"') &&
+      arrivalSorters.some((s) => s.includes('-down') && s.includes('active')),
+    `rendered ${stateArrivalHtml.length} bytes; sorters: ${arrivalSorters.join(' ') || 'none'}`,
+  )
+
   // The two bulk buttons are drawn exactly when the checkbox group is, which means they are
   // unreachable in every state this probe can render: the add form opens at `Client`, and
   // `renderToStaticMarkup` never runs the click that would move it to `Admin`. So the

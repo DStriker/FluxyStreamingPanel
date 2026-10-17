@@ -103,6 +103,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
    */
   const table = useServerTable<SessionVisit, SessionSortField>({
     defaultSort: { by: 'visitedAt', order: 'desc' },
+    sortFields: ['visitedAt', 'ip'],
     sortFieldOf: (columnKey) => (columnKey === 'ip' ? 'ip' : 'visitedAt'),
   })
 
