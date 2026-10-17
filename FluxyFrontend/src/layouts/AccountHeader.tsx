@@ -12,7 +12,7 @@ import {
 } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import LanguageSwitcher from './LanguageSwitcher'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import config, { routePath } from '../config'
 import { messageForError } from '../lib/http'
 import { areaForRole } from '../lib/session'

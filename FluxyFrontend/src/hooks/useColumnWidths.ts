@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
+import type { ResizableHeaderCellProps } from '../components/table/ResizableHeaderCell'
 
 /**
  * The floor and the ceiling of a dragged column.

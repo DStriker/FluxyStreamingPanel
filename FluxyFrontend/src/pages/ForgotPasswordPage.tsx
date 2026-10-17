@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { App, Button, Spin, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import AuthCard from '../components/AuthCard'
-import AuthForm from '../components/AuthForm'
-import ConfirmCodeForm, { type ResetConfirmValues } from '../components/ConfirmCodeForm'
+import AuthCard from '../features/auth/AuthCard'
+import AuthForm from '../features/auth/AuthForm'
+import ConfirmCodeForm, { type ResetConfirmValues } from '../features/auth/ConfirmCodeForm'
 import config, { routePath } from '../config'
 import {
   PasswordResetCaptchaAction,

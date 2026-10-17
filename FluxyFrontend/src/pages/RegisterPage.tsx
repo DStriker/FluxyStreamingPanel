@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
-import AuthForm from '../components/AuthForm'
+import AuthForm from '../features/auth/AuthForm'
 import ConfirmCodeForm, {
   type RegistrationConfirmValues,
-} from '../components/ConfirmCodeForm'
+} from '../features/auth/ConfirmCodeForm'
 import config, { routePath } from '../config'
 import { RegisterCaptchaAction, type RegistrationValues } from '../lib/api'
 import { ApiError } from '../lib/http'

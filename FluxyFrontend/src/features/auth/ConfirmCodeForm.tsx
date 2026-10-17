@@ -4,10 +4,10 @@ import { App, Button, Form, Input } from 'antd'
 import type { FormRule, InputProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
-import { getCaptchaToken } from '../lib/recaptcha'
-import { ApiError, fieldErrors, messageForError } from '../lib/http'
-import { ConfirmCaptchaAction } from '../lib/api'
-import { CODE_LENGTH, EMAIL_MAX } from '../lib/policy'
+import { getCaptchaToken } from '../../lib/recaptcha'
+import { ApiError, fieldErrors, messageForError } from '../../lib/http'
+import { ConfirmCaptchaAction } from '../../lib/api'
+import { CODE_LENGTH, EMAIL_MAX } from '../../lib/policy'
 
 /** What the registration confirm step submits: the address it was mailed to, and the code. */
 export type RegistrationConfirmValues = { email: string; code: string }

@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Skeleton } from 'antd'
-import config, { routePath } from '../config'
-import { currentSession } from '../lib/api'
-import { sessionOpensArea } from '../lib/session'
-import { SessionContext } from '../lib/sessionContext'
-import NotFoundPage from '../pages/NotFoundPage'
-import type { SessionContextValue, Role, Session } from '../types'
+import config, { routePath } from '../../config'
+import { currentSession } from '../../lib/api'
+import { sessionOpensArea } from '../../lib/session'
+import { SessionContext } from '../../lib/sessionContext'
+import NotFoundPage from '../../pages/NotFoundPage'
+import type { SessionContextValue, Role, Session } from '../../types'
 
 /**
  * Lets only a signed-in visitor whose role matches through, and hands the rest a decision

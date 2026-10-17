@@ -31,7 +31,7 @@ import {
   USERNAME_MIN,
 } from '../lib/policy'
 import { AutoTimeZone, knownZones } from '../lib/timeZones'
-import LoginGuardFields from '../components/LoginGuardFields'
+import LoginGuardFields from '../features/profile/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
 import { useCreateUser, useUpdateUser } from '../hooks/mutations'

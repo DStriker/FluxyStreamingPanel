@@ -26,8 +26,8 @@ import {
   useUpdateTimezone,
 } from '../hooks/mutations'
 import { useProfile } from '../hooks/queries'
-import TimeZoneCard from '../components/TimeZoneCard'
-import LoginGuardCard from '../components/LoginGuardCard'
+import TimeZoneCard from '../features/profile/TimeZoneCard'
+import LoginGuardCard from '../features/profile/LoginGuardCard'
 import {
   CODE_LENGTH,
   PASSWORD_MAX,

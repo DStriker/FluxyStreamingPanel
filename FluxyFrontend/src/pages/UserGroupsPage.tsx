@@ -22,11 +22,11 @@ import { useSession } from '../lib/sessionContext'
 import { tableResults } from '../lib/tableResults'
 import { idCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import RowActions from '../components/RowActions'
-import type { RowAction } from '../components/RowActions'
-import ServerTable from '../components/ServerTable'
-import TableSearch from '../components/TableSearch'
+import type { ResizableHeaderCellProps } from '../components/table/ResizableHeaderCell'
+import RowActions from '../components/table/RowActions'
+import type { RowAction } from '../components/table/RowActions'
+import ServerTable from '../components/table/ServerTable'
+import TableSearch from '../components/table/TableSearch'
 import {
   useBulkUserGroups,
   useDeleteUserGroup,

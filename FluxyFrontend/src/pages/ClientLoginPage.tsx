@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from 'antd'
 import { useTranslation } from 'react-i18next'
-import AuthForm from '../components/AuthForm'
+import AuthForm from '../features/auth/AuthForm'
 import config, { routePath } from '../config'
 import { ClientLoginCaptchaAction, type SignInValues } from '../lib/api'
 import { internalPath } from '../lib/url'

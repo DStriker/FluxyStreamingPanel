@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
-import { getCaptchaToken } from '../lib/recaptcha'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../lib/http'
+import { getCaptchaToken } from '../../lib/recaptcha'
+import { ApiError, fieldErrors, messageForError, textForCode } from '../../lib/http'
 import {
   EMAIL_MAX,
   PASSWORD_MAX,
@@ -12,8 +12,8 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../lib/policy'
-import type { MessageResponse } from '../types'
+} from '../../lib/policy'
+import type { MessageResponse } from '../../types'
 
 /**
  * Field names the API may answer with, matching the camelCase JSON property names it uses

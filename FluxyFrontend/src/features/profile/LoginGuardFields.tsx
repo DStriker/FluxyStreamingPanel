@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import { Button, Form, InputNumber, Select, Switch, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { countryOptions } from '../lib/countries'
-import { isIpOrCidr } from '../lib/ip'
-import { LOGIN_GUARD_MAX_IPS } from '../lib/policy'
+import { countryOptions } from '../../lib/countries'
+import { isIpOrCidr } from '../../lib/ip'
+import { LOGIN_GUARD_MAX_IPS } from '../../lib/policy'
 
 /** The "use my current network" button: present only where it means the right thing. */
 export interface FillCurrentOption {

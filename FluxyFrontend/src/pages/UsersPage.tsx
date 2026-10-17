@@ -22,12 +22,12 @@ import { formatTimestamp } from '../lib/dateFormat'
 import { tableResults } from '../lib/tableResults'
 import { idCell, ipCell, textCell } from '../lib/tableCells'
 import { enumParam, withFilter } from '../lib/tableParams'
-import LastSeenCell from '../components/LastSeenCell'
-import type { ResizableHeaderCellProps } from '../components/ResizableHeaderCell'
-import RowActions from '../components/RowActions'
-import type { RowAction } from '../components/RowActions'
-import ServerTable from '../components/ServerTable'
-import TableSearch from '../components/TableSearch'
+import LastSeenCell from '../features/users/LastSeenCell'
+import type { ResizableHeaderCellProps } from '../components/table/ResizableHeaderCell'
+import RowActions from '../components/table/RowActions'
+import type { RowAction } from '../components/table/RowActions'
+import ServerTable from '../components/table/ServerTable'
+import TableSearch from '../components/table/TableSearch'
 import {
   useBulkUsers,
   useConfirmUserRegistration,

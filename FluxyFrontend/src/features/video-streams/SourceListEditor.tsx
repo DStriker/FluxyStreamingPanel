@@ -6,7 +6,7 @@ import {
   DeleteOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
-import { hinted } from '../lib/hinted'
+import { hinted } from '../../lib/hinted'
 
 /**
  * The three per-row buttons as one strip, so the row below reads as the row it draws.

@@ -31,8 +31,8 @@ import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { CONTENT_TYPE_PARAMS } from '../lib/api'
 import type { ContentCategory, ContentType } from '../types'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/http'
-import RowActions from '../components/RowActions'
-import type { RowAction } from '../components/RowActions'
+import RowActions from '../components/table/RowActions'
+import type { RowAction } from '../components/table/RowActions'
 import {
   useCreateContentCategory,
   useDeleteContentCategory,
