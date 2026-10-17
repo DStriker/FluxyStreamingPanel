@@ -22,8 +22,12 @@ import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/h
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import SourceListEditor from '../features/video-streams/SourceListEditor'
-import { useCreateVideoStream, useUpdateVideoStream } from '../hooks/mutations'
-import { useContentCategories, useVideoStreamDetail } from '../hooks/queries'
+import { useContentCategories } from '../features/content-categories/queries'
+import {
+  useCreateVideoStream,
+  useUpdateVideoStream,
+} from '../features/video-streams/mutations'
+import { useVideoStreamDetail } from '../features/video-streams/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../types'
 

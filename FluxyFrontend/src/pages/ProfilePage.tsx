@@ -24,8 +24,8 @@ import {
   useChangeUsername,
   useConfirmProfileChange,
   useUpdateTimezone,
-} from '../hooks/mutations'
-import { useProfile } from '../hooks/queries'
+} from '../features/profile/mutations'
+import { useProfile } from '../features/profile/queries'
 import TimeZoneCard from '../features/profile/TimeZoneCard'
 import LoginGuardCard from '../features/profile/LoginGuardCard'
 import {

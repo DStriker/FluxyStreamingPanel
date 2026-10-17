@@ -19,7 +19,7 @@ import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
 import { ThemeChoice, setThemeChoice, useThemeChoice } from '../lib/theme'
 import { internalPath } from '../lib/url'
-import { useSignOut } from '../hooks/mutations'
+import { useSignOut } from '../features/auth/mutations'
 
 /**
  * The pinned top bar: where this area is, who is signed in, how to get to their settings,

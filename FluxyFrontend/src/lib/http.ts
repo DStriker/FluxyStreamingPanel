@@ -57,7 +57,7 @@ interface RequestOptions {
   captchaToken?: string | null
   /**
    * Aborts the request itself rather than merely ignoring its answer. The queries layer
-   * (`src/hooks/queries.ts`) reaches for this on unmount and on a key change; the old
+   * (each feature's `queries.ts`) reaches for this on unmount and on a key change; the old
    * `cancelled` flag the pages used to keep could only stop the answer from being written,
    * not the request from riding on to completion.
    */

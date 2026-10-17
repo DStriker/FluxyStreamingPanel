@@ -5,7 +5,7 @@ import AuthForm from '../features/auth/AuthForm'
 import config, { routePath } from '../config'
 import { AdminLoginCaptchaAction, type SignInValues } from '../lib/api'
 import { internalPath } from '../lib/url'
-import { useSubmitAuth } from '../hooks/mutations'
+import { useSubmitAuth } from '../features/auth/mutations'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()

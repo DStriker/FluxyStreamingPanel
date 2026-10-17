@@ -16,11 +16,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { messageForError, textForCode } from '../lib/http'
 import { countryName } from '../lib/countryName'
 import { describeUserAgent } from '../lib/userAgent'
+import { useProfile } from '../features/profile/queries'
 import {
   useRevokeActiveSession,
   useRevokeOtherActiveSessions,
-} from '../hooks/mutations'
-import { useActiveSessions, useProfile } from '../hooks/queries'
+} from '../features/sessions/mutations'
+import { useActiveSessions } from '../features/sessions/queries'
 import type { ActiveSession, ActiveSessionList } from '../types'
 
 /**

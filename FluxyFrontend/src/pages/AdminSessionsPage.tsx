@@ -11,8 +11,10 @@ import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../lib/
 import { withFilter } from '../lib/tableParams'
 import { ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps } from '../components/table'
-import { useRevokeAdminSession } from '../hooks/mutations'
-import { useAdminSessionHistory, useAllUsers, useProfile } from '../hooks/queries'
+import { useProfile } from '../features/profile/queries'
+import { useRevokeAdminSession } from '../features/sessions/mutations'
+import { useAdminSessionHistory } from '../features/sessions/queries'
+import { useAllUsers } from '../features/users/queries'
 import { useColumnWidths, useServerTable } from '../hooks/table'
 import type { AdminSessionVisit } from '../types'
 

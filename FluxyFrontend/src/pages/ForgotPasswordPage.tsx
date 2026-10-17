@@ -22,7 +22,7 @@ import {
 import {
   useConfirmPasswordReset,
   useRequestPasswordReset,
-} from '../hooks/mutations'
+} from '../features/auth/mutations'
 
 /** The codes that decide what this page is showing. */
 const Submitted = 'password_reset_submitted'

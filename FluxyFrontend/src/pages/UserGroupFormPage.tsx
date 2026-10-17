@@ -19,8 +19,11 @@ import { ApiError, fieldErrors, messageForError, successTextFor } from '../lib/h
 import { permissionsForRole } from '../lib/permissions'
 import { areaForRole } from '../lib/session'
 import { useSession } from '../lib/sessionContext'
-import { useCreateUserGroup, useUpdateUserGroup } from '../hooks/mutations'
-import { useUserGroupDetail } from '../hooks/queries'
+import {
+  useCreateUserGroup,
+  useUpdateUserGroup,
+} from '../features/user-groups/mutations'
+import { useUserGroupDetail } from '../features/user-groups/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type { Role, UserGroupDetail, UserPermission, UserStatus } from '../types'
 

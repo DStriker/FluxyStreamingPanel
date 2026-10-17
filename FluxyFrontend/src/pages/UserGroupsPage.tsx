@@ -28,8 +28,8 @@ import {
   useBulkUserGroups,
   useDeleteUserGroup,
   useUpdateUserGroup,
-} from '../hooks/mutations'
-import { useUserGroups } from '../hooks/queries'
+} from '../features/user-groups/mutations'
+import { useUserGroups } from '../features/user-groups/queries'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 
 /** The six columns, in the order they are drawn, named by their own keys. */

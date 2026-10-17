@@ -34,8 +34,10 @@ import { AutoTimeZone, knownZones } from '../lib/timeZones'
 import LoginGuardFields from '../features/profile/LoginGuardFields'
 import { formValuesToGuard, guardToFormValues } from '../lib/loginGuardForm'
 import type { GuardFieldValues } from '../lib/loginGuardForm'
-import { useCreateUser, useUpdateUser } from '../hooks/mutations'
-import { useAllUserGroups, useProfile, useUserDetail } from '../hooks/queries'
+import { useProfile } from '../features/profile/queries'
+import { useAllUserGroups } from '../features/user-groups/queries'
+import { useCreateUser, useUpdateUser } from '../features/users/mutations'
+import { useUserDetail } from '../features/users/queries'
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning'
 import type {
   AdminUserDetail,

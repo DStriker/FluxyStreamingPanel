@@ -19,7 +19,7 @@ import {
 import {
   useConfirmRegistration,
   useSubmitRegistration,
-} from '../hooks/mutations'
+} from '../features/auth/mutations'
 
 /** The codes that mean the confirmation step has nothing left to confirm. */
 const CodeExpired = 'code_expired'

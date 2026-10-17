@@ -25,14 +25,16 @@ import { enumParam, withFilter } from '../lib/tableParams'
 import LastSeenCell from '../features/users/LastSeenCell'
 import { RowActions, ServerTable, TableSearch } from '../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../components/table'
+import { useProfile } from '../features/profile/queries'
+import { useAllUserGroups } from '../features/user-groups/queries'
 import {
   useBulkUsers,
   useConfirmUserRegistration,
   useDeleteUser,
   useSetUserBlocked,
   useSetUserUnblocked,
-} from '../hooks/mutations'
-import { useAllUserGroups, useProfile, useUsers } from '../hooks/queries'
+} from '../features/users/mutations'
+import { useUsers } from '../features/users/queries'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../hooks/table'
 import type { AdminUser, UserStatus } from '../types'
 
