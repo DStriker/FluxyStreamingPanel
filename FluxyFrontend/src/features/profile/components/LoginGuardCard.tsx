@@ -6,10 +6,10 @@ import { ApiError, fieldErrors, messageForError, textForCode } from '../../../ut
 import { ProfileChangeCaptchaAction, lookupGeo } from '../api'
 import type { LoginGuardValues } from '../api'
 import { isCountryCode } from '../../../utils/countries'
-import { LOGIN_GUARD_MAX_IPS } from '../../../utils/policy'
+import { LOGIN_GUARD_MAX_IPS } from '../loginGuardPolicy'
 import LoginGuardFields from './LoginGuardFields'
-import { formValuesToGuard, guardToFormValues } from '../../../utils/loginGuardForm'
-import type { GuardFieldValues } from '../../../utils/loginGuardForm'
+import { formValuesToGuard, guardToFormValues } from '../loginGuardForm'
+import type { GuardFieldValues } from '../loginGuardForm'
 import type { LoginGuardSettings } from '../../../types'
 
 /** The code that means a confirmation code is on its way to the account's address. */

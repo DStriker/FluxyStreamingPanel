@@ -1,4 +1,4 @@
-import type { Role, UserPermission } from '../types'
+import type { Role, UserPermission } from '../../types'
 
 /**
  * The frontend's copy of `UserPermissionCatalog` (`Fluxy.Core/Models/Users`).

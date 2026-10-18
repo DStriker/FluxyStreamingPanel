@@ -16,10 +16,10 @@ import {
 import { useTranslation } from 'react-i18next'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
 import { hinted } from '../../utils/hinted'
-import { canEdit } from '../../utils/permissions'
+import { canEdit } from '../../features/user-groups/permissions'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
-import { combineStatus } from '../../utils/userStatus'
+import { combineStatus } from '../../features/users/userStatus'
 import {
   EMAIL_MAX,
   GENERATED_PASSWORD_LENGTH,
@@ -29,11 +29,11 @@ import {
   PASSWORD_MIN,
   USERNAME_MAX,
   USERNAME_MIN,
-} from '../../utils/policy'
+} from '../../features/auth/policy'
 import { AutoTimeZone, knownZones } from '../../utils/timeZones'
 import LoginGuardFields from '../../features/profile/components/LoginGuardFields'
-import { formValuesToGuard, guardToFormValues } from '../../utils/loginGuardForm'
-import type { GuardFieldValues } from '../../utils/loginGuardForm'
+import { formValuesToGuard, guardToFormValues } from '../../features/profile/loginGuardForm'
+import type { GuardFieldValues } from '../../features/profile/loginGuardForm'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useAllUserGroups } from '../../features/user-groups/hooks/queries'
 import { useCreateUser, useUpdateUser } from '../../features/users/hooks/mutations'

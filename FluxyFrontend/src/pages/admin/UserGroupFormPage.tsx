@@ -16,7 +16,7 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
-import { permissionsForRole } from '../../utils/permissions'
+import { permissionsForRole } from '../../features/user-groups/permissions'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import {
@@ -150,7 +150,7 @@ const detailToFormValues = (detail: UserGroupDetail): GroupFormValues => ({
  *   So those three controls are drawn - a control that vanishes teaches nothing about why
  *   it was there - and disabled, with one sentence at the top saying why.
  * - **A permission the level does not own cannot be granted.** `permissionsForRole` says
- *   which those are before anything is sent (see `src/utils/permissions.ts`), so a group of
+ *   which those are before anything is sent (see `src/features/user-groups/permissions.ts`), so a group of
  *   clients is offered no checkboxes at all rather than four that would all be thrown away.
  *   The set is still pruned when the level changes and filtered again at submit, because a
  *   stale tick left in the form's memory is a value the visitor never saw.

@@ -6,8 +6,8 @@ import {
   canView,
   canViewAny,
   permissionsForRole,
-} from '../../src/utils/permissions'
-import type { UserPermission } from '../../src/types'
+} from '../../../src/features/user-groups/permissions'
+import type { UserPermission } from '../../../src/types'
 
 /**
  * The permission table is the frontend's copy of `UserPermissionCatalog`, and these tests

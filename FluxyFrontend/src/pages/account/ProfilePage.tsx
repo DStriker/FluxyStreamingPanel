@@ -35,7 +35,7 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../../utils/policy'
+} from '../../features/auth/policy'
 
 /** The codes that decide what happens next. */
 const Submitted = 'profile_change_submitted'

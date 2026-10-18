@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import type { AdminUserSortField, BulkUserAction } from '../../features/users/api'
 import { hinted } from '../../utils/hinted'
-import { canEdit, canEditAny } from '../../utils/permissions'
+import { canEdit, canEditAny } from '../../features/user-groups/permissions'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import { formatTimestamp } from '../../utils/dateFormat'

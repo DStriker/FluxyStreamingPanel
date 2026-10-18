@@ -13,8 +13,8 @@
  * rather than a slow build.
  *
  * Nothing in this folder imports anything outside it except another type in it. The
- * moment a type grows behaviour it belongs in `utils/`, not here: this is the vocabulary,
- * not the code.
+ * moment a type grows behaviour it belongs beside the code that uses it - a feature's
+ * own rules or `src/utils` - not here: this is the vocabulary, not the code.
  */
 
 export type { Role } from './Role'

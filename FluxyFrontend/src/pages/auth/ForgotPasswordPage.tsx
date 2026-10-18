@@ -18,7 +18,7 @@ import {
   forgetPendingReset,
   readPendingReset,
   rememberPendingReset,
-} from '../../utils/pendingReset'
+} from '../../features/auth/pendingReset'
 import {
   useConfirmPasswordReset,
   useRequestPasswordReset,

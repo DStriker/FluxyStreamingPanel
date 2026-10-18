@@ -57,12 +57,12 @@ import {
   canView,
   canViewAny,
   permissionsForRole,
-} from '../src/utils/permissions'
+} from '../src/features/user-groups/permissions'
 import {
   GENERATED_PASSWORD_LENGTH,
   generatePassword,
   meetsPasswordComplexity,
-} from '../src/utils/policy'
+} from '../src/features/auth/policy'
 import { routePath } from '../src/config/index'
 import { createQueryClient } from '../src/utils/queryClient'
 

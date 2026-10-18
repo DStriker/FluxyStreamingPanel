@@ -1,4 +1,4 @@
-import type { UserStatus } from '../types'
+import type { UserStatus } from '../../types'
 
 /**
  * The frontend's copy of `UserStatusComposition.Combine`

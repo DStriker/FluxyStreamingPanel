@@ -452,7 +452,7 @@ const en = {
     },
   },
   // The ten permission keys, exactly as the catalog spells them. These strings are the
-  // labels of the checkboxes on the group form and the values `src/utils/permissions.ts`
+  // labels of the checkboxes on the group form and the values `src/features/user-groups/permissions.ts`
   // mirrors from the backend - one name for one thing, spelled the same way in both, so a
   // permission added on the server becomes a box an operator can tick without a translation
   // step in between.

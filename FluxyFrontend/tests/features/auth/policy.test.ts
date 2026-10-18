@@ -3,18 +3,17 @@ import {
   CODE_LENGTH,
   EMAIL_MAX,
   GENERATED_PASSWORD_LENGTH,
-  LOGIN_GUARD_MAX_IPS,
   PASSWORD_MAX,
   PASSWORD_MIN,
   USERNAME_MAX,
   USERNAME_MIN,
   generatePassword,
   meetsPasswordComplexity,
-} from '../../src/utils/policy'
+} from '../../../src/features/auth/policy'
 
 /**
  * The frontend's half of a two-sided contract: every number here mirrors
- * `RegistrationPolicy`/`LoginGuardPolicy` on the server, and the complexity rule mirrors
+ * `RegistrationPolicy` on the server, and the complexity rule mirrors
  * `char.IsLower`/`IsUpper`/`IsDigit`. Pinning the values makes a change on either side a
  * failing test rather than a form that disagrees with the endpoint behind it.
  */
@@ -76,7 +75,6 @@ describe('the mirrored bounds', () => {
     expect(PASSWORD_MAX).toBe(100)
     expect(EMAIL_MAX).toBe(254)
     expect(CODE_LENGTH).toBe(6)
-    expect(LOGIN_GUARD_MAX_IPS).toBe(5)
     expect(GENERATED_PASSWORD_LENGTH).toBe(10)
   })
 })

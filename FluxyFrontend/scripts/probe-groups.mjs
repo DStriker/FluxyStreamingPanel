@@ -40,7 +40,7 @@ import { getProfile } from '../src/features/profile/api'
 import { getUser, getUsers } from '../src/features/users/api'
 import { submitAuth } from '../src/features/auth/api'
 import { getCsrfToken } from '../src/utils/csrf'
-import { ALL_PERMISSIONS } from '../src/utils/permissions'
+import { ALL_PERMISSIONS } from '../src/features/user-groups/permissions'
 
 const BASE = process.env.FLUXY_API ?? 'http://localhost:5159'
 config.API_BASE_URL = BASE

@@ -1,4 +1,4 @@
-import type { LoginGuardSettings } from '../types'
+import type { LoginGuardSettings } from '../../types'
 
 /**
  * What the five guard fields collect. The names spell exactly what the server may reject -

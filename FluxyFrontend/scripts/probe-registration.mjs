@@ -1,7 +1,7 @@
 /**
  * Exercises the real frontend modules against the running backend.
  *
- * Not a copy of them: it imports `src/utils/http.ts`, `src/features/auth/api.ts`, `src/utils/policy.ts`
+ * Not a copy of them: it imports `src/utils/http.ts`, `src/features/auth/api.ts`, `src/features/auth/policy.ts`
  * and the locale files, so what answers here is the same code the browser would run. It
  * exists because there is no test framework in this project and no browser attached to the
  * session, and the alternative was reading the code and hoping.
@@ -23,7 +23,7 @@ import {
   RegisterCaptchaAction,
   submitRegistration,
 } from '../src/features/auth/api'
-import { meetsPasswordComplexity, CODE_LENGTH } from '../src/utils/policy'
+import { meetsPasswordComplexity, CODE_LENGTH } from '../src/features/auth/policy'
 import { getCsrfToken } from '../src/utils/csrf'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'

@@ -3,7 +3,7 @@ import { Button, Form, InputNumber, Select, Switch, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { countryOptions } from '../../../utils/countries'
 import { isIpOrCidr } from '../../../utils/ip'
-import { LOGIN_GUARD_MAX_IPS } from '../../../utils/policy'
+import { LOGIN_GUARD_MAX_IPS } from '../loginGuardPolicy'
 
 /** The "use my current network" button: present only where it means the right thing. */
 export interface FillCurrentOption {

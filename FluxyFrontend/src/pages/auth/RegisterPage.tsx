@@ -15,7 +15,7 @@ import {
   forgetPendingEmail,
   readPendingEmail,
   rememberPendingEmail,
-} from '../../utils/pendingRegistration'
+} from '../../features/auth/pendingRegistration'
 import {
   useConfirmRegistration,
   useSubmitRegistration,

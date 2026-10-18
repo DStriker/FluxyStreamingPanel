@@ -12,7 +12,7 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../../../utils/policy'
+} from '../policy'
 import type { MessageResponse } from '../../../types'
 
 /**

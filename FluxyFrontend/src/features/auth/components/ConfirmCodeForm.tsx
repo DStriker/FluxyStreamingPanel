@@ -7,7 +7,7 @@ import AuthCard from './AuthCard'
 import { getCaptchaToken } from '../../../utils/recaptcha'
 import { ApiError, fieldErrors, messageForError } from '../../../utils/http'
 import { ConfirmCaptchaAction } from '../api'
-import { CODE_LENGTH, EMAIL_MAX } from '../../../utils/policy'
+import { CODE_LENGTH, EMAIL_MAX } from '../policy'
 
 /** What the registration confirm step submits: the address it was mailed to, and the code. */
 export type RegistrationConfirmValues = { email: string; code: string }

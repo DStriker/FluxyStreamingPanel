@@ -1,11 +1,15 @@
 /**
- * The limits the registration form enforces, mirroring
- * `RegistrationPolicy` on the server so that a value the server would reject is caught
- * before the request is sent.
+ * The account-credentials rules the auth forms enforce, mirroring `RegistrationPolicy`
+ * on the server so that a value the server would reject is caught before the request is
+ * sent: the field bounds, the confirmation-code length and the password complexity rule.
  *
  * The server stays the authority - it applies the same numbers and a client is free to
  * ignore whatever is advertised - but agreeing on them means the visitor sees the
  * problem under the offending field instead of in a toast about "invalid values".
+ *
+ * The password half is reached across by the two screens that change a password - the
+ * profile page and the administrator's account form - because a password is a credential
+ * wherever it is typed, and one rule serving three forms is one place for it to be right.
  */
 
 export const USERNAME_MIN = 5
@@ -16,13 +20,6 @@ export const EMAIL_MAX = 254
 
 /** Digits of the confirmation code the server mails out. */
 export const CODE_LENGTH = 6
-
-/**
- * How many networks one login guard may allow. Mirrors `LoginGuardPolicy.MaxAllowedIps`
- * on the server: the card stops at five, the server refuses a sixth, and the two have to
- * agree or the sixth address fails with a toast instead of never being typed.
- */
-export const LOGIN_GUARD_MAX_IPS = 5
 
 /**
  * At least one lowercase letter, one uppercase letter and one digit - the same three
