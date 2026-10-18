@@ -1,4 +1,3 @@
-using Fluxy.API.Contracts.Common;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Application;
@@ -6,8 +5,6 @@ using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Fluxy.API
 {
@@ -46,55 +43,10 @@ namespace Fluxy.API
             // carries a token - see AddFluxyAuthentication for what it validates.
             builder.Services.AddFluxyAuthentication(builder.Configuration);
 
-            builder.Services.AddOptions<RateLimitOptions>()
-                .Bind(builder.Configuration.GetSection(RateLimitOptions.SectionName))
-                .Validate(
-                    options => options.RegisterLimit > 0 && options.RegisterWindow > TimeSpan.Zero,
-                    $"'{RateLimitOptions.SectionName}' needs a positive RegisterLimit and a " +
-                    "RegisterWindow longer than zero.")
-                .Validate(
-                    options => options.ConfirmLimit > 0 && options.ConfirmWindow > TimeSpan.Zero,
-                    $"'{RateLimitOptions.SectionName}' needs a positive ConfirmLimit and a " +
-                    "ConfirmWindow longer than zero.")
-                .Validate(
-                    options => options.LoginLimit > 0 && options.LoginWindow > TimeSpan.Zero,
-                    $"'{RateLimitOptions.SectionName}' needs a positive LoginLimit and a " +
-                    "LoginWindow longer than zero.")
-                .Validate(
-                    options => options.RefreshLimit > 0 && options.RefreshWindow > TimeSpan.Zero,
-                    $"'{RateLimitOptions.SectionName}' needs a positive RefreshLimit and a " +
-                    "RefreshWindow longer than zero.")
-                .Validate(
-                    options => options.PreferenceLimit > 0 && options.PreferenceWindow > TimeSpan.Zero,
-                    $"'{RateLimitOptions.SectionName}' needs a positive PreferenceLimit and a " +
-                    "PreferenceWindow longer than zero.")
-                // Checked while the host starts rather than on the first request, so a limit of
-                // zero is a startup error naming the setting rather than an API that refuses
-                // every registration and never says why.
-                .ValidateOnStart();
-
-            builder.Services.AddOptions<AuthenticationOptions>()
-                .Bind(builder.Configuration.GetSection(AuthenticationOptions.SectionName))
-                .Validate(
-                    options => options.AccessLifetime > TimeSpan.Zero,
-                    $"'{AuthenticationOptions.SectionName}' needs an AccessLifetime longer than " +
-                    "zero, otherwise no request could ever be authorized.")
-                .Validate(
-                    options => options.RefreshLifetime >= options.AccessLifetime,
-                    $"'{AuthenticationOptions.SectionName}' needs a RefreshLifetime at least as " +
-                    "long as the AccessLifetime, otherwise a session would expire while its " +
-                    "access token was still valid and no token could ever be exchanged.")
-                // Deliberately not validated here. The signing key is checked once, eagerly, by
-                // AddFluxyAuthentication, because it has to be turned into bytes before the
-                // scheme can exist at all - it cannot be a lazy validation on an options object
-                // nothing resolves until the first authorized request.
-                .ValidateOnStart();
+            builder.Services.AddFluxyRateLimits(builder.Configuration);
 
             builder.Services.AddControllers();
-
-            // There is no AddApiBehaviorOptions in this framework version; the options object is
-            // configured through the ordinary options system, which MVC picks up.
-            builder.Services.Configure<ApiBehaviorOptions>(ConfigureApiBehavior);
+            builder.Services.AddFluxyApiBehavior();
 
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi(); 
@@ -203,52 +155,5 @@ namespace Fluxy.API
 
             app.Run();
         }
-
-        /// <summary>
-        /// Replaces the shape a rejected body is answered with.
-        /// </summary>
-        /// <remarks>
-        /// The default is a <c>ValidationProblemDetails</c>, which carries the offending fields but
-        /// no <c>message</c>. The frontend reads <c>data.message</c> and nothing else, so the
-        /// default answer reaches it as an empty string and the visitor sees "something went
-        /// wrong" instead of what was wrong with the form. This produces the same body as every
-        /// other failure of this API, with the fields added on top.
-        /// </remarks>
-        private static void ConfigureApiBehavior(ApiBehaviorOptions options)
-        {
-            options.InvalidModelStateResponseFactory = context =>
-            {
-                // Grouped rather than turned into a dictionary directly, because a value that
-                // failed both while being read and while being validated lands under two keys
-                // that normalize to the same name - and a duplicate key would throw out of a
-                // factory that is supposed to be describing a problem, not causing one.
-                var errors = context.ModelState
-                    .Where(entry => entry.Value is { Errors.Count: > 0 })
-                    .GroupBy(entry => FieldErrorKeys.FromModelStateKey(entry.Key))
-                    .ToDictionary(
-                        group => group.Key,
-                        group => group
-                            .SelectMany(entry => entry.Value!.Errors)
-                            .Select(Describe)
-                            .ToArray());
-
-                return new BadRequestObjectResult(new MessageResponse
-                {
-                    Code = "validation_failed",
-                    Message = "Some of the values you entered are not valid.",
-                    Errors = errors.Count == 0 ? null : errors
-                });
-            };
-        }
-
-        /// <summary>
-        /// Text for one rejected value. A binding failure without a message of its own - a value
-        /// that could not be read as the type it was declared as - gets a generic one rather than
-        /// an empty string, so no entry in the map is ever blank.
-        /// </summary>
-        private static string Describe(ModelError error)
-            => string.IsNullOrWhiteSpace(error.ErrorMessage)
-                ? "The value is not valid."
-                : error.ErrorMessage;
     }
 }

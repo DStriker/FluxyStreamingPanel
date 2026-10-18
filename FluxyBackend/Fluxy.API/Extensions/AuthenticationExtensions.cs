@@ -83,12 +83,35 @@ namespace Fluxy.API.Extensions
         /// validates with. That is deliberate: a key the handler had to look up per request
         /// would be a key that could be absent at exactly the moment a token arrives, and a
         /// misconfigured installation should fail at startup instead of answering every request
-        /// as unauthorized while looking healthy.
+        /// as unauthorized while looking healthy. The lifetimes and the cookie names are bound
+        /// and validated here as well, because this is the method that owns every other decision
+        /// about them.
         /// </remarks>
         public static IServiceCollection AddFluxyAuthentication(
             this IServiceCollection services,
             IConfiguration configuration)
         {
+            // Resolved lazily by the scheme and the token service, so unlike the signing key
+            // below they cannot be read into anything the code already holds - the options
+            // object is validated while the host starts instead, which is what turns a zero or
+            // an inverted lifetime into a startup error rather than into a stream of 401s.
+            services.AddOptions<AuthenticationOptions>()
+                .Bind(configuration.GetSection(AuthenticationOptions.SectionName))
+                .Validate(
+                    options => options.AccessLifetime > TimeSpan.Zero,
+                    $"'{AuthenticationOptions.SectionName}' needs an AccessLifetime longer than " +
+                    "zero, otherwise no request could ever be authorized.")
+                .Validate(
+                    options => options.RefreshLifetime >= options.AccessLifetime,
+                    $"'{AuthenticationOptions.SectionName}' needs a RefreshLifetime at least as " +
+                    "long as the AccessLifetime, otherwise a session would expire while its " +
+                    "access token was still valid and no token could ever be exchanged.")
+                // Deliberately not validated here. The signing key is checked once, eagerly, by
+                // the code below, because it has to be turned into bytes before the scheme can
+                // exist at all - it cannot be a lazy validation on an options object nothing
+                // resolves until the first authorized request.
+                .ValidateOnStart();
+
             var options = configuration
                 .GetSection(AuthenticationOptions.SectionName)
                 .Get<AuthenticationOptions>() ?? new AuthenticationOptions();
