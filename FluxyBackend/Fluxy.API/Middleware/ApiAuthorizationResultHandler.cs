@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Fluxy.API.Contracts.Authentication;
+using Fluxy.API.Contracts.Common;
 using Fluxy.API.Security;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Core.Models.Authentication;
@@ -81,7 +83,7 @@ namespace Fluxy.API.Middleware
                 await WriteAsync(
                     context,
                     StatusCodes.Status401Unauthorized,
-                    Contracts.AuthenticationResponses.AuthenticationRequiredCode,
+                    AuthenticationResponses.AuthenticationRequiredCode,
                     "Your session has ended. Please sign in again.",
                     clientLoginPath: true);
 
@@ -109,10 +111,10 @@ namespace Fluxy.API.Middleware
                 context,
                 StatusCodes.Status403Forbidden,
                 code,
-                code == Contracts.AuthenticationResponses.PermissionDeniedCode
+                code == AuthenticationResponses.PermissionDeniedCode
                     ? "Your account does not have permission for this."
                     : "Your account does not have access to this area.",
-                clientLoginPath: code != Contracts.AuthenticationResponses.PermissionDeniedCode);
+                clientLoginPath: code != AuthenticationResponses.PermissionDeniedCode);
         }
 
         /// <summary>
@@ -142,21 +144,21 @@ namespace Fluxy.API.Middleware
 
             if (demanded is null)
             {
-                return Contracts.AuthenticationResponses.RoleChangedCode;
+                return AuthenticationResponses.RoleChangedCode;
             }
 
             if (await context.RequestServices
                     .GetRequiredService<RequestStandingReader>()
                     .ReadAsync(context.User) is not { } found)
             {
-                return Contracts.AuthenticationResponses.RoleChangedCode;
+                return AuthenticationResponses.RoleChangedCode;
             }
 
             var (userId, standing) = found;
 
             if (!standing.IsActive)
             {
-                return Contracts.AuthenticationResponses.RoleChangedCode;
+                return AuthenticationResponses.RoleChangedCode;
             }
 
             var requiredRole = policy.Requirements
@@ -165,7 +167,7 @@ namespace Fluxy.API.Middleware
 
             if (requiredRole is not null && standing.Role != requiredRole.Role)
             {
-                return Contracts.AuthenticationResponses.RoleChangedCode;
+                return AuthenticationResponses.RoleChangedCode;
             }
 
             // A permission of a group the account is not in any more reaches this line, and so
@@ -178,8 +180,8 @@ namespace Fluxy.API.Middleware
             // <c>view*</c> keys and refused by this endpoint was refused by the *role*
             // requirement, which is the other half of the message this branch words.
             return demanded.Permissions.Any(standing.Grants)
-                ? Contracts.AuthenticationResponses.RoleChangedCode
-                : Contracts.AuthenticationResponses.PermissionDeniedCode;
+                ? AuthenticationResponses.RoleChangedCode
+                : AuthenticationResponses.PermissionDeniedCode;
         }
 
         private async Task WriteAsync(
@@ -204,7 +206,7 @@ namespace Fluxy.API.Middleware
             }
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(
-                new Contracts.MessageResponse
+                new MessageResponse
                 {
                     Code = code,
                     Message = message,

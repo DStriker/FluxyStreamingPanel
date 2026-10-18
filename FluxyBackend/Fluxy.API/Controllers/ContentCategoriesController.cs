@@ -1,4 +1,5 @@
-using Fluxy.API.Contracts;
+using Fluxy.API.Contracts.Common;
+using Fluxy.API.Contracts.Content;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;

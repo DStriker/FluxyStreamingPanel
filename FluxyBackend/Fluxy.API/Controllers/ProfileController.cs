@@ -1,4 +1,6 @@
-using Fluxy.API.Contracts;
+using Fluxy.API.Contracts.Common;
+using Fluxy.API.Contracts.Profile;
+using Fluxy.API.Contracts.Sessions;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;

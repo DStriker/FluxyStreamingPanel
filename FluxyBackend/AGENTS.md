@@ -1101,6 +1101,7 @@ non-Permanent kind → `400` naming it; a half guide → `400` naming both field
 ## Conventions
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
+- **API contracts are grouped by feature**: `Fluxy.API/Contracts/<Feature>/` holds the request and response types one controller speaks, and the folder name is the namespace segment — `Fluxy.API.Contracts.Authentication`, `Fluxy.API.Contracts.Users`, and so on. The few types more than one feature names — `MessageResponse`, the bulk answers, `FieldErrorKeys` — live in `Fluxy.API.Contracts.Common`. A contract belongs in `Common/` the moment a second feature needs it, not in whichever feature happened to define it first.
 - `ImplicitUsings` and `Nullable` are enabled in all 4 projects.
 - **Comments in project files are written in English** — code, config files and this rule itself. Russian stays where it belongs: this document and anything that is prose for humans, not source. XML doc comments (`///`) are preferred over inline comments.
 - **Commit messages are written in English and kept short** — one line for the subject, a body of a few lines at most, and only when the change genuinely needs it.
