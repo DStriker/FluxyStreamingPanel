@@ -117,7 +117,7 @@ namespace Fluxy.API.Controllers.Content
             {
                 return ApiResults.ValidationFailed(new Dictionary<string, string[]>(StringComparer.Ordinal)
                 {
-                    [nameof(type)] = [TypeHint]
+                    ["type"] = [TypeHint]
                 });
             }
 

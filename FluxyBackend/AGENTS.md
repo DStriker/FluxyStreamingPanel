@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 
 ## Intended architecture — the layers are wired, the API layer is still thin
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring and `Extensions/DotEnvConfigurationExtensions.cs`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -32,12 +32,35 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
             └──> Fluxy.DataAccess ───┘
 ```
 
-- **Fluxy.API** — controllers, request/response DTOs (contracts), configuration.
+- **Fluxy.API** — controllers, request/response DTOs (contracts), and the HTTP concerns: DI wiring, middleware, options, security handlers.
 - **Fluxy.Application** — services and business logic. References Core **and** DataAccess.
 - **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
 - **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/`, and the planned `Repositories/` (data-access logic). Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
 **The graph above is already wired in the csproj files** — add a class to a layer and it is visible to the consumers immediately, no `ProjectReference` editing needed.
+
+**The API layer is organised by area, not by file kind.** The tree and the rule for where a new type goes:
+
+```
+Fluxy.API/
+  Program.cs                  composition only: every interface meets its implementation here
+  Extensions/                 DI wiring (authentication, CORS, rate limits, antiforgery, .env)
+  Middleware/                 ApiAuthorizationResultHandler: 401/403 answered as { code, message }
+  Options/                    RateLimitOptions; AuthenticationOptions lives in Core
+  Security/                   cookies, role/permission handlers, RequestStandingReader
+  Contracts/<Feature>/        request/response DTOs, namespace Fluxy.API.Contracts.<Feature>
+  Contracts/Common/           types a second feature names (MessageResponse, bulk answers, ...)
+  Controllers/
+    ApiControllerBase.cs      the antiforgery pair and NoStore(), shared by every area
+    Support/                  stateless helpers: result envelopes, claims, sort parsing, ...
+    Auth/                     AuthControllerBase + guest, profile and session controllers
+    Admin/                    accounts, groups, admin sessions
+    Content/                  content categories, video streams
+```
+
+**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds the captcha, the attempt throttle and `ClientAddress` for the guest-facing `Auth` controllers, so `Admin` and `Content` never inject a throttle they would not spend. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
+
+**The envelope is controller-owned today.** A 404/405/415 produced by routing, and an unhandled 500, still answer without `{ code, message }`; only the actions' own refusals carry it. Extending the envelope to framework-level statuses is a separate, behavioural change.
 
 ## Interfaces belong in Core, implementations in Application
 
@@ -188,7 +211,7 @@ about it follows from that.
     would mean resolving GeoIP for every row an account has before one page could be shown.
   - `sortBy` is `visitedAt` (default) or `ip`; `sortOrder` is `desc` (default) or `asc`. A value that
     names nothing is `400 validation_failed` with `errors.sortBy` / `errors.sortOrder` carrying the
-    names that do exist. They are parsed from plain text by `ProfileController.ParseSortField` /
+    names that do exist. They are parsed from plain text by `SessionsController.ParseSortField` /
     `ParseSortOrder` rather than bound to the enums, deliberately: enum binding takes a member name
     spelled in full, so the conventional `sortOrder=desc` would be refused while the unabbreviated
     `sortOrder=Descending` was accepted, and an API that answers a request this conventional with a
@@ -223,9 +246,9 @@ Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` / `Sessi
 `SessionSortField` / `SessionSortOrder` in `Fluxy.Core/Models/Authentication/`,
 `ISessionHistoryService` in `Fluxy.Core/Abstractions/`,
 `SessionHistoryService` in `Fluxy.Application/Services/Authentication/` (Scoped, `AsNoTracking`),
-the contracts in `Fluxy.API/Contracts/SessionHistoryResponse.cs`, and the action on
-`ProfileController` — which is already the "read the signed-in account" controller, since it also
-holds `GET /auth/profile` and `GET /auth/geo/lookup`.
+the contracts in `Fluxy.API/Contracts/Sessions/SessionHistoryResponse.cs`, and the action on
+`SessionsController` — the controller that holds every session read and revoke, beside
+`ProfileController`, which owns `GET/PATCH /auth/profile` and `GET /auth/geo/lookup`.
 
 Verified against a running instance with seeded rows of five ages, three roles and one blocked
 account: 200 for Client, Reseller and Admin alike; ordering `created_at DESC`; `total` 6 with
@@ -302,8 +325,8 @@ Layering follows the usual split: `ActiveSession` / `ActiveSessionList` in
 `ActiveSessionService` in `Fluxy.Application/Services/Authentication/` (Scoped,
 `AddScoped<IActiveSessionService, ActiveSessionService>()`), `RevokeUserSessionAsync` /
 `RevokeAllExceptCurrentAsync` added to `ITokenService` and implemented in `JwtTokenService`,
-the contracts in `Fluxy.API/Contracts/ActiveSessionResponse.cs`, and the three actions on
-`ProfileController` beside the history.
+the contracts in `Fluxy.API/Contracts/Sessions/ActiveSessionResponse.cs`, and the three actions on
+`SessionsController` beside the history.
 
 Verified by running against a live instance (throwaway accounts, planted expired row, both
 launch profiles auto-detected by the harness — 45 checks, all passing):
@@ -804,7 +827,7 @@ Layering follows the usual split: `AdminUser` / `AdminUserPage` / `AdminUserDeta
 `UserAdminService` in `Fluxy.Application/Services/Users/` (registered Scoped), the shared
 `LoginGuardNormalizer`/`LoginGuardStore` and `TimeZonePolicy` beside it (extracted from
 `ProfileService` so both flows agree on what a valid guard and time zone are), and the contracts
-in `Fluxy.API/Contracts/AdminUser*`.
+in `Fluxy.API/Contracts/Users/`.
 
 Verified against a running instance (four scripted batches, all green): list with all six sort
 keys, filters, search, paging and each of the seven parameter refusals; `201`+`Location`,
@@ -917,8 +940,8 @@ Layering follows the usual split: `UserGroup` / `UserGroupListItem` / `UserGroup
 `Fluxy.Core/Models/Users/`, `IUserGroupService` in `Fluxy.Core/Abstractions/`,
 `UserGroupService` in `Fluxy.Application/Services/Users/` (registered Scoped), the entities and
 their two configurations in `Fluxy.DataAccess/`, and the contracts in
-`Fluxy.API/Contracts/AdminUserGroup*` + `CreateUserGroupRequest`/`UpdateUserGroupRequest` +
-`UserGroupResponses`.
+`Fluxy.API/Contracts/UserGroups/` (`AdminUserGroup*`, `CreateUserGroupRequest` /
+`UpdateUserGroupRequest`, `BulkUserGroupsRequest`, `UserGroupResponses`).
 
 Verified against a running instance by `npm run probe:groups` in the frontend (**28/28**, which
 drives the app's own modules rather than `curl`), the load-bearing rows being: the three base
@@ -986,8 +1009,9 @@ Layering follows the usual split: `ContentType` / `ContentCategory` / `NewConten
 `ContentCategoryAction` in `Fluxy.Core/Models/Content/`, `IContentCategoryService` in
 `Fluxy.Core/Abstractions/`, `ContentCategoryService` in
 `Fluxy.Application/Services/Content/` (Scoped), the entity and its configuration in
-`Fluxy.DataAccess/` (migration `20261012103956_AddContentCategories`), and the contracts +
-`ContentCategoriesController` in `Fluxy.API/`.
+`Fluxy.DataAccess/` (migration `20261012103956_AddContentCategories`), the contracts in
+`Fluxy.API/Contracts/Content/`, and `ContentCategoriesController` in
+`Fluxy.API/Controllers/Content/`.
 
 Verified against a running instance (27 scripted checks, all green): empty list; missing and
 unknown `type` refused with `errors.type`; a write without the antiforgery pair → `400
@@ -1056,8 +1080,9 @@ Layering follows the usual split: `ContentType`-adjacent models in `Fluxy.Core/M
 `VideoStreamOutcome`, `VideoStreamAction`, `VideoStreamSortField`, `VideoStreamSortOrder`,
 `VideoStreamListLimits`) plus `IVideoStreamService` in `Fluxy.Core/Abstractions/`,
 `VideoStreamService` in `Fluxy.Application/Services/Streams/` (Scoped), the three entities and
-their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), and
-the contracts + `VideoStreamsController` in `Fluxy.API/`.
+their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the
+contracts in `Fluxy.API/Contracts/Streams/`, and `VideoStreamsController` in
+`Fluxy.API/Controllers/Content/`.
 
 ### What running caught: a PATCH that failed on any stream with a list
 
