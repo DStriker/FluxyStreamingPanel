@@ -10,7 +10,7 @@ import type { ResizableHeaderCellProps } from '../../components/table'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useSessionHistory } from '../../features/sessions/hooks/queries'
 import { useColumnWidths, useServerTable } from '../../hooks/table'
-import type { SessionVisit } from '../../features/sessions/types/SessionVisit'
+import type { SessionVisit } from '../../features/sessions/types'
 
 /** The five columns, in the order they are drawn, named by their own keys. */
 type SessionColumnKey = 'when' | 'ip' | 'country' | 'network' | 'agent'

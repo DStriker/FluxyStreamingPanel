@@ -1,9 +1,6 @@
 import { apiFetch, apiGet } from '../../lib/http'
 import type { MessageResponse } from '../../types'
-import type { VideoStreamDetail } from './types/VideoStreamDetail'
-import type { VideoStreamList } from './types/VideoStreamList'
-import type { VideoStreamStatus } from './types/VideoStreamStatus'
-import type { VideoStreamType } from './types/VideoStreamType'
+import type { VideoStreamDetail, VideoStreamList, VideoStreamStatus, VideoStreamType } from './types'
 
 /**
  * The streams table: one page of it, one stream in full, the body both form submissions send,

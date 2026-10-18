@@ -5,8 +5,7 @@ import type {
   MessageResponse,
   UserStatus,
 } from '../../types'
-import type { AdminUserDetail } from './types/AdminUserDetail'
-import type { AdminUserList } from './types/AdminUserList'
+import type { AdminUserDetail, AdminUserList } from './types'
 
 /**
  * The accounts table: reading a page and a row, creating, changing, confirming, blocking and

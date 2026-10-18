@@ -1,7 +1,7 @@
 import { apiFetch, apiGet } from '../../lib/http'
 import { getCsrfToken } from '../../lib/csrf'
 import type { MessageResponse, Session } from '../../types'
-import type { PasswordStatusResponse } from './types/PasswordStatusResponse'
+import type { PasswordStatusResponse } from './types'
 import type { CallOptions } from '../../lib/http'
 
 /**

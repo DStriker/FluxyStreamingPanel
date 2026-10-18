@@ -2,10 +2,10 @@
  * The cross-domain vocabulary: one type per file, named after what it holds, so the file
  * name *is* the import and a reader looking for where `Session` is defined finds it without
  * a search. A domain's own response contracts live in `features/<domain>/types/` instead,
- * beside the `api.ts` that returns them; what remains here is what more than one feature or
- * `src/lib` names — the role and status enums, the permission catalog, the session and its
- * context value, the bulk and message responses, the login guard settings and the CSRF
- * answer.
+ * beside the `api.ts` that returns them and re-exported through that folder's own index;
+ * what remains here is what more than one feature or `src/lib` names — the role and status
+ * enums, the permission catalog, the session and its context value, the bulk and message
+ * responses, the login guard settings and the CSRF answer.
  *
  * This barrel exists so callers do not have to know the layout: import from `../types`
  * (or `./types`) and name the type. `export type` rather than `export` because every

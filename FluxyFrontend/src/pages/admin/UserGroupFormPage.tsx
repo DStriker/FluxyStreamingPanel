@@ -25,7 +25,7 @@ import {
 } from '../../features/user-groups/hooks/mutations'
 import { useUserGroupDetail } from '../../features/user-groups/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type { UserGroupDetail } from '../../features/user-groups/types/UserGroupDetail'
+import type { UserGroupDetail } from '../../features/user-groups/types'
 import type { Role, UserPermission, UserStatus } from '../../types'
 
 /**

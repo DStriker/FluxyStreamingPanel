@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import type { AdminUser } from '../types/AdminUser'
+import type { AdminUser } from '../types'
 
 /** What the "Last visit" cell is given: the account, the moment, and how to print it. */
 type LastSeenCellProps = {

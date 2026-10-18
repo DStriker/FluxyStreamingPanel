@@ -39,7 +39,7 @@ import { useAllUserGroups } from '../../features/user-groups/hooks/queries'
 import { useCreateUser, useUpdateUser } from '../../features/users/hooks/mutations'
 import { useUserDetail } from '../../features/users/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type { AdminUserDetail } from '../../features/users/types/AdminUserDetail'
+import type { AdminUserDetail } from '../../features/users/types'
 import type { LoginGuardSettings, UserStatus } from '../../types'
 
 /**

@@ -1,7 +1,6 @@
 import { apiFetch, apiGet } from '../../lib/http'
 import type { MessageResponse } from '../../types'
-import type { ContentCategoryList } from './types/ContentCategoryList'
-import type { ContentType } from './types/ContentType'
+import type { ContentCategoryList, ContentType } from './types'
 
 /**
  * The categories each kind of content is filed under: the list in the order the operator

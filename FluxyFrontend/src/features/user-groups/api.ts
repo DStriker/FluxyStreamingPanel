@@ -6,8 +6,7 @@ import type {
   UserPermission,
   UserStatus,
 } from '../../types'
-import type { UserGroupDetail } from './types/UserGroupDetail'
-import type { UserGroupList } from './types/UserGroupList'
+import type { UserGroupDetail, UserGroupList } from './types'
 
 /**
  * The group table: reading a page and a group, creating, changing and deleting one, and the

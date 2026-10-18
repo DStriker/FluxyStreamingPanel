@@ -22,8 +22,7 @@ import {
   useRevokeOtherActiveSessions,
 } from '../../features/sessions/hooks/mutations'
 import { useActiveSessions } from '../../features/sessions/hooks/queries'
-import type { ActiveSession } from '../../features/sessions/types/ActiveSession'
-import type { ActiveSessionList } from '../../features/sessions/types/ActiveSessionList'
+import type { ActiveSession, ActiveSessionList } from '../../features/sessions/types'
 
 /**
  * Dates, by locale and zone, remembered.

@@ -1,8 +1,6 @@
 import { apiFetch, apiGet } from '../../lib/http'
 import type { MessageResponse } from '../../types'
-import type { ActiveSessionList } from './types/ActiveSessionList'
-import type { AdminSessionHistoryResponse } from './types/AdminSessionHistoryResponse'
-import type { SessionHistoryResponse } from './types/SessionHistoryResponse'
+import type { ActiveSessionList, AdminSessionHistoryResponse, SessionHistoryResponse } from './types'
 
 /**
  * Both halves of the session story: the visit history an account reads about itself, the
