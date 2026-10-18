@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Auth
 {
     /// <summary>
     /// Everything an unauthenticated visitor may do: fetch an antiforgery token, ask for a

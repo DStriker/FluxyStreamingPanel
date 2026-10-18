@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Auth
 {
     /// <summary>
     /// Signing in, staying signed in, and signing out.

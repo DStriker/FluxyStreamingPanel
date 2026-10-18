@@ -2,15 +2,13 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Content;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
-using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Content;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Content
 {
     /// <summary>
     /// Managing the categories content is filed under: every category of one kind of
@@ -48,7 +46,7 @@ namespace Fluxy.API.Controllers
     /// </para>
     /// <para>
     /// Both reads carry <c>Cache-Control: no-store</c> through
-    /// <see cref="AuthControllerBase.NoStore"/>: this is the section structure of a private
+    /// <see cref="ApiControllerBase.NoStore"/>: this is the section structure of a private
     /// area, and a shared cache that kept one would hand it to the next visitor.
     /// </para>
     /// </remarks>
@@ -56,7 +54,7 @@ namespace Fluxy.API.Controllers
     [Route("admin/content-categories")]
     [Authorize(Policy = AuthenticationExtensions.AdminPolicy)]
     [Produces("application/json")]
-    public sealed class ContentCategoriesController : AuthControllerBase
+    public sealed class ContentCategoriesController : ApiControllerBase
     {
         /// <summary>Sentence a type that names no known member gets.</summary>
         private const string TypeHint =
@@ -76,21 +74,12 @@ namespace Fluxy.API.Controllers
         /// </summary>
         /// <param name="categories">Service that reads and changes the categories.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">
-        /// Counter shared with the rest of the authentication surface. It is not spent by any
-        /// action of this controller - the window it counts belongs to sign-in and refresh -
-        /// but the base class takes it, so the controllers share one answer to "which
-        /// window?".
-        /// </param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public ContentCategoriesController(
             IContentCategoryService categories,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<ContentCategoriesController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _categories = categories;
         }

@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Auth
 {
     /// <summary>
     /// The password reset flow: whether it exists on this installation, asking for a code, and

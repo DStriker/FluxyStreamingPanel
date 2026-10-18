@@ -3,7 +3,6 @@ using Fluxy.API.Contracts.Profile;
 using Fluxy.API.Contracts.Users;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
-using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
@@ -11,9 +10,8 @@ using Fluxy.Core.Models.Users;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Admin
 {
     /// <summary>
     /// Managing the accounts of the installation: one page of all of them, one in full, and
@@ -83,14 +81,14 @@ namespace Fluxy.API.Controllers
     /// keep to itself - the next endpoint reaching the same action would have to remember them,
     /// and it would not.
     ///
-    /// Both reads carry <c>Cache-Control: no-store</c> through <see cref="AuthControllerBase.NoStore"/>:
+    /// Both reads carry <c>Cache-Control: no-store</c> through <see cref="ApiControllerBase.NoStore"/>:
     /// a shared cache that kept a page of accounts would hand one operator's list to the next.
     /// </remarks>
     [ApiController]
     [Route("admin/users")]
     [Authorize(Policy = AuthenticationExtensions.AdminPolicy)]
     [Produces("application/json")]
-    public sealed class UsersController : AuthControllerBase
+    public sealed class UsersController : ApiControllerBase
     {
         /// <summary>Sentence a filter that names no known state gets.</summary>
         private const string StatusHint =
@@ -104,14 +102,6 @@ namespace Fluxy.API.Controllers
         private const string GroupIdHint =
             "The group must be the identifier of a group, as a uuid.";
 
-        /// <summary>Names the operations a bulk body may ask for, for the sentence that lists them.</summary>
-        private const string BulkActionHint =
-            "The action must be 'block', 'unblock', 'delete', 'confirm-registration' " +
-            "or 'assign-group'.";
-
-        /// <summary>Sentence a set of identifiers that is not all uuids gets.</summary>
-        private const string IdsHint = "Every identifier must be the uuid of an account.";
-
         private readonly IUserAdminService _users;
 
         /// <summary>
@@ -119,14 +109,6 @@ namespace Fluxy.API.Controllers
         /// on their way into the action.
         /// </summary>
         private readonly RequestStandingReader _standing;
-
-        /// <summary>
-        /// An empty grant set, returned when the account behind the request could not be read.
-        /// Refuses everything, which is the safe reading of "we do not know who this is" -
-        /// the policy on the action would already have refused such a request before it got
-        /// here, so this is a default rather than a branch anybody should be able to reach.
-        /// </summary>
-        private static readonly IReadOnlySet<UserPermission> NoGrants = new HashSet<UserPermission>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UsersController"/> class.
@@ -139,46 +121,16 @@ namespace Fluxy.API.Controllers
         /// object rather than two.
         /// </param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">
-        /// Counter shared with the rest of the authentication surface. It is not spent by any
-        /// action of this controller - see the class remarks - but the base class takes it,
-        /// because the window it counts is one the sign-in and refresh endpoints own.
-        /// </param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public UsersController(
             IUserAdminService users,
             RequestStandingReader standing,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<UsersController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _users = users;
             _standing = standing;
-        }
-
-        /// <summary>
-        /// The permissions the account behind this request holds, for the service's per-target
-        /// check.
-        /// </summary>
-        /// <remarks>
-        /// Read here rather than in each action because it is the same question the policies on
-        /// this controller already asked, answered once per request by
-        /// <see cref="RequestStandingReader"/>: the coarse gate settled that the caller may act
-        /// on some accounts, and this is the same fact taken to the row that says which. An
-        /// account whose standing could not be established is granted nothing rather than
-        /// everything - see <see cref="NoGrants"/>.
-        /// </remarks>
-        private async Task<IReadOnlySet<UserPermission>> GrantedAsync()
-        {
-            if (await _standing.ReadAsync(User) is { } found)
-            {
-                return found.Standing.Permissions;
-            }
-
-            return NoGrants;
         }
 
         /// <summary>
@@ -285,7 +237,7 @@ namespace Fluxy.API.Controllers
                 wantedStatus,
                 field.Value,
                 order.Value,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken);
 
             return Ok(new AdminUserListResponse
@@ -333,7 +285,7 @@ namespace Fluxy.API.Controllers
         {
             NoStore();
 
-            var result = await _users.GetAsync(id, await GrantedAsync(), cancellationToken);
+            var result = await _users.GetAsync(id, await _standing.ReadGrantsAsync(User), cancellationToken);
 
             if (result.Detail is not { } detail)
             {
@@ -437,7 +389,7 @@ namespace Fluxy.API.Controllers
                     TimeZone = request.TimeZone,
                     LoginGuard = ToSettings(request.LoginGuard)
                 },
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken);
 
             var (statusCode, body) = UserAdminResponses.Describe(outcome);
@@ -555,7 +507,7 @@ namespace Fluxy.API.Controllers
                     LoginGuard = ToSettings(request.LoginGuard)
                 },
                 actingUserId,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken);
 
             return Answer(outcome);
@@ -599,7 +551,7 @@ namespace Fluxy.API.Controllers
 
             return Answer(await _users.ConfirmRegistrationAsync(
                 id,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken));
         }
 
@@ -646,7 +598,7 @@ namespace Fluxy.API.Controllers
                 id,
                 true,
                 actingUserId,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken));
         }
 
@@ -695,7 +647,7 @@ namespace Fluxy.API.Controllers
                 id,
                 false,
                 actingUserId,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken));
         }
 
@@ -746,200 +698,8 @@ namespace Fluxy.API.Controllers
             return Answer(await _users.DeleteAsync(
                 id,
                 actingUserId,
-                await GrantedAsync(),
+                await _standing.ReadGrantsAsync(User),
                 cancellationToken));
-        }
-
-        /// <summary>
-        /// Applies one operation to every account the request names, and reports how each one
-        /// ended.
-        /// </summary>
-        /// <param name="request">Which operation, over which accounts, and where to move them.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>
-        /// 200 with one entry per identifier, 400 when the body broke a rule on itself (an
-        /// unknown operation, no identifiers, more identifiers than one page holds, or a move
-        /// that names no group), 403 from the coarse policy on the way in, and 400
-        /// <c>csrf_invalid</c> without the antiforgery pair.
-        /// </returns>
-        /// <remarks>
-        /// <para>
-        /// <b>A recorded departure from the REST shape of the rest of this controller</b>, and
-        /// the same one the session surface records for <c>/auth/refresh</c>: the path carries
-        /// a verb because the resource it would otherwise name does not exist. "These twenty
-        /// accounts" is a set the table on screen assembled in the browser, not a row with an
-        /// address of its own, so there is no noun to put after the slash - and both
-        /// alternatives were worse: five routes (<c>bulk/block</c>, <c>bulk/delete</c>, ...)
-        /// would repeat the antiforgery check, the permission policy and the identifier
-        /// parsing five times over, while a client wanting six operations would have to know
-        /// which five exist.
-        /// </para>
-        /// <para>
-        /// <b>The 200 describes the run, not every row in it.</b> What happened to a particular
-        /// account is stated in its own entry with the same code the one-row endpoint gives,
-        /// because the refusals that protect the caller are about that account and about
-        /// nothing else: an operator who selected their own row among twenty is told so, and
-        /// the other nineteen are still blocked. A status code can only describe the request as
-        /// a whole, and the request as a whole *was* answered - every identifier it named came
-        /// back with a verdict. Filling that one code with the worst verdict in the set would
-        /// make "nine blocked, one was mine" indistinguishable from "nothing happened", and a
-        /// client would be unable to redraw the list without guessing.
-        /// </para>
-        /// <para>
-        /// No captcha and no attempt window, for the reason the rest of this controller gives:
-        /// both exist to guard a request with no session at all, and everything here is behind
-        /// an admin session, the edit permission and a fresh antiforgery pair. The identifiers
-        /// are capped at the size of one page rather than accepted without bound, so the work
-        /// one request can cause is the work one page of rows can cause.
-        /// </para>
-        /// </remarks>
-        [HttpPost("bulk")]
-        [Authorize(Policy = AuthenticationExtensions.EditAnyUsersPolicy)]
-        [ProducesResponseType<BulkOperationResponse>(StatusCodes.Status200OK)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType<MessageResponse>(StatusCodes.Status403Forbidden)]
-        public async Task<IActionResult> BulkUsers(
-            [FromBody] BulkUsersRequest request,
-            CancellationToken cancellationToken)
-        {
-            if (await RejectsCsrfAsync() is { } csrfFailure)
-            {
-                return csrfFailure;
-            }
-
-            if (User.UserId() is not { } actingUserId)
-            {
-                return ApiResults.Anonymous();
-            }
-
-            // Everything the body can be wrong about is read first, so one answer names every
-            // mistake rather than one per round trip - and so that no row is touched by a
-            // request that is about to be refused for another reason.
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-            var action = ParseBulkAction(request.Action);
-            if (action is null)
-            {
-                errors[nameof(BulkUsersRequest.Action)] = [BulkActionHint];
-            }
-
-            var ids = ParseIds(request.Ids, errors);
-
-            Guid? groupId = null;
-
-            if (string.IsNullOrWhiteSpace(request.GroupId))
-            {
-                // Absent is fine for four of the five operations and is not fine for the one
-                // that has somewhere to go. Refused here rather than by treating an absent
-                // group as "leave it alone", which is what a patch means by absent - an
-                // operation that answered success over twenty accounts and moved none of them
-                // would be the worst thing this endpoint could say.
-                if (action is BulkUserAction.AssignGroup)
-                {
-                    errors[nameof(BulkUsersRequest.GroupId)] = [GroupIdHint];
-                }
-            }
-            else if (Guid.TryParse(request.GroupId, out var parsedGroup))
-            {
-                groupId = parsedGroup;
-            }
-            else
-            {
-                errors[nameof(BulkUsersRequest.GroupId)] = [GroupIdHint];
-            }
-
-            if (errors.Count > 0)
-            {
-                return ApiResults.ValidationFailed(errors);
-            }
-
-            return Ok(BulkResponses.Describe(await _users.BulkAsync(
-                new BulkUserOperation
-                {
-                    Action = action!.Value,
-                    UserIds = ids!,
-                    GroupId = groupId
-                },
-                actingUserId,
-                await GrantedAsync(),
-                cancellationToken)));
-        }
-
-        /// <summary>
-        /// Turns the text a bulk body sent into the operation it names, or nothing at all.
-        /// </summary>
-        /// <remarks>
-        /// Compared after lowering and with the hyphens spelled the way the rest of this API
-        /// spells its actions, so <c>Block</c> and <c>confirm-registration</c> are both the
-        /// request a client naturally sends. Enum binding is deliberately not used: it takes a
-        /// member name spelled in full, so the conventional <c>block</c> would be refused while
-        /// <c>Block</c> was accepted - the exact lesson <c>sortOrder</c> taught this API.
-        /// </remarks>
-        private static BulkUserAction? ParseBulkAction(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "block" => BulkUserAction.Block,
-                "unblock" => BulkUserAction.Unblock,
-                "delete" => BulkUserAction.Delete,
-                "confirm-registration" => BulkUserAction.ConfirmRegistration,
-                "assign-group" => BulkUserAction.AssignGroup,
-                _ => null
-            };
-
-        /// <summary>
-        /// Turns the identifiers a bulk body sent into the rows they name, or nothing at all
-        /// once one of them is wrong.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The three refusals answer different mistakes and none of them is clamped. A list
-        /// nobody filled in is a request that named nothing, which is refused rather than
-        /// answered with an empty run - an operation over zero accounts is a success that
-        /// changed nothing, and a client that meant to send twenty deserves to be told its
-        /// body did not arrive.
-        /// </para>
-        /// <para>
-        /// <b>Duplicates collapse rather than being refused.</b> A page of a table cannot hold
-        /// the same row twice, so a duplicate can only come from a client assembling the list
-        /// by hand - and running an operation twice over one row is not what anybody means by
-        /// selecting it. Refusing would turn a harmless overlap into a 400 the operator could
-        /// not explain.
-        /// </para>
-        /// </remarks>
-        private static IReadOnlyList<Guid>? ParseIds(
-            IReadOnlyList<string>? ids,
-            Dictionary<string, string[]> errors)
-        {
-            if (ids is null || ids.Count is 0)
-            {
-                errors[nameof(BulkUsersRequest.Ids)] = ["Select at least one account."];
-                return null;
-            }
-
-            if (ids.Count > BulkOperationLimits.MaxItems)
-            {
-                errors[nameof(BulkUsersRequest.Ids)] =
-                [$"At most {BulkOperationLimits.MaxItems} accounts may be named in one request."];
-                return null;
-            }
-
-            var parsed = new List<Guid>(ids.Count);
-
-            foreach (var text in ids)
-            {
-                if (!Guid.TryParse(text, out var id))
-                {
-                    errors[nameof(BulkUsersRequest.Ids)] = [IdsHint];
-                    return null;
-                }
-
-                if (!parsed.Contains(id))
-                {
-                    parsed.Add(id);
-                }
-            }
-
-            return parsed;
         }
 
         /// <summary>

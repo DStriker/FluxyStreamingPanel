@@ -2,7 +2,6 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Sessions;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
-using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
@@ -10,9 +9,8 @@ using Fluxy.Core.Models.Users;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Admin
 {
     /// <summary>
     /// Reading the installation's visit history, and ending a session of the accounts the
@@ -47,7 +45,7 @@ namespace Fluxy.API.Controllers
     [Route("admin/sessions")]
     [Authorize(Policy = AuthenticationExtensions.AdminPolicy)]
     [Produces("application/json")]
-    public sealed class AdminSessionsController : AuthControllerBase
+    public sealed class AdminSessionsController : ApiControllerBase
     {
         /// <summary>
         /// An empty grant set, returned when the account behind the request could not be read.
@@ -71,17 +69,13 @@ namespace Fluxy.API.Controllers
         /// <param name="sessions">Service that reads the history and ends sessions.</param>
         /// <param name="standing">Reader of the account behind the request.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public AdminSessionsController(
             IAdminSessionHistoryService sessions,
             RequestStandingReader standing,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<AdminSessionsController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _sessions = sessions;
             _standing = standing;
@@ -113,7 +107,7 @@ namespace Fluxy.API.Controllers
         /// submission to alter; no captcha, because the expensive step this API protects is key
         /// derivation and this path performs none; and no attempt window, because a page of rows
         /// from an index costs about as much as rendering the page that asked for it.
-        /// <see cref="AuthControllerBase.NoStore"/> marks it, because the body names the
+        /// <see cref="ApiControllerBase.NoStore"/> marks it, because the body names the
         /// networks every account the caller may read signed in from and a shared cache has no
         /// business handing that to the next visitor.
         ///

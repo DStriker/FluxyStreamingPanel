@@ -6,17 +6,17 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Controllers
+namespace Fluxy.API.Controllers.Auth
 {
     /// <summary>
-    /// The checks every endpoint of this API runs before it does anything else, and the
-    /// refusals they produce.
+    /// The checks the guest-facing endpoints of this area run before they do anything else:
+    /// the captcha and the attempt limit, on top of the antiforgery pair every write carries.
     /// </summary>
     /// <remarks>
-    /// Three guards sit in front of every endpoint an unauthenticated visitor can reach, and
-    /// they are the same three everywhere: the antiforgery pair, the captcha, and the attempt
-    /// limit. Only registration and sign-in need all of them, and only registration additionally
-    /// needs a mail check, so those live in the derived controllers where they are used.
+    /// Two guards sit in front of every endpoint an unauthenticated visitor can reach, and
+    /// they are the same two everywhere: the captcha and the attempt limit. Only registration
+    /// and sign-in need both, and only registration additionally needs a mail check, so those
+    /// live in the derived controllers where they are used.
     ///
     /// They are here rather than copied because the order they run in is a security property
     /// rather than a matter of taste, and a copy is free to get it subtly wrong. The order is
@@ -25,20 +25,18 @@ namespace Fluxy.API.Controllers
     /// cost anything; the captcha is a call to a third party and should not be made for a
     /// request that is already going to be refused; and the limit is what keeps a deliberate
     /// key derivation off an open endpoint. Each derived controller states the order for its
-    /// own endpoint, and this class only supplies the pieces.
+    /// own endpoint, and this class only supplies the pieces; the antiforgery half and
+    /// <c>NoStore</c> come from <see cref="ApiControllerBase"/>.
     ///
     /// It is an abstract controller rather than a filter or middleware on purpose. Each refusal
     /// is a specific status code and a specific code string, and the frontend branches on those
     /// strings; a filter would have to decide them centrally, which is exactly the coupling
     /// being avoided.
     /// </remarks>
-    public abstract class AuthControllerBase : ControllerBase
+    public abstract class AuthControllerBase : ApiControllerBase
     {
         /// <summary>Header the reCAPTCHA token arrives in.</summary>
         public const string CaptchaHeaderName = "X-Recaptcha-Token";
-
-        /// <summary>Code reported when the antiforgery token is missing, stale or does not match.</summary>
-        public const string InvalidCsrfCode = "csrf_invalid";
 
         /// <summary>Code reported when the reCAPTCHA check refuses a request.</summary>
         public const string InvalidCaptchaCode = "captcha_invalid";
@@ -49,14 +47,8 @@ namespace Fluxy.API.Controllers
         /// <summary>Counter that limits how often one client may try.</summary>
         protected readonly IAttemptThrottle Throttle;
 
-        /// <summary>Service that builds and checks the CSRF token.</summary>
-        protected readonly IAntiforgery Antiforgery;
-
         /// <summary>Live limits, so a configuration reload applies without a restart.</summary>
         protected readonly IOptionsMonitor<RateLimitOptions> RateLimits;
-
-        /// <summary>Logger every derived controller reports through.</summary>
-        protected readonly ILogger Logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthControllerBase"/> class.
@@ -70,11 +62,10 @@ namespace Fluxy.API.Controllers
             IAttemptThrottle throttle,
             IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger logger)
+            : base(antiforgery, logger)
         {
-            Antiforgery = antiforgery;
             Throttle = throttle;
             RateLimits = rateLimits;
-            Logger = logger;
         }
 
         /// <summary>
@@ -91,50 +82,6 @@ namespace Fluxy.API.Controllers
         /// </remarks>
         protected string ClientAddress
             => HttpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient;
-
-        /// <summary>
-        /// Checks the antiforgery token and, when it does not hold, builds the refusal.
-        /// </summary>
-        /// <returns>Null when the request may continue, otherwise the response to answer with.</returns>
-        /// <remarks>
-        /// The service is called directly rather than through
-        /// <c>[ValidateAntiForgeryToken]</c>, for two reasons that hold for every endpoint in
-        /// this file and are easy to get wrong again. That attribute resolves to an MVC filter
-        /// that only <c>AddControllersWithViews</c> registers, and this application is a JSON API
-        /// that calls <c>AddControllers</c> - the attribute therefore resolves to a type that is
-        /// not in the container and every protected request fails with a 500. Pulling the Razor
-        /// view engine in to satisfy an attribute would be the wrong trade for an API that has no
-        /// views.
-        ///
-        /// The second reason is the response. The attribute answers a bad token with a 400 and
-        /// no body at all, and the frontend shows what it finds in <c>data.message</c>, so the
-        /// visitor would be told "something went wrong" instead of "reload the page". Asking the
-        /// service directly produces the same verdict with a body that says what happened.
-        /// </remarks>
-        protected async Task<IActionResult?> RejectsCsrfAsync()
-        {
-            try
-            {
-                await Antiforgery.ValidateRequestAsync(HttpContext);
-            }
-            catch (AntiforgeryValidationException exception)
-            {
-                Logger.LogInformation(
-                    exception,
-                    "Refused a request to {Path} because its antiforgery token did not validate.",
-                    HttpContext.Request.Path);
-
-                return StatusCode(
-                    StatusCodes.Status400BadRequest,
-                    new MessageResponse
-                    {
-                        Code = InvalidCsrfCode,
-                        Message = "The request could not be verified. Reload the page and try again."
-                    });
-            }
-
-            return null;
-        }
 
         /// <summary>
         /// Runs the reCAPTCHA check for an action. Anything other than an outright refusal lets
@@ -174,22 +121,6 @@ namespace Fluxy.API.Controllers
                     Code = InvalidCaptchaCode,
                     Message = "The request could not be verified as coming from a person. Please try again."
                 });
-
-        /// <summary>
-        /// Marks the answer as one no intermediary may keep: <c>Cache-Control: no-store</c>.
-        /// </summary>
-        /// <remarks>
-        /// For every read that answers about the caller — who the token belongs to, the
-        /// profile, the visit history, the live sessions, the network the request arrived
-        /// from — and for the antiforgery token itself. These bodies sit behind cookies a
-        /// shared cache has no business matching on, and a cached "who am I" would hand one
-        /// visitor's account to the next one through the same proxy. The writes are not
-        /// marked: a POST or a DELETE is not cached in the first place, and a header
-        /// promising something about a response nobody would store is noise on every one of
-        /// them.
-        /// </remarks>
-        protected void NoStore()
-            => Response.Headers.CacheControl = "no-store";
 
         /// <summary>
         /// Refuses a client that has spent its window, and says for how long so that a caller can
