@@ -15,8 +15,8 @@ namespace Fluxy.Application.Services.Users
     /// </summary>
     /// <remarks>
     /// The rules it applies are the ones the public forms apply, taken from the same places:
-    /// a username is a <c>RegistrationPolicy</c> username, a password is a
-    /// <c>RegistrationPolicy</c> password, a time zone is a <c>TimeZonePolicy</c> time zone and
+    /// a username is bounded by <c>RegistrationLimits</c>, a password by <c>RegistrationLimits</c>
+    /// and <c>RegistrationPolicy</c>, a time zone is a <c>TimeZonePolicy</c> time zone and
     /// a guard is a <c>LoginGuardNormalizer</c> guard. What differs is everything around them -
     /// no password of the caller's own is asked for, no code is mailed, and the anti-lock check
     /// is deliberately absent (see <see cref="LoginGuardNormalizer"/> for why).
@@ -42,15 +42,15 @@ namespace Fluxy.Application.Services.Users
         /// <summary>The sentence a username that is too short or too long gets.</summary>
         private static readonly string[] UsernameRule =
         [
-            $"The username must be between {RegistrationPolicy.UsernameMinLength} and " +
-            $"{RegistrationPolicy.UsernameMaxLength} characters."
+            $"The username must be between {RegistrationLimits.UsernameMinLength} and " +
+            $"{RegistrationLimits.UsernameMaxLength} characters."
         ];
 
         /// <summary>The sentence both this service and the registration form give a password.</summary>
         private static readonly string[] PasswordRule =
         [
-            $"The password must be between {RegistrationPolicy.PasswordMinLength} and " +
-            $"{RegistrationPolicy.PasswordMaxLength} characters and contain at least one " +
+            $"The password must be between {RegistrationLimits.PasswordMinLength} and " +
+            $"{RegistrationLimits.PasswordMaxLength} characters and contain at least one " +
             "lower case letter, one upper case letter and one digit."
         ];
 
@@ -933,8 +933,8 @@ namespace Fluxy.Application.Services.Users
         private static bool IsUsernameAcceptable(string? username)
             => username is
             {
-                Length: >= RegistrationPolicy.UsernameMinLength
-                    and <= RegistrationPolicy.UsernameMaxLength
+                Length: >= RegistrationLimits.UsernameMinLength
+                    and <= RegistrationLimits.UsernameMaxLength
             };
 
         /// <summary>

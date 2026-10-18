@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Fluxy.Application.Services.Registration;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Authentication
 {
@@ -23,8 +23,8 @@ namespace Fluxy.API.Contracts.Authentication
         /// <summary>Login name the visitor wants. Trimmed, and compared case sensitively.</summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.UsernameMaxLength,
-            MinimumLength = RegistrationPolicy.UsernameMinLength)]
+            RegistrationLimits.UsernameMaxLength,
+            MinimumLength = RegistrationLimits.UsernameMinLength)]
         public string? Username { get; init; }
 
         /// <summary>
@@ -33,7 +33,7 @@ namespace Fluxy.API.Contracts.Authentication
         /// </summary>
         [Required]
         [EmailAddress]
-        [StringLength(RegistrationPolicy.EmailMaxLength)]
+        [StringLength(RegistrationLimits.EmailMaxLength)]
         public string? Email { get; init; }
 
         /// <summary>
@@ -41,8 +41,8 @@ namespace Fluxy.API.Contracts.Authentication
         /// </summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.PasswordMaxLength,
-            MinimumLength = RegistrationPolicy.PasswordMinLength)]
+            RegistrationLimits.PasswordMaxLength,
+            MinimumLength = RegistrationLimits.PasswordMinLength)]
         public string? Password { get; init; }
     }
 }

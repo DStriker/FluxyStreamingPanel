@@ -1,11 +1,16 @@
 using Fluxy.Core.Models.Users;
 
-namespace Fluxy.Application.Services.Authentication
+namespace Fluxy.Core.Models.Authentication
 {
     /// <summary>
     /// Settings of token issuing and session handling. Bound from the <c>Auth</c> section.
     /// </summary>
     /// <remarks>
+    /// It lives in Core because both sides of the wire read it: the API layer binds and validates
+    /// the section, and the services that issue, rotate and retire tokens resolve the same object
+    /// for the cookie names, the landing paths and the lifetimes. One definition is what keeps a
+    /// renamed cookie from being written by one side and looked for in vain by the other.
+    ///
     /// The lifetimes here are the core of the design and they pull in opposite directions. The
     /// access token is short because it cannot be withdrawn, so the window during which a leaked
     /// one keeps working is exactly its remaining lifetime. The refresh token is long because it

@@ -1,5 +1,4 @@
 using Fluxy.API.Extensions;
-using Fluxy.Application.Services.Authentication;
 using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Http;
 

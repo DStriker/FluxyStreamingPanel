@@ -103,8 +103,8 @@ namespace Fluxy.Application.Services.Profile
                     {
                         ["NewPassword"] =
                         [
-                            $"The password must be between {RegistrationPolicy.PasswordMinLength} " +
-                            $"and {RegistrationPolicy.PasswordMaxLength} characters and contain " +
+                            $"The password must be between {RegistrationLimits.PasswordMinLength} " +
+                            $"and {RegistrationLimits.PasswordMaxLength} characters and contain " +
                             "at least one lower case letter, one upper case letter and one digit."
                         ]
                     }

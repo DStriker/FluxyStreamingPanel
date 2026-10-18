@@ -11,6 +11,7 @@ using Fluxy.Application.Services.Streams;
 using Fluxy.Application.Services.Throttling;
 using Fluxy.Application.Services.Users;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Models.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 

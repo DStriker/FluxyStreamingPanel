@@ -1,34 +1,21 @@
 using System.Text.RegularExpressions;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.Application.Services.Registration
 {
     /// <summary>
-    /// The rules a set of registration values has to satisfy, in one place.
+    /// The rules a set of registration values has to satisfy that are more than a length.
     /// </summary>
     /// <remarks>
-    /// Both the API contracts and <c>RegistrationService</c> read these constants. The contracts
-    /// turn them into cheap length checks that reject a malformed request before it reaches a
-    /// service, and the service applies the same numbers as the authority, because a client is
-    /// free to ignore whatever the server advertises. Keeping one definition stops the two from
-    /// drifting into different limits.
+    /// The lengths themselves live in <see cref="RegistrationLimits"/>, in Core, because the API
+    /// contracts need them before any service is reached; what stays here is the shape of an
+    /// address and the complexity of a password, which only the services apply. Both halves are
+    /// the authority behind what a form advertises: a client is free to ignore whatever the
+    /// server says, so a service checks the values again rather than trusting a body that arrived
+    /// with every attribute satisfied.
     /// </remarks>
     public static partial class RegistrationPolicy
     {
-        /// <summary>Shortest accepted login name. The column allows 20 characters, the form wants fewer.</summary>
-        public const int UsernameMinLength = 5;
-
-        /// <summary>Longest accepted login name, matching the column width.</summary>
-        public const int UsernameMaxLength = 20;
-
-        /// <summary>Shortest accepted password.</summary>
-        public const int PasswordMinLength = 8;
-
-        /// <summary>Longest accepted password, well above the column width, which stores only a hash.</summary>
-        public const int PasswordMaxLength = 100;
-
-        /// <summary>Length of the longest address SMTP accepts, matching the column width.</summary>
-        public const int EmailMaxLength = 254;
-
         /// <summary>
         /// Deliberately narrower than the RFC grammar. It accepts the shapes a real address has
         /// and rejects the ones that would only pass a strict parser to fail later at the mail
@@ -43,7 +30,7 @@ namespace Fluxy.Application.Services.Registration
         /// </summary>
         /// <param name="email">Address to check, already normalized.</param>
         public static bool IsEmailShapeValid(string email)
-            => email.Length <= EmailMaxLength && EmailShape().IsMatch(email);
+            => email.Length <= RegistrationLimits.EmailMaxLength && EmailShape().IsMatch(email);
 
         /// <summary>
         /// Whether <paramref name="password"/> meets the complexity rules: at least one lower
@@ -52,7 +39,8 @@ namespace Fluxy.Application.Services.Registration
         /// <param name="password">Password to check, in clear text.</param>
         public static bool IsPasswordAcceptable(string password)
         {
-            if (password.Length is < PasswordMinLength or > PasswordMaxLength)
+            if (password.Length is < RegistrationLimits.PasswordMinLength
+                or > RegistrationLimits.PasswordMaxLength)
             {
                 return false;
             }

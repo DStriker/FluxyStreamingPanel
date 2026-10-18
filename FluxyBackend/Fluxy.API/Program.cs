@@ -1,7 +1,6 @@
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Application;
-using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Security;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;

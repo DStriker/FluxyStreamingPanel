@@ -361,13 +361,13 @@ namespace Fluxy.Application.Services.Profile
             var name = username?.Trim() ?? string.Empty;
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-            if (name.Length is < RegistrationPolicy.UsernameMinLength
-                or > RegistrationPolicy.UsernameMaxLength)
+            if (name.Length is < RegistrationLimits.UsernameMinLength
+                or > RegistrationLimits.UsernameMaxLength)
             {
                 errors[nameof(AccountProfile.Username)] =
                 [
-                    $"The username must be between {RegistrationPolicy.UsernameMinLength} and " +
-                    $"{RegistrationPolicy.UsernameMaxLength} characters."
+                    $"The username must be between {RegistrationLimits.UsernameMinLength} and " +
+                    $"{RegistrationLimits.UsernameMaxLength} characters."
                 ];
             }
 
@@ -420,8 +420,8 @@ namespace Fluxy.Application.Services.Profile
             {
                 errors["NewPassword"] =
                 [
-                    $"The password must be between {RegistrationPolicy.PasswordMinLength} and " +
-                    $"{RegistrationPolicy.PasswordMaxLength} characters and contain at least one " +
+                    $"The password must be between {RegistrationLimits.PasswordMinLength} and " +
+                    $"{RegistrationLimits.PasswordMaxLength} characters and contain at least one " +
                     "lower case letter, one upper case letter and one digit."
                 ];
             }

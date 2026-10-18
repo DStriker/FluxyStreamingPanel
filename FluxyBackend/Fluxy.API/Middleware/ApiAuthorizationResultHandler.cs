@@ -3,7 +3,6 @@ using System.Text.Json;
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Security;
-using Fluxy.Application.Services.Authentication;
 using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;

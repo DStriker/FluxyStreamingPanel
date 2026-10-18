@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Fluxy.Application.Services.Registration;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Profile
 {
@@ -20,8 +20,8 @@ namespace Fluxy.API.Contracts.Profile
     ///
     /// The attributes are the cheap half of the policy, exactly as on <see cref="RegisterRequest"/>:
     /// they reject a malformed body before it reaches a service and list every offending field at
-    /// once. <c>RegistrationPolicy</c> is applied again by the service, because a client is free
-    /// to ignore whatever the server advertises.
+    /// once. <c>RegistrationLimits</c> and <c>RegistrationPolicy</c> are applied again by the
+    /// service, because a client is free to ignore whatever the server advertises.
     ///
     /// <see cref="CurrentPassword"/> has no minimum length of its own — only the maximum —
     /// because the account may predate the policy a new password has to satisfy, and refusing to
@@ -33,18 +33,18 @@ namespace Fluxy.API.Contracts.Profile
     public sealed class PatchProfileRequest
     {
         /// <summary>Password the account signs in with, proving the session is the owner's.</summary>
-        [StringLength(RegistrationPolicy.PasswordMaxLength)]
+        [StringLength(RegistrationLimits.PasswordMaxLength)]
         public string? CurrentPassword { get; init; }
 
         /// <summary>New login name. Trimmed, and compared case sensitively.</summary>
         [StringLength(
-            RegistrationPolicy.UsernameMaxLength,
-            MinimumLength = RegistrationPolicy.UsernameMinLength)]
+            RegistrationLimits.UsernameMaxLength,
+            MinimumLength = RegistrationLimits.UsernameMinLength)]
         public string? Username { get; init; }
 
         /// <summary>New address. Folded to lower case before anything is compared.</summary>
         [EmailAddress]
-        [StringLength(RegistrationPolicy.EmailMaxLength)]
+        [StringLength(RegistrationLimits.EmailMaxLength)]
         public string? Email { get; init; }
 
         /// <summary>
@@ -53,8 +53,8 @@ namespace Fluxy.API.Contracts.Profile
         /// anything is sent, so the body cannot carry two values a server would have to rank.
         /// </summary>
         [StringLength(
-            RegistrationPolicy.PasswordMaxLength,
-            MinimumLength = RegistrationPolicy.PasswordMinLength)]
+            RegistrationLimits.PasswordMaxLength,
+            MinimumLength = RegistrationLimits.PasswordMinLength)]
         public string? NewPassword { get; init; }
 
         /// <summary>

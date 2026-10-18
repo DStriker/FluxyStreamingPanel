@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Fluxy.Application.Services.Registration;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Authentication
 {
@@ -20,7 +20,7 @@ namespace Fluxy.API.Contracts.Authentication
     /// denial of service. Everything else is answered with the single refusal that a wrong
     /// password gets, because from the caller's side they are the same event.
     ///
-    /// The length bounds are the same numbers <c>RegistrationPolicy</c> uses, read from it
+    /// The length bounds are the same numbers <c>RegistrationLimits</c> defines, read from there
     /// rather than repeated, so the two cannot drift into different limits.
     /// </remarks>
     public sealed class LoginRequest
@@ -31,8 +31,8 @@ namespace Fluxy.API.Contracts.Authentication
         /// </summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.UsernameMaxLength,
-            MinimumLength = RegistrationPolicy.UsernameMinLength)]
+            RegistrationLimits.UsernameMaxLength,
+            MinimumLength = RegistrationLimits.UsernameMinLength)]
         public string? Username { get; init; }
 
         /// <summary>
@@ -46,8 +46,8 @@ namespace Fluxy.API.Contracts.Authentication
         /// </remarks>
         [Required]
         [StringLength(
-            RegistrationPolicy.PasswordMaxLength,
-            MinimumLength = RegistrationPolicy.PasswordMinLength)]
+            RegistrationLimits.PasswordMaxLength,
+            MinimumLength = RegistrationLimits.PasswordMinLength)]
         public string? Password { get; init; }
     }
 }

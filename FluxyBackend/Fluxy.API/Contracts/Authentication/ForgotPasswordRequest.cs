@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Fluxy.Application.Services.Registration;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Authentication
 {
@@ -24,14 +24,14 @@ namespace Fluxy.API.Contracts.Authentication
         /// <summary>Login name of the account, compared case sensitively.</summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.UsernameMaxLength,
-            MinimumLength = RegistrationPolicy.UsernameMinLength)]
+            RegistrationLimits.UsernameMaxLength,
+            MinimumLength = RegistrationLimits.UsernameMinLength)]
         public string? Username { get; init; }
 
         /// <summary>Address the account receives mail at. Folded to lower case.</summary>
         [Required]
         [EmailAddress]
-        [StringLength(RegistrationPolicy.EmailMaxLength)]
+        [StringLength(RegistrationLimits.EmailMaxLength)]
         public string? Email { get; init; }
 
         /// <summary>
@@ -40,8 +40,8 @@ namespace Fluxy.API.Contracts.Authentication
         /// </summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.PasswordMaxLength,
-            MinimumLength = RegistrationPolicy.PasswordMinLength)]
+            RegistrationLimits.PasswordMaxLength,
+            MinimumLength = RegistrationLimits.PasswordMinLength)]
         public string? Password { get; init; }
     }
 }

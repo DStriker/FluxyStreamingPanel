@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Fluxy.Application.Services.Registration;
+using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Authentication
 {
@@ -19,7 +19,7 @@ namespace Fluxy.API.Contracts.Authentication
         /// <summary>Login name the reset was requested for, compared case sensitively.</summary>
         [Required]
         [StringLength(
-            RegistrationPolicy.UsernameMaxLength,
+            RegistrationLimits.UsernameMaxLength,
             MinimumLength = 1)]
         public string? Username { get; init; }
 
