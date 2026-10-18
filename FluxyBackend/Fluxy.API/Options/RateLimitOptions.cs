@@ -1,4 +1,4 @@
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Options
 {
     /// <summary>
     /// How often one client may reach the endpoints that cost the server something. Bound from

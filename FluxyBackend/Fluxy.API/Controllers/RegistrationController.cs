@@ -1,5 +1,7 @@
-using Fluxy.API.Configuration;
 using Fluxy.API.Contracts;
+using Fluxy.API.Extensions;
+using Fluxy.API.Options;
+using Fluxy.API.Security;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;

@@ -1,6 +1,6 @@
 using System.Globalization;
-using Fluxy.API.Configuration;
 using Fluxy.API.Contracts;
+using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;

@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 
 ## Intended architecture — the layers are wired, the API layer is still thin
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring and `Configuration/DotEnvConfigurationExtensions.cs`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring and `Extensions/DotEnvConfigurationExtensions.cs`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -53,7 +53,7 @@ Why it matters here: it keeps the dependency graph honest. Core depends on nothi
 
 The old inline `BasicAuthHandler` (hardcoded `admin`/`admin`) has been **deleted**. What replaced it:
 
-- `Program.cs` calls `builder.Services.AddFluxyAuthentication(builder.Configuration)` (`Fluxy.API/Configuration/AuthenticationExtensions.cs`), and `app.UseAuthentication()` is live — it runs before `UseAuthorization()` and after the middleware that can change the request's identity.
+- `Program.cs` calls `builder.Services.AddFluxyAuthentication(builder.Configuration)` (`Fluxy.API/Extensions/AuthenticationExtensions.cs`), and `app.UseAuthentication()` is live — it runs before `UseAuthorization()` and after the middleware that can change the request's identity.
 - **One `AddAuthentication(JwtBearerDefaults.AuthenticationScheme)` + `AddJwtBearer`.** The signing key (`Auth:SigningKey`, from `JWT_SIGNING_KEY` in `.env`) is read and materialized **once at startup**, so a missing or malformed key fails the host instead of answering every request as unauthorized while looking healthy. Issuer, audience and lifetime are all validated, `ClockSkew` is 30 s, `MapInboundClaims = false`, `NameClaimType`/`RoleClaimType` point at `TokenClaimTypes.*`.
 - **The token travels in two ways.** A browser gets it in the `fluxy.at` HttpOnly cookie (`SameSite=Lax`, written by `AuthCookies`); a non-browser client sends `Authorization: Bearer`. The header is read first and the cookie only when the header is absent, so a caller that sends a header is never overridden by a cookie that happens to be on the request.
 - **Access 5 minutes, refresh 7 days** (`Auth:AccessLifetime` / `Auth:RefreshLifetime`; defaults in `AuthenticationOptions`), both validated at startup with `ValidateOnStart()` — `AccessLifetime > 0` and `RefreshLifetime >= AccessLifetime`, each with a message that says what would go wrong otherwise.
@@ -344,7 +344,7 @@ The app talks to the compose postgres, to the already existing `fluxy` database,
 - `RedisAttemptThrottle` (Application) uses a Lua script (`INCR` + `PEXPIRE` on first) so several instances share the window. It **falls back to a `ConcurrentDictionary` in process memory** when redis is unreachable, so registration keeps working even with redis down.
 - **The `Redis:Required` config key (`true`/`false`) controls whether a missing connection string is fatal.** It defaults to non-fatal.
 
-**Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Configuration/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
+**Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Extensions/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
 
 - The file is searched **upwards from the content root, 3 levels** (content root is `Fluxy.API/`, the file is next to `compose.yaml`), and a missing file is not an error — the app only logs a warning.
 - The source is **inserted at position 0** of `builder.Sources`, not appended. In .NET configuration the **last** provider that knows a key wins, so appending would have made `.env` the *highest* priority source and it would have overridden user-secrets. Verified both ways.

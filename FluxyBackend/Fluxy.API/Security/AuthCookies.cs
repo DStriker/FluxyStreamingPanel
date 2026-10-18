@@ -1,8 +1,9 @@
+using Fluxy.API.Extensions;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Http;
 
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Security
 {
     /// <summary>
     /// Writes and clears the two cookies a session lives in.

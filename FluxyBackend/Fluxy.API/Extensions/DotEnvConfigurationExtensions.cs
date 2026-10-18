@@ -6,7 +6,7 @@ using Fluxy.DataAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
 
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Extensions
 {
     /// <summary>
     /// Loads the <c>.env</c> file as a configuration source, and derives the application

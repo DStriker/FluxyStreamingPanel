@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Extensions
 {
     /// <summary>
     /// Wiring of the browser policy that lets the frontend reach this API.

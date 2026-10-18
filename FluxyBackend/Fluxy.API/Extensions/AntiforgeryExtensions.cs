@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Extensions
 {
     /// <summary>
     /// Wiring of the cross site request forgery protection.

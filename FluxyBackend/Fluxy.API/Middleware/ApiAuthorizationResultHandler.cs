@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Fluxy.API.Security;
 using Fluxy.Application.Services.Authentication;
 using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -7,7 +8,7 @@ using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.API.Configuration
+namespace Fluxy.API.Middleware
 {
     /// <summary>
     /// Turns the framework's authorization failures into the body every other failure of this
