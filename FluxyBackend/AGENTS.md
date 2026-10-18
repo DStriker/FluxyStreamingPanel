@@ -60,7 +60,11 @@ Fluxy.API/
 
 **A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds the captcha, the attempt throttle and `ClientAddress` for the guest-facing `Auth` controllers, so `Admin` and `Content` never inject a throttle they would not spend. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
 
-**The envelope is controller-owned today.** A 404/405/415 produced by routing, and an unhandled 500, still answer without `{ code, message }`; only the actions' own refusals carry it. Extending the envelope to framework-level statuses is a separate, behavioural change.
+**The envelope is API-owned, including the framework's own refusals.** Every action answers with `{ code, message }`, and the two paths that never reach an action are covered by the same shape: an unhandled exception is `500 server_error` through `ApiExceptionHandler`, and a bodyless 404/405/415 is `not_found` / `method_not_allowed` / `unsupported_media_type` through `UseFluxyStatusCodePages()`. Both write `Cache-Control: no-store`; the exception itself is logged and never sent to the client. Development keeps `UseDeveloperExceptionPage` for 500s, and the handler is placed only on the other branch.
+
+- **`AddFluxyExceptionHandling()` calls `AddProblemDetails()` as well.** Parameterless `UseExceptionHandler()` refuses to start without a problem-details service even when an `IExceptionHandler` is registered — found by booting in Production; the compiler says nothing. The handler returns `true` first, so problem details are a container dependency rather than the answer.
+- **`SuppressMapClientErrors = true` is what lets 415 reach the envelope.** With `[ApiController]`, MVC otherwise turns the bodyless `UnsupportedMediaTypeResult` into a `ProblemDetails` body before `UseStatusCodePages` can see it. Suppressing that mapping leaves the result bodyless; the status pages then describe 404/405/415, while a controller that has something to say still returns its own `ObjectResult`.
+- **The status filter is deliberate.** `UseStatusCodePages` only touches a response with no body at all, and the explicit 404/405/415 mapping leaves every `auth_required`, `permission_denied` and feature-level `*_not_found` body exactly as its owner wrote it. A 404 from a real action is still `user_not_found` / `session_not_found`, not the generic `not_found`.
 
 ## Interfaces belong in Core, implementations in Application
 
@@ -298,8 +302,8 @@ token level, the opposite question.
   Foreign, missing, already-revoked **and expired-only** ids → one answer `404
   session_not_found`: the ownership check lives inside the revoke predicate itself, so four
   situations cannot be told apart and the endpoint is no probe for other accounts' rows. A
-  path segment that is not a guid matches no route (`{sessionId:guid}`) → plain 404 with no
-  body; no session → `401 auth_required` before CSRF on the revokes; no `X-CSRF-Token` on
+  path segment that is not a guid matches no route (`{sessionId:guid}`) → framework `404
+  not_found`; no session → `401 auth_required` before CSRF on the revokes; no `X-CSRF-Token` on
   either DELETE → `400 csrf_invalid`.
 - **Both revoke predicates require `ExpiresAt > now`**, mirroring the read side. "Live" has to
   mean the same thing in all three methods: without it a dead chain would answer 200 for an
@@ -338,7 +342,7 @@ launch profiles auto-detected by the harness — 45 checks, all passing):
 | `DELETE` a second session | 200 `session_revoked`, list shrinks, that session's own view stops containing it |
 | `DELETE` the current session | 400 `cannot_revoke_current`, still signed in, still listed |
 | foreign / unknown / expired-only id | the same 404 `session_not_found`, foreign session untouched |
-| non-guid segment | route 404, no body — `others` not shadowed by `{sessionId}` |
+| non-guid segment | route `404 not_found` — `others` not shadowed by `{sessionId}` |
 | refresh rotation | still one row per session, now the newest |
 | `DELETE` without the header | 400 `csrf_invalid`, nothing ended |
 | no session (GET and `others` DELETE) | 401 `auth_required` |

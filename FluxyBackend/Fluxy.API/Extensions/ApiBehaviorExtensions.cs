@@ -44,6 +44,14 @@ namespace Fluxy.API.Extensions
         /// </remarks>
         private static void ConfigureApiBehavior(ApiBehaviorOptions options)
         {
+            // MVC otherwise turns a bodyless client-error result - the 415 an unsupported
+            // Content-Type produces, a bare NotFound(), the 406 of content negotiation - into
+            // its ProblemDetails shape. That is a different body from every other refusal of
+            // this API and it reaches the frontend without `data.code`. Leaving the result
+            // bodyless is what UseStatusCodePages is waiting for; an action that wants to say
+            // something still returns an ObjectResult with the envelope itself.
+            options.SuppressMapClientErrors = true;
+
             options.InvalidModelStateResponseFactory = context =>
             {
                 // Grouped rather than turned into a dictionary directly, because a value that

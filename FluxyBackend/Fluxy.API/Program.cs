@@ -46,6 +46,7 @@ namespace Fluxy.API
 
             builder.Services.AddControllers();
             builder.Services.AddFluxyApiBehavior();
+            builder.Services.AddFluxyExceptionHandling();
 
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi(); 
@@ -106,6 +107,20 @@ namespace Fluxy.API
                     options.SwaggerEndpoint("/openapi/v1.json", "API v1");
                 });
             }
+            else
+            {
+                // Outside Development the developer page is replaced by the API envelope: the
+                // stack trace belongs on a workstation, never in a response. The handler is
+                // registered in every environment because whether it is used is the pipeline's
+                // decision, not the service collection's.
+                app.UseFluxyExceptionHandling();
+            }
+
+            // 404/405/415 are decided before any action runs, so they need the envelope here
+            // rather than in a controller. This sits above routing so it sees the status those
+            // middleware leave behind, and its filter leaves every body already written alone.
+            app.UseFluxyStatusCodePages();
+
             // Routing comes first so that CORS and the authorization middleware can see which
             // endpoint is about to handle the request.
             app.UseRouting();
