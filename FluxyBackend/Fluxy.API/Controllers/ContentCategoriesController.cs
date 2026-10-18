@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Content;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
@@ -125,7 +126,7 @@ namespace Fluxy.API.Controllers
 
             if (wantedType is null)
             {
-                return Invalid(new Dictionary<string, string[]>(StringComparer.Ordinal)
+                return ApiResults.ValidationFailed(new Dictionary<string, string[]>(StringComparer.Ordinal)
                 {
                     [nameof(type)] = [TypeHint]
                 });
@@ -191,7 +192,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _categories.CreateAsync(
@@ -255,7 +256,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _categories.UpdateAsync(
@@ -350,7 +351,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _categories.ReorderAsync(
@@ -435,18 +436,6 @@ namespace Fluxy.API.Controllers
 
             return new ObjectResult(body) { StatusCode = status };
         }
-
-        /// <summary>
-        /// The 400 a body or a query string broke a rule on, with the fields that broke it.
-        /// </summary>
-        private static ObjectResult Invalid(Dictionary<string, string[]> errors)
-            => new(new MessageResponse
-            {
-                Code = "validation_failed",
-                Message = "Some of the values you entered are not valid.",
-                Errors = FieldErrorKeys.FromPropertyNames(errors)
-            })
-            { StatusCode = StatusCodes.Status400BadRequest };
 
         private static AdminContentCategoryItemResponse ToItem(ContentCategory item) => new()
         {

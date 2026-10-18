@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Streams;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
@@ -168,7 +169,7 @@ namespace Fluxy.API.Controllers
                 !statusOk ||
                 !typeOk)
             {
-                return Invalid(ListErrors(
+                return ApiResults.ValidationFailed(ListErrors(
                     page,
                     pageSize,
                     search,
@@ -298,7 +299,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _streams.CreateAsync(
@@ -402,7 +403,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _streams.UpdateAsync(
@@ -574,13 +575,11 @@ namespace Fluxy.API.Controllers
             };
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
-        private static VideoStreamSortOrder? ParseSortOrder(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "asc" => VideoStreamSortOrder.Ascending,
-                "desc" => VideoStreamSortOrder.Descending,
-                _ => null
-            };
+        private static VideoStreamSortOrder? ParseSortOrder(string? value)
+            => SortOrderParser.Parse(
+                value,
+                VideoStreamSortOrder.Ascending,
+                VideoStreamSortOrder.Descending);
 
         /// <summary>Turns the name of a column into the field to order by, or nothing at all.</summary>
         /// <remarks>
@@ -647,28 +646,12 @@ namespace Fluxy.API.Controllers
             bool statusOk,
             bool typeOk)
         {
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-            if (page < 1)
-            {
-                errors["page"] = ["The page must be at least 1."];
-            }
-
-            if (pageSize is < 1 or > VideoStreamListLimits.MaxPageSize)
-            {
-                errors["pageSize"] =
-                [
-                    $"The page size must be between 1 and {VideoStreamListLimits.MaxPageSize}."
-                ];
-            }
-
-            if ((search?.Length ?? 0) > VideoStreamListLimits.MaxSearchLength)
-            {
-                errors["search"] =
-                [
-                    $"The search must be at most {VideoStreamListLimits.MaxSearchLength} characters."
-                ];
-            }
+            var errors = ListQueryErrors.Common(
+                page,
+                pageSize,
+                search,
+                VideoStreamListLimits.MaxPageSize,
+                VideoStreamListLimits.MaxSearchLength);
 
             if (field is null)
             {
@@ -708,18 +691,6 @@ namespace Fluxy.API.Controllers
 
             return new ObjectResult(body) { StatusCode = status };
         }
-
-        /// <summary>
-        /// The 400 a body or a query string broke a rule on, with the fields that broke it.
-        /// </summary>
-        private static ObjectResult Invalid(Dictionary<string, string[]> errors)
-            => new(new MessageResponse
-            {
-                Code = "validation_failed",
-                Message = "Some of the values you entered are not valid.",
-                Errors = FieldErrorKeys.FromPropertyNames(errors)
-            })
-            { StatusCode = StatusCodes.Status400BadRequest };
 
         private static AdminVideoStreamItemResponse ToItem(VideoStreamListItem item) => new()
         {

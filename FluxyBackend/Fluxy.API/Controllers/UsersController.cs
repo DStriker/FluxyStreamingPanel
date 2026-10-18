@@ -1,6 +1,7 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Profile;
 using Fluxy.API.Contracts.Users;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
@@ -273,7 +274,7 @@ namespace Fluxy.API.Controllers
                 !groupOk ||
                 !statusOk)
             {
-                return Invalid(ListErrors(page, pageSize, search, field, order, groupOk, statusOk));
+                return ApiResults.ValidationFailed(ListErrors(page, pageSize, search, field, order, groupOk, statusOk));
             }
 
             var list = await _users.GetPageAsync(
@@ -422,7 +423,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _users.CreateAsync(
@@ -498,9 +499,9 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } actingUserId)
+            if (User.UserId() is not { } actingUserId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             // An absent property means "leave it alone", so only one that was named has to
@@ -538,7 +539,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _users.UpdateAsync(
@@ -636,9 +637,9 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } actingUserId)
+            if (User.UserId() is not { } actingUserId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             return Answer(await _users.SetBlockedAsync(
@@ -685,9 +686,9 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } actingUserId)
+            if (User.UserId() is not { } actingUserId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             return Answer(await _users.SetBlockedAsync(
@@ -737,9 +738,9 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } actingUserId)
+            if (User.UserId() is not { } actingUserId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             return Answer(await _users.DeleteAsync(
@@ -806,9 +807,9 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } actingUserId)
+            if (User.UserId() is not { } actingUserId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             // Everything the body can be wrong about is read first, so one answer names every
@@ -849,7 +850,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             return Ok(BulkResponses.Describe(await _users.BulkAsync(
@@ -953,22 +954,6 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// The 400 a body or a query string broke a rule on, with the fields that broke it.
-        /// </summary>
-        /// <param name="errors">
-        /// Rejected fields, keyed by the C# name of the property or by the camelCase name of a
-        /// query parameter - both arrive in one shape after the rewrite.
-        /// </param>
-        private static ObjectResult Invalid(Dictionary<string, string[]> errors)
-            => new(new MessageResponse
-            {
-                Code = "validation_failed",
-                Message = "Some of the values you entered are not valid.",
-                Errors = FieldErrorKeys.FromPropertyNames(errors)
-            })
-            { StatusCode = StatusCodes.Status400BadRequest };
-
-        /// <summary>
         /// Turns the text a client sent into the column it names, or nothing at all.
         /// </summary>
         /// <remarks>
@@ -993,13 +978,11 @@ namespace Fluxy.API.Controllers
             };
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
-        private static AdminUserSortOrder? ParseSortOrder(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "asc" => AdminUserSortOrder.Ascending,
-                "desc" => AdminUserSortOrder.Descending,
-                _ => null
-            };
+        private static AdminUserSortOrder? ParseSortOrder(string? value)
+            => SortOrderParser.Parse(
+                value,
+                AdminUserSortOrder.Ascending,
+                AdminUserSortOrder.Descending);
 
         /// <summary>
         /// Turns the text of a filter into the state it names, or null when it names none.
@@ -1060,28 +1043,12 @@ namespace Fluxy.API.Controllers
             bool groupOk,
             bool statusOk)
         {
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-            if (page < 1)
-            {
-                errors["page"] = ["The page must be at least 1."];
-            }
-
-            if (pageSize is < 1 or > AdminUserListLimits.MaxPageSize)
-            {
-                errors["pageSize"] =
-                [
-                    $"The page size must be between 1 and {AdminUserListLimits.MaxPageSize}."
-                ];
-            }
-
-            if ((search?.Length ?? 0) > AdminUserListLimits.MaxSearchLength)
-            {
-                errors["search"] =
-                [
-                    $"The search must be at most {AdminUserListLimits.MaxSearchLength} characters."
-                ];
-            }
+            var errors = ListQueryErrors.Common(
+                page,
+                pageSize,
+                search,
+                AdminUserListLimits.MaxPageSize,
+                AdminUserListLimits.MaxSearchLength);
 
             if (!groupOk)
             {
@@ -1157,23 +1124,5 @@ namespace Fluxy.API.Controllers
             }
         };
 
-        /// <summary>
-        /// The refusal an authenticated request gets when it carries no subject to act for.
-        /// Already signed in by the policy on the class, so a token without a subject is not a
-        /// visitor who forgot to sign in - it is a token this application would not have minted.
-        /// </summary>
-        private IActionResult Anonymous()
-            => StatusCode(
-                StatusCodes.Status401Unauthorized,
-                new MessageResponse
-                {
-                    Code = "auth_required",
-                    Message = "Your session has ended. Please sign in again."
-                });
-
-        private Guid? ReadSubjectClaim()
-            => Guid.TryParse(User.FindFirst(TokenClaimTypes.Subject)?.Value, out var userId)
-                ? userId
-                : null;
     }
 }

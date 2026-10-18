@@ -1,6 +1,7 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Profile;
 using Fluxy.API.Contracts.Sessions;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
@@ -72,23 +73,13 @@ namespace Fluxy.API.Controllers
         public const string ConfirmThrottledCode = "profile_confirmation_rate_limited";
 
         /// <summary>
-        /// Code reported when the caller asked to end the session the request arrived with.
+        /// Sentence a blocked or missing account is refused with on every read and every
+        /// session act of this controller. The code is the one the profile change flow already
+        /// answers with, so a client branching on <c>account_not_active</c> behaves the same
+        /// way for an account that lost its standing here as it does on the profile - while
+        /// the sentence stays one about the account rather than about an edit nobody attempted.
         /// </summary>
-        public const string CannotRevokeCurrentCode = "cannot_revoke_current";
-
-        /// <summary>
-        /// Code reported when a session id names nothing the account holds - never, gone, or
-        /// belonging to somebody else. The three are one answer on purpose: a caller must not
-        /// be able to tell a session that is gone from one that was never theirs, because the
-        /// id is a guessable value and the difference would turn the endpoint into a probe.
-        /// </summary>
-        public const string SessionNotFoundCode = "session_not_found";
-
-        /// <summary>Code reported after a session was ended at the account's own request.</summary>
-        public const string SessionRevokedCode = "session_revoked";
-
-        /// <summary>Code reported after every session but the current one was ended.</summary>
-        public const string OtherSessionsRevokedCode = "other_sessions_revoked";
+        private const string AccountNotActiveMessage = "This account is not active.";
 
         private readonly IProfileService _profileService;
         private readonly IRecaptchaValidator _captchaValidator;
@@ -145,9 +136,9 @@ namespace Fluxy.API.Controllers
         {
             NoStore();
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var profile = await _profileService.GetProfileAsync(userId, cancellationToken);
@@ -251,19 +242,13 @@ namespace Fluxy.API.Controllers
                 field is null ||
                 order is null)
             {
-                return StatusCode(
-                    StatusCodes.Status400BadRequest,
-                    new MessageResponse
-                    {
-                        Code = "validation_failed",
-                        Message = "Some of the values you entered are not valid.",
-                        Errors = SessionHistoryErrors(page, pageSize, search, field, order)
-                    });
+                return ApiResults.ValidationFailed(
+                    SessionHistoryErrors(page, pageSize, search, field, order));
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var history = await _sessionHistory.GetHistoryAsync(
@@ -273,7 +258,7 @@ namespace Fluxy.API.Controllers
                 search,
                 field.Value,
                 order.Value,
-                ReadSessionClaim(),
+                User.SessionId(),
                 cancellationToken);
 
             if (history is null)
@@ -286,7 +271,7 @@ namespace Fluxy.API.Controllers
                 // edit nobody attempted. One helper now answers for the history, the active
                 // sessions and the two revoke endpoints, so the sentence cannot drift between
                 // them.
-                return AccountNotActive();
+                return ApiResults.AccountNotActive(AccountNotActiveMessage);
             }
 
             return Ok(new SessionHistoryResponse
@@ -342,19 +327,19 @@ namespace Fluxy.API.Controllers
         {
             NoStore();
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var list = await _activeSessions.GetActiveAsync(
                 userId,
-                ReadSessionClaim(),
+                User.SessionId(),
                 cancellationToken);
 
             if (list is null)
             {
-                return AccountNotActive();
+                return ApiResults.AccountNotActive(AccountNotActiveMessage);
             }
 
             return Ok(new ActiveSessionsResponse
@@ -417,23 +402,23 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             // Ending "every session but the current one" is undefined without a current one.
             // A token this application minted always carries the claim, so reaching this with
             // it missing is the same case `Anonymous` already answers: a token that is not
             // this application's own.
-            if (ReadSessionClaim() is not { } currentSession)
+            if (User.SessionId() is not { } currentSession)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             if (await _profileService.GetProfileAsync(userId, cancellationToken) is null)
             {
-                return AccountNotActive();
+                return ApiResults.AccountNotActive(AccountNotActiveMessage);
             }
 
             var revokedCount = await _tokenService.RevokeAllExceptCurrentAsync(
@@ -441,14 +426,7 @@ namespace Fluxy.API.Controllers
                 currentSession,
                 cancellationToken);
 
-            return Ok(new RevokeOtherSessionsResponse
-            {
-                Code = OtherSessionsRevokedCode,
-                Message = revokedCount == 0
-                    ? "This account held no other sessions."
-                    : "The other sessions of this account have been ended.",
-                RevokedCount = revokedCount
-            });
+            return Ok(SessionResponses.OtherSessionsRevoked(revokedCount));
         }
 
         /// <summary>
@@ -498,19 +476,21 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
-            if (ReadSessionClaim() is { } currentSession && currentSession == sessionId)
+            if (User.SessionId() is { } currentSession && currentSession == sessionId)
             {
-                return CannotRevokeCurrent();
+                return StatusCode(
+                    StatusCodes.Status400BadRequest,
+                    SessionResponses.CannotRevokeCurrent());
             }
 
             if (await _profileService.GetProfileAsync(userId, cancellationToken) is null)
             {
-                return AccountNotActive();
+                return ApiResults.AccountNotActive(AccountNotActiveMessage);
             }
 
             var revoked = await _tokenService.RevokeUserSessionAsync(
@@ -522,18 +502,10 @@ namespace Fluxy.API.Controllers
             {
                 return StatusCode(
                     StatusCodes.Status404NotFound,
-                    new MessageResponse
-                    {
-                        Code = SessionNotFoundCode,
-                        Message = "No such session on this account."
-                    });
+                    SessionResponses.NotFound("No such session on this account."));
             }
 
-            return Ok(new MessageResponse
-            {
-                Code = SessionRevokedCode,
-                Message = "The session has been ended."
-            });
+            return Ok(SessionResponses.Revoked());
         }
 
         /// <summary>
@@ -556,13 +528,11 @@ namespace Fluxy.API.Controllers
             };
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
-        private static SessionSortOrder? ParseSortOrder(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "asc" => SessionSortOrder.Ascending,
-                "desc" => SessionSortOrder.Descending,
-                _ => null
-            };
+        private static SessionSortOrder? ParseSortOrder(string? value)
+            => SortOrderParser.Parse(
+                value,
+                SessionSortOrder.Ascending,
+                SessionSortOrder.Descending);
 
         /// <summary>
         /// Which of the bounds a request broke, keyed by the camelCase name of the query
@@ -580,24 +550,12 @@ namespace Fluxy.API.Controllers
             SessionSortField? field,
             SessionSortOrder? order)
         {
-            var errors = new Dictionary<string, string[]>();
-
-            if (page < 1)
-            {
-                errors["page"] = ["The page must be at least 1."];
-            }
-
-            if (pageSize is < 1 or > SessionHistoryLimits.MaxPageSize)
-            {
-                errors["pageSize"] =
-                [$"The page size must be between 1 and {SessionHistoryLimits.MaxPageSize}."];
-            }
-
-            if ((search?.Length ?? 0) > SessionHistoryLimits.MaxSearchLength)
-            {
-                errors["search"] =
-                [$"The search must be at most {SessionHistoryLimits.MaxSearchLength} characters."];
-            }
+            var errors = ListQueryErrors.Common(
+                page,
+                pageSize,
+                search,
+                SessionHistoryLimits.MaxPageSize,
+                SessionHistoryLimits.MaxSearchLength);
 
             if (field is null)
             {
@@ -712,7 +670,7 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            if (Throttle.RecordAttempt(TimeZoneThrottleKey(clientAddress), policy) > limits.PreferenceLimit)
+            if (Throttle.RecordAttempt(ThrottleKeys.ProfileTimeZone(clientAddress), policy) > limits.PreferenceLimit)
             {
                 Logger.LogInformation(
                     "Refused a time zone change from {ClientAddress}: the limit of {Limit} " +
@@ -723,9 +681,9 @@ namespace Fluxy.API.Controllers
                 return Throttled(ChangeThrottledCode, limits.PreferenceWindow);
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var outcome = await _profileService.UpdateTimeZoneAsync(
@@ -864,7 +822,7 @@ namespace Fluxy.API.Controllers
             // Recorded before the code is compared, not after: verifying a code costs as much as
             // hashing a password does, so counting afterwards would let a caller spend as many
             // of those comparisons as it liked before the first one was noticed.
-            if (Throttle.RecordAttempt(ConfirmThrottleKey(clientAddress), policy) > limits.LoginLimit)
+            if (Throttle.RecordAttempt(ThrottleKeys.ProfileConfirm(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a profile confirmation from {ClientAddress}: the limit of {Limit} " +
@@ -875,9 +833,9 @@ namespace Fluxy.API.Controllers
                 return Throttled(ConfirmThrottledCode, limits.LoginWindow);
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var outcome = await _profileService.ConfirmAsync(
@@ -917,7 +875,7 @@ namespace Fluxy.API.Controllers
                 return CaptchaRefused();
             }
 
-            if (Throttle.RecordAttempt(ChangeThrottleKey(clientAddress), policy) > limits.LoginLimit)
+            if (Throttle.RecordAttempt(ThrottleKeys.ProfileChange(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a profile change from {ClientAddress}: the limit of {Limit} " +
@@ -928,9 +886,9 @@ namespace Fluxy.API.Controllers
                 return Throttled(ChangeThrottledCode, limits.LoginWindow);
             }
 
-            if (ReadSubjectClaim() is not { } userId)
+            if (User.UserId() is not { } userId)
             {
-                return Anonymous();
+                return ApiResults.Anonymous();
             }
 
             var outcome = await change(userId, currentPassword);
@@ -978,7 +936,7 @@ namespace Fluxy.API.Controllers
                         await _tokenService.RevokeAllSessionsAsync(account.Id, cancellationToken);
                         break;
 
-                    case PendingChangeKind.ChangeUsername when ReadSessionClaim() is { } session:
+                    case PendingChangeKind.ChangeUsername when User.SessionId() is { } session:
                         await _tokenService.RevokeSessionAsync(session, cancellationToken);
                         break;
                 }
@@ -1001,75 +959,5 @@ namespace Fluxy.API.Controllers
                     outcome.Status,
                     FieldErrorKeys.FromPropertyNames(outcome.Errors)));
         }
-
-        /// <summary>
-        /// The refusal for a token that carries no account identifier. <c>[Authorize]</c> has
-        /// already said the request is authenticated, so a token without a subject is not a
-        /// visitor who forgot to sign in - it is a token this application would not have minted,
-        /// and answering about the session rather than about a header is the truthful reply.
-        /// </summary>
-        private IActionResult Anonymous()
-            => StatusCode(
-                StatusCodes.Status401Unauthorized,
-                new MessageResponse
-                {
-                    Code = "auth_required",
-                    Message = "Your session has ended. Please sign in again."
-                });
-
-        /// <summary>
-        /// The refusal a blocked or missing account gets on every read and every session act
-        /// of this controller. The code is the one the profile change flow already answers
-        /// with, so a client branching on <c>account_not_active</c> behaves the same way for
-        /// an account that lost its standing here as it does on the profile - while the
-        /// sentence stays one about the account rather than about an edit nobody attempted.
-        /// </summary>
-        private IActionResult AccountNotActive()
-            => StatusCode(
-                ProfileResponses.StatusCodeOf(ProfileChangeStatus.AccountNotActive),
-                new MessageResponse
-                {
-                    Code = "account_not_active",
-                    Message = "This account is not active."
-                });
-
-        /// <summary>
-        /// The refusal for an attempt to end the session the request arrived with. The page
-        /// disables the button for its own row; this is what a direct call that ignored the UI
-        /// gets instead of a silent no-op, so "I pressed it and nothing happened" cannot be
-        /// the state a caller is left in.
-        /// </summary>
-        private IActionResult CannotRevokeCurrent()
-            => StatusCode(
-                StatusCodes.Status400BadRequest,
-                new MessageResponse
-                {
-                    Code = CannotRevokeCurrentCode,
-                    Message = "The session you are using cannot be ended from here. Sign out instead."
-                });
-
-        private Guid? ReadSubjectClaim()
-            => Guid.TryParse(User.FindFirst(TokenClaimTypes.Subject)?.Value, out var userId)
-                ? userId
-                : null;
-
-        private Guid? ReadSessionClaim()
-            => Guid.TryParse(User.FindFirst(TokenClaimTypes.Session)?.Value, out var session)
-                ? session
-                : null;
-
-        private static string ChangeThrottleKey(string clientAddress)
-            => $"login:profile:{clientAddress}";
-
-        /// <summary>
-        /// A window of its own, separate from <see cref="ChangeThrottleKey"/>: the time zone
-        /// endpoint saves on selection and would otherwise drain the permits a password change
-        /// is counting on.
-        /// </summary>
-        private static string TimeZoneThrottleKey(string clientAddress)
-            => $"profile_timezone:{clientAddress}";
-
-        private static string ConfirmThrottleKey(string clientAddress)
-            => $"profile_confirm:{clientAddress}";
     }
 }

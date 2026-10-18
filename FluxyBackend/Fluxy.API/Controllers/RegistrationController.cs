@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
@@ -209,7 +210,7 @@ namespace Fluxy.API.Controllers
             // row really exists.
             var limit = limits.RegisterLimit;
 
-            if (Throttle.GetAttempts(RegisterThrottleKey(clientAddress), policy) >= limit)
+            if (Throttle.GetAttempts(ThrottleKeys.Register(clientAddress), policy) >= limit)
             {
                 Logger.LogInformation(
                     "Refused a registration from {ClientAddress}: the limit of {Limit} " +
@@ -248,7 +249,7 @@ namespace Fluxy.API.Controllers
 
             if (outcome.RowPersisted)
             {
-                Throttle.RecordAttempt(RegisterThrottleKey(clientAddress), policy);
+                Throttle.RecordAttempt(ThrottleKeys.Register(clientAddress), policy);
             }
 
             return Respond(outcome);
@@ -304,7 +305,7 @@ namespace Fluxy.API.Controllers
             // comparison would start, so the expensive work is unreachable.
             var limit = limits.ConfirmLimit;
 
-            if (Throttle.RecordAttempt(ConfirmThrottleKey(clientAddress), policy) > limit)
+            if (Throttle.RecordAttempt(ThrottleKeys.Confirm(clientAddress), policy) > limit)
             {
                 Logger.LogInformation(
                     "Refused a confirmation from {ClientAddress}: the limit of {Limit} attempts " +
@@ -345,12 +346,6 @@ namespace Fluxy.API.Controllers
 
             return Respond(outcome);
         }
-
-        private static string RegisterThrottleKey(string clientAddress)
-            => $"register:{clientAddress}";
-
-        private static string ConfirmThrottleKey(string clientAddress)
-            => $"confirm:{clientAddress}";
 
         /// <summary>
         /// Renders what a service reported, normalizing the field names on the way out so that a

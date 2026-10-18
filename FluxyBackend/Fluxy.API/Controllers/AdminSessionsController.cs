@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Sessions;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
@@ -176,14 +177,8 @@ namespace Fluxy.API.Controllers
                 order is null ||
                 !userOk)
             {
-                return StatusCode(
-                    StatusCodes.Status400BadRequest,
-                    new MessageResponse
-                    {
-                        Code = "validation_failed",
-                        Message = "Some of the values you entered are not valid.",
-                        Errors = ListErrors(page, pageSize, search, field, order, userOk)
-                    });
+                return ApiResults.ValidationFailed(
+                    ListErrors(page, pageSize, search, field, order, userOk));
             }
 
             var history = await _sessions.GetPageAsync(
@@ -194,7 +189,7 @@ namespace Fluxy.API.Controllers
                 field.Value,
                 order.Value,
                 await GrantedAsync(),
-                ReadSessionClaim(),
+                User.SessionId(),
                 cancellationToken);
 
             return Ok(new AdminSessionHistoryResponse
@@ -275,24 +270,19 @@ namespace Fluxy.API.Controllers
             var outcome = await _sessions.RevokeAsync(
                 sessionId,
                 await GrantedAsync(),
-                ReadSessionClaim(),
+                User.SessionId(),
                 cancellationToken);
 
             return outcome switch
             {
-                AdminSessionRevokeOutcome.Revoked => Ok(new MessageResponse
-                {
-                    Code = ProfileController.SessionRevokedCode,
-                    Message = "The session has been ended."
-                }),
+                AdminSessionRevokeOutcome.Revoked => Ok(SessionResponses.Revoked()),
 
-                AdminSessionRevokeOutcome.CannotRevokeCurrent => CannotRevokeCurrent(),
+                AdminSessionRevokeOutcome.CannotRevokeCurrent => StatusCode(
+                    StatusCodes.Status400BadRequest,
+                    SessionResponses.CannotRevokeCurrent()),
 
-                _ => NotFound(new MessageResponse
-                {
-                    Code = ProfileController.SessionNotFoundCode,
-                    Message = "No such session on an account you may read."
-                })
+                _ => NotFound(
+                    SessionResponses.NotFound("No such session on an account you may read."))
             };
         }
 
@@ -338,13 +328,11 @@ namespace Fluxy.API.Controllers
             };
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
-        private static SessionSortOrder? ParseSortOrder(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "asc" => SessionSortOrder.Ascending,
-                "desc" => SessionSortOrder.Descending,
-                _ => null
-            };
+        private static SessionSortOrder? ParseSortOrder(string? value)
+            => SortOrderParser.Parse(
+                value,
+                SessionSortOrder.Ascending,
+                SessionSortOrder.Descending);
 
         /// <summary>
         /// Which of the bounds a request broke, keyed by the camelCase name of the query
@@ -363,24 +351,12 @@ namespace Fluxy.API.Controllers
             SessionSortOrder? order,
             bool userIdOk)
         {
-            var errors = new Dictionary<string, string[]>();
-
-            if (page < 1)
-            {
-                errors["page"] = ["The page must be at least 1."];
-            }
-
-            if (pageSize is < 1 or > SessionHistoryLimits.MaxPageSize)
-            {
-                errors["pageSize"] =
-                [$"The page size must be between 1 and {SessionHistoryLimits.MaxPageSize}."];
-            }
-
-            if ((search?.Length ?? 0) > SessionHistoryLimits.MaxSearchLength)
-            {
-                errors["search"] =
-                [$"The search must be at most {SessionHistoryLimits.MaxSearchLength} characters."];
-            }
+            var errors = ListQueryErrors.Common(
+                page,
+                pageSize,
+                search,
+                SessionHistoryLimits.MaxPageSize,
+                SessionHistoryLimits.MaxSearchLength);
 
             if (!userIdOk)
             {
@@ -400,24 +376,5 @@ namespace Fluxy.API.Controllers
             return errors;
         }
 
-        /// <summary>
-        /// The refusal for an attempt to end the session the request arrived with. The page
-        /// disables the button for its own row; this is what a direct call that ignored the UI
-        /// gets instead of a silent no-op, so "I pressed it and nothing happened" cannot be the
-        /// state a caller is left in.
-        /// </summary>
-        private IActionResult CannotRevokeCurrent()
-            => StatusCode(
-                StatusCodes.Status400BadRequest,
-                new MessageResponse
-                {
-                    Code = ProfileController.CannotRevokeCurrentCode,
-                    Message = "The session you are using cannot be ended from here. Sign out instead."
-                });
-
-        private Guid? ReadSessionClaim()
-            => Guid.TryParse(User.FindFirst(TokenClaimTypes.Session)?.Value, out var session)
-                ? session
-                : null;
     }
 }

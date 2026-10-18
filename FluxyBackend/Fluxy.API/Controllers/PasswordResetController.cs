@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
@@ -146,7 +147,7 @@ namespace Fluxy.API.Controllers
             // what keeps that knowledge to the same handful of guesses a sign-in allows. It also
             // means a visitor who mistypes the address waits out a window - the same price the
             // sign-in form has always charged, which is why the limits are shared.
-            if (Throttle.RecordAttempt(RequestThrottleKey(clientAddress), policy) > limits.LoginLimit)
+            if (Throttle.RecordAttempt(ThrottleKeys.PasswordResetRequest(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a password reset request from {ClientAddress}: the limit of {Limit} " +
@@ -210,7 +211,7 @@ namespace Fluxy.API.Controllers
             // Recorded before the code is compared, for the reason the profile confirmation
             // gives: verifying a code costs as much as hashing a password does, and a six digit
             // code is a small enough space to guess at.
-            if (Throttle.RecordAttempt(ConfirmThrottleKey(clientAddress), policy) > limits.LoginLimit)
+            if (Throttle.RecordAttempt(ThrottleKeys.PasswordResetConfirm(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a password reset confirmation from {ClientAddress}: the limit of " +
@@ -241,11 +242,5 @@ namespace Fluxy.API.Controllers
                     outcome.Status,
                     FieldErrorKeys.FromPropertyNames(outcome.Errors)));
         }
-
-        private static string RequestThrottleKey(string clientAddress)
-            => $"password_reset:{clientAddress}";
-
-        private static string ConfirmThrottleKey(string clientAddress)
-            => $"password_reset_confirm:{clientAddress}";
     }
 }

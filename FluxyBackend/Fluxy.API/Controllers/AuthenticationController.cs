@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Application.Services.Authentication;
@@ -37,21 +38,6 @@ namespace Fluxy.API.Controllers
     [Produces("application/json")]
     public sealed class AuthenticationController : AuthControllerBase
     {
-        /// <summary>Code reported when a client spent its sign-in attempts for this window.</summary>
-        public const string LoginThrottledCode = AuthenticationResponses.LoginThrottledCode;
-
-        /// <summary>Code reported when a client spent its refreshes for this window.</summary>
-        public const string RefreshThrottledCode = AuthenticationResponses.RefreshThrottledCode;
-
-        /// <summary>
-        /// Code reported when a refresh token was already spent, or the session it belonged to is
-        /// gone. The visitor is sent to the sign-in page.
-        /// </summary>
-        public const string SessionExpiredCode = AuthenticationResponses.SessionExpiredCode;
-
-        /// <summary>Code reported after a session was ended. Not an error.</summary>
-        public const string SignedOutCode = AuthenticationResponses.SignedOutCode;
-
         private readonly IAuthenticationService _authenticationService;
         private readonly ITokenService _tokenService;
         private readonly ITokenRevocationStore _revocations;
@@ -185,9 +171,9 @@ namespace Fluxy.API.Controllers
                 var limits = RateLimits.CurrentValue;
                 var policy = new AttemptPolicy(limits.RefreshLimit, limits.RefreshWindow);
 
-                if (Throttle.RecordAttempt(RefreshThrottleKey(clientAddress), policy) > limits.RefreshLimit)
+                if (Throttle.RecordAttempt(ThrottleKeys.Refresh(clientAddress), policy) > limits.RefreshLimit)
                 {
-                    return Throttled(RefreshThrottledCode, limits.RefreshWindow);
+                    return Throttled(AuthenticationResponses.RefreshThrottledCode, limits.RefreshWindow);
                 }
             }
 
@@ -209,7 +195,7 @@ namespace Fluxy.API.Controllers
                     StatusCodes.Status401Unauthorized,
                     new MessageResponse
                     {
-                        Code = SessionExpiredCode,
+                        Code = AuthenticationResponses.SessionExpiredCode,
                         Message = "Your session has ended. Please sign in again.",
                         Redirect = LoginPath()
                     });
@@ -270,8 +256,8 @@ namespace Fluxy.API.Controllers
                 return csrfFailure;
             }
 
-            var sessionId = ReadSessionClaim();
-            var tokenId = ReadTokenIdClaim();
+            var sessionId = User.SessionId();
+            var tokenId = User.TokenId();
             var remaining = RemainingAccessTokenLifetime();
 
             if (sessionId is { } session)
@@ -282,7 +268,7 @@ namespace Fluxy.API.Controllers
                     "Ended session {SessionId} of account {UserId}; {Revoked} refresh token(s) " +
                     "were still live.",
                     session,
-                    ReadSubjectClaim(),
+                    User.Subject(),
                     revoked ? 1 : 0);
             }
 
@@ -295,7 +281,7 @@ namespace Fluxy.API.Controllers
 
             return Ok(new MessageResponse
             {
-                Code = SignedOutCode,
+                Code = AuthenticationResponses.SignedOutCode,
                 Message = "Signed out.",
                 Redirect = LoginPath()
             });
@@ -328,9 +314,9 @@ namespace Fluxy.API.Controllers
 
             return Ok(new SessionResponse
             {
-                UserId = ReadSubjectClaim(),
-                Username = ReadNameClaim(),
-                Role = ReadRoleClaim().ToString()
+                UserId = User.Subject(),
+                Username = User.Name(),
+                Role = User.Role().ToString()
             });
         }
 
@@ -368,7 +354,7 @@ namespace Fluxy.API.Controllers
             // Throttled by role and remote address only. A single IP cannot brute-force
             // logins for a given entrance without hitting the window.
             var policy = new AttemptPolicy(limits.LoginLimit, limits.LoginWindow);
-            var key = LoginThrottleKey(requiredRole, clientAddress);
+            var key = ThrottleKeys.Login(requiredRole, clientAddress);
 
             // Recorded before the comparison rather than after. Counting afterwards would let a
             // caller make as many of the expensive comparisons as they liked before the first
@@ -383,7 +369,7 @@ namespace Fluxy.API.Controllers
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(LoginThrottledCode, limits.LoginWindow);
+                return Throttled(AuthenticationResponses.LoginThrottledCode, limits.LoginWindow);
             }
 
             var outcome = await _authenticationService.AuthenticateAsync(
@@ -439,7 +425,7 @@ namespace Fluxy.API.Controllers
         /// </remarks>
         private TimeSpan RemainingAccessTokenLifetime()
         {
-            var expires = ReadExpiryClaim();
+            var expires = User.ExpiresAt();
 
             if (expires is not { } moment)
             {
@@ -456,38 +442,6 @@ namespace Fluxy.API.Controllers
                 ? token
                 : null;
 
-        private string? ReadSubjectClaim()
-            => User.FindFirst(TokenClaimTypes.Subject)?.Value;
-
-        private string? ReadNameClaim()
-            => User.FindFirst(TokenClaimTypes.Name)?.Value ?? User.Identity?.Name;
-
-        private Guid? ReadSessionClaim()
-            => Guid.TryParse(User.FindFirst(TokenClaimTypes.Session)?.Value, out var session)
-                ? session
-                : null;
-
-        private string? ReadTokenIdClaim()
-            => User.FindFirst(TokenClaimTypes.TokenId)?.Value;
-
-        private DateTimeOffset? ReadExpiryClaim()
-        {
-            var value = User.FindFirst(TokenClaimTypes.ExpiresAt)?.Value;
-
-            return long.TryParse(value, out var seconds)
-                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-                : null;
-        }
-
-        private UserRole ReadRoleClaim()
-        {
-            var value = User.FindFirst(TokenClaimTypes.Role)?.Value;
-
-            return int.TryParse(value, out var role) && Enum.IsDefined(typeof(UserRole), role)
-                ? (UserRole)role
-                : UserRole.Client;
-        }
-
         /// <summary>
         /// A router path for a role, with the leading slash the frontend hands straight to its
         /// router.
@@ -497,11 +451,5 @@ namespace Fluxy.API.Controllers
 
         private string LoginPath()
             => "/" + _authOptions.CurrentValue.ClientLoginPath.TrimStart('/');
-
-        private static string LoginThrottleKey(UserRole role, string clientAddress)
-            => $"login:{role}:{clientAddress}";
-
-        private static string RefreshThrottleKey(string clientAddress)
-            => $"refresh:{clientAddress}";
     }
 }

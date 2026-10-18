@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.UserGroups;
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
@@ -178,7 +179,7 @@ namespace Fluxy.API.Controllers
                 !roleOk ||
                 !statusOk)
             {
-                return Invalid(ListErrors(page, pageSize, search, field, order, roleOk, statusOk));
+                return ApiResults.ValidationFailed(ListErrors(page, pageSize, search, field, order, roleOk, statusOk));
             }
 
             var list = await _groups.GetPageAsync(
@@ -316,7 +317,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _groups.CreateAsync(
@@ -414,7 +415,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             var outcome = await _groups.UpdateAsync(
@@ -525,7 +526,7 @@ namespace Fluxy.API.Controllers
 
             if (errors.Count > 0)
             {
-                return Invalid(errors);
+                return ApiResults.ValidationFailed(errors);
             }
 
             return Ok(BulkResponses.Describe(await _groups.BulkAsync(
@@ -612,18 +613,6 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>
-        /// The 400 a body or a query string broke a rule on, with the fields that broke it.
-        /// </summary>
-        private static ObjectResult Invalid(Dictionary<string, string[]> errors)
-            => new(new MessageResponse
-            {
-                Code = "validation_failed",
-                Message = "Some of the values you entered are not valid.",
-                Errors = FieldErrorKeys.FromPropertyNames(errors)
-            })
-            { StatusCode = StatusCodes.Status400BadRequest };
-
-        /// <summary>
         /// Reads every name in a permission list, refusing the ones that name nothing.
         /// </summary>
         /// <remarks>
@@ -663,13 +652,11 @@ namespace Fluxy.API.Controllers
         }
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
-        private static UserGroupSortOrder? ParseSortOrder(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "asc" => UserGroupSortOrder.Ascending,
-                "desc" => UserGroupSortOrder.Descending,
-                _ => null
-            };
+        private static UserGroupSortOrder? ParseSortOrder(string? value)
+            => SortOrderParser.Parse(
+                value,
+                UserGroupSortOrder.Ascending,
+                UserGroupSortOrder.Descending);
 
         /// <summary>
         /// Turns the text a client sent into the column it names, or nothing at all.
@@ -736,28 +723,12 @@ namespace Fluxy.API.Controllers
             bool roleOk,
             bool statusOk)
         {
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
-
-            if (page < 1)
-            {
-                errors["page"] = ["The page must be at least 1."];
-            }
-
-            if (pageSize is < 1 or > UserGroupListLimits.MaxPageSize)
-            {
-                errors["pageSize"] =
-                [
-                    $"The page size must be between 1 and {UserGroupListLimits.MaxPageSize}."
-                ];
-            }
-
-            if ((search?.Length ?? 0) > UserGroupListLimits.MaxSearchLength)
-            {
-                errors["search"] =
-                [
-                    $"The search must be at most {UserGroupListLimits.MaxSearchLength} characters."
-                ];
-            }
+            var errors = ListQueryErrors.Common(
+                page,
+                pageSize,
+                search,
+                UserGroupListLimits.MaxPageSize,
+                UserGroupListLimits.MaxSearchLength);
 
             if (!roleOk)
             {
