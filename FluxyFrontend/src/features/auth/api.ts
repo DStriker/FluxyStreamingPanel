@@ -1,8 +1,8 @@
-import { apiFetch, apiGet } from '../../lib/http'
-import { getCsrfToken } from '../../lib/csrf'
+import { apiFetch, apiGet } from '../../utils/http'
+import { getCsrfToken } from '../../utils/csrf'
 import type { MessageResponse, Session } from '../../types'
 import type { PasswordStatusResponse } from './types'
-import type { CallOptions } from '../../lib/http'
+import type { CallOptions } from '../../utils/http'
 
 /**
  * Registration, sign-in and the session itself: the endpoints that turn a visitor into a

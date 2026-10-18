@@ -3,7 +3,7 @@
  * name *is* the import and a reader looking for where `Session` is defined finds it without
  * a search. A domain's own response contracts live in `features/<domain>/types/` instead,
  * beside the `api.ts` that returns them and re-exported through that folder's own index;
- * what remains here is what more than one feature or `src/lib` names — the role and status
+ * what remains here is what more than one feature or `src/utils` names — the role and status
  * enums, the permission catalog, the session and its context value, the bulk and message
  * responses, the login guard settings and the CSRF answer.
  *
@@ -13,7 +13,7 @@
  * rather than a slow build.
  *
  * Nothing in this folder imports anything outside it except another type in it. The
- * moment a type grows behaviour it belongs in `lib/`, not here: this is the vocabulary,
+ * moment a type grows behaviour it belongs in `utils/`, not here: this is the vocabulary,
  * not the code.
  */
 

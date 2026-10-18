@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../../src/lib/session'
+import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../../src/utils/session'
 import type { Role, Session } from '../../src/types'
 
 /**

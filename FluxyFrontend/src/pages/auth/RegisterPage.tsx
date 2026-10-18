@@ -8,14 +8,14 @@ import ConfirmCodeForm, {
 } from '../../features/auth/components/ConfirmCodeForm'
 import config, { routePath } from '../../config'
 import { RegisterCaptchaAction, type RegistrationValues } from '../../features/auth/api'
-import { ApiError } from '../../lib/http'
-import { internalPath } from '../../lib/url'
+import { ApiError } from '../../utils/http'
+import { internalPath } from '../../utils/url'
 import type { MessageResponse } from '../../types'
 import {
   forgetPendingEmail,
   readPendingEmail,
   rememberPendingEmail,
-} from '../../lib/pendingRegistration'
+} from '../../utils/pendingRegistration'
 import {
   useConfirmRegistration,
   useSubmitRegistration,

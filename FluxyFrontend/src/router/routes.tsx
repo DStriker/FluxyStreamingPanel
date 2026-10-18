@@ -7,7 +7,7 @@ import RequireAuth from '../features/auth/components/RequireAuth'
 import AccountLayout from '../layouts/AccountLayout'
 import ErrorFallback from '../components/ErrorFallback'
 import NotFoundPage from '../pages/NotFoundPage'
-import { flatItems } from '../lib/navigation'
+import { flatItems } from '../utils/navigation'
 import type { Role } from '../types'
 
 /**

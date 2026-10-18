@@ -1,7 +1,7 @@
 /**
  * The one signal that a session is over, and the one way a listener hears it.
  *
- * `src/lib/http.ts` is where a refresh is attempted and refused - and it is also the only
+ * `src/utils/http.ts` is where a refresh is attempted and refused - and it is also the only
  * layer that can tell "the server said no" apart from "the server could not be asked",
  * which is the distinction that decides whether a visitor is actually signed out. The
  * reaction - a toast and a way back to the sign-in form - is a component above the

@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { Button, Space } from 'antd'
-import { hinted } from '../../lib/hinted'
+import { hinted } from '../../utils/hinted'
 
 /**
  * One button of a row's action cluster, as the page that owns the row names it.

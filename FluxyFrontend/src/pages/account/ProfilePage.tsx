@@ -13,10 +13,10 @@ import {
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { getCaptchaToken } from '../../lib/recaptcha'
+import { getCaptchaToken } from '../../utils/recaptcha'
 import { ProfileChangeCaptchaAction, ProfileConfirmCaptchaAction } from '../../features/profile/api'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../../lib/http'
-import { useSession } from '../../lib/sessionContext'
+import { ApiError, fieldErrors, messageForError, textForCode } from '../../utils/http'
+import { useSession } from '../../utils/sessionContext'
 import {
   useChangeEmail,
   useChangeLoginGuard,
@@ -35,7 +35,7 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../../lib/policy'
+} from '../../utils/policy'
 
 /** The codes that decide what happens next. */
 const Submitted = 'profile_change_submitted'

@@ -2,10 +2,10 @@ import { createElement } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Menu } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { NAVIGATION } from '../lib/navigation'
-import { areaForRole, homeForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
-import { useIsDark } from '../lib/theme'
+import { NAVIGATION } from '../utils/navigation'
+import { areaForRole, homeForRole } from '../utils/session'
+import { useSession } from '../utils/sessionContext'
+import { useIsDark } from '../utils/theme'
 
 /**
  * The left rail: the role's own menu, grouped into categories, scrolling on its own.

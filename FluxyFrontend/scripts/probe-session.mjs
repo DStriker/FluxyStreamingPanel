@@ -2,7 +2,7 @@
  * Exercises the signed-in session flow against the running backend: sign in, the session
  * itself, refresh rotation with reuse detection, and sign out.
  *
- * Not a copy of the frontend: it imports `src/lib/csrf.ts`, `src/lib/http.ts` and
+ * Not a copy of the frontend: it imports `src/utils/csrf.ts`, `src/utils/http.ts` and
  * `src/features/auth/api.ts`, so what answers here is the same code the browser runs. It exists
  * because the sign-out button was reported as doing nothing with `csrf_invalid`, and the
  * only way to tell whether that is the client, the transport or the server is to drive
@@ -21,10 +21,10 @@
  */
 import { config, routePath } from '../src/config/index'
 import i18n from '../src/i18n'
-import { apiFetch, textForCode } from '../src/lib/http'
+import { apiFetch, textForCode } from '../src/utils/http'
 import { currentSession, signOut, submitAuth } from '../src/features/auth/api'
-import { getCsrfToken } from '../src/lib/csrf'
-import { homeForRole } from '../src/lib/session'
+import { getCsrfToken } from '../src/utils/csrf'
+import { homeForRole } from '../src/utils/session'
 
 const BASE = process.env.FLUXY_API ?? 'http://localhost:5159'
 config.API_BASE_URL = BASE

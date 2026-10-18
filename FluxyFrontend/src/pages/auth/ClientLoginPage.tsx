@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import AuthForm from '../../features/auth/components/AuthForm'
 import config, { routePath } from '../../config'
 import { ClientLoginCaptchaAction, type SignInValues } from '../../features/auth/api'
-import { internalPath } from '../../lib/url'
+import { internalPath } from '../../utils/url'
 import { useSubmitAuth } from '../../features/auth/hooks/mutations'
 
 export default function ClientLoginPage() {

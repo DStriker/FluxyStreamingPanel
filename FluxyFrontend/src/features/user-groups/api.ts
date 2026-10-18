@@ -1,4 +1,4 @@
-import { apiFetch, apiGet } from '../../lib/http'
+import { apiFetch, apiGet } from '../../utils/http'
 import type {
   BulkOperationResponse,
   MessageResponse,

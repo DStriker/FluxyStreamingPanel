@@ -10,7 +10,7 @@ import {
   USERNAME_MIN,
   generatePassword,
   meetsPasswordComplexity,
-} from '../../src/lib/policy'
+} from '../../src/utils/policy'
 
 /**
  * The frontend's half of a two-sided contract: every number here mirrors

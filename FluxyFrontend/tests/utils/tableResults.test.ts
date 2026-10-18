@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ApiError } from '../../src/lib/http'
-import { tableResults } from '../../src/lib/tableResults'
+import { ApiError } from '../../src/utils/http'
+import { tableResults } from '../../src/utils/tableResults'
 
 describe('tableResults', () => {
   it('passes the rows and the busy flag through, with no failure to show', () => {

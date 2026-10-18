@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { App, Button, Form, Input } from 'antd'
 import { useTranslation } from 'react-i18next'
 import AuthCard from './AuthCard'
-import { getCaptchaToken } from '../../../lib/recaptcha'
-import { ApiError, fieldErrors, messageForError, textForCode } from '../../../lib/http'
+import { getCaptchaToken } from '../../../utils/recaptcha'
+import { ApiError, fieldErrors, messageForError, textForCode } from '../../../utils/http'
 import {
   EMAIL_MAX,
   PASSWORD_MAX,
@@ -12,7 +12,7 @@ import {
   USERNAME_MAX,
   USERNAME_MIN,
   meetsPasswordComplexity,
-} from '../../../lib/policy'
+} from '../../../utils/policy'
 import type { MessageResponse } from '../../../types'
 
 /**

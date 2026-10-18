@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { getCsrfToken } from '../lib/csrf'
+import { getCsrfToken } from '../utils/csrf'
 
 /**
  * One write endpoint whose only token is the antiforgery one: mint it, call, and let the

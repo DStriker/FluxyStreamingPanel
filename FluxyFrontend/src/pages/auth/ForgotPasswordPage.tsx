@@ -12,13 +12,13 @@ import {
   passwordResetStatus,
   type RegistrationValues,
 } from '../../features/auth/api'
-import { ApiError } from '../../lib/http'
+import { ApiError } from '../../utils/http'
 import type { MessageResponse } from '../../types'
 import {
   forgetPendingReset,
   readPendingReset,
   rememberPendingReset,
-} from '../../lib/pendingReset'
+} from '../../utils/pendingReset'
 import {
   useConfirmPasswordReset,
   useRequestPasswordReset,

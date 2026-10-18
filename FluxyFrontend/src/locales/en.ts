@@ -94,7 +94,7 @@ const en = {
   },
   nav: {
     // Categories are the sidebar's submenus; items are the routes beneath them. Both are
-    // rendered from `src/lib/navigation.ts`, which decides where each item points - so a
+    // rendered from `src/utils/navigation.ts`, which decides where each item points - so a
     // label added here and nothing else shows up nowhere.
     groups: {
       overview: 'Overview',
@@ -452,7 +452,7 @@ const en = {
     },
   },
   // The ten permission keys, exactly as the catalog spells them. These strings are the
-  // labels of the checkboxes on the group form and the values `src/lib/permissions.ts`
+  // labels of the checkboxes on the group form and the values `src/utils/permissions.ts`
   // mirrors from the backend - one name for one thing, spelled the same way in both, so a
   // permission added on the server becomes a box an operator can tick without a translation
   // step in between.

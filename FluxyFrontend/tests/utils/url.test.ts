@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import config from '../../src/config'
-import { apiUrl, internalPath } from '../../src/lib/url'
+import { apiUrl, internalPath } from '../../src/utils/url'
 
 /**
  * The two rules every request and every server-named destination passes through. The
@@ -32,7 +32,7 @@ describe('apiUrl', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com/')
     vi.resetModules()
 
-    const { apiUrl: freshApiUrl } = await import('../../src/lib/url')
+    const { apiUrl: freshApiUrl } = await import('../../src/utils/url')
 
     expect(freshApiUrl('/auth/csrf')).toBe('https://api.example.com/auth/csrf')
   })

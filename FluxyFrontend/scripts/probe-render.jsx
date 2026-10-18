@@ -43,13 +43,13 @@ import RequireAuth from '../src/features/auth/components/RequireAuth'
 import ErrorFallback from '../src/components/ErrorFallback'
 import AccountLayout from '../src/layouts/AccountLayout'
 import { routes as routeTable } from '../src/router/routes'
-import { SessionContext } from '../src/lib/sessionContext'
-import { NAVIGATION, flatItems } from '../src/lib/navigation'
-import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../src/lib/session'
-import { appTheme, setThemeChoice, ThemeChoice } from '../src/lib/theme'
-import { countryName } from '../src/lib/countryName'
-import { describeUserAgent } from '../src/lib/userAgent'
-import { formatTimestamp } from '../src/lib/dateFormat'
+import { SessionContext } from '../src/utils/sessionContext'
+import { NAVIGATION, flatItems } from '../src/utils/navigation'
+import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../src/utils/session'
+import { appTheme, setThemeChoice, ThemeChoice } from '../src/utils/theme'
+import { countryName } from '../src/utils/countryName'
+import { describeUserAgent } from '../src/utils/userAgent'
+import { formatTimestamp } from '../src/utils/dateFormat'
 import {
   ALL_PERMISSIONS,
   canEdit,
@@ -57,14 +57,14 @@ import {
   canView,
   canViewAny,
   permissionsForRole,
-} from '../src/lib/permissions'
+} from '../src/utils/permissions'
 import {
   GENERATED_PASSWORD_LENGTH,
   generatePassword,
   meetsPasswordComplexity,
-} from '../src/lib/policy'
+} from '../src/utils/policy'
 import { routePath } from '../src/config/index'
-import { createQueryClient } from '../src/lib/queryClient'
+import { createQueryClient } from '../src/utils/queryClient'
 
 // Every page that reads the API does so through `useQuery` now, so every render of one
 // needs a QueryClient around it - and a **fresh** one per render, which is the whole
@@ -1613,7 +1613,7 @@ async function main() {
   // `RequireAuth` refuses anybody whose role the route was not built for. If those two ever
   // disagreed, a sign-in would land somebody on a route that immediately refuses them with
   // a 404 - bounced between two guards, each doing exactly what it was told. The two sides
-  // come from different files (`lib/session.ts` and `router/routes.tsx`), which is the only
+  // come from different files (`utils/session.ts` and `router/routes.tsx`), which is the only
   // reason this check is worth having.
   //
   // "Lands on" is a question for the matcher rather than for string equality now: the

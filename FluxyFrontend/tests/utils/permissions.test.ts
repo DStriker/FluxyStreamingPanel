@@ -6,7 +6,7 @@ import {
   canView,
   canViewAny,
   permissionsForRole,
-} from '../../src/lib/permissions'
+} from '../../src/utils/permissions'
 import type { UserPermission } from '../../src/types'
 
 /**

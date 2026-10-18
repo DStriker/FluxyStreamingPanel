@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ALL_GROUPS_PAGE_SIZE, getUserGroup, getUserGroups } from '../api'
 import type { UserGroupSortField, UserGroupSortOrder } from '../api'
-import { detailId } from '../../../lib/detailId'
+import { detailId } from '../../../utils/detailId'
 import type { Role, UserStatus } from '../../../types'
 
 /**

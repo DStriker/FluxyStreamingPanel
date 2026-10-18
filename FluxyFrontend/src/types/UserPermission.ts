@@ -16,7 +16,7 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all ten - see `permissionsForRole` in `src/lib/permissions.ts`, which mirrors
+ * `Admin` for all ten - see `permissionsForRole` in `src/utils/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
  * dropped on the way in rather than refused, which is why a Client group sent all ten comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.

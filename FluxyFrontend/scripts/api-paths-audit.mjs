@@ -3,7 +3,7 @@
  * proxies to the backend.
  *
  * Like `probe:i18n`, this one needs no backend and no browser: it reads every feature's
- * `api.ts`, plus `src/lib/csrf.ts` and `src/lib/http.ts`, from disk, takes the first
+ * `api.ts`, plus `src/utils/csrf.ts` and `src/utils/http.ts`, from disk, takes the first
  * segment of every path a request is made with, and compares that set with `backendPaths`
  * in `vite.config.js`.
  *
@@ -36,8 +36,8 @@ const API_SOURCES = [
     .map((entry) => `src/features/${entry.name}/api.ts`)
     .filter((file) => existsSync(file))
     .sort(),
-  'src/lib/csrf.ts',
-  'src/lib/http.ts',
+  'src/utils/csrf.ts',
+  'src/utils/http.ts',
 ]
 const CONFIG_SOURCE = 'vite.config.js'
 

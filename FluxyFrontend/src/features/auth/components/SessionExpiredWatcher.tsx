@@ -3,13 +3,13 @@ import { App } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { router } from '../../../router'
-import { subscribeToSessionExpired } from '../../../lib/sessionEvents'
-import { loginRouteForPath } from '../../../lib/session'
+import { subscribeToSessionExpired } from '../../../utils/sessionEvents'
+import { loginRouteForPath } from '../../../utils/session'
 
 /**
  * The reaction to a session that ended while a page was open on top of it.
  *
- * The fact itself is published by `src/lib/http.ts` (see `sessionEvents` for why the two
+ * The fact itself is published by `src/utils/http.ts` (see `sessionEvents` for why the two
  * ends are separate); this component is the end that can show things - a toast, and the
  * sign-in form of the area the visitor was reading. Without it an expiry mid-page left
  * the visitor on stale rows with a red toast and no way forward until they happened to

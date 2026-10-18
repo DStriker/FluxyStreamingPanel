@@ -18,9 +18,9 @@ import {
 import { useTranslation } from 'react-i18next'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import type { VideoStreamValues } from '../../features/video-streams/api'
-import { ApiError, fieldErrors, messageForError, successTextFor } from '../../lib/http'
-import { areaForRole } from '../../lib/session'
-import { useSession } from '../../lib/sessionContext'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
+import { areaForRole } from '../../utils/session'
+import { useSession } from '../../utils/sessionContext'
 import SourceListEditor from '../../features/video-streams/components/SourceListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import {

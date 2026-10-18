@@ -4,7 +4,7 @@ import {
   revokeAdminSession,
   revokeOtherActiveSessions,
 } from '../api'
-import { getCsrfToken } from '../../../lib/csrf'
+import { getCsrfToken } from '../../../utils/csrf'
 import { useWrite } from '../../../hooks/useWrite'
 
 /**

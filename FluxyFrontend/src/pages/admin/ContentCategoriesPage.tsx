@@ -30,7 +30,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import type { ContentCategory, ContentType } from '../../features/content-categories/types'
-import { ApiError, fieldErrors, messageForError, successTextFor } from '../../lib/http'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
 import { RowActions } from '../../components/table'
 import type { RowAction } from '../../components/table'
 import {
@@ -49,7 +49,7 @@ import { useRowAction } from '../../hooks/table'
  * The router renders every menu item as `<Page sectionKey={item.labelKey} />` and offers
  * no other prop, so the type - the one fact that separates this page's four instances -
  * has to arrive through the key the item already carries. The keys here are written beside
- * the very table that generates them (`CONTENT_SECTIONS` in `src/lib/navigation.ts`
+ * the very table that generates them (`CONTENT_SECTIONS` in `src/utils/navigation.ts`
  * builds `nav.items.<section>Categories` from its own keys), and `probe:render` asserts
  * that each of the four opens a page whose menu key resolves - so a rename on one side
  * that leaves the other behind lands here as a page with the wrong heading, which the

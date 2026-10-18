@@ -2,8 +2,8 @@ import { Button, Result } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import config, { routePath } from '../config'
-import { homeForRole } from '../lib/session'
-import { useSession } from '../lib/sessionContext'
+import { homeForRole } from '../utils/session'
+import { useSession } from '../utils/sessionContext'
 
 /**
  * A path this application does not have, or one belonging to another role's area.

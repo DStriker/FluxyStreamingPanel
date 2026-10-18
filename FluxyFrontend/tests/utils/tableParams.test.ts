@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enumParam, withFilter } from '../../src/lib/tableParams'
+import { enumParam, withFilter } from '../../src/utils/tableParams'
 import type { UserStatus } from '../../src/types'
 
 /**

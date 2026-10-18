@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { combineStatus } from '../../src/lib/userStatus'
+import { combineStatus } from '../../src/utils/userStatus'
 import type { UserStatus } from '../../src/types'
 
 /**

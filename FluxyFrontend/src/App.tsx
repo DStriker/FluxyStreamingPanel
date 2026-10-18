@@ -7,8 +7,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import './i18n'
 import SessionExpiredWatcher from './features/auth/components/SessionExpiredWatcher'
-import { appTheme, useIsDark } from './lib/theme'
-import { createQueryClient } from './lib/queryClient'
+import { appTheme, useIsDark } from './utils/theme'
+import { createQueryClient } from './utils/queryClient'
 import { router } from './router'
 
 // One client per application, made where the app is made. The defaults it holds (short

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { TablePaginationConfig, TableProps } from 'antd'
-import { enumParam } from '../../lib/tableParams'
+import { enumParam } from '../../utils/tableParams'
 
 /** The two orders the server understands, spelled the way a query parameter spells them. */
 type SortOrder = 'asc' | 'desc'
@@ -49,7 +49,7 @@ interface ServerTableOptions<SortField extends string> {
  * decision: `page`, `pageSize`, `search`, `sortBy` and `sortOrder` are written once and read
  * back every render, so a reload keeps the view, the address can be sent to somebody else,
  * and there is no second copy for either to drift away from. The page's own filters travel
- * the same way (`withFilter` in `src/lib/tableParams.ts`), which is what keeps a filter
+ * the same way (`withFilter` in `src/utils/tableParams.ts`), which is what keeps a filter
  * change **one** navigation - the filter and the dropped page are one address, so one
  * request follows rather than a filter and then a page that starts over.
  *

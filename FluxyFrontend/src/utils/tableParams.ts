@@ -3,7 +3,7 @@
  *
  * The five parameters `useServerTable` reads - page, page size, search, order and direction -
  * and one filter are all the same kind of thing: what the visitor is looking at, written
- * once into the query string rather than held twice. These live in `src/lib` because both
+ * once into the query string rather than held twice. These live in `src/utils` because both
  * are pure functions over `URLSearchParams`, the half of that decision no render can reach:
  * a probe lands before any interaction, and the unit tests here are what pin the rules.
  */

@@ -13,9 +13,9 @@ import {
 } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { messageForError, textForCode } from '../../lib/http'
-import { countryName } from '../../lib/countryName'
-import { describeUserAgent } from '../../lib/userAgent'
+import { messageForError, textForCode } from '../../utils/http'
+import { countryName } from '../../utils/countryName'
+import { describeUserAgent } from '../../utils/userAgent'
 import { useProfile } from '../../features/profile/hooks/queries'
 import {
   useRevokeActiveSession,

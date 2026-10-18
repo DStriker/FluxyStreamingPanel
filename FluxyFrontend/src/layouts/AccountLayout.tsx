@@ -3,7 +3,7 @@ import { Layout } from 'antd'
 import { Outlet } from 'react-router-dom'
 import AccountHeader from './AccountHeader'
 import AccountSidebar from './AccountSidebar'
-import { useIsDark } from '../lib/theme'
+import { useIsDark } from '../utils/theme'
 
 const SIDEBAR_KEY = 'fluxy-sidebar-collapsed'
 

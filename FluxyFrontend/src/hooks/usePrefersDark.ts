@@ -5,7 +5,7 @@ const QUERY = '(prefers-color-scheme: dark)'
 /**
  * Whether the OS is on a dark colour scheme, as one subscription for the whole app.
  *
- * Module-level for the reason `src/lib/theme.ts` keeps its copy there too: three components
+ * Module-level for the reason `src/utils/theme.ts` keeps its copy there too: three components
  * ask this question - `App`, `AccountLayout`, `AccountSidebar` - and until now each of them
  * got its own `MediaQueryList`, its own listener and its own copy of the same answer. Three
  * states of one fact, three listeners, and nothing anywhere could say which copy was
