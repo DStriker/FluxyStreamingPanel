@@ -2,7 +2,6 @@ using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
-using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
@@ -59,7 +58,8 @@ namespace Fluxy.API.Controllers.Auth
         public const string ConfirmThrottledCode = "confirmation_rate_limited";
 
         private readonly IRegistrationService _registrationService;
-        private readonly IRecaptchaValidator _captchaValidator;
+        private readonly CaptchaGuard _captchaGuard;
+        private readonly AttemptLimiter _limiter;
         private readonly ITokenService _tokenService;
         private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
 
@@ -67,28 +67,25 @@ namespace Fluxy.API.Controllers.Auth
         /// Initializes a new instance of the <see cref="RegistrationController"/> class.
         /// </summary>
         /// <param name="registrationService">Service that owns the registration rules.</param>
-        /// <param name="captchaValidator">Check that a request came from a person.</param>
+        /// <param name="captchaGuard">Check that a request came from a person.</param>
+        /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="tokenService">Service that opens the session a confirmation earns.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">
-        /// Live limits, so a configuration reload changes them without a restart.
-        /// </param>
         /// <param name="authOptions">Live token settings and landing paths.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public RegistrationController(
             IRegistrationService registrationService,
-            IRecaptchaValidator captchaValidator,
+            CaptchaGuard captchaGuard,
+            AttemptLimiter limiter,
             ITokenService tokenService,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             IOptionsMonitor<AuthenticationOptions> authOptions,
             ILogger<RegistrationController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _registrationService = registrationService;
-            _captchaValidator = captchaValidator;
+            _captchaGuard = captchaGuard;
+            _limiter = limiter;
             _tokenService = tokenService;
             _authOptions = authOptions;
         }
@@ -191,7 +188,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.RegisterLimit, limits.RegisterWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -199,9 +196,10 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, RegisterCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, RegisterCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Peeked, never spent. A body that turns out to be rejected or a value that is taken
@@ -210,7 +208,7 @@ namespace Fluxy.API.Controllers.Auth
             // row really exists.
             var limit = limits.RegisterLimit;
 
-            if (Throttle.GetAttempts(ThrottleKeys.Register(clientAddress), policy) >= limit)
+            if (_limiter.Attempts(ThrottleKeys.Register(clientAddress), policy) >= limit)
             {
                 Logger.LogInformation(
                     "Refused a registration from {ClientAddress}: the limit of {Limit} " +
@@ -218,7 +216,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limit);
 
-                return Throttled(RegisterThrottledCode, limits.RegisterWindow);
+                return _limiter.Throttled(Response, RegisterThrottledCode, limits.RegisterWindow);
             }
 
             RegistrationOutcome outcome;
@@ -249,7 +247,7 @@ namespace Fluxy.API.Controllers.Auth
 
             if (outcome.RowPersisted)
             {
-                Throttle.RecordAttempt(ThrottleKeys.Register(clientAddress), policy);
+                _limiter.Record(ThrottleKeys.Register(clientAddress), policy);
             }
 
             return Respond(outcome);
@@ -285,7 +283,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.ConfirmLimit, limits.ConfirmWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -293,9 +291,10 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, ConfirmCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, ConfirmCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Recorded before the code is compared, not after, and that order is the point.
@@ -305,7 +304,7 @@ namespace Fluxy.API.Controllers.Auth
             // comparison would start, so the expensive work is unreachable.
             var limit = limits.ConfirmLimit;
 
-            if (Throttle.RecordAttempt(ThrottleKeys.Confirm(clientAddress), policy) > limit)
+            if (_limiter.Record(ThrottleKeys.Confirm(clientAddress), policy) > limit)
             {
                 Logger.LogInformation(
                     "Refused a confirmation from {ClientAddress}: the limit of {Limit} attempts " +
@@ -313,7 +312,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limit);
 
-                return Throttled(ConfirmThrottledCode, limits.ConfirmWindow);
+                return _limiter.Throttled(Response, ConfirmThrottledCode, limits.ConfirmWindow);
             }
 
             var outcome = await _registrationService.ConfirmAsync(

@@ -1,3 +1,4 @@
+using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Application;
@@ -47,6 +48,12 @@ namespace Fluxy.API
             builder.Services.AddControllers();
             builder.Services.AddFluxyApiBehavior();
             builder.Services.AddFluxyExceptionHandling();
+
+            // The two guards the guest-facing auth controllers compose. They are scoped
+            // because the limiter follows the options monitor and the captcha guard is used
+            // once per request; neither holds state between requests.
+            builder.Services.AddScoped<AttemptLimiter>();
+            builder.Services.AddScoped<CaptchaGuard>();
 
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi(); 

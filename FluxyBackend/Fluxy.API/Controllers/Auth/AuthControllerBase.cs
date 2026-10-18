@@ -1,71 +1,34 @@
-using System.Globalization;
-using Fluxy.API.Contracts.Common;
-using Fluxy.API.Options;
-using Fluxy.Core.Abstractions;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace Fluxy.API.Controllers.Auth
 {
     /// <summary>
-    /// The checks the guest-facing endpoints of this area run before they do anything else:
-    /// the captcha and the attempt limit, on top of the antiforgery pair every write carries.
+    /// The facts the controllers that run the guest checks share: the antiforgery pair and the
+    /// no-store marker from <see cref="ApiControllerBase"/>, plus the address the guest guards
+    /// key on.
     /// </summary>
     /// <remarks>
-    /// Two guards sit in front of every endpoint an unauthenticated visitor can reach, and
-    /// they are the same two everywhere: the captcha and the attempt limit. Only registration
-    /// and sign-in need both, and only registration additionally needs a mail check, so those
-    /// live in the derived controllers where they are used.
-    ///
-    /// They are here rather than copied because the order they run in is a security property
-    /// rather than a matter of taste, and a copy is free to get it subtly wrong. The order is
-    /// CSRF, then captcha, then limit, then the expensive work: a request with no valid
-    /// antiforgery pair is not this application's request at all and is refused before it can
-    /// cost anything; the captcha is a call to a third party and should not be made for a
-    /// request that is already going to be refused; and the limit is what keeps a deliberate
-    /// key derivation off an open endpoint. Each derived controller states the order for its
-    /// own endpoint, and this class only supplies the pieces; the antiforgery half and
-    /// <c>NoStore</c> come from <see cref="ApiControllerBase"/>.
-    ///
-    /// It is an abstract controller rather than a filter or middleware on purpose. Each refusal
-    /// is a specific status code and a specific code string, and the frontend branches on those
-    /// strings; a filter would have to decide them centrally, which is exactly the coupling
-    /// being avoided.
+    /// The captcha and the attempt window used to live here as protected helpers. When the
+    /// controllers were grouped by area, <c>SessionsController</c> inherited this class only
+    /// because it started life inside <c>ProfileController</c>, and it had no use for either
+    /// guard. They are now composed into the four controllers that run the guest checks as
+    /// <see cref="Support.CaptchaGuard"/> and <see cref="Support.AttemptLimiter"/>; this base
+    /// keeps the address both guards count by and the CSRF/no-store behaviour every area
+    /// shares.
     /// </remarks>
     public abstract class AuthControllerBase : ApiControllerBase
     {
-        /// <summary>Header the reCAPTCHA token arrives in.</summary>
-        public const string CaptchaHeaderName = "X-Recaptcha-Token";
-
-        /// <summary>Code reported when the reCAPTCHA check refuses a request.</summary>
-        public const string InvalidCaptchaCode = "captcha_invalid";
-
         /// <summary>Address used as a throttle key when the connection has none.</summary>
         protected const string UnknownClient = "unknown";
-
-        /// <summary>Counter that limits how often one client may try.</summary>
-        protected readonly IAttemptThrottle Throttle;
-
-        /// <summary>Live limits, so a configuration reload applies without a restart.</summary>
-        protected readonly IOptionsMonitor<RateLimitOptions> RateLimits;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthControllerBase"/> class.
         /// </summary>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
-        protected AuthControllerBase(
-            IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
-            ILogger logger)
+        protected AuthControllerBase(IAntiforgery antiforgery, ILogger logger)
             : base(antiforgery, logger)
         {
-            Throttle = throttle;
-            RateLimits = rateLimits;
         }
 
         /// <summary>
@@ -82,72 +45,5 @@ namespace Fluxy.API.Controllers.Auth
         /// </remarks>
         protected string ClientAddress
             => HttpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient;
-
-        /// <summary>
-        /// Runs the reCAPTCHA check for an action. Anything other than an outright refusal lets
-        /// the request continue, which is what makes an installation without a secret usable.
-        /// </summary>
-        /// <param name="action">
-        /// Action the token has to have been minted for. Fixed per endpoint and never taken from
-        /// the request: a token minted for one form must not be usable at another.
-        /// </param>
-        /// <param name="clientAddress">Address to report to the verification service.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        protected async Task<bool> PassesCaptchaAsync(
-            IRecaptchaValidator captchaValidator,
-            string action,
-            string clientAddress,
-            CancellationToken cancellationToken)
-        {
-            var token = Request.Headers[CaptchaHeaderName].FirstOrDefault();
-
-            var outcome = await captchaValidator.ValidateAsync(
-                token,
-                action,
-                clientAddress,
-                cancellationToken);
-
-            return outcome is not RecaptchaValidationOutcome.Failed;
-        }
-
-        /// <summary>
-        /// The refusal for a request the captcha would not vouch for.
-        /// </summary>
-        protected IActionResult CaptchaRefused()
-            => StatusCode(
-                StatusCodes.Status400BadRequest,
-                new MessageResponse
-                {
-                    Code = InvalidCaptchaCode,
-                    Message = "The request could not be verified as coming from a person. Please try again."
-                });
-
-        /// <summary>
-        /// Refuses a client that has spent its window, and says for how long so that a caller can
-        /// tell the visitor what to expect.
-        /// </summary>
-        protected IActionResult Throttled(string code, TimeSpan window)
-        {
-            Response.Headers.RetryAfter = ((int)window.TotalSeconds).ToString(CultureInfo.InvariantCulture);
-
-            return StatusCode(
-                StatusCodes.Status429TooManyRequests,
-                new MessageResponse
-                {
-                    Code = code,
-                    Message = $"Too many attempts. Please try again in {Describe(window)}."
-                });
-        }
-
-        /// <summary>
-        /// A window in words, rounded to whole minutes so that a fifteen minute wait does not
-        /// come out as "14.99 minutes".
-        /// </summary>
-        private static string Describe(TimeSpan window)
-        {
-            var minutes = (int)Math.Round(window.TotalMinutes, MidpointRounding.AwayFromZero);
-
-            return minutes == 1 ? "1 minute" : $"{minutes} minutes";
-        }
     }
 }

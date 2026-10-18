@@ -1,12 +1,10 @@
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Controllers.Support;
-using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace Fluxy.API.Controllers.Auth
 {
@@ -54,31 +52,31 @@ namespace Fluxy.API.Controllers.Auth
         public const string ConfirmThrottledCode = "password_reset_confirmation_rate_limited";
 
         private readonly IPasswordResetService _passwordResetService;
-        private readonly IRecaptchaValidator _captchaValidator;
+        private readonly CaptchaGuard _captchaGuard;
+        private readonly AttemptLimiter _limiter;
         private readonly ITokenService _tokenService;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PasswordResetController"/> class.
         /// </summary>
         /// <param name="passwordResetService">Service that owns the reset rules.</param>
-        /// <param name="captchaValidator">Check that a request came from a person.</param>
+        /// <param name="captchaGuard">Check that a request came from a person.</param>
+        /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="tokenService">Service that ends the sessions a changed password leaves behind.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public PasswordResetController(
             IPasswordResetService passwordResetService,
-            IRecaptchaValidator captchaValidator,
+            CaptchaGuard captchaGuard,
+            AttemptLimiter limiter,
             ITokenService tokenService,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<PasswordResetController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _passwordResetService = passwordResetService;
-            _captchaValidator = captchaValidator;
+            _captchaGuard = captchaGuard;
+            _limiter = limiter;
             _tokenService = tokenService;
         }
 
@@ -127,7 +125,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.LoginLimit, limits.LoginWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -135,9 +133,10 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, RequestCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, RequestCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Recorded before the pair is looked up, unlike a registration, and that difference
@@ -147,7 +146,7 @@ namespace Fluxy.API.Controllers.Auth
             // what keeps that knowledge to the same handful of guesses a sign-in allows. It also
             // means a visitor who mistypes the address waits out a window - the same price the
             // sign-in form has always charged, which is why the limits are shared.
-            if (Throttle.RecordAttempt(ThrottleKeys.PasswordResetRequest(clientAddress), policy) > limits.LoginLimit)
+            if (_limiter.Record(ThrottleKeys.PasswordResetRequest(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a password reset request from {ClientAddress}: the limit of {Limit} " +
@@ -155,7 +154,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(RequestThrottledCode, limits.LoginWindow);
+                return _limiter.Throttled(Response, RequestThrottledCode, limits.LoginWindow);
             }
 
             var outcome = await _passwordResetService.RequestAsync(
@@ -195,7 +194,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.LoginLimit, limits.LoginWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -203,15 +202,16 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, ConfirmCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, ConfirmCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Recorded before the code is compared, for the reason the profile confirmation
             // gives: verifying a code costs as much as hashing a password does, and a six digit
             // code is a small enough space to guess at.
-            if (Throttle.RecordAttempt(ThrottleKeys.PasswordResetConfirm(clientAddress), policy) > limits.LoginLimit)
+            if (_limiter.Record(ThrottleKeys.PasswordResetConfirm(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a password reset confirmation from {ClientAddress}: the limit of " +
@@ -219,7 +219,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(ConfirmThrottledCode, limits.LoginWindow);
+                return _limiter.Throttled(Response, ConfirmThrottledCode, limits.LoginWindow);
             }
 
             var outcome = await _passwordResetService.ConfirmAsync(

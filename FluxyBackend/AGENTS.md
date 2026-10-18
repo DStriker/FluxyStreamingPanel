@@ -52,13 +52,13 @@ Fluxy.API/
   Contracts/Common/           types a second feature names (MessageResponse, bulk answers, ...)
   Controllers/
     ApiControllerBase.cs      the antiforgery pair and NoStore(), shared by every area
-    Support/                  stateless helpers: result envelopes, claims, sort parsing, ...
-    Auth/                     AuthControllerBase + guest, profile and session controllers
+    Support/                  stateless helpers plus the scoped AttemptLimiter and CaptchaGuard
+    Auth/                     guest, profile and session controllers; AuthControllerBase adds ClientAddress
     Admin/                    accounts, groups, admin sessions
     Content/                  content categories, video streams
 ```
 
-**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds the captcha, the attempt throttle and `ClientAddress` for the guest-facing `Auth` controllers, so `Admin` and `Content` never inject a throttle they would not spend. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
+**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds only `ClientAddress` for the `Auth` controllers, and the two guest checks are composed as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset and profile). `SessionsController`, `Admin` and `Content` therefore never inject a throttle they would not use. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
 
 **The envelope is API-owned, including the framework's own refusals.** Every action answers with `{ code, message }`, and the two paths that never reach an action are covered by the same shape: an unhandled exception is `500 server_error` through `ApiExceptionHandler`, and a bodyless 404/405/415 is `not_found` / `method_not_allowed` / `unsupported_media_type` through `UseFluxyStatusCodePages()`. Both write `Cache-Control: no-store`; the exception itself is logged and never sent to the client. Development keeps `UseDeveloperExceptionPage` for 500s, and the handler is placed only on the other branch.
 
@@ -762,7 +762,7 @@ confirms it, and a pending-registration URI addressable by email would be the en
 oracle the refusal policy exists to avoid (the reasoning is in the action's remarks; RFC 9110
 makes the header a SHOULD, and this is the case it leaves open). Every private read
 (`me`, `profile`, `sessions`, `active-sessions`, `geo/lookup`, `csrf`) carries
-`Cache-Control: no-store` through `AuthControllerBase.NoStore()`, because a shared cache that
+`Cache-Control: no-store` through `ApiControllerBase.NoStore()`, because a shared cache that
 kept one of those bodies would hand one visitor's account to the next. Its rule — **exactly one
 change kind per PATCH** — exists
 because the staged-confirmation flow holds one pending change at a time, and the time zone (which
@@ -775,7 +775,7 @@ absent property means "leave it alone" and an empty `timeZone` clears the prefer
 ## The admin users API: `admin/users`
 
 One resource, eight endpoints, owned by `UsersController` (`[Route("admin/users")]`,
-`[Authorize(Policy = AdminPolicy)]`, deriving from `AuthControllerBase` for `NoStore()` and the
+`[Authorize(Policy = AdminPolicy)]`, deriving from `ApiControllerBase` for `NoStore()` and the
 antiforgery helper).
 
 | Endpoint | Answer |

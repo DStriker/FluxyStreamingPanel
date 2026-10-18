@@ -1,7 +1,6 @@
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Controllers.Support;
-using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
@@ -40,7 +39,8 @@ namespace Fluxy.API.Controllers.Auth
         private readonly IAuthenticationService _authenticationService;
         private readonly ITokenService _tokenService;
         private readonly ITokenRevocationStore _revocations;
-        private readonly IRecaptchaValidator _captchaValidator;
+        private readonly CaptchaGuard _captchaGuard;
+        private readonly AttemptLimiter _limiter;
         private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
 
         /// <summary>
@@ -49,28 +49,27 @@ namespace Fluxy.API.Controllers.Auth
         /// <param name="authenticationService">Service that checks the credentials.</param>
         /// <param name="tokenService">Service that issues, rotates and ends sessions.</param>
         /// <param name="revocations">Store of tokens withdrawn before they expired.</param>
-        /// <param name="captchaValidator">Check that a request came from a person.</param>
+        /// <param name="captchaGuard">Check that a request came from a person.</param>
+        /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="authOptions">Live token settings and landing paths.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public AuthenticationController(
             IAuthenticationService authenticationService,
             ITokenService tokenService,
             ITokenRevocationStore revocations,
-            IRecaptchaValidator captchaValidator,
+            CaptchaGuard captchaGuard,
+            AttemptLimiter limiter,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             IOptionsMonitor<AuthenticationOptions> authOptions,
             ILogger<AuthenticationController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _authenticationService = authenticationService;
             _tokenService = tokenService;
             _revocations = revocations;
-            _captchaValidator = captchaValidator;
+            _captchaGuard = captchaGuard;
+            _limiter = limiter;
             _authOptions = authOptions;
         }
 
@@ -167,12 +166,13 @@ namespace Fluxy.API.Controllers.Auth
             // `/auth/me` is exactly that, once per navigation.
             if (refreshToken is not null)
             {
-                var limits = RateLimits.CurrentValue;
+                var limits = _limiter.Limits;
                 var policy = new AttemptPolicy(limits.RefreshLimit, limits.RefreshWindow);
 
-                if (Throttle.RecordAttempt(ThrottleKeys.Refresh(clientAddress), policy) > limits.RefreshLimit)
+                if (_limiter.Record(ThrottleKeys.Refresh(clientAddress), policy) > limits.RefreshLimit)
                 {
-                    return Throttled(AuthenticationResponses.RefreshThrottledCode, limits.RefreshWindow);
+                    return _limiter.Throttled(
+                        Response, AuthenticationResponses.RefreshThrottledCode, limits.RefreshWindow);
                 }
             }
 
@@ -337,7 +337,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var username = request.Username?.Trim() ?? string.Empty;
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -345,9 +345,10 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, captchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, captchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Throttled by role and remote address only. A single IP cannot brute-force
@@ -359,7 +360,7 @@ namespace Fluxy.API.Controllers.Auth
             // caller make as many of the expensive comparisons as they liked before the first
             // refusal was noticed. Keyed by role and address only, so password-guessing is
             // throttled per IP per entrance.
-            if (Throttle.RecordAttempt(key, policy) > limits.LoginLimit)
+            if (_limiter.Record(key, policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a sign-in for role {Role} from {ClientAddress}: the limit of {Limit} " +
@@ -368,7 +369,8 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(AuthenticationResponses.LoginThrottledCode, limits.LoginWindow);
+                return _limiter.Throttled(
+                    Response, AuthenticationResponses.LoginThrottledCode, limits.LoginWindow);
             }
 
             var outcome = await _authenticationService.AuthenticateAsync(
@@ -396,7 +398,7 @@ namespace Fluxy.API.Controllers.Auth
             // Cleared only on success, and only for this key. The failures leading here are
             // forgotten the moment the person proved they are not guessing, so a legitimate
             // visitor who fumbled twice is not left with a window that is nearly spent.
-            Throttle.ResetAttempts(key);
+            _limiter.Reset(key);
 
             AuthCookies.Write(HttpContext, outcome.Tokens);
 

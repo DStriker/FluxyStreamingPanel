@@ -1,13 +1,11 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Sessions;
 using Fluxy.API.Controllers.Support;
-using Fluxy.API.Options;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace Fluxy.API.Controllers.Auth
 {
@@ -34,7 +32,7 @@ namespace Fluxy.API.Controllers.Auth
     [Route("auth")]
     [Authorize]
     [Produces("application/json")]
-    public sealed class SessionsController : AuthControllerBase
+    public sealed class SessionsController : ApiControllerBase
     {
         /// <summary>
         /// Sentence a blocked or missing account is refused with on every read and every act
@@ -58,8 +56,6 @@ namespace Fluxy.API.Controllers.Auth
         /// <param name="sessionHistory">Reader of the account's stored sessions.</param>
         /// <param name="activeSessions">Reader of the account's live sessions.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter shared with the rest of the authentication surface.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public SessionsController(
             IProfileService profileService,
@@ -67,10 +63,8 @@ namespace Fluxy.API.Controllers.Auth
             ISessionHistoryService sessionHistory,
             IActiveSessionService activeSessions,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<SessionsController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _profileService = profileService;
             _tokenService = tokenService;

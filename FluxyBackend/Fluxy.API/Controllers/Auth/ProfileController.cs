@@ -1,7 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Profile;
 using Fluxy.API.Controllers.Support;
-using Fluxy.API.Options;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
@@ -9,7 +8,6 @@ using Fluxy.Core.Models.Users;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace Fluxy.API.Controllers.Auth
 {
@@ -72,7 +70,8 @@ namespace Fluxy.API.Controllers.Auth
         public const string ConfirmThrottledCode = "profile_confirmation_rate_limited";
 
         private readonly IProfileService _profileService;
-        private readonly IRecaptchaValidator _captchaValidator;
+        private readonly CaptchaGuard _captchaGuard;
+        private readonly AttemptLimiter _limiter;
         private readonly ITokenService _tokenService;
         private readonly IGeoIpResolver _geoIpResolver;
 
@@ -80,26 +79,25 @@ namespace Fluxy.API.Controllers.Auth
         /// Initializes a new instance of the <see cref="ProfileController"/> class.
         /// </summary>
         /// <param name="profileService">Service that owns the profile rules.</param>
-        /// <param name="captchaValidator">Check that a request came from a person.</param>
+        /// <param name="captchaGuard">Check that a request came from a person.</param>
+        /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="tokenService">Service that ends and reopens sessions after a change.</param>
         /// <param name="geoIpResolver">Resolver that places the caller on the map for the lookup.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
-        /// <param name="throttle">Counter that limits how often one client may try.</param>
-        /// <param name="rateLimits">Live limits, so a configuration reload applies without a restart.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public ProfileController(
             IProfileService profileService,
-            IRecaptchaValidator captchaValidator,
+            CaptchaGuard captchaGuard,
+            AttemptLimiter limiter,
             ITokenService tokenService,
             IGeoIpResolver geoIpResolver,
             IAntiforgery antiforgery,
-            IAttemptThrottle throttle,
-            IOptionsMonitor<RateLimitOptions> rateLimits,
             ILogger<ProfileController> logger)
-            : base(antiforgery, throttle, rateLimits, logger)
+            : base(antiforgery, logger)
         {
             _profileService = profileService;
-            _captchaValidator = captchaValidator;
+            _captchaGuard = captchaGuard;
+            _limiter = limiter;
             _tokenService = tokenService;
             _geoIpResolver = geoIpResolver;
         }
@@ -243,7 +241,7 @@ namespace Fluxy.API.Controllers.Auth
             }
 
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.PreferenceLimit, limits.PreferenceWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -251,7 +249,7 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (Throttle.RecordAttempt(ThrottleKeys.ProfileTimeZone(clientAddress), policy) > limits.PreferenceLimit)
+            if (_limiter.Record(ThrottleKeys.ProfileTimeZone(clientAddress), policy) > limits.PreferenceLimit)
             {
                 Logger.LogInformation(
                     "Refused a time zone change from {ClientAddress}: the limit of {Limit} " +
@@ -259,7 +257,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.PreferenceLimit);
 
-                return Throttled(ChangeThrottledCode, limits.PreferenceWindow);
+                return _limiter.Throttled(Response, ChangeThrottledCode, limits.PreferenceWindow);
             }
 
             if (User.UserId() is not { } userId)
@@ -387,7 +385,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.LoginLimit, limits.LoginWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -395,15 +393,16 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, ConfirmCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, ConfirmCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
             // Recorded before the code is compared, not after: verifying a code costs as much as
             // hashing a password does, so counting afterwards would let a caller spend as many
             // of those comparisons as it liked before the first one was noticed.
-            if (Throttle.RecordAttempt(ThrottleKeys.ProfileConfirm(clientAddress), policy) > limits.LoginLimit)
+            if (_limiter.Record(ThrottleKeys.ProfileConfirm(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a profile confirmation from {ClientAddress}: the limit of {Limit} " +
@@ -411,7 +410,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(ConfirmThrottledCode, limits.LoginWindow);
+                return _limiter.Throttled(Response, ConfirmThrottledCode, limits.LoginWindow);
             }
 
             if (User.UserId() is not { } userId)
@@ -443,7 +442,7 @@ namespace Fluxy.API.Controllers.Auth
             CancellationToken cancellationToken)
         {
             var clientAddress = ClientAddress;
-            var limits = RateLimits.CurrentValue;
+            var limits = _limiter.Limits;
             var policy = new AttemptPolicy(limits.LoginLimit, limits.LoginWindow);
 
             if (await RejectsCsrfAsync() is { } csrfFailure)
@@ -451,12 +450,13 @@ namespace Fluxy.API.Controllers.Auth
                 return csrfFailure;
             }
 
-            if (!await PassesCaptchaAsync(_captchaValidator, ChangeCaptchaAction, clientAddress, cancellationToken))
+            if (await _captchaGuard.RejectsAsync(
+                    Request, ChangeCaptchaAction, clientAddress, cancellationToken) is { } captchaFailure)
             {
-                return CaptchaRefused();
+                return captchaFailure;
             }
 
-            if (Throttle.RecordAttempt(ThrottleKeys.ProfileChange(clientAddress), policy) > limits.LoginLimit)
+            if (_limiter.Record(ThrottleKeys.ProfileChange(clientAddress), policy) > limits.LoginLimit)
             {
                 Logger.LogInformation(
                     "Refused a profile change from {ClientAddress}: the limit of {Limit} " +
@@ -464,7 +464,7 @@ namespace Fluxy.API.Controllers.Auth
                     clientAddress,
                     limits.LoginLimit);
 
-                return Throttled(ChangeThrottledCode, limits.LoginWindow);
+                return _limiter.Throttled(Response, ChangeThrottledCode, limits.LoginWindow);
             }
 
             if (User.UserId() is not { } userId)
