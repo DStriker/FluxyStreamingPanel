@@ -411,8 +411,8 @@ const removedFixture = wrongRoleId
   : null
 record(
   'the second fixture is cleaned up as well',
-  removedFixture === null || removedFixture.ok,
   removedFixture === null ? 'nothing to remove' : refusedAs(removedFixture),
+  removedFixture === null || removedFixture.ok,
 )
 
 // --------------------------------------------------------------- the limited account

@@ -66,6 +66,9 @@ globalThis.document = {
   get cookie() {
     return [...visible].map(([k, v]) => `${k}=${v}`).join('; ')
   },
+  // A browser document has a `documentElement` and `src/i18n.ts` writes its `lang` on every
+  // language change - the localized-codes section below changes the language twice.
+  documentElement: { lang: '' },
 }
 
 // Cookie plumbing is invisible until it breaks, and the one symptom it produces -
