@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from './session'
-import type { Role, Session } from '../types'
+import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../../src/lib/session'
+import type { Role, Session } from '../../src/types'
 
 /**
  * The landing rules, asserted as functions rather than through a render.

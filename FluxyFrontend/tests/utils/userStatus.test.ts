@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { combineStatus } from './userStatus'
-import type { UserStatus } from '../types'
+import { combineStatus } from '../../src/lib/userStatus'
+import type { UserStatus } from '../../src/types'
 
 /**
  * The whole of `combineStatus` is the tie-breaking of one table, so the tests are that

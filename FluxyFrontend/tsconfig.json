@@ -20,11 +20,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
 
-    // Nothing under `src/` is JavaScript, so the two extensions are out of the compilation
-    // entirely - written out rather than left to the default so the state is visible in the
-    // file. The JavaScript that remains (the two configs, everything under `scripts/`) sits
-    // outside `include` on purpose: it is build tooling, not the application.
+    // Nothing under `src/` or `tests/` is JavaScript, so the two extensions are out of the
+    // compilation entirely - written out rather than left to the default so the state is
+    // visible in the file. The JavaScript that remains (the two configs, everything under
+    // `scripts/`) sits outside `include` on purpose: it is build tooling, not the
+    // application.
     "allowJs": false
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }

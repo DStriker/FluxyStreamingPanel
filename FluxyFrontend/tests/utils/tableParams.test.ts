@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { enumParam, withFilter } from './tableParams'
-import type { UserStatus } from '../types'
+import { enumParam, withFilter } from '../../src/lib/tableParams'
+import type { UserStatus } from '../../src/types'
 
 /**
  * The two rules `useServerTable` and every filtered table depend on, and neither is

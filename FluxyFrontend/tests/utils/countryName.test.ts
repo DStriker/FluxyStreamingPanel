@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countryName } from './countryName'
+import { countryName } from '../../src/lib/countryName'
 
 /**
  * The three properties the visit history depends on, asserted without a render: the code
