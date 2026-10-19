@@ -30,7 +30,7 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public async Task<StoredRefreshToken?> FindByHashAsync(
+        public async Task<RefreshToken?> FindByHashAsync(
             string tokenHash,
             CancellationToken cancellationToken = default)
         {
@@ -45,7 +45,7 @@ namespace Fluxy.DataAccess.Repositories
 
         /// <inheritdoc />
         public Task AddAsync(
-            StoredRefreshToken token,
+            RefreshToken token,
             CancellationToken cancellationToken = default)
         {
             _context.RefreshTokens.Add(new RefreshTokenEntity(token.Id)
@@ -454,7 +454,7 @@ namespace Fluxy.DataAccess.Repositories
         /// <summary>
         /// Maps one tracked row to the model the caller reads.
         /// </summary>
-        private static StoredRefreshToken ToModel(RefreshTokenEntity token)
+        private static RefreshToken ToModel(RefreshTokenEntity token)
             => new()
             {
                 Id = token.Id,

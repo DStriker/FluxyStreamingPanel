@@ -19,7 +19,7 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// <param name="userId">Account whose row is wanted.</param>
         /// <param name="kind">Kind the row must have, or null for whatever it has.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        Task<StoredPendingChange?> FindByUserIdAsync(
+        Task<PendingChange?> FindByUserIdAsync(
             Guid userId,
             PendingChangeKind? kind = null,
             CancellationToken cancellationToken = default);
@@ -31,7 +31,7 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// <param name="change">Values the row is written with.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task StageAsync(
-            StoredPendingChange change,
+            PendingChange change,
             CancellationToken cancellationToken = default);
 
         /// <summary>

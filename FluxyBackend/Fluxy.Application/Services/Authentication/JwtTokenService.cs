@@ -131,7 +131,7 @@ namespace Fluxy.Application.Services.Authentication
             var accessToken = CreateAccessToken(user, sessionId, now, options);
 
             await _tokens.AddAsync(
-                new StoredRefreshToken
+                new RefreshToken
                 {
                     Id = Guid.NewGuid(),
                     UserId = user.Id,
@@ -286,7 +286,7 @@ namespace Fluxy.Application.Services.Authentication
             var replacementId = Guid.NewGuid();
 
             await _tokens.AddAsync(
-                new StoredRefreshToken
+                new RefreshToken
                 {
                     Id = replacementId,
                     UserId = stored.UserId,

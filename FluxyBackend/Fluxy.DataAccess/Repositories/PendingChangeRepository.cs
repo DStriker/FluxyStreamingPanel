@@ -29,7 +29,7 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public async Task<StoredPendingChange?> FindByUserIdAsync(
+        public async Task<PendingChange?> FindByUserIdAsync(
             Guid userId,
             PendingChangeKind? kind = null,
             CancellationToken cancellationToken = default)
@@ -49,7 +49,7 @@ namespace Fluxy.DataAccess.Repositories
 
         /// <inheritdoc />
         public async Task StageAsync(
-            StoredPendingChange change,
+            PendingChange change,
             CancellationToken cancellationToken = default)
         {
             // The account's row, tracked so the update below is one statement on the next
@@ -93,7 +93,7 @@ namespace Fluxy.DataAccess.Repositories
         /// <summary>
         /// Maps one tracked row to the model the caller reads.
         /// </summary>
-        private static StoredPendingChange ToModel(PendingChangeEntity change)
+        private static PendingChange ToModel(PendingChangeEntity change)
             => new()
             {
                 Id = change.Id,

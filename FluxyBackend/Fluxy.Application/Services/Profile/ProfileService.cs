@@ -768,7 +768,7 @@ namespace Fluxy.Application.Services.Profile
             CancellationToken cancellationToken)
         {
             await _pendingChanges.StageAsync(
-                new StoredPendingChange
+                new PendingChange
                 {
                     Id = Guid.Empty,
                     UserId = userId,
@@ -832,7 +832,7 @@ namespace Fluxy.Application.Services.Profile
             CancellationToken cancellationToken)
         {
             await _pendingChanges.StageAsync(
-                new StoredPendingChange
+                new PendingChange
                 {
                     Id = Guid.Empty,
                     UserId = userId,
@@ -862,7 +862,7 @@ namespace Fluxy.Application.Services.Profile
         /// </summary>
         private async Task<ProfileChangeOutcome> ConfirmLoginGuardAsync(
             EditableAccount candidate,
-            StoredPendingChange pending,
+            PendingChange pending,
             CancellationToken cancellationToken)
         {
             NormalizedLoginGuard? staged = null;

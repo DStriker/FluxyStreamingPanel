@@ -9,7 +9,7 @@ namespace Fluxy.Core.Models.Users
     /// use for an unhashed copy. An absent property means the row does not carry it, exactly as
     /// the columns are nullable.
     /// </remarks>
-    public sealed record StoredPendingChange
+    public sealed record PendingChange
     {
         /// <summary>Identifier of the staged row.</summary>
         public required Guid Id { get; init; }

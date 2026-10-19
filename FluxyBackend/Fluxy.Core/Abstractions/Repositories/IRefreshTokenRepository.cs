@@ -27,7 +27,7 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// </summary>
         /// <param name="tokenHash">Stored form of the presented token.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        Task<StoredRefreshToken?> FindByHashAsync(
+        Task<RefreshToken?> FindByHashAsync(
             string tokenHash,
             CancellationToken cancellationToken = default);
 
@@ -37,7 +37,7 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// <param name="token">Values the row is written with.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task AddAsync(
-            StoredRefreshToken token,
+            RefreshToken token,
             CancellationToken cancellationToken = default);
 
         /// <summary>

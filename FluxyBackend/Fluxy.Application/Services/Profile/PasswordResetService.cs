@@ -280,7 +280,7 @@ namespace Fluxy.Application.Services.Profile
             // The password is hashed here, once, and copied onto the account only after the
             // code matches. No clear text and no reversible form of it is ever stored.
             await _pendingChanges.StageAsync(
-                new StoredPendingChange
+                new PendingChange
                 {
                     Id = Guid.Empty,
                     UserId = userId,

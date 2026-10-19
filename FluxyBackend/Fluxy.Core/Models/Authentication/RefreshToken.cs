@@ -9,7 +9,7 @@ namespace Fluxy.Core.Models.Authentication
     /// row. <see cref="ReplacedById"/> is what makes a chain walkable; it is written when a
     /// token is spent, so a later presentation of the same row is recognisable as a replay.
     /// </remarks>
-    public sealed record StoredRefreshToken
+    public sealed record RefreshToken
     {
         /// <summary>Identifier of the row.</summary>
         public required Guid Id { get; init; }
