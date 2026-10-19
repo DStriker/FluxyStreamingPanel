@@ -1,8 +1,11 @@
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Abstractions.Repositories;
+using Fluxy.Core.Authentication.Enums;
+using Fluxy.Core.Authentication.Interfaces;
+using Fluxy.Core.Authentication.ReadModels;
+using Fluxy.Core.Authentication.Repositories;
+using Fluxy.Core.Authentication.Rows;
+using Fluxy.Core.Authentication.Utils;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.GeoIp.ReadModels;
-using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Users.Repositories;
 
 namespace Fluxy.Application.Services.Authentication

@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.ReadModels;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Models;

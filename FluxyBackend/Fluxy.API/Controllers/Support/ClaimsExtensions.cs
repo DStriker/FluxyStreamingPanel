@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.Utils;
 using Fluxy.Core.Users.Enums;
 using System.Security.Claims;
 

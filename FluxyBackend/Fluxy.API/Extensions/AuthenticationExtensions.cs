@@ -1,6 +1,7 @@
 using Fluxy.API.Middleware;
 using Fluxy.API.Security;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Interfaces;
+using Fluxy.Core.Authentication.Utils;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Users.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;

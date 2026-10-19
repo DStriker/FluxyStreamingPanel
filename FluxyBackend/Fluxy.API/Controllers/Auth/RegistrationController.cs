@@ -4,7 +4,7 @@ using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Security;
 using Fluxy.Application.Services.Registration;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Security.Models;
 using Fluxy.Core.Users.Commands;

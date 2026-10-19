@@ -1,8 +1,9 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Sessions;
 using Fluxy.API.Controllers.Support;
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.Enums;
+using Fluxy.Core.Authentication.Interfaces;
+using Fluxy.Core.Authentication.Utils;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Models;
 using Microsoft.AspNetCore.Antiforgery;

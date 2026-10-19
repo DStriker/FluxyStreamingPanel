@@ -2,7 +2,7 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Profile;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Security;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Security.Models;
 using Fluxy.Core.Users.Enums;

@@ -1,7 +1,9 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Commands;
+using Fluxy.Core.Authentication.Enums;
+using Fluxy.Core.Authentication.Interfaces;
+using Fluxy.Core.Authentication.Outcomes;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.GeoIp.Utils;
-using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Repositories;

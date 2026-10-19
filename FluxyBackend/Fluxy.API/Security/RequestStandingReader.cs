@@ -1,5 +1,6 @@
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.Interfaces;
+using Fluxy.Core.Authentication.ReadModels;
+using Fluxy.Core.Authentication.Utils;
 
 namespace Fluxy.API.Security
 {

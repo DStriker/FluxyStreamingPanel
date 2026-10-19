@@ -1,6 +1,6 @@
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Users.Commands;

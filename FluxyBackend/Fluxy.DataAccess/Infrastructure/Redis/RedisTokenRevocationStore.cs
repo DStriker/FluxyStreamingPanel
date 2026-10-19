@@ -1,4 +1,4 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Authentication.Interfaces;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 

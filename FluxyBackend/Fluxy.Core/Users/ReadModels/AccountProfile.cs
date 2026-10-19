@@ -43,7 +43,7 @@ namespace Fluxy.Core.Users.ReadModels
         /// </summary>
         /// <remarks>
         /// Read from the row on every request rather than copied into the token, for the reason
-        /// <see cref="Fluxy.Core.Models.Authentication.AccountStanding"/> gives: a grant
+        /// <see cref="Fluxy.Core.Authentication.ReadModels.AccountStanding"/> gives: a grant
         /// withdrawn a second ago has to be gone now, and a copy is a statement about the moment
         /// it was taken. What a browser does with it is draw, not decide - the server refuses
         /// regardless, so a client that ignored this field entirely would see fewer buttons and

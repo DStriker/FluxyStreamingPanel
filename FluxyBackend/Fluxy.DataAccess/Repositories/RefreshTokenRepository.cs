@@ -1,5 +1,7 @@
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.Enums;
+using Fluxy.Core.Authentication.Models;
+using Fluxy.Core.Authentication.Repositories;
+using Fluxy.Core.Authentication.Rows;
 using Fluxy.Core.Users.Enums;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
