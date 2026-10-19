@@ -23,7 +23,7 @@ namespace Fluxy.DataAccess.Configurations
         /// and the room above it is for a name nobody has thought of rather than for one this
         /// length would already hold.
         /// </summary>
-        public const int NameMaxLength = 100;
+        public const int NameMaxLength = UserGroupLimits.NameMaxLength;
 
         /// <inheritdoc />
         public void Configure(EntityTypeBuilder<UserGroupEntity> builder)

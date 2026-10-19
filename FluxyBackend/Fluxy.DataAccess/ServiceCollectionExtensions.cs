@@ -80,6 +80,8 @@ namespace Fluxy.DataAccess
             services.AddScoped<IPendingChangeRepository, PendingChangeRepository>();
             services.AddScoped<ILoginGuardRepository, LoginGuardRepository>();
             services.AddScoped<IUserGroupRepository, UserGroupRepository>();
+            services.AddScoped<IContentCategoryRepository, ContentCategoryRepository>();
+            services.AddScoped<IVideoStreamRepository, VideoStreamRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

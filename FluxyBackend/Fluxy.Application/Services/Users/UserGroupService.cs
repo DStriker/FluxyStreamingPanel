@@ -1,10 +1,6 @@
-using System.Linq.Expressions;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Configurations;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Users
 {
@@ -35,7 +31,7 @@ namespace Fluxy.Application.Services.Users
         private static readonly string[] NameRule =
         [
             "The name must be between 1 and "
-                + UserGroupConfiguration.NameMaxLength
+                + UserGroupLimits.NameMaxLength
                 + " characters."
         ];
 
@@ -47,19 +43,24 @@ namespace Fluxy.Application.Services.Users
         private static readonly string[] StatusRule =
         ["The status must be one of: unregistered, registered, blocked."];
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserGroupRepository _groups;
+        private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UserGroupService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the groups and their permissions.</param>
-        public UserGroupService(FluxyDbContext context)
+        /// <param name="groups">Repository holding the groups and their permissions.</param>
+        /// <param name="unitOfWork">Commits the changes one operation stages.</param>
+        public UserGroupService(
+            IUserGroupRepository groups,
+            IUnitOfWork unitOfWork)
         {
-            _context = context;
+            _groups = groups;
+            _unitOfWork = unitOfWork;
         }
 
         /// <inheritdoc />
-        public async Task<UserGroupPage> GetPageAsync(
+        public Task<UserGroupPage> GetPageAsync(
             int page,
             int pageSize,
             string? search,
@@ -68,136 +69,26 @@ namespace Fluxy.Application.Services.Users
             UserGroupSortField field,
             UserGroupSortOrder order,
             CancellationToken cancellationToken = default)
-        {
-            var query = _context.UserGroups.AsNoTracking();
-
-            if (role is { } wantedRole)
-            {
-                query = query.Where(entry => entry.Role == wantedRole);
-            }
-
-            if (status is { } wantedStatus)
-            {
-                query = query.Where(entry => entry.Status == wantedStatus);
-            }
-
-            // Folded before the comparison rather than with a collation, the same way the
-            // accounts list searches a username: `Contains` on the lowered value is a
-            // substring match a name answers to however it was typed.
-            var needle = search?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (needle.Length > 0)
-            {
-                query = query.Where(entry => entry.Name.ToLower().Contains(needle));
-            }
-
-            // Counted *before* the page is taken and with the same filter, because the pager
-            // shows this number: a total counted over every row would advertise pages that the
-            // filter has already removed.
-            var total = await query.CountAsync(cancellationToken);
-
-            query = Order(query, field, order);
-
-            var rows = await query
-                .Select(entry => new StoredGroup
-                {
-                    Id = entry.Id,
-                    Name = entry.Name,
-                    Role = entry.Role,
-                    Status = entry.Status,
-
-                    // Counted rather than selected: the column is a count, and the sort this
-                    // page was ordered by may be this same number, so it is read for every
-                    // row of every page once - a second query per page would buy nothing.
-                    PermissionsCount = entry.Permissions.Count
-                })
-                // Widening to long before the cast: a page number comes off a query string,
-                // and `(page - 1) * pageSize` on a huge one overflows int into a negative
-                // OFFSET, which the database answers as an error rather than an empty page.
-                .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
-                .Take(pageSize)
-                .ToListAsync(cancellationToken);
-
-            return new UserGroupPage
-            {
-                Items = rows
-                    .Select(row => new UserGroupListItem
-                    {
-                        Id = row.Id,
-                        Name = row.Name,
-                        Role = row.Role,
-                        Status = row.Status,
-                        PermissionsCount = row.PermissionsCount,
-                        IsBase = BaseUserGroups.IsBase(row.Id)
-                    })
-                    .ToList(),
-                Total = total,
-                Page = page,
-                PageSize = pageSize
-            };
-        }
+            => _groups.GetPageAsync(
+                page,
+                pageSize,
+                search,
+                role,
+                status,
+                field,
+                order,
+                cancellationToken);
 
         /// <inheritdoc />
-        public async Task<UserGroupDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            var group = await _context.UserGroups
-                .AsNoTracking()
-                .Include(entry => entry.Permissions)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
-
-            if (group is null)
-            {
-                return null;
-            }
-
-            var members = await _context.Users
-                .AsNoTracking()
-                .CountAsync(entry => entry.GroupId == id, cancellationToken);
-
-            return new UserGroupDetail
-            {
-                Id = group.Id,
-                Name = group.Name,
-                Role = group.Role,
-                Status = group.Status,
-                Permissions = group.Permissions
-                    .Select(grant => grant.Permission)
-                    .ToHashSet(),
-                IsBase = BaseUserGroups.IsBase(group.Id),
-                Members = members,
-                CreatedAt = group.CreatedAt,
-                UpdatedAt = group.UpdatedAt
-            };
-        }
-
-        /// <inheritdoc />
-        public async Task<IReadOnlyList<UserGroupListItem>> GetAllAsync(
+        public Task<UserGroupDetail?> GetAsync(
+            Guid id,
             CancellationToken cancellationToken = default)
-        {
-            var rows = await _context.UserGroups
-                .AsNoTracking()
-                .OrderBy(entry => entry.Name)
-                .Select(entry => new StoredGroup
-                {
-                    Id = entry.Id,
-                    Name = entry.Name,
-                    Role = entry.Role,
-                    Status = entry.Status,
-                    PermissionsCount = entry.Permissions.Count
-                })
-                .ToListAsync(cancellationToken);
+            => _groups.GetAsync(id, cancellationToken);
 
-            return rows
-                .Select(row => new UserGroupListItem
-                {
-                    Id = row.Id,
-                    Name = row.Name,
-                    Role = row.Role,
-                    Status = row.Status,
-                    PermissionsCount = row.PermissionsCount,
-                    IsBase = BaseUserGroups.IsBase(row.Id)
-                })
-                .ToList();
-        }
+        /// <inheritdoc />
+        public Task<IReadOnlyList<UserGroupListItem>> GetAllAsync(
+            CancellationToken cancellationToken = default)
+            => _groups.GetAllAsync(cancellationToken);
 
         /// <inheritdoc />
         public async Task<UserGroupOutcome> CreateAsync(
@@ -208,7 +99,7 @@ namespace Fluxy.Application.Services.Users
 
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-            if (name.Length is < 1 or > UserGroupConfiguration.NameMaxLength)
+            if (name.Length is < 1 or > UserGroupLimits.NameMaxLength)
             {
                 errors[nameof(NewUserGroup.Name)] = NameRule;
             }
@@ -232,7 +123,7 @@ namespace Fluxy.Application.Services.Users
                 return Invalid(errors);
             }
 
-            if (await NameTakenAsync(name, exceptGroup: null, cancellationToken))
+            if (await _groups.IsNameTakenAsync(name, exceptGroup: null, cancellationToken))
             {
                 return new UserGroupOutcome
                 {
@@ -251,23 +142,10 @@ namespace Fluxy.Application.Services.Users
                 input.Permissions ?? (IEnumerable<UserPermission>)[],
                 input.Role));
 
-            var entity = new UserGroupEntity
-            {
-                Name = name,
-                Role = input.Role,
-                Status = input.Status
-            };
-
-            foreach (var permission in permissions)
-            {
-                entity.Permissions.Add(new UserGroupPermissionEntity
-                {
-                    UserGroupId = entity.Id,
-                    Permission = permission
-                });
-            }
-
-            _context.UserGroups.Add(entity);
+            var groupId = await _groups.AddWithPermissionsAsync(
+                input with { Name = name },
+                permissions,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is not null)
             {
@@ -279,7 +157,7 @@ namespace Fluxy.Application.Services.Users
             return new UserGroupOutcome
             {
                 Action = UserGroupAction.Created,
-                GroupId = entity.Id
+                GroupId = groupId
             };
         }
 
@@ -289,9 +167,7 @@ namespace Fluxy.Application.Services.Users
             UserGroupPatch patch,
             CancellationToken cancellationToken = default)
         {
-            var group = await _context.UserGroups
-                .Include(entry => entry.Permissions)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            var group = await _groups.FindForUpdateAsync(id, cancellationToken);
 
             if (group is null)
             {
@@ -303,7 +179,7 @@ namespace Fluxy.Application.Services.Users
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
             var name = patch.Name?.Trim();
-            if (patch.Name is not null && name!.Length is < 1 or > UserGroupConfiguration.NameMaxLength)
+            if (patch.Name is not null && name!.Length is < 1 or > UserGroupLimits.NameMaxLength)
             {
                 errors[nameof(UserGroupPatch.Name)] = NameRule;
             }
@@ -331,7 +207,7 @@ namespace Fluxy.Application.Services.Users
                 return new UserGroupOutcome { Action = UserGroupAction.ImmutableBase, GroupId = id };
             }
 
-            if (name is not null && await NameTakenAsync(name, id, cancellationToken))
+            if (name is not null && await _groups.IsNameTakenAsync(name, id, cancellationToken))
             {
                 return new UserGroupOutcome
                 {
@@ -361,28 +237,28 @@ namespace Fluxy.Application.Services.Users
             else if (patch.Role is { } movedTo && movedTo != group.Role)
             {
                 permissionsAfter = ToSet(UserPermissionCatalog.Normalise(
-                    group.Permissions.Select(grant => grant.Permission),
+                    group.Permissions,
                     movedTo));
             }
 
             if (name is not null)
             {
-                group.Name = name;
+                await _groups.SetNameAsync(id, name, cancellationToken);
             }
 
             if (patch.Role is { } newRole && newRole != group.Role)
             {
-                group.Role = newRole;
+                await _groups.SetRoleAsync(id, newRole, cancellationToken);
             }
 
             if (patch.Status is { } newState)
             {
-                group.Status = newState;
+                await _groups.SetStatusAsync(id, newState, cancellationToken);
             }
 
             if (permissionsAfter is { } wanted)
             {
-                ApplyPermissions(group, wanted);
+                await _groups.ReplacePermissionsAsync(id, wanted, cancellationToken);
             }
 
             if (await SaveAsync(cancellationToken) is not null)
@@ -406,13 +282,11 @@ namespace Fluxy.Application.Services.Users
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            // Loaded with its grants so the delete takes them in the same save as the row
-            // they belong to, rather than leaving them to the cascade to find. The cascade is
-            // still there underneath - it is what makes an interrupted delete impossible to
-            // leave half done - but a request that removes 30 rows says so out loud.
-            var group = await _context.UserGroups
-                .Include(entry => entry.Permissions)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            // Read with its grants so the delete takes them in the same save as the row they
+            // belong to, rather than leaving them to the cascade to find. The cascade is still
+            // there underneath - it is what makes an interrupted delete impossible to leave
+            // half done - but a request that removes 30 rows says so out loud.
+            var group = await _groups.FindForUpdateAsync(id, cancellationToken);
 
             if (group is null)
             {
@@ -424,15 +298,13 @@ namespace Fluxy.Application.Services.Users
                 return new UserGroupOutcome { Action = UserGroupAction.ImmutableBase, GroupId = id };
             }
 
-            if (await _context.Users.AsNoTracking()
-                    .AnyAsync(entry => entry.GroupId == id, cancellationToken))
+            if (await _groups.CountMembersAsync(id, cancellationToken) > 0)
             {
                 return new UserGroupOutcome { Action = UserGroupAction.InUse, GroupId = id };
             }
 
-            _context.UserGroups.Remove(group);
-
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _groups.RemoveAsync(id, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new UserGroupOutcome
             {
@@ -491,114 +363,6 @@ namespace Fluxy.Application.Services.Users
         }
 
         /// <summary>
-        /// Orders by the first key and breaks the tie with the second.
-        /// </summary>
-        /// <remarks>
-        /// Every branch carries a tie-break. Two groups share a name's first letter, share a
-        /// role and quite often share a state, and without a tie-break the database is free to
-        /// return them in any order it likes between one page and the next - which is how the
-        /// same group appears on two pages or on none.
-        /// </remarks>
-        private static IQueryable<UserGroupEntity> Order(
-            IQueryable<UserGroupEntity> query,
-            UserGroupSortField field,
-            UserGroupSortOrder order)
-        {
-            var descending = order is UserGroupSortOrder.Descending;
-
-            return field switch
-            {
-                UserGroupSortField.Role => Chain(
-                    query, entry => entry.Role, entry => entry.Name, descending),
-
-                UserGroupSortField.Status => Chain(
-                    query, entry => entry.Status, entry => entry.Name, descending),
-
-                UserGroupSortField.PermissionsCount => Chain(
-                    query, entry => entry.Permissions.Count, entry => entry.Name, descending),
-
-                UserGroupSortField.CreatedAt => Chain(
-                    query, entry => entry.CreatedAt, entry => entry.Name, descending),
-
-                _ => Chain(query, entry => entry.Name, entry => entry.Id, descending)
-            };
-        }
-
-        /// <summary>Orders by the first key and breaks the tie with the second.</summary>
-        private static IOrderedQueryable<UserGroupEntity> Chain<TKey1, TKey2>(
-            IQueryable<UserGroupEntity> source,
-            Expression<Func<UserGroupEntity, TKey1>> primary,
-            Expression<Func<UserGroupEntity, TKey2>> tieBreak,
-            bool descending)
-        {
-            var ordered = descending
-                ? source.OrderByDescending(primary)
-                : source.OrderBy(primary);
-
-            return descending
-                ? ordered.ThenByDescending(tieBreak)
-                : ordered.ThenBy(tieBreak);
-        }
-
-        /// <summary>
-        /// Whether some other group already answers to that name.
-        /// </summary>
-        /// <remarks>
-        /// Compared exactly, case sensitively, for the same reason username and email are:
-        /// PostgreSQL decides what "equal" means for a varchar from the collation of the
-        /// column, and the default one compares the bytes - which is what makes "Clients" and
-        /// "clients" two groups, exactly as it makes them two accounts. Excluding
-        /// <paramref name="exceptGroup"/> is what lets a rename keep its own name.
-        /// </remarks>
-        private async Task<bool> NameTakenAsync(
-            string name,
-            Guid? exceptGroup,
-            CancellationToken cancellationToken)
-        {
-            return await _context.UserGroups
-                .AsNoTracking()
-                .AnyAsync(
-                    entry => entry.Name == name
-                        && (exceptGroup == null || entry.Id != exceptGroup),
-                    cancellationToken);
-        }
-
-        /// <summary>
-        /// Makes the rows of one group read exactly like <paramref name="wanted"/>: grants it
-        /// no longer holds are removed, grants it has gained are inserted, and the order is
-        /// never a fact - a set has none.
-        /// </summary>
-        private static void ApplyPermissions(
-            UserGroupEntity group,
-            IReadOnlySet<UserPermission> wanted)
-        {
-            var stale = group.Permissions
-                .Where(grant => !wanted.Contains(grant.Permission))
-                .ToList();
-
-            foreach (var grant in stale)
-            {
-                group.Permissions.Remove(grant);
-            }
-
-            var held = group.Permissions
-                .Select(grant => grant.Permission)
-                .ToHashSet();
-
-            foreach (var permission in wanted)
-            {
-                if (held.Add(permission))
-                {
-                    group.Permissions.Add(new UserGroupPermissionEntity
-                    {
-                        UserGroupId = group.Id,
-                        Permission = permission
-                    });
-                }
-            }
-        }
-
-        /// <summary>
         /// Turns the bitmask <see cref="UserPermissionCatalog.Normalise"/> hands back into the
         /// set of individual keys it stands for.
         /// </summary>
@@ -635,7 +399,7 @@ namespace Fluxy.Application.Services.Users
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return null;
             }
             catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))
@@ -654,15 +418,5 @@ namespace Fluxy.Application.Services.Users
             IReadOnlyDictionary<string, string[]> errors,
             Guid id = default)
             => new() { Action = UserGroupAction.Invalid, GroupId = id, Errors = errors };
-
-        /// <summary>The columns a page of the group list draws, before the shape it returns.</summary>
-        private sealed class StoredGroup
-        {
-            public Guid Id { get; init; } = Guid.Empty;
-            public string Name { get; init; } = string.Empty;
-            public UserRole Role { get; init; }
-            public UserStatus Status { get; init; }
-            public int PermissionsCount { get; init; }
-        }
     }
 }

@@ -22,7 +22,7 @@ namespace Fluxy.DataAccess.Configurations
         /// length is for a name nobody has thought of rather than for one this length would
         /// already hold.
         /// </summary>
-        public const int NameMaxLength = 100;
+        public const int NameMaxLength = ContentCategoryLimits.NameMaxLength;
 
         /// <inheritdoc />
         public void Configure(EntityTypeBuilder<ContentCategoryEntity> builder)

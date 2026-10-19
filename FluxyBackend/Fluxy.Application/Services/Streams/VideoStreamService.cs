@@ -1,11 +1,6 @@
 using Fluxy.Core.Abstractions;
-using Fluxy.Core.Models.Content;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Streams;
-using Fluxy.DataAccess.Configurations;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
-using System.Linq.Expressions;
 
 namespace Fluxy.Application.Services.Streams
 {
@@ -45,7 +40,7 @@ namespace Fluxy.Application.Services.Streams
         private static readonly string[] NameRule =
         [
             "The name must be between 1 and "
-                + VideoStreamConfiguration.NameMaxLength
+                + VideoStreamLimits.NameMaxLength
                 + " characters."
         ];
 
@@ -79,7 +74,7 @@ namespace Fluxy.Application.Services.Streams
         private static readonly string[] SourcesRule =
         [
             "Add at least one source address, and no more than "
-                + VideoStreamConfiguration.SourceUrlMaxLength
+                + VideoStreamLimits.SourceUrlMaxLength
                 + " characters each."
         ];
 
@@ -87,7 +82,7 @@ namespace Fluxy.Application.Services.Streams
         private static readonly string[] FilesRule =
         [
             "Add at least one file, and no more than "
-                + VideoStreamConfiguration.FilePathMaxLength
+                + VideoStreamLimits.FilePathMaxLength
                 + " characters each."
         ];
 
@@ -114,19 +109,24 @@ namespace Fluxy.Application.Services.Streams
                 "if the stream carries no guide."
         ];
 
-        private readonly FluxyDbContext _context;
+        private readonly IVideoStreamRepository _streams;
+        private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VideoStreamService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the streams and their two lists.</param>
-        public VideoStreamService(FluxyDbContext context)
+        /// <param name="streams">Repository holding the streams and their two lists.</param>
+        /// <param name="unitOfWork">Commits the changes one operation stages.</param>
+        public VideoStreamService(
+            IVideoStreamRepository streams,
+            IUnitOfWork unitOfWork)
         {
-            _context = context;
+            _streams = streams;
+            _unitOfWork = unitOfWork;
         }
 
         /// <inheritdoc />
-        public async Task<VideoStreamPage> GetPageAsync(
+        public Task<VideoStreamPage> GetPageAsync(
             int page,
             int pageSize,
             string? search,
@@ -136,112 +136,22 @@ namespace Fluxy.Application.Services.Streams
             VideoStreamSortField sortBy,
             VideoStreamSortOrder sortOrder,
             CancellationToken cancellationToken = default)
-        {
-            var query = _context.VideoStreams.AsNoTracking();
-
-            if (categoryId is { } wantedCategory)
-            {
-                query = query.Where(entry => entry.CategoryId == wantedCategory);
-            }
-
-            if (status is { } wantedStatus)
-            {
-                query = query.Where(entry => entry.Status == wantedStatus);
-            }
-
-            if (type is { } wantedType)
-            {
-                query = query.Where(entry => entry.Type == wantedType);
-            }
-
-            // Folded before the comparison rather than with a collation, the same way the
-            // accounts list searches its usernames and the visit history its user agents:
-            // `Contains` on the lowered value is a substring match any name answers to
-            // regardless of how the column was typed.
-            var needle = search?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (needle.Length > 0)
-            {
-                query = query.Where(entry => entry.Name.ToLower().Contains(needle));
-            }
-
-            // Counted *before* the page is taken and with the same filter, because the pager
-            // shows this number: a total counted over every row would advertise pages that the
-            // filter has already removed.
-            var total = await query.CountAsync(cancellationToken);
-
-            query = Order(query, sortBy, sortOrder);
-
-            var rows = await query
-                .Select(entry => new StoredStream
-                {
-                    Id = entry.Id,
-                    Name = entry.Name,
-                    Status = entry.Status,
-                    Type = entry.Type,
-                    CategoryId = entry.CategoryId,
-
-                    // The join on the category is inner - its key is NOT NULL and RESTRICT -
-                    // so no row of this page can arrive without one. The navigation is
-                    // declared nullable because a query that did not include it genuinely has
-                    // nothing there; this projection includes it, and says so.
-                    CategoryName = entry.Category!.Name,
-                    LogoUrl = entry.LogoUrl,
-                    ActiveSource = entry.ActiveSource,
-                    EpgSourceId = entry.EpgSourceId,
-                    EpgChannelKey = entry.EpgChannelKey,
-                    SortOrder = entry.SortOrder
-                })
-                // Widening to long before the cast: a page number comes off a query string,
-                // and `(page - 1) * pageSize` on a huge one overflows int into a negative
-                // OFFSET, which the database answers as an error rather than as an empty page.
-                .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
-                .Take(pageSize)
-                .ToListAsync(cancellationToken);
-
-            return new VideoStreamPage
-            {
-                Items = rows.Select(ToListItem).ToList(),
-                Total = total,
-                Page = page,
-                PageSize = pageSize
-            };
-        }
+            => _streams.GetPageAsync(
+                page,
+                pageSize,
+                search,
+                categoryId,
+                status,
+                type,
+                sortBy,
+                sortOrder,
+                cancellationToken);
 
         /// <inheritdoc />
-        public async Task<VideoStream?> GetAsync(
+        public Task<VideoStream?> GetAsync(
             Guid id,
             CancellationToken cancellationToken = default)
-        {
-            var stream = await _context.VideoStreams
-                .AsNoTracking()
-                .Include(entry => entry.Category)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
-
-            if (stream is null)
-            {
-                return null;
-            }
-
-            // The two lists are rows of their own, so they are two more reads - one per page
-            // worth of streams would be two more per row, which is why the table endpoint does
-            // not ask for them at all. Ordered by position rather than by identifier, because
-            // the position is the order the relay plays in and the identifier is a random uuid.
-            var sources = await _context.VideoStreamSources
-                .AsNoTracking()
-                .Where(entry => entry.StreamId == id)
-                .OrderBy(entry => entry.Position)
-                .Select(entry => entry.Url)
-                .ToListAsync(cancellationToken);
-
-            var files = await _context.VideoStreamFiles
-                .AsNoTracking()
-                .Where(entry => entry.StreamId == id)
-                .OrderBy(entry => entry.Position)
-                .Select(entry => entry.Path)
-                .ToListAsync(cancellationToken);
-
-            return stream.ToModel(sources, files);
-        }
+            => _streams.GetAsync(id, cancellationToken);
 
         /// <inheritdoc />
         public async Task<VideoStreamOutcome> CreateAsync(
@@ -270,7 +180,7 @@ namespace Fluxy.Application.Services.Streams
             // that already broke a rule of its own has nothing to say about the database yet -
             // and a category that is not a category of video streams is refused rather than
             // accepted with a stream filed where no stream is ever shown.
-            if (await CategoryIsUsableAsync(input.CategoryId, cancellationToken) is false)
+            if (await _streams.CategoryIsUsableAsync(input.CategoryId, cancellationToken) is false)
             {
                 return Invalid(new Dictionary<string, string[]>(StringComparer.Ordinal)
                 {
@@ -278,54 +188,44 @@ namespace Fluxy.Application.Services.Streams
                 });
             }
 
-            if (await NameTakenAsync(input.Name.Trim(), input.CategoryId, null, cancellationToken))
+            if (await _streams.IsNameTakenAsync(
+                input.Name.Trim(),
+                input.CategoryId,
+                exceptStream: null,
+                cancellationToken))
             {
                 return AlreadyExists(nameof(NewVideoStream.Name));
             }
 
             // The end of the category's list is the highest position that category holds, plus
-            // one - read here rather than claimed by the caller, because the caller's screen
-            // can be one move behind the database and the end is a fact about the rows, not
-            // about what anybody saw. An empty category reads null and starts at 1.
-            var highest = await _context.VideoStreams
-                .Where(entry => entry.CategoryId == input.CategoryId)
-                .MaxAsync(entry => (int?)entry.SortOrder, cancellationToken);
+            // one - read by the repository rather than claimed by the caller, because the
+            // caller's screen can be one move behind the database and the end is a fact about
+            // the rows, not about what anybody saw. An empty category reads zero and starts at 1.
+            var highest = await _streams.GetLastSortOrderAsync(
+                input.CategoryId,
+                exceptStream: null,
+                cancellationToken);
 
-            var entity = new VideoStreamEntity
-            {
-                Name = input.Name.Trim(),
-                Status = VideoStreamStatus.Stopped,
-                Type = input.Type,
-                CategoryId = input.CategoryId,
-                LogoUrl = NullIfBlank(input.LogoUrl),
-                // Nothing in the interface writes it, so an insert never has one. The relaying
-                // process reports it, and only it.
-                ActiveSource = null,
-                Enigma2Sid = NullIfBlank(input.Enigma2Sid),
-                DelayMinutes = input.DelayMinutes,
-                ArchiveDays = input.Type is VideoStreamType.Permanent ? input.ArchiveDays : 0,
-                SortOrder = (highest ?? 0) + 1,
-                RestreamUserAgent = NullIfBlank(input.RestreamUserAgent),
-                RestreamProxy = NullIfBlank(input.RestreamProxy),
-                RestreamCookies = NullIfBlank(input.RestreamCookies),
-                RestreamHeaders = NullIfBlank(input.RestreamHeaders)
-            };
+            var stream = BuildWrite(
+                input.Name.Trim(),
+                input.Type,
+                input.CategoryId,
+                input.LogoUrl,
+                input.Enigma2Sid,
+                input.DelayMinutes,
+                input.SeriesId,
+                input.VodId,
+                input.EpgSourceId,
+                input.EpgChannelKey,
+                input.ArchiveDays,
+                input.RestreamUserAgent,
+                input.RestreamProxy,
+                input.RestreamCookies,
+                input.RestreamHeaders,
+                input.Sources,
+                input.Files);
 
-            // The pair is stored only when it agrees with itself, which the validation above
-            // already required - so this is the same decision it took, written down once.
-            entity.SeriesId = input.Type is VideoStreamType.OnlineSeries ? input.SeriesId : null;
-            entity.VodId = input.Type is VideoStreamType.VodPlaylist ? input.VodId : null;
-
-            if (input.EpgSourceId is { } epgSource && input.EpgChannelKey is { } epgKey)
-            {
-                entity.EpgSourceId = epgSource;
-                entity.EpgChannelKey = epgKey.Trim();
-            }
-
-            AddSources(entity, input.Type, input.Sources);
-            AddFiles(entity, input.Type, input.Files);
-
-            _context.VideoStreams.Add(entity);
+            var streamId = await _streams.AddAsync(stream, highest + 1, cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } createFailure)
             {
@@ -342,7 +242,7 @@ namespace Fluxy.Application.Services.Streams
             return new VideoStreamOutcome
             {
                 Action = VideoStreamAction.Created,
-                StreamId = entity.Id
+                StreamId = streamId
             };
         }
 
@@ -352,17 +252,12 @@ namespace Fluxy.Application.Services.Streams
             VideoStreamPatch patch,
             CancellationToken cancellationToken = default)
         {
-            // The two lists are loaded with the row, and that is load-bearing rather than an
-            // optimisation: `ReplaceSources`/`ReplaceFiles` decide what to delete by comparing
-            // against what the row already holds, and an unloaded collection reads as *empty* -
-            // so the comparison always differed, `RemoveRange` removed nothing, and the fresh
-            // rows were inserted over the ones still in the table, colliding on
-            // `IX_video_stream_sources_stream_id_position`. Every change to a stream that had
-            // a source or file list failed that way, including one that touched nothing else.
-            var stream = await _context.VideoStreams
-                .Include(entry => entry.StreamSources)
-                .Include(entry => entry.StreamFiles)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            // The read brings both lists with the row, and that is load-bearing rather than an
+            // optimisation: the replacement below decides what to delete by comparing against
+            // what the row already holds, and an unloaded collection reads as *empty* - so the
+            // comparison always differed and the fresh rows were inserted over the ones still
+            // in the table.
+            var stream = await _streams.FindForUpdateAsync(id, cancellationToken);
 
             if (stream is null)
             {
@@ -404,20 +299,16 @@ namespace Fluxy.Application.Services.Streams
             // The lists take the shape the caller sent: absent keeps, empty clears, anything
             // else replaces wholesale. Replacing is what makes the order on the operator's
             // screen the order the relay plays in.
-            var sources = patch.Sources is null
-                ? await ReadSourcesAsync(id, cancellationToken)
-                : patch.Sources;
-
-            var files = patch.Files is null
-                ? await ReadFilesAsync(id, cancellationToken)
-                : patch.Files;
+            var sources = patch.Sources ?? stream.Sources;
+            var files = patch.Files ?? stream.Files;
+            var archiveDays = patch.ArchiveDays ?? stream.ArchiveDays;
 
             var errors = ValidateShape(
                 name,
                 type,
                 categoryId,
                 delayMinutes,
-                patch.ArchiveDays ?? stream.ArchiveDays,
+                archiveDays,
                 seriesId,
                 vodId,
                 epgSourceId,
@@ -430,14 +321,14 @@ namespace Fluxy.Application.Services.Streams
                 return Invalid(errors, id);
             }
 
-            if (await CategoryIsUsableAsync(categoryId, cancellationToken) is false)
+            if (await _streams.CategoryIsUsableAsync(categoryId, cancellationToken) is false)
             {
                 return Invalid(
                     Field(nameof(VideoStreamPatch.CategoryId), CategoryRule),
                     id);
             }
 
-            if (await NameTakenAsync(name, categoryId, id, cancellationToken))
+            if (await _streams.IsNameTakenAsync(name, categoryId, id, cancellationToken))
             {
                 return AlreadyExists(nameof(VideoStreamPatch.Name), id);
             }
@@ -445,48 +336,33 @@ namespace Fluxy.Application.Services.Streams
             // Moving to another category moves the stream to the end of that category's list.
             // The old category keeps its own gaps, the same way a deletion does: renumbering
             // the survivors would be a second source for a fact a reorder already owns.
+            int? sortOrder = null;
             if (categoryId != stream.CategoryId)
             {
-                var highest = await _context.VideoStreams
-                    .Where(entry => entry.CategoryId == categoryId && entry.Id != id)
-                    .MaxAsync(entry => (int?)entry.SortOrder, cancellationToken);
-
-                stream.SortOrder = (highest ?? 0) + 1;
+                var highest = await _streams.GetLastSortOrderAsync(categoryId, id, cancellationToken);
+                sortOrder = highest + 1;
             }
 
-            stream.Name = name;
-            stream.Type = type;
-            stream.CategoryId = categoryId;
-            stream.LogoUrl = logoUrl;
-            stream.Enigma2Sid = enigma2Sid;
-            stream.DelayMinutes = delayMinutes;
-            stream.SeriesId = type is VideoStreamType.OnlineSeries ? seriesId : null;
-            stream.VodId = type is VideoStreamType.VodPlaylist ? vodId : null;
-            stream.ArchiveDays = type is VideoStreamType.Permanent
-                ? (patch.ArchiveDays ?? stream.ArchiveDays)
-                : 0;
-            stream.RestreamUserAgent = restreamUserAgent;
-            stream.RestreamProxy = restreamProxy;
-            stream.RestreamCookies = restreamCookies;
-            stream.RestreamHeaders = restreamHeaders;
+            var write = BuildWrite(
+                name,
+                type,
+                categoryId,
+                logoUrl,
+                enigma2Sid,
+                delayMinutes,
+                seriesId,
+                vodId,
+                epgSourceId,
+                epgChannelKey,
+                archiveDays,
+                restreamUserAgent,
+                restreamProxy,
+                restreamCookies,
+                restreamHeaders,
+                sources,
+                files);
 
-            if (epgSourceId is { } source && epgChannelKey is { } key)
-            {
-                stream.EpgSourceId = source;
-                stream.EpgChannelKey = key;
-            }
-            else
-            {
-                // Only one half of the pair was present, and the validation above refused
-                // that - so this branch is unreachable while the rules hold. Cleared rather
-                // than left half-written so that a future rule change cannot leave a row
-                // carrying a key nothing will look up.
-                stream.EpgSourceId = null;
-                stream.EpgChannelKey = null;
-            }
-
-            ReplaceSources(stream, type, sources);
-            ReplaceFiles(stream, type, files);
+            await _streams.UpdateAsync(id, write, sortOrder, cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } updateFailure)
             {
@@ -512,21 +388,16 @@ namespace Fluxy.Application.Services.Streams
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            var stream = await _context.VideoStreams
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
-
-            if (stream is null)
-            {
-                return NotFound(id);
-            }
-
             // The two lists go with it through the foreign keys' cascade, so this is one
             // removal rather than three - and deleting the rows rather than leaving them
             // behind is what keeps "the rows a stream has are its list" true after the stream
             // is gone.
-            _context.VideoStreams.Remove(stream);
+            if (!await _streams.RemoveAsync(id, cancellationToken))
+            {
+                return NotFound(id);
+            }
 
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new VideoStreamOutcome
             {
@@ -553,9 +424,9 @@ namespace Fluxy.Application.Services.Streams
         /// row says what the operator asked it to say, and refusing would make a double click
         /// look like a failure of the thing the visitor was trying to achieve.
         ///
-        /// <see cref="VideoStreamEntity.ActiveSource"/> is deliberately left alone. It is what
-        /// the relaying process reports back, and clearing it here would be this side claiming
-        /// the process answered when nothing has asked it anything.
+        /// The active source is deliberately left alone. It is what the relaying process reports
+        /// back, and clearing it here would be this side claiming the process answered when
+        /// nothing has asked it anything.
         /// </remarks>
         private async Task<VideoStreamOutcome> SetStatusAsync(
             Guid id,
@@ -563,28 +434,22 @@ namespace Fluxy.Application.Services.Streams
             VideoStreamAction action,
             CancellationToken cancellationToken)
         {
-            var stream = await _context.VideoStreams
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            var previous = await _streams.SetStatusAsync(id, status, cancellationToken);
 
-            if (stream is null)
+            if (previous is null)
             {
                 return NotFound(id);
             }
 
-            if (stream.Status != status)
+            if (previous != status)
             {
-                stream.Status = status;
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
 
             return new VideoStreamOutcome { Action = action, StreamId = id };
         }
 
-        /// <summary>
-        /// Checks everything about a stream that can be judged from the request alone: the
-        /// name, the type, the numbers, the half of a programme guide, and the payload the
-        /// type owns.
-        /// </summary>
+        /// <summary>Checks everything about a stream that can be judged from the request alone.</summary>
         /// <remarks>
         /// The category is deliberately not checked here - whether that identifier names a row
         /// is a question about the database, and it is asked once the body has proved it is
@@ -606,7 +471,7 @@ namespace Fluxy.Application.Services.Streams
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
             var trimmedName = name.Trim();
-            if (trimmedName.Length is < 1 or > VideoStreamConfiguration.NameMaxLength)
+            if (trimmedName.Length is < 1 or > VideoStreamLimits.NameMaxLength)
             {
                 errors[nameof(NewVideoStream.Name)] = NameRule;
             }
@@ -655,7 +520,7 @@ namespace Fluxy.Application.Services.Streams
                 case VideoStreamType.Permanent:
                 case VideoStreamType.OnDemand:
                 case VideoStreamType.Redirect:
-                    if (!HasUsableEntries(sources, VideoStreamConfiguration.SourceUrlMaxLength))
+                    if (!HasUsableEntries(sources, VideoStreamLimits.SourceUrlMaxLength))
                     {
                         errors[nameof(NewVideoStream.Sources)] = SourcesRule;
                     }
@@ -679,7 +544,7 @@ namespace Fluxy.Application.Services.Streams
                     break;
 
                 case VideoStreamType.FilePlaylist:
-                    if (!HasUsableEntries(files, VideoStreamConfiguration.FilePathMaxLength))
+                    if (!HasUsableEntries(files, VideoStreamLimits.FilePathMaxLength))
                     {
                         errors[nameof(NewVideoStream.Files)] = FilesRule;
                     }
@@ -702,237 +567,69 @@ namespace Fluxy.Application.Services.Streams
             => entries.Count > 0
                 && entries.All(entry => !string.IsNullOrWhiteSpace(entry) && entry.Trim().Length <= maxLength);
 
-        /// <summary>Appends the rows of the list a create is writing, in position order.</summary>
-        private static void AddSources(
-            VideoStreamEntity entity,
-            VideoStreamType type,
-            IReadOnlyList<string> sources)
-        {
-            if (!IsUrlKind(type))
-            {
-                return;
-            }
-
-            var position = 0;
-            foreach (var entry in sources)
-            {
-                if (string.IsNullOrWhiteSpace(entry))
-                {
-                    continue;
-                }
-
-                entity.StreamSources.Add(new VideoStreamSourceEntity
-                {
-                    StreamId = entity.Id,
-                    Position = position++,
-                    Url = entry.Trim()
-                });
-            }
-        }
-
-        /// <summary>Appends the rows of the file list a create is writing, in position order.</summary>
-        private static void AddFiles(
-            VideoStreamEntity entity,
-            VideoStreamType type,
-            IReadOnlyList<string> files)
-        {
-            if (type is not VideoStreamType.FilePlaylist)
-            {
-                return;
-            }
-
-            var position = 0;
-            foreach (var entry in files)
-            {
-                if (string.IsNullOrWhiteSpace(entry))
-                {
-                    continue;
-                }
-
-                entity.StreamFiles.Add(new VideoStreamFileEntity
-                {
-                    StreamId = entity.Id,
-                    Position = position++,
-                    Path = entry.Trim()
-                });
-            }
-        }
-
-        /// <summary>Replaces the stored source list with the one the change is sending.</summary>
-        private void ReplaceSources(
-            VideoStreamEntity stream,
-            VideoStreamType type,
-            IReadOnlyList<string> sources)
-        {
-            var wanted = (IsUrlKind(type) ? sources : Array.Empty<string>())
-                .Where(entry => !string.IsNullOrWhiteSpace(entry))
-                .Select(entry => entry.Trim())
-                .ToList();
-
-            var stored = stream.StreamSources
-                .OrderBy(entry => entry.Position)
-                .ToList();
-
-            if (stored.Select(entry => entry.Url).SequenceEqual(wanted, StringComparer.Ordinal))
-            {
-                // Nothing moved. Leaving the rows alone keeps their identifiers, which are the
-                // only thing about them that outlives a save.
-                return;
-            }
-
-            _context.VideoStreamSources.RemoveRange(stored);
-
-            for (var index = 0; index < wanted.Count; index++)
-            {
-                stream.StreamSources.Add(new VideoStreamSourceEntity
-                {
-                    StreamId = stream.Id,
-                    Position = index,
-                    Url = wanted[index]
-                });
-            }
-        }
-
-        /// <summary>Replaces the stored file list with the one the change is sending.</summary>
-        private void ReplaceFiles(
-            VideoStreamEntity stream,
-            VideoStreamType type,
-            IReadOnlyList<string> files)
-        {
-            var wanted = (type is VideoStreamType.FilePlaylist ? files : Array.Empty<string>())
-                .Where(entry => !string.IsNullOrWhiteSpace(entry))
-                .Select(entry => entry.Trim())
-                .ToList();
-
-            var stored = stream.StreamFiles
-                .OrderBy(entry => entry.Position)
-                .ToList();
-
-            if (stored.Select(entry => entry.Path).SequenceEqual(wanted, StringComparer.Ordinal))
-            {
-                return;
-            }
-
-            _context.VideoStreamFiles.RemoveRange(stored);
-
-            for (var index = 0; index < wanted.Count; index++)
-            {
-                stream.StreamFiles.Add(new VideoStreamFileEntity
-                {
-                    StreamId = stream.Id,
-                    Position = index,
-                    Path = wanted[index]
-                });
-            }
-        }
-
-        /// <summary>Reads the stored source list, in the order the relay uses it.</summary>
-        private async Task<IReadOnlyList<string>> ReadSourcesAsync(
-            Guid id,
-            CancellationToken cancellationToken)
-            => await _context.VideoStreamSources
-                .AsNoTracking()
-                .Where(entry => entry.StreamId == id)
-                .OrderBy(entry => entry.Position)
-                .Select(entry => entry.Url)
-                .ToListAsync(cancellationToken);
-
-        /// <summary>Reads the stored file list, in the order it is played.</summary>
-        private async Task<IReadOnlyList<string>> ReadFilesAsync(
-            Guid id,
-            CancellationToken cancellationToken)
-            => await _context.VideoStreamFiles
-                .AsNoTracking()
-                .Where(entry => entry.StreamId == id)
-                .OrderBy(entry => entry.Position)
-                .Select(entry => entry.Path)
-                .ToListAsync(cancellationToken);
-
         /// <summary>
-        /// Whether that identifier names a category this domain shows - an existing category
-        /// of video streams. A category of another kind would file the stream where no
-        /// channel list ever looks.
-        /// </summary>
-        private async Task<bool> CategoryIsUsableAsync(Guid categoryId, CancellationToken cancellationToken)
-            => await _context.ContentCategories
-                .AsNoTracking()
-                .AnyAsync(
-                    entry => entry.Id == categoryId && entry.Type == ContentType.VideoStream,
-                    cancellationToken);
-
-        /// <summary>
-        /// Whether some other stream of the same category already answers to that name.
+        /// Turns the request's lists and type into the values the repository writes.
         /// </summary>
         /// <remarks>
-        /// Compared exactly, case sensitively, for the same reason username and email are - and
-        /// scoped to the category, because two categories are two screens. Excluding
-        /// <paramref name="exceptStream"/> is what lets a rename keep its own name.
+        /// Clearing the fields the type does not own is this method's whole point: it is the
+        /// one place that decides, from the merged type, which list survives and which becomes
+        /// empty. Blank entries are dropped and every survivor is trimmed, because the columns
+        /// store what the relay will actually use.
         /// </remarks>
-        private async Task<bool> NameTakenAsync(
+        private static VideoStreamWrite BuildWrite(
             string name,
+            VideoStreamType type,
             Guid categoryId,
-            Guid? exceptStream,
-            CancellationToken cancellationToken)
+            string? logoUrl,
+            string? enigma2Sid,
+            int delayMinutes,
+            Guid? seriesId,
+            Guid? vodId,
+            Guid? epgSourceId,
+            string? epgChannelKey,
+            int archiveDays,
+            string? restreamUserAgent,
+            string? restreamProxy,
+            string? restreamCookies,
+            string? restreamHeaders,
+            IReadOnlyList<string> sources,
+            IReadOnlyList<string> files)
         {
-            return await _context.VideoStreams
-                .AsNoTracking()
-                .AnyAsync(
-                    entry => entry.Name == name
-                        && entry.CategoryId == categoryId
-                        && (exceptStream == null || entry.Id != exceptStream),
-                    cancellationToken);
-        }
+            var hasEpg = epgSourceId is not null
+                && !string.IsNullOrWhiteSpace(epgChannelKey);
 
-        /// <summary>Puts the page in the order the caller asked for.</summary>
-        /// <remarks>
-        /// Every branch carries a tie-break, and it is the stream's name: two rows share the
-        /// sorted value more often than not (a whole category may be one status), and without a
-        /// tie-break the database is free to return them in any order it likes between one page
-        /// and the next - which is how the same stream appears on two pages or on none.
-        ///
-        /// The identifier sorts last rather than first: it is a random uuid, so it breaks ties
-        /// exactly, but an order on it is an order nobody asked for.
-        /// </remarks>
-        private static IQueryable<VideoStreamEntity> Order(
-            IQueryable<VideoStreamEntity> query,
-            VideoStreamSortField field,
-            VideoStreamSortOrder order)
-        {
-            var descending = order is VideoStreamSortOrder.Descending;
-
-            return field switch
+            return new VideoStreamWrite
             {
-                VideoStreamSortField.Category => Chain(
-                    query, entry => entry.Category!.Name, entry => entry.Name, descending),
-
-                VideoStreamSortField.Status => Chain(
-                    query, entry => entry.Status, entry => entry.Name, descending),
-
-                VideoStreamSortField.Type => Chain(
-                    query, entry => entry.Type, entry => entry.Name, descending),
-
-                VideoStreamSortField.SortOrder => Chain(
-                    query, entry => entry.SortOrder, entry => entry.Name, descending),
-
-                _ => Chain(query, entry => entry.Name, entry => entry.Id, descending)
+                Name = name,
+                Type = type,
+                CategoryId = categoryId,
+                LogoUrl = NullIfBlank(logoUrl),
+                Enigma2Sid = NullIfBlank(enigma2Sid),
+                DelayMinutes = delayMinutes,
+                SeriesId = type is VideoStreamType.OnlineSeries ? seriesId : null,
+                VodId = type is VideoStreamType.VodPlaylist ? vodId : null,
+                EpgSourceId = hasEpg ? epgSourceId : null,
+                EpgChannelKey = hasEpg ? epgChannelKey!.Trim() : null,
+                ArchiveDays = type is VideoStreamType.Permanent ? archiveDays : 0,
+                RestreamUserAgent = NullIfBlank(restreamUserAgent),
+                RestreamProxy = NullIfBlank(restreamProxy),
+                RestreamCookies = NullIfBlank(restreamCookies),
+                RestreamHeaders = NullIfBlank(restreamHeaders),
+                Sources = IsUrlKind(type)
+                    ? CleanList(sources)
+                    : Array.Empty<string>(),
+                Files = type is VideoStreamType.FilePlaylist
+                    ? CleanList(files)
+                    : Array.Empty<string>()
             };
         }
 
-        /// <summary>Orders by the first key and breaks the tie with the second.</summary>
-        private static IOrderedQueryable<VideoStreamEntity> Chain<TKey1, TKey2>(
-            IQueryable<VideoStreamEntity> source,
-            Expression<Func<VideoStreamEntity, TKey1>> primary,
-            Expression<Func<VideoStreamEntity, TKey2>> tieBreak,
-            bool descending)
-        {
-            var ordered = descending
-                ? source.OrderByDescending(primary)
-                : source.OrderBy(primary);
-
-            return descending
-                ? ordered.ThenByDescending(tieBreak)
-                : ordered.ThenBy(tieBreak);
-        }
+        /// <summary>Drops blank entries and trims every survivor.</summary>
+        private static IReadOnlyList<string> CleanList(IReadOnlyList<string> entries)
+            => entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry))
+                .Select(entry => entry.Trim())
+                .ToList();
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
         /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>
@@ -945,7 +642,7 @@ namespace Fluxy.Application.Services.Streams
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return null;
             }
             catch (UniqueViolationException exception)
@@ -1031,20 +728,6 @@ namespace Fluxy.Application.Services.Streams
         private static Dictionary<string, string[]> Field(string name, string[] sentences)
             => new(StringComparer.Ordinal) { [name] = sentences };
 
-        private static VideoStreamListItem ToListItem(StoredStream row) => new()
-        {
-            Id = row.Id,
-            Name = row.Name,
-            Status = row.Status,
-            Type = row.Type,
-            CategoryId = row.CategoryId,
-            CategoryName = row.CategoryName,
-            LogoUrl = row.LogoUrl,
-            ActiveSource = row.ActiveSource,
-            HasEpg = VideoStreamEpg.Configured(row.EpgSourceId, row.EpgChannelKey),
-            SortOrder = row.SortOrder
-        };
-
         private static VideoStreamOutcome NotFound(Guid id)
             => new() { Action = VideoStreamAction.NotFound, StreamId = id };
 
@@ -1060,38 +743,5 @@ namespace Fluxy.Application.Services.Streams
             IReadOnlyDictionary<string, string[]> errors,
             Guid id = default)
             => new() { Action = VideoStreamAction.Invalid, StreamId = id, Errors = errors };
-
-        /// <summary>
-        /// The rows of one page, read before they are turned into the items the table draws.
-        /// </summary>
-        /// <remarks>
-        /// A projection target of its own rather than <see cref="VideoStreamListItem"/> because
-        /// the "has a programme guide" column is answered from two fields, and a query that
-        /// selected the pair could not assign the answer to a property that has no setter.
-        /// </remarks>
-        private sealed class StoredStream
-        {
-            public Guid Id { get; init; }
-
-            public string Name { get; init; } = string.Empty;
-
-            public VideoStreamStatus Status { get; init; }
-
-            public VideoStreamType Type { get; init; }
-
-            public Guid CategoryId { get; init; }
-
-            public string CategoryName { get; init; } = string.Empty;
-
-            public string? LogoUrl { get; init; }
-
-            public string? ActiveSource { get; init; }
-
-            public Guid? EpgSourceId { get; init; }
-
-            public string? EpgChannelKey { get; init; }
-
-            public int SortOrder { get; init; }
-        }
     }
 }

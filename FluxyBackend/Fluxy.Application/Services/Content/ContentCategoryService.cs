@@ -1,9 +1,6 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Content;
-using Fluxy.DataAccess.Configurations;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Content
 {
@@ -38,7 +35,7 @@ namespace Fluxy.Application.Services.Content
         private static readonly string[] NameRule =
         [
             "The name must be between 1 and "
-                + ContentCategoryConfiguration.NameMaxLength
+                + ContentCategoryLimits.NameMaxLength
                 + " characters."
         ];
 
@@ -54,37 +51,27 @@ namespace Fluxy.Application.Services.Content
             "The list must name every category of this content type exactly once, in the new order."
         ];
 
-        private readonly FluxyDbContext _context;
+        private readonly IContentCategoryRepository _categories;
+        private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ContentCategoryService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the categories.</param>
-        public ContentCategoryService(FluxyDbContext context)
+        /// <param name="categories">Repository holding the category rows.</param>
+        /// <param name="unitOfWork">Commits the changes one operation stages.</param>
+        public ContentCategoryService(
+            IContentCategoryRepository categories,
+            IUnitOfWork unitOfWork)
         {
-            _context = context;
+            _categories = categories;
+            _unitOfWork = unitOfWork;
         }
 
         /// <inheritdoc />
-        public async Task<IReadOnlyList<ContentCategory>> GetAllAsync(
+        public Task<IReadOnlyList<ContentCategory>> GetAllAsync(
             ContentType type,
             CancellationToken cancellationToken = default)
-        {
-            // The type is part of the index (content_type, sort_order), so the whole read is
-            // one range scan in the order the list is shown in. The tie-breaks below are for
-            // the gap a deletion leaves and the two rows a raced create can share a position
-            // with: the database must answer the same order on every read, not one it chose
-            // that morning.
-            var rows = await _context.ContentCategories
-                .AsNoTracking()
-                .Where(entry => entry.Type == type)
-                .OrderBy(entry => entry.SortOrder)
-                .ThenBy(entry => entry.CreatedAt)
-                .ThenBy(entry => entry.Id)
-                .ToListAsync(cancellationToken);
-
-            return rows.Select(row => row.ToModel()).ToList();
-        }
+            => _categories.GetByTypeAsync(type, cancellationToken);
 
         /// <inheritdoc />
         public async Task<ContentCategoryOutcome> CreateAsync(
@@ -95,7 +82,7 @@ namespace Fluxy.Application.Services.Content
 
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-            if (name.Length is < 1 or > ContentCategoryConfiguration.NameMaxLength)
+            if (name.Length is < 1 or > ContentCategoryLimits.NameMaxLength)
             {
                 errors[nameof(NewContentCategory.Name)] = NameRule;
             }
@@ -113,27 +100,21 @@ namespace Fluxy.Application.Services.Content
                 return Invalid(errors);
             }
 
-            if (await NameTakenAsync(name, input.Type, exceptCategory: null, cancellationToken))
+            if (await _categories.IsNameTakenAsync(
+                name,
+                input.Type,
+                exceptCategory: null,
+                cancellationToken))
             {
                 return AlreadyExists(nameof(NewContentCategory.Name));
             }
 
             // The end of the list is the highest position this type holds, plus one - read
-            // here rather than claimed by the caller, because the caller's screen can be one
-            // move behind the database and the end is a fact about the rows, not about what
-            // anybody saw. An empty type reads null and starts at 1.
-            var highest = await _context.ContentCategories
-                .Where(entry => entry.Type == input.Type)
-                .MaxAsync(entry => (int?)entry.SortOrder, cancellationToken);
-
-            var entity = new ContentCategoryEntity
-            {
-                Name = name,
-                Type = input.Type,
-                SortOrder = (highest ?? 0) + 1
-            };
-
-            _context.ContentCategories.Add(entity);
+            // by the repository rather than claimed by the caller, because the caller's
+            // screen can be one move behind the database and the end is a fact about the
+            // rows, not about what anybody saw. An empty type reads zero and starts at 1.
+            var highest = await _categories.GetLastSortOrderAsync(input.Type, cancellationToken);
+            var categoryId = await _categories.AddAsync(input with { Name = name }, highest + 1, cancellationToken);
 
             if (await SaveAsync(cancellationToken) is not null)
             {
@@ -145,7 +126,7 @@ namespace Fluxy.Application.Services.Content
             return new ContentCategoryOutcome
             {
                 Action = ContentCategoryAction.Created,
-                CategoryId = entity.Id
+                CategoryId = categoryId
             };
         }
 
@@ -155,8 +136,7 @@ namespace Fluxy.Application.Services.Content
             ContentCategoryPatch patch,
             CancellationToken cancellationToken = default)
         {
-            var category = await _context.ContentCategories
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            var category = await _categories.FindForUpdateAsync(id, cancellationToken);
 
             if (category is null)
             {
@@ -166,7 +146,7 @@ namespace Fluxy.Application.Services.Content
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
             var name = patch.Name?.Trim();
-            if (patch.Name is not null && name!.Length is < 1 or > ContentCategoryConfiguration.NameMaxLength)
+            if (patch.Name is not null && name!.Length is < 1 or > ContentCategoryLimits.NameMaxLength)
             {
                 errors[nameof(ContentCategoryPatch.Name)] = NameRule;
             }
@@ -177,7 +157,11 @@ namespace Fluxy.Application.Services.Content
             }
 
             if (name is not null
-                && await NameTakenAsync(name, category.Type, id, cancellationToken))
+                && await _categories.IsNameTakenAsync(
+                    name,
+                    category.Type,
+                    id,
+                    cancellationToken))
             {
                 var conflict = AlreadyExists(nameof(ContentCategoryPatch.Name));
                 return conflict with { CategoryId = id };
@@ -185,7 +169,7 @@ namespace Fluxy.Application.Services.Content
 
             if (name is not null)
             {
-                category.Name = name;
+                await _categories.SetNameAsync(id, name, cancellationToken);
             }
 
             if (await SaveAsync(cancellationToken) is not null)
@@ -205,8 +189,7 @@ namespace Fluxy.Application.Services.Content
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            var category = await _context.ContentCategories
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+            var category = await _categories.FindForUpdateAsync(id, cancellationToken);
 
             if (category is null)
             {
@@ -218,8 +201,7 @@ namespace Fluxy.Application.Services.Content
             // "this many streams still point at it", the other is a provider's exception
             // wearing a 500. The key below would refuse the row anyway; this is what turns
             // that refusal into a sentence.
-            var inUse = await _context.VideoStreams
-                .CountAsync(entry => entry.CategoryId == id, cancellationToken);
+            var inUse = await _categories.CountStreamsAsync(id, cancellationToken);
 
             if (inUse > 0)
             {
@@ -231,13 +213,13 @@ namespace Fluxy.Application.Services.Content
                 };
             }
 
-            _context.ContentCategories.Remove(category);
+            await _categories.RemoveAsync(id, cancellationToken);
 
             // Deletion leaves a gap in the positions, and nothing closes it. Renumbering the
             // survivors here would be a second source for a fact the reorder request owns:
             // the next drag names every row anyway, and until then an order read by position
             // is exactly the same order with or without the gap.
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new ContentCategoryOutcome
             {
@@ -262,10 +244,7 @@ namespace Fluxy.Application.Services.Content
             // Read for the comparison, then written over - the same rows, one load. Tracking
             // rather than AsNoTracking because the rows that survive the check are the ones
             // the write below moves.
-            var stored = await _context.ContentCategories
-                .Where(entry => entry.Type == input.Type)
-                .OrderBy(entry => entry.SortOrder)
-                .ToListAsync(cancellationToken);
+            var stored = await _categories.GetTrackedByTypeAsync(input.Type, cancellationToken);
 
             // The caller has just dragged a row on a screen that shows the whole list, so it
             // is in a position to name all of it - and naming all of it is the only
@@ -286,38 +265,15 @@ namespace Fluxy.Application.Services.Content
             // every row moved or none did.
             for (var index = 0; index < input.OrderedIds.Count; index++)
             {
-                var id = input.OrderedIds[index];
-                var category = stored.First(entry => entry.Id == id);
-                category.SortOrder = index + 1;
+                await _categories.SetSortOrderAsync(
+                    input.OrderedIds[index],
+                    index + 1,
+                    cancellationToken);
             }
 
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new ContentCategoryOutcome { Action = ContentCategoryAction.Reordered };
-        }
-
-        /// <summary>
-        /// Whether some other category of the same type already answers to that name.
-        /// </summary>
-        /// <remarks>
-        /// Compared exactly, case sensitively, for the same reason username and email are -
-        /// and scoped to the type, because "Sports" over video streams and "Sports" over
-        /// series are two sections of two different screens. Excluding
-        /// <paramref name="exceptCategory"/> is what lets a rename keep its own name.
-        /// </remarks>
-        private async Task<bool> NameTakenAsync(
-            string name,
-            ContentType type,
-            Guid? exceptCategory,
-            CancellationToken cancellationToken)
-        {
-            return await _context.ContentCategories
-                .AsNoTracking()
-                .AnyAsync(
-                    entry => entry.Name == name
-                        && entry.Type == type
-                        && (exceptCategory == null || entry.Id != exceptCategory),
-                    cancellationToken);
         }
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
@@ -332,7 +288,7 @@ namespace Fluxy.Application.Services.Content
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return null;
             }
             catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))

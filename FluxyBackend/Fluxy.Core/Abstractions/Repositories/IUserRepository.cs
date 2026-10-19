@@ -148,11 +148,11 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// Whether an account other than <paramref name="exceptUserId"/> already holds the name.
         /// </summary>
         /// <param name="username">Login name, compared case sensitively.</param>
-        /// <param name="exceptUserId">Account to compare against itself.</param>
+        /// <param name="exceptUserId">Account to compare against itself, or null for a create.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<bool> IsUsernameTakenAsync(
             string username,
-            Guid exceptUserId,
+            Guid? exceptUserId,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -160,11 +160,11 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// address.
         /// </summary>
         /// <param name="email">Email address, compared case sensitively.</param>
-        /// <param name="exceptUserId">Account to compare against itself.</param>
+        /// <param name="exceptUserId">Account to compare against itself, or null for a create.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<bool> IsEmailTakenAsync(
             string email,
-            Guid exceptUserId,
+            Guid? exceptUserId,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -251,6 +251,87 @@ namespace Fluxy.Core.Abstractions.Repositories
         Task SetTimeZoneAsync(
             Guid userId,
             string? timeZone,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages a move of the account into another group.
+        /// </summary>
+        /// <param name="userId">Account being changed.</param>
+        /// <param name="groupId">Group the row must join.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task SetGroupAsync(
+            Guid userId,
+            Guid groupId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages the account's own status and the registration stamp that goes with it.
+        /// </summary>
+        /// <param name="userId">Account being changed.</param>
+        /// <param name="status">State the row must carry.</param>
+        /// <param name="registeredAt">Stamp the row must carry, or null to clear it.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task SetStatusAsync(
+            Guid userId,
+            UserStatus status,
+            DateTimeOffset? registeredAt,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages the two switches of the account's login guard.
+        /// </summary>
+        /// <param name="userId">Account being changed.</param>
+        /// <param name="geoProtectionEnabled">Whether an unlisted network is refused.</param>
+        /// <param name="bindSessionToIp">Whether a session is bound to its opening address.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task SetLoginGuardSwitchesAsync(
+            Guid userId,
+            bool geoProtectionEnabled,
+            bool bindSessionToIp,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Reads one filtered page of the admin account list.</summary>
+        /// <param name="page">One-based page wanted.</param>
+        /// <param name="pageSize">How many accounts one page holds.</param>
+        /// <param name="search">Case-insensitive substring of username or email, or null.</param>
+        /// <param name="groupId">Group to keep, or null for every group.</param>
+        /// <param name="status">Effective state to keep, or null for every state.</param>
+        /// <param name="sortBy">Column to order by.</param>
+        /// <param name="sortOrder">Which way to run.</param>
+        /// <param name="visibleRoles">Roles the caller may see.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<AdminUserPage> GetAdminPageAsync(
+            int page,
+            int pageSize,
+            string? search,
+            Guid? groupId,
+            UserStatus? status,
+            AdminUserSortField sortBy,
+            AdminUserSortOrder sortOrder,
+            IReadOnlyCollection<UserRole> visibleRoles,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Reads the current values one admin write flow needs, including the group's state.
+        /// </summary>
+        /// <param name="userId">Identifier of the account.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<AdminAccount?> GetAdminAccountAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Reads one account in full for the admin edit form.</summary>
+        /// <param name="userId">Identifier of the account.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<AdminUserDetail?> GetAdminDetailAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Stages the removal of an account read for update.</summary>
+        /// <param name="userId">Identifier of the account.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task RemoveAsync(
+            Guid userId,
             CancellationToken cancellationToken = default);
     }
 }

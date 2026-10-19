@@ -21,34 +21,34 @@ namespace Fluxy.DataAccess.Configurations
         /// names, so the room above this length is for a name nobody has thought of rather
         /// than for one this length would already hold.
         /// </summary>
-        public const int NameMaxLength = 200;
+        public const int NameMaxLength = VideoStreamLimits.NameMaxLength;
 
         /// <summary>Longest icon address. A URL, and one that a browser has to be able to fetch.</summary>
-        public const int LogoUrlMaxLength = 500;
+        public const int LogoUrlMaxLength = VideoStreamLimits.LogoUrlMaxLength;
 
         /// <summary>Longest source the relaying process may report back as the one it is using.</summary>
-        public const int ActiveSourceMaxLength = 1000;
+        public const int ActiveSourceMaxLength = VideoStreamLimits.ActiveSourceMaxLength;
 
         /// <summary>
         /// Longest service reference. An Enigma2 reference is a handful of colon separated
         /// numbers (<c>1:0:19:1234:0:0:0:0:0:0:</c>), so this is room rather than a limit.
         /// </summary>
-        public const int Enigma2SidMaxLength = 200;
+        public const int Enigma2SidMaxLength = VideoStreamLimits.Enigma2SidMaxLength;
 
         /// <summary>Longest channel key inside a programme guide.</summary>
-        public const int EpgChannelKeyMaxLength = 200;
+        public const int EpgChannelKeyMaxLength = VideoStreamLimits.EpgChannelKeyMaxLength;
 
         /// <summary>Longest user agent a relayed request may carry.</summary>
-        public const int RestreamUserAgentMaxLength = 500;
+        public const int RestreamUserAgentMaxLength = VideoStreamLimits.RestreamUserAgentMaxLength;
 
         /// <summary>Longest proxy address a relay may go out through.</summary>
-        public const int RestreamProxyMaxLength = 500;
+        public const int RestreamProxyMaxLength = VideoStreamLimits.RestreamProxyMaxLength;
 
         /// <summary>Longest URL a stream relays from.</summary>
-        public const int SourceUrlMaxLength = 2000;
+        public const int SourceUrlMaxLength = VideoStreamLimits.SourceUrlMaxLength;
 
         /// <summary>Longest path of a file a stream plays.</summary>
-        public const int FilePathMaxLength = 1000;
+        public const int FilePathMaxLength = VideoStreamLimits.FilePathMaxLength;
 
         /// <inheritdoc />
         public void Configure(EntityTypeBuilder<VideoStreamEntity> builder)

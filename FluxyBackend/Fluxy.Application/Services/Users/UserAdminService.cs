@@ -1,12 +1,8 @@
-using System.Linq.Expressions;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Fluxy.Application.Services.Users
@@ -55,31 +51,39 @@ namespace Fluxy.Application.Services.Users
             "lower case letter, one upper case letter and one digit."
         ];
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IUserGroupRepository _groups;
         private readonly ILoginGuardRepository _guards;
         private readonly ITokenService _tokenService;
         private readonly TimeProvider _timeProvider;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<UserAdminService> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UserAdminService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and their tokens.</param>
+        /// <param name="users">Repository holding the account rows.</param>
+        /// <param name="groups">Repository holding the groups accounts join.</param>
         /// <param name="guards">Repository that replaces an account's allow lists.</param>
         /// <param name="tokenService">Ends the sessions a state change takes with it.</param>
         /// <param name="timeProvider">Clock, so a stamp is not wall time hard coded into a rule.</param>
+        /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public UserAdminService(
-            FluxyDbContext context,
+            IUserRepository users,
+            IUserGroupRepository groups,
             ILoginGuardRepository guards,
             ITokenService tokenService,
             TimeProvider timeProvider,
+            IUnitOfWork unitOfWork,
             ILogger<UserAdminService> logger)
         {
-            _context = context;
+            _users = users;
+            _groups = groups;
             _guards = guards;
             _tokenService = tokenService;
             _timeProvider = timeProvider;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -95,79 +99,23 @@ namespace Fluxy.Application.Services.Users
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
-            var query = _context.Users.AsNoTracking();
-
             // Which accounts this operator may see is decided before the count rather than
             // after the rows, because the pager shows the count: a total taken over every row
             // would advertise pages whose rows the caller was never going to be shown. The
             // coarse policy has already refused a caller holding no view permission at all, so
             // this set is not empty by the time it reaches here.
             var visible = UserPermissionCatalog.VisibleRoles(granted);
-            query = query.Where(entry => visible.Contains(entry.Group!.Role));
 
-            if (groupId is { } wantedGroup)
-            {
-                query = query.Where(entry => entry.GroupId == wantedGroup);
-            }
-
-            if (status is { } wantedStatus)
-            {
-                query = query.Where(EffectiveStatusIs(wantedStatus));
-            }
-
-            // Folded before the comparison rather than with a collation, the same way the visit
-            // history searches its user agent: `Contains` on the lowered value is a substring
-            // match any address or name answers to regardless of how the column was typed.
-            var needle = search?.Trim().ToLowerInvariant() ?? string.Empty;
-            if (needle.Length > 0)
-            {
-                query = query.Where(entry =>
-                    entry.Username.ToLower().Contains(needle) ||
-                    entry.Email.ToLower().Contains(needle));
-            }
-
-            // Counted *before* the page is taken and with the same filter, because the pager
-            // shows this number: a total counted over every row would advertise pages that the
-            // filter has already removed.
-            var total = await query.CountAsync(cancellationToken);
-
-            query = Order(query, sortBy, sortOrder);
-
-            var rows = await query
-                .Select(entry => new StoredUser
-                {
-                    Id = entry.Id,
-                    Username = entry.Username,
-                    Email = entry.Email,
-                    GroupId = entry.GroupId,
-
-                    // The join on the group is inner - its key is NOT NULL and RESTRICT - so
-                    // no row of this page can arrive without one. The navigation is declared
-                    // nullable because a query that did not include it genuinely has nothing
-                    // there; this projection includes it, and says so.
-                    GroupName = entry.Group!.Name,
-                    Role = entry.Group!.Role,
-                    // Both halves travel and are combined in memory below: the rule that
-                    // combines them is <see cref="UserStatusComposition"/>, and a second copy
-                    // of it written as SQL would be a second source of truth about what an
-                    // account's status is.
-                    OwnStatus = entry.Status,
-                    GroupStatus = entry.Group.Status
-                })
-                // Widening to long before the cast: a page number comes off a query string, and
-                // `(page - 1) * pageSize` on a huge one overflows int into a negative OFFSET,
-                // which the database answers as an error rather than as an empty page.
-                .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
-                .Take(pageSize)
-                .ToListAsync(cancellationToken);
-
-            return new AdminUserPage
-            {
-                Items = await DescribeVisitsAsync(rows, cancellationToken),
-                Total = total,
-                Page = page,
-                PageSize = pageSize
-            };
+            return await _users.GetAdminPageAsync(
+                page,
+                pageSize,
+                search,
+                groupId,
+                status,
+                sortBy,
+                sortOrder,
+                visible,
+                cancellationToken);
         }
 
         /// <inheritdoc />
@@ -176,17 +124,14 @@ namespace Fluxy.Application.Services.Users
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var detail = await _users.GetAdminDetailAsync(userId, cancellationToken);
 
-            if (user is null)
+            if (detail is null)
             {
                 return AdminUserReadResult.Refused(AdminUserAction.NotFound);
             }
 
-            if (!UserPermissionCatalog.CanView(granted, user.Group!.Role))
+            if (!UserPermissionCatalog.CanView(granted, detail.Role))
             {
                 // A different answer from "no such account" on purpose: the row is there and
                 // the operator is being told what is standing between them and it. The
@@ -195,55 +140,6 @@ namespace Fluxy.Application.Services.Users
                 // operator looking at their own list that the list was lying.
                 return AdminUserReadResult.Refused(AdminUserAction.PermissionDenied);
             }
-
-            var rules = await _context.LoginGuardRules
-                .AsNoTracking()
-                .Where(rule => rule.UserId == userId)
-                .ToListAsync(cancellationToken);
-
-            var provider = rules.FirstOrDefault(
-                rule => rule.Kind is LoginGuardRuleKind.AutonomousSystem);
-
-            var visit = await LatestVisitAsync(user.Id, cancellationToken);
-
-            var group = user.Group!;
-
-            var detail = new AdminUserDetail
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                Role = group.Role,
-                GroupId = group.Id,
-                GroupName = group.Name,
-
-                // The row's own state, because that is what the form edits: an effective
-                // status written back through the form would stamp Blocked onto a row that
-                // only looks blocked while its group is. The effective one travels beside it
-                // as <see cref="AdminUserDetail.EffectiveStatus"/> so the difference between
-                // the two is stated rather than left for the operator to wonder about.
-                Status = user.Status,
-                EffectiveStatus = UserStatusComposition.Combine(user.Status, group.Status),
-                TimeZone = user.TimeZone,
-                RegisteredAt = user.RegisteredAt,
-                CreatedAt = user.CreatedAt,
-                LastSeenAt = visit?.CreatedAt,
-                LastIp = visit?.ClientAddress,
-                LoginGuard = new LoginGuardSettings
-                {
-                    GeoProtectionEnabled = user.GeoProtectionEnabled,
-                    BindSessionToIp = user.BindSessionToIp,
-                    AllowedIps = rules
-                        .Where(rule => rule.Kind is LoginGuardRuleKind.IpAddress)
-                        .Select(rule => rule.Value)
-                        .OrderBy(value => value, StringComparer.Ordinal)
-                        .ToArray(),
-                    AllowedCountry = rules
-                        .FirstOrDefault(rule => rule.Kind is LoginGuardRuleKind.Country)?.Value,
-                    AllowedAutonomousSystemNumber = provider is not null
-                        && int.TryParse(provider.Value, out var asn) ? asn : null
-                }
-            };
 
             return AdminUserReadResult.Found(detail);
         }
@@ -260,9 +156,7 @@ namespace Fluxy.Application.Services.Users
             var errors = Validate(username, email, user.Password, user.TimeZone);
             Merge(errors, user.LoginGuard, out var guard);
 
-            var group = await _context.UserGroups
-                .AsNoTracking()
-                .FirstOrDefaultAsync(entry => entry.Id == user.GroupId, cancellationToken);
+            var group = await _groups.GetSummaryAsync(user.GroupId, cancellationToken);
 
             if (group is null)
             {
@@ -299,7 +193,7 @@ namespace Fluxy.Application.Services.Users
             // about what "empty" and "unknown" turned into.
             TimeZonePolicy.TryNormalize(user.TimeZone, out var zone);
 
-            var entity = new UserEntity
+            var account = new NewAccount
             {
                 Username = username,
                 Email = email,
@@ -323,7 +217,17 @@ namespace Fluxy.Application.Services.Users
                 BindSessionToIp = guard?.BindSessionToIp ?? false
             };
 
-            _context.Users.Add(entity);
+            var userId = await _users.AddAsync(account, cancellationToken);
+
+            // The guard is staged before the one save rather than written by a second one:
+            // the account and the lists it starts with are one operation, and a failure on
+            // either must not leave the other committed. The repository's delete of the
+            // previous rules is immediate by design; there are none for a row this request
+            // is still inserting.
+            if (guard is not null)
+            {
+                await _guards.ApplyAsync(userId, guard, cancellationToken);
+            }
 
             if (await SaveAsync(cancellationToken) is { } failure)
             {
@@ -339,25 +243,19 @@ namespace Fluxy.Application.Services.Users
                 throw failure;
             }
 
-            if (guard is not null)
-            {
-                await _guards.ApplyAsync(entity.Id, guard, cancellationToken);
-                await _context.SaveChangesCheckedAsync(cancellationToken);
-            }
-
             _logger.LogInformation(
                 "Created the account {Username} ({Email}) in group {Group} at level {Role}, " +
                 "state {State}.",
-                entity.Username,
-                entity.Email,
+                account.Username,
+                account.Email,
                 group.Name,
                 group.Role,
-                entity.Status);
+                account.Status);
 
             return new AdminUserOutcome
             {
                 Action = AdminUserAction.Created,
-                UserId = entity.Id
+                UserId = userId
             };
         }
 
@@ -369,16 +267,20 @@ namespace Fluxy.Application.Services.Users
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var user = await _users.GetAdminAccountAsync(userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
 
-            var groupBefore = user.Group!;
+            var groupBefore = new UserGroupSummary
+            {
+                Id = user.GroupId,
+                Name = user.GroupName,
+                Role = user.Role,
+                Status = user.GroupStatus
+            };
 
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
@@ -423,9 +325,7 @@ namespace Fluxy.Application.Services.Users
             var groupAfter = groupBefore;
             if (patch.GroupId is { } wantedGroup)
             {
-                var movedTo = await _context.UserGroups
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(entry => entry.Id == wantedGroup, cancellationToken);
+                var movedTo = await _groups.GetSummaryAsync(wantedGroup, cancellationToken);
 
                 if (movedTo is null)
                 {
@@ -486,56 +386,69 @@ namespace Fluxy.Application.Services.Users
             // a request refused for a taken username should not have paid for it.
             var passwordHash = password is null ? null : BCrypt.Net.BCrypt.HashPassword(password);
 
-            if (username is not null)
-            {
-                user.Username = username;
-            }
-
-            if (email is not null)
-            {
-                user.Email = email;
-            }
-
-            if (passwordHash is not null)
-            {
-                user.PasswordHash = passwordHash;
-            }
-
-            if (timeZoneNamed)
-            {
-                TimeZonePolicy.TryNormalize(patch.TimeZone, out var zone);
-                user.TimeZone = zone;
-            }
-
-            var groupChanged = user.GroupId != groupAfter.Id;
-            if (groupChanged)
-            {
-                user.GroupId = groupAfter.Id;
-            }
+            // The values this request resolves, kept together so the log below and the session
+            // decision read the same ones the repositories were handed.
+            var resolvedUsername = username ?? user.Username;
+            var resolvedStatus = patch.Status ?? user.Status;
+            var registeredAt = user.RegisteredAt;
 
             var statusChanged = false;
             if (patch.Status is { } status && status != user.Status)
             {
                 statusChanged = true;
-                user.Status = status;
 
                 if (status is UserStatus.Unregistered)
                 {
                     // Going back to Unregistered has to take the stamp with it: the check
                     // constraint refuses a registration timestamp on an account that is still
                     // Unregistered, and rightly so - the row would mean two things at once.
-                    user.RegisteredAt = null;
+                    registeredAt = null;
                 }
-                else if (user.RegisteredAt is null)
+                else if (registeredAt is null)
                 {
-                    user.RegisteredAt = _timeProvider.GetUtcNow();
+                    registeredAt = _timeProvider.GetUtcNow();
                 }
             }
 
+            var groupChanged = user.GroupId != groupAfter.Id;
+
+            if (username is not null)
+            {
+                await _users.SetUsernameAsync(userId, username, cancellationToken);
+            }
+
+            if (email is not null)
+            {
+                await _users.SetEmailAsync(userId, email, cancellationToken);
+            }
+
+            if (passwordHash is not null)
+            {
+                await _users.SetPasswordHashAsync(userId, passwordHash, cancellationToken);
+            }
+
+            if (timeZoneNamed)
+            {
+                TimeZonePolicy.TryNormalize(patch.TimeZone, out var zone);
+                await _users.SetTimeZoneAsync(userId, zone, cancellationToken);
+            }
+
+            if (groupChanged)
+            {
+                await _users.SetGroupAsync(userId, groupAfter.Id, cancellationToken);
+            }
+
+            if (statusChanged)
+            {
+                await _users.SetStatusAsync(userId, resolvedStatus, registeredAt, cancellationToken);
+            }
+
+            // Staged before the one save, so the account and the lists that guard it are one
+            // operation. The repository's delete of the previous rules is immediate by design;
+            // the new rows commit with the rest of this request.
             if (guard is not null)
             {
-                user.GeoProtectionEnabled = guard.GeoProtectionEnabled;
-                user.BindSessionToIp = guard.BindSessionToIp;
+                await _guards.ApplyAsync(userId, guard, cancellationToken);
             }
 
             if (await SaveAsync(cancellationToken) is { } failure)
@@ -548,12 +461,6 @@ namespace Fluxy.Application.Services.Users
                 throw failure;
             }
 
-            if (guard is not null)
-            {
-                await _guards.ApplyAsync(user.Id, guard, cancellationToken);
-                await _context.SaveChangesCheckedAsync(cancellationToken);
-            }
-
             // Both events end the sessions the account holds, and for the same reason: a
             // blocked account cannot sign in, and a password that changed means whoever held
             // the old one may be holding a session minted with it. Unregistered joins them
@@ -563,29 +470,29 @@ namespace Fluxy.Application.Services.Users
             // The third clause is the group: moving an account into a blocked group withdraws
             // the same right without a single column on the account changing, so the state
             // that decides is the effective one, before and after the write.
-            var effectiveAfter = UserStatusComposition.Combine(user.Status, groupAfter.Status);
+            var effectiveAfter = UserStatusComposition.Combine(resolvedStatus, groupAfter.Status);
 
             var endsSessions = passwordHash is not null
-                || (statusChanged && user.Status is UserStatus.Blocked or UserStatus.Unregistered)
+                || (statusChanged && resolvedStatus is UserStatus.Blocked or UserStatus.Unregistered)
                 || (effectiveAfter != effectiveBefore
                     && effectiveAfter is UserStatus.Blocked or UserStatus.Unregistered);
 
             if (endsSessions)
             {
-                await _tokenService.RevokeAllSessionsAsync(user.Id, cancellationToken);
+                await _tokenService.RevokeAllSessionsAsync(userId, cancellationToken);
             }
 
             _logger.LogInformation(
                 "Updated {Username}{StatusPart}{GroupPart}{PasswordPart}.",
-                user.Username,
-                statusChanged ? $" -> {user.Status}" : string.Empty,
+                resolvedUsername,
+                statusChanged ? $" -> {resolvedStatus}" : string.Empty,
                 groupChanged ? $" (moved to group {groupAfter.Name})" : string.Empty,
                 passwordHash is not null ? " (password changed, sessions revoked)" : string.Empty);
 
             return new AdminUserOutcome
             {
                 Action = AdminUserAction.Updated,
-                UserId = user.Id
+                UserId = userId
             };
         }
 
@@ -595,19 +502,16 @@ namespace Fluxy.Application.Services.Users
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
-            // The group is loaded for the permission check rather than for the write: the
-            // role of the account decides which grant this call needs, and a query that did
-            // not carry it would have to ask a second time.
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            // The group's role travels with the account so the permission check does not have
+            // to ask a second time.
+            var user = await _users.GetAdminAccountAsync(userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
 
-            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            if (!UserPermissionCatalog.CanEdit(granted, user.Role))
             {
                 return Denied();
             }
@@ -617,17 +521,16 @@ namespace Fluxy.Application.Services.Users
                 // Refused rather than answered as a success: the caller's button was drawn
                 // for a row that has since changed under it, and telling it otherwise would
                 // leave a stale list describing a state that is no longer there.
-                return InvalidStatus(user.Id);
+                return InvalidStatus(userId);
             }
 
-            user.Status = UserStatus.Registered;
-            user.RegisteredAt = _timeProvider.GetUtcNow();
-
-            // The code this replaces was the way in for somebody who never used it. It is
-            // spent the moment the account is registered by any other route, so that a code
-            // mailed a week ago cannot confirm an account somebody else already confirmed.
-            user.RegistrationCodeHash = null;
-            user.RegistrationCodeExpiresAt = null;
+            // Registered and the pending code cleared together: the code this replaces was
+            // the way in for somebody who never used it, and it is spent the moment the
+            // account is registered by any other route.
+            await _users.ConfirmRegistrationAsync(
+                userId,
+                _timeProvider.GetUtcNow(),
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } failure)
             {
@@ -639,7 +542,7 @@ namespace Fluxy.Application.Services.Users
             return new AdminUserOutcome
             {
                 Action = AdminUserAction.RegistrationConfirmed,
-                UserId = user.Id
+                UserId = userId
             };
         }
 
@@ -659,21 +562,25 @@ namespace Fluxy.Application.Services.Users
                 return new AdminUserOutcome { Action = AdminUserAction.CannotBlockSelf };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var user = await _users.GetAdminAccountAsync(userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
 
-            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            if (!UserPermissionCatalog.CanEdit(granted, user.Role))
             {
                 return Denied();
             }
 
-            var group = user.Group!;
+            var group = new UserGroupSummary
+            {
+                Id = user.GroupId,
+                Name = user.GroupName,
+                Role = user.Role,
+                Status = user.GroupStatus
+            };
 
             if (blocked)
             {
@@ -685,21 +592,25 @@ namespace Fluxy.Application.Services.Users
                     return new AdminUserOutcome
                     {
                         Action = AdminUserAction.Blocked,
-                        UserId = user.Id
+                        UserId = userId
                     };
                 }
 
                 // RegisteredAt is left where it is: a block is not a cancellation of the
                 // registration. The timestamp says when the account got one, not whether it is
                 // allowed in at this moment.
-                user.Status = UserStatus.Blocked;
+                await _users.SetStatusAsync(
+                    userId,
+                    UserStatus.Blocked,
+                    user.RegisteredAt,
+                    cancellationToken);
 
                 if (await SaveAsync(cancellationToken) is { } blockFailure)
                 {
                     throw blockFailure;
                 }
 
-                await _tokenService.RevokeAllSessionsAsync(user.Id, cancellationToken);
+                await _tokenService.RevokeAllSessionsAsync(userId, cancellationToken);
 
                 _logger.LogInformation(
                     "Blocked {Username} and ended every session it held.",
@@ -708,7 +619,7 @@ namespace Fluxy.Application.Services.Users
                 return new AdminUserOutcome
                 {
                     Action = AdminUserAction.Blocked,
-                    UserId = user.Id
+                    UserId = userId
                 };
             }
 
@@ -726,34 +637,43 @@ namespace Fluxy.Application.Services.Users
                     ? new AdminUserOutcome
                     {
                         Action = AdminUserAction.BlockedByGroup,
-                        UserId = user.Id,
+                        UserId = userId,
                         Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
                         {
                             [nameof(UserPatch.Status)] =
                                 [$"The account is blocked by the group it belongs to ({group.Name})."]
                         }
                     }
-                    : InvalidStatus(user.Id);
+                    : InvalidStatus(userId);
             }
 
             // The inverse of the block, not of "set the status to Registered": an account that
             // was never confirmed goes back to Unregistered, and no registration stamp is
             // invented for it on the way out of a state that never gave it one.
-            user.Status = user.RegisteredAt is null
+            var unblockedStatus = user.RegisteredAt is null
                 ? UserStatus.Unregistered
                 : UserStatus.Registered;
+
+            await _users.SetStatusAsync(
+                userId,
+                unblockedStatus,
+                user.RegisteredAt,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } unblockFailure)
             {
                 throw unblockFailure;
             }
 
-            _logger.LogInformation("Unblocked {Username}, now {State}.", user.Username, user.Status);
+            _logger.LogInformation(
+                "Unblocked {Username}, now {State}.",
+                user.Username,
+                unblockedStatus);
 
             return new AdminUserOutcome
             {
                 Action = AdminUserAction.Unblocked,
-                UserId = user.Id
+                UserId = userId
             };
         }
 
@@ -771,27 +691,24 @@ namespace Fluxy.Application.Services.Users
                 return new AdminUserOutcome { Action = AdminUserAction.CannotDeleteSelf };
             }
 
-            // The group travels only so that the permission check can ask the role; nothing
-            // about it is written or deleted here.
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            // The group's role travels only so that the permission check can ask it; nothing
+            // about the group is written or deleted here.
+            var user = await _users.GetAdminAccountAsync(userId, cancellationToken);
 
             if (user is null)
             {
                 return NotFound();
             }
 
-            if (!UserPermissionCatalog.CanEdit(granted, user.Group!.Role))
+            if (!UserPermissionCatalog.CanEdit(granted, user.Role))
             {
                 return Denied();
             }
 
             var username = user.Username;
 
-            _context.Users.Remove(user);
-
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _users.RemoveAsync(userId, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             // The refresh tokens, the pending changes and the guard rules went with the row
             // through foreign keys that are `ON DELETE CASCADE`, which is what was verified
@@ -982,20 +899,14 @@ namespace Fluxy.Application.Services.Users
             string? email,
             CancellationToken cancellationToken)
         {
-            var others = _context.Users.AsQueryable();
-            if (excludeId is { } id)
-            {
-                others = others.Where(entry => entry.Id != id);
-            }
-
             if (username is not null
-                && await others.AnyAsync(entry => entry.Username == username, cancellationToken))
+                && await _users.IsUsernameTakenAsync(username, excludeId, cancellationToken))
             {
                 return nameof(UserPatch.Username);
             }
 
             if (email is not null
-                && await others.AnyAsync(entry => entry.Email == email, cancellationToken))
+                && await _users.IsEmailTakenAsync(email, excludeId, cancellationToken))
             {
                 return nameof(UserPatch.Email);
             }
@@ -1064,7 +975,7 @@ namespace Fluxy.Application.Services.Users
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
                 return null;
             }
             catch (UniqueViolationException exception)
@@ -1076,307 +987,6 @@ namespace Fluxy.Application.Services.Users
                 // taken name.
                 return exception;
             }
-        }
-
-        /// <summary>
-        /// A predicate over the accounts of the page for one <i>effective</i> status - the
-        /// state an account is in once its own row and its group's row are combined, which is
-        /// the state the column shows and the state everything else reads it with.
-        /// </summary>
-        /// <remarks>
-        /// The predicate is generated by asking <see cref="UserStatusComposition.Combine"/>
-        /// which pairs of the two raw states produce the wanted one, and OR-ing those pairs
-        /// together, rather than being written out. It is generated for the reason the type
-        /// itself gives: a second copy of the rule - one in C# and one written as SQL - would
-        /// be a second source of truth about what an account's status is, and the day the two
-        /// disagree the answer would depend on whether the operator arrived through this list
-        /// or the account arrived through a sign-in.
-        ///
-        /// Nine pairs at most and every one of them a constant, so the database sees a chain
-        /// of <c>AND</c>s and <c>OR</c>s over two columns - nothing it would have to evaluate
-        /// or fail to translate.
-        /// </remarks>
-        /// <param name="wanted">Effective status to keep.</param>
-        /// <returns>
-        /// A predicate matching exactly the accounts whose combination equals
-        /// <paramref name="wanted"/>. Never empty: every state is the combination of some
-        /// pair, and an empty predicate would silently match everything instead of nothing.
-        /// </returns>
-        private static Expression<Func<UserEntity, bool>> EffectiveStatusIs(UserStatus wanted)
-        {
-            var entry = Expression.Parameter(typeof(UserEntity), "entry");
-            var own = Expression.Property(entry, nameof(UserEntity.Status));
-            var group = Expression.Property(
-                Expression.Property(entry, nameof(UserEntity.Group)),
-                nameof(UserGroupEntity.Status));
-
-            Expression? body = null;
-
-            foreach (var userStatus in UserStatusComposition.All)
-            {
-                foreach (var groupStatus in UserStatusComposition.All)
-                {
-                    if (UserStatusComposition.Combine(userStatus, groupStatus) != wanted)
-                    {
-                        continue;
-                    }
-
-                    var pair = Expression.AndAlso(
-                        Expression.Equal(own, Expression.Constant(userStatus, typeof(UserStatus))),
-                        Expression.Equal(group, Expression.Constant(groupStatus, typeof(UserStatus))));
-
-                    body = body is null ? pair : Expression.OrElse(body, pair);
-                }
-            }
-
-            return Expression.Lambda<Func<UserEntity, bool>>(
-                body ?? Expression.Constant(false),
-                entry);
-        }
-
-        /// <summary>
-        /// Puts the page in the order the caller asked for.
-        /// </summary>
-        /// <remarks>
-        /// Every branch carries a tie-break, and it is the account's own name: two rows share
-        /// the sorted value more often than not (an account that never signed in has no visit
-        /// at all, and a whole filter may be one role), and without a tie-break the database is
-        /// free to return them in any order it likes between one page and the next - which is
-        /// how the same account appears on two pages or on none.
-        ///
-        /// The identifier sorts last rather than first: it is a random uuid, so it breaks ties
-        /// exactly, but an order on it is an order nobody asked for.
-        /// </remarks>
-        private IQueryable<UserEntity> Order(
-            IQueryable<UserEntity> query,
-            AdminUserSortField field,
-            AdminUserSortOrder order)
-        {
-            var descending = order is AdminUserSortOrder.Descending;
-
-            return field switch
-            {
-                AdminUserSortField.Email => Chain(
-                    query, entry => entry.Email, entry => entry.Username, descending),
-
-                // Ordering is done in SQL, so these are expressions the provider translates
-                // rather than delegates it calls - and the join the group brings in is inner,
-                // for the reason the projection above gives.
-                AdminUserSortField.Group => Chain(
-                    query, entry => entry.Group!.Name, entry => entry.Username, descending),
-
-                AdminUserSortField.Role => Chain(
-                    query, entry => entry.Group!.Role, entry => entry.Username, descending),
-
-                AdminUserSortField.Status => Chain(
-                    query, entry => entry.Status, entry => entry.Username, descending),
-
-                AdminUserSortField.LastSeenAt => ChainNullsLast(
-                    query, LastSeen(), entry => entry.Username, descending),
-
-                AdminUserSortField.Ip => ChainNullsLast(
-                    query, LastVisitAddress(), entry => entry.Username, descending),
-
-                _ => Chain(query, entry => entry.Username, entry => entry.Id, descending)
-            };
-        }
-
-        /// <summary>Orders by the first key and breaks the tie with the second.</summary>
-        private static IOrderedQueryable<UserEntity> Chain<TKey1, TKey2>(
-            IQueryable<UserEntity> source,
-            Expression<Func<UserEntity, TKey1>> primary,
-            Expression<Func<UserEntity, TKey2>> tieBreak,
-            bool descending)
-        {
-            var ordered = descending
-                ? source.OrderByDescending(primary)
-                : source.OrderBy(primary);
-
-            return descending
-                ? ordered.ThenByDescending(tieBreak)
-                : ordered.ThenBy(tieBreak);
-        }
-
-        /// <summary>Like <see cref="Chain"/>, except that rows without a value go last.</summary>
-        /// <remarks>
-        /// Both keys that reach this are null exactly when the account has never signed in,
-        /// and PostgreSQL treats null as larger than any value - so a plain `DESC` puts those
-        /// accounts at the *top* of a "last seen" column, and the very first line of the page
-        /// sorted by newest activity would be an account nobody has ever seen. Sorting the
-        /// nulls into their own group first is what says they belong at the end of either
-        /// direction: the real key then orders the accounts that have a value, and the group
-        /// without one follows.
-        ///
-        /// The grouping is built from the key itself rather than from a companion predicate,
-        /// so a key whose meaning changes still puts its own empty rows in the right place -
-        /// and the expression is assembled rather than written inline because both callers
-        /// pass a subquery: inlining it with `Expression.Invoke` would repeat it once per
-        /// use, which EF Core refuses to translate.
-        /// </remarks>
-        private static IOrderedQueryable<UserEntity> ChainNullsLast<TKey1, TKey2>(
-            IQueryable<UserEntity> source,
-            Expression<Func<UserEntity, TKey1>> primary,
-            Expression<Func<UserEntity, TKey2>> tieBreak,
-            bool descending)
-        {
-            var isNull = Expression.Lambda<Func<UserEntity, bool>>(
-                Expression.Equal(
-                    primary.Body,
-                    Expression.Constant(null, primary.Body.Type)),
-                primary.Parameters);
-
-            // `false` sorts before `true`, so the rows that have a value lead.
-            var withGrouped = source.OrderBy(isNull);
-
-            return descending
-                ? withGrouped.ThenByDescending(primary).ThenByDescending(tieBreak)
-                : withGrouped.ThenBy(primary).ThenBy(tieBreak);
-        }
-
-        /// <summary>
-        /// When the account last signed in or refreshed: the creation time of its freshest
-        /// refresh token, revoked or not, or null when it never has.
-        /// </summary>
-        /// <remarks>
-        /// A correlated scalar subquery, and it has to be one: the value is not on the row, so
-        /// a page ordered by it cannot be taken from the database in any other way - ordering
-        /// in memory would mean reading every account the filter admits before knowing which
-        /// ten belong on the page.
-        ///
-        /// `MAX` rather than "the newest row", because the sort only needs the moment; the row
-        /// itself is read back per page in <see cref="DescribeVisitsAsync"/>, where it can be
-        /// fetched for the ten ids on screen instead of a hundred.
-        /// </remarks>
-        private Expression<Func<UserEntity, DateTimeOffset?>> LastSeen()
-            => entry => _context.RefreshTokens
-                .Where(token => token.UserId == entry.Id)
-                .Max(token => (DateTimeOffset?)token.CreatedAt);
-
-        /// <summary>Address of the visit <see cref="LastSeen"/> measures.</summary>
-        /// <remarks>
-        /// The one sort that needs an ordered subquery rather than an aggregate: the address
-        /// has to belong to that newest token, and `ORDER BY` inside a correlated subquery is
-        /// what says which token that is.
-        /// </remarks>
-        private Expression<Func<UserEntity, string?>> LastVisitAddress()
-            => entry => _context.RefreshTokens
-                .Where(token => token.UserId == entry.Id)
-                .OrderByDescending(token => token.CreatedAt)
-                .ThenByDescending(token => token.Id)
-                .Select(token => token.ClientAddress)
-                .FirstOrDefault();
-
-        /// <summary>
-        /// Reads the freshest token of each account on the page and returns the rows with
-        /// their visit attached.
-        /// </summary>
-        /// <remarks>
-        /// Done in memory rather than as two more subqueries per row for one reason: the ids
-        /// are already known, so one query with an `IN` over ten of them answers what ten
-        /// correlated subqueries would - and it cannot disagree with the order that put them
-        /// there, because both read the same freshest row by the same rule.
-        /// </remarks>
-        private async Task<List<AdminUser>> DescribeVisitsAsync(
-            List<StoredUser> rows,
-            CancellationToken cancellationToken)
-        {
-            var result = rows
-                .Select(row => new AdminUser
-                {
-                    Id = row.Id,
-                    Username = row.Username,
-                    Email = row.Email,
-                    GroupId = row.GroupId,
-                    GroupName = row.GroupName,
-                    Role = row.Role,
-                    Status = UserStatusComposition.Combine(row.OwnStatus, row.GroupStatus)
-                })
-                .ToList();
-
-            if (rows.Count == 0)
-            {
-                return result;
-            }
-
-            var visits = await LatestVisitsAsync(
-                rows.Select(row => row.Id).ToArray(),
-                cancellationToken);
-
-            for (var index = 0; index < rows.Count; index++)
-            {
-                if (visits.TryGetValue(rows[index].Id, out var visit))
-                {
-                    result[index] = result[index] with
-                    {
-                        LastSeenAt = visit.CreatedAt,
-                        LastIp = visit.ClientAddress
-                    };
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>The freshest token of one account, or null when it has none.</summary>
-        private async Task<RefreshTokenEntity?> LatestVisitAsync(
-            Guid userId,
-            CancellationToken cancellationToken)
-            => await _context.RefreshTokens
-                .AsNoTracking()
-                .Where(token => token.UserId == userId)
-                .OrderByDescending(token => token.CreatedAt)
-                .ThenByDescending(token => token.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-
-        /// <summary>
-        /// The freshest token of each of these accounts, keyed by account. An account with no
-        /// token is simply absent, which is the same as saying it has never signed in.
-        /// </summary>
-        private async Task<IReadOnlyDictionary<Guid, RefreshTokenEntity>> LatestVisitsAsync(
-            Guid[] userIds,
-            CancellationToken cancellationToken)
-        {
-            // Taken in order rather than grouped: the first row seen per account from a list
-            // that arrives newest first *is* the grouping, and it needs no window function to
-            // say what `ORDER BY created_at DESC` already said.
-            var tokens = await _context.RefreshTokens
-                .AsNoTracking()
-                .Where(token => userIds.Contains(token.UserId))
-                .OrderByDescending(token => token.CreatedAt)
-                .ThenByDescending(token => token.Id)
-                .ToListAsync(cancellationToken);
-
-            var byAccount = new Dictionary<Guid, RefreshTokenEntity>();
-            foreach (var token in tokens)
-            {
-                if (!byAccount.ContainsKey(token.UserId))
-                {
-                    byAccount[token.UserId] = token;
-                }
-            }
-
-            return byAccount;
-        }
-
-        /// <summary>
-        /// A row of the list before its visit has been attached. A class rather than the
-        /// record because it is what the query projects into, and the record is what a client
-        /// is handed - the same split the visit history makes, for the same reason.
-        /// </summary>
-        private sealed class StoredUser
-        {
-            public Guid Id { get; init; } = Guid.Empty;
-            public string Username { get; init; } = string.Empty;
-            public string Email { get; init; } = string.Empty;
-            public Guid GroupId { get; init; } = Guid.Empty;
-            public string GroupName { get; init; } = string.Empty;
-            public UserRole Role { get; init; }
-
-            /// <summary>The row's own state, before the group's state is laid over it.</summary>
-            public UserStatus OwnStatus { get; init; }
-
-            /// <summary>The group's state at the moment the page was read.</summary>
-            public UserStatus GroupStatus { get; init; }
         }
     }
 }
