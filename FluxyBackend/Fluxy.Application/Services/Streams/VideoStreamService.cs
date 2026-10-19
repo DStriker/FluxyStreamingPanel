@@ -1,8 +1,12 @@
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Streams;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Streams.Commands;
+using Fluxy.Core.Streams.Enums;
+using Fluxy.Core.Streams.Interfaces;
+using Fluxy.Core.Streams.Models;
+using Fluxy.Core.Streams.ReadModels;
+using Fluxy.Core.Streams.Repositories;
+using Fluxy.Core.Streams.Utils;
 
 namespace Fluxy.Application.Services.Streams
 {

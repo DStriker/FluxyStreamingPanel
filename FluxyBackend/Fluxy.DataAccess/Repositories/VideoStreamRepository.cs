@@ -1,7 +1,11 @@
 using System.Linq.Expressions;
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Content;
-using Fluxy.Core.Models.Streams;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Streams.Commands;
+using Fluxy.Core.Streams.Enums;
+using Fluxy.Core.Streams.Models;
+using Fluxy.Core.Streams.ReadModels;
+using Fluxy.Core.Streams.Repositories;
+using Fluxy.Core.Streams.Utils;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;

@@ -1,5 +1,6 @@
-using Fluxy.Core.Models.Streams;
 using Fluxy.Core.Persistence.Base;
+using Fluxy.Core.Streams.Enums;
+using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Users.Models;
 
 namespace Fluxy.DataAccess.Entities

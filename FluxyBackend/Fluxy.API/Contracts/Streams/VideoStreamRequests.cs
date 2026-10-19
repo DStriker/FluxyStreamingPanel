@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Streams;
+using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Users.Models;
 
 namespace Fluxy.API.Contracts.Streams

@@ -1,5 +1,7 @@
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Content;
+using Fluxy.Core.Content.Commands;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Models;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;

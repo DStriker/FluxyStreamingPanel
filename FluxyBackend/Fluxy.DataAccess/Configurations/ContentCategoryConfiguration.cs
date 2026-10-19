@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Content;
+using Fluxy.Core.Content.Utils;
 using Fluxy.Core.Persistence.Base;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;

@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Content;
+using Fluxy.Core.Content.Enums;
 
 namespace Fluxy.API.Contracts.Content
 {

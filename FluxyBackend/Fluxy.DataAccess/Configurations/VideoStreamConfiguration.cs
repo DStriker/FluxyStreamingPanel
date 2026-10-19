@@ -1,5 +1,5 @@
-using Fluxy.Core.Models.Streams;
 using Fluxy.Core.Persistence.Base;
+using Fluxy.Core.Streams.Utils;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;

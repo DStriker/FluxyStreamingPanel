@@ -1,6 +1,9 @@
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Content;
+using Fluxy.Core.Content.Commands;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Interfaces;
+using Fluxy.Core.Content.Models;
+using Fluxy.Core.Content.Repositories;
+using Fluxy.Core.Content.Utils;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 
