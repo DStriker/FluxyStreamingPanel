@@ -8,7 +8,6 @@ using Fluxy.Application.Services.Profile;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Application.Services.Security;
 using Fluxy.Application.Services.Streams;
-using Fluxy.Application.Services.Throttling;
 using Fluxy.Application.Services.Users;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
@@ -100,19 +99,9 @@ namespace Fluxy.Application
             // by ending a session.
             services.AddScoped<IAdminSessionHistoryService, AdminSessionHistoryService>();
 
-            // The throttle counts attempts for every request that reaches an endpoint, so it is
-            // shared. It holds no per-request state, which is what lets it live next to the redis
-            // connection rather than in a scope.
-            services.AddSingleton<IAttemptThrottle, RedisAttemptThrottle>();
-
             // The GeoIP databases are opened once and shared between requests. The readers are
             // safe to share, and holding them in a scope would reopen the files per request.
             services.AddSingleton<IGeoIpResolver, MaxMindGeoIpResolver>();
-
-            // Checked on every authorized request, so it is asked on every request. It holds
-            // only the redis connection and its own logger, and lives next to the connection for
-            // the same reason the throttle does.
-            services.AddSingleton<ITokenRevocationStore, RedisTokenRevocationStore>();
 
             // The mailer is shared too. MailKit opens a connection per message, so there is no
             // connection to keep warm between requests.

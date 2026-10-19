@@ -7,9 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- This layer references Core only. Persistence lives behind the repository interfaces,
-         so no Entity Framework package belongs here - and without a DataAccess reference the
-         MSB3277 pin that used to be necessary has nothing left to pin. -->
+    <!-- This layer references Core only. Persistence lives behind the Core interfaces, so
+         neither Entity Framework nor StackExchange.Redis belongs here - and without a
+         DataAccess reference the MSB3277 pin that used to be necessary has nothing left to pin. -->
     <PackageReference Include="MailKit" Version="4.18.1" />
     <!-- MimeKit 4.18.1 asks for Pkcs 10.0.0, which carries two published advisories. Pinning
          the patched servicing version keeps the mail dependency from dictating a vulnerable one. -->
@@ -25,7 +25,6 @@
          here and the scheme validates there, and a mismatch between the two is either an
          MSB3277 or a signature the two halves disagree about. -->
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.2" />
-    <PackageReference Include="StackExchange.Redis" Version="3.3.1" />
   </ItemGroup>
 
   <ItemGroup>

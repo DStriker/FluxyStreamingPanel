@@ -2,7 +2,7 @@ using Fluxy.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
-namespace Fluxy.Application.Services.Authentication
+namespace Fluxy.DataAccess.Infrastructure.Redis
 {
     /// <summary>
     /// Keeps withdrawn access token identifiers in redis, so a sign-out takes effect at once
@@ -22,28 +22,27 @@ namespace Fluxy.Application.Services.Authentication
     /// and a sign-out during that outage is recoverable, while an outage that locks everyone out
     /// is not.
     /// </remarks>
-    public sealed class RedisTokenRevocationStore : ITokenRevocationStore
+    internal sealed class RedisTokenRevocationStore : ITokenRevocationStore
     {
         /// <summary>Prefix of every key this store owns.</summary>
-        public const string KeyPrefix = "fluxy:revoked:jti:";
+        internal const string KeyPrefix = "fluxy:revoked:jti:";
 
-        private readonly IConnectionMultiplexer? _multiplexer;
+        private readonly RedisConnection _redis;
         private readonly ILogger<RedisTokenRevocationStore> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RedisTokenRevocationStore"/> class.
         /// </summary>
-        /// <param name="multiplexer">
-        /// Shared redis connection, or null when the installation has no connection string
-        /// configured. A null is not an error: the store then never leaves this process and
-        /// reports every token as live.
+        /// <param name="redis">
+        /// Shared redis connection. It may be unconfigured, in which case the store never leaves
+        /// this process and reports every token as live.
         /// </param>
         /// <param name="logger">Logger outages and refusals are reported to.</param>
         public RedisTokenRevocationStore(
-            IConnectionMultiplexer? multiplexer,
+            RedisConnection redis,
             ILogger<RedisTokenRevocationStore> logger)
         {
-            _multiplexer = multiplexer;
+            _redis = redis;
             _logger = logger;
         }
 
@@ -60,7 +59,7 @@ namespace Fluxy.Application.Services.Authentication
                 return;
             }
 
-            if (!TryGetDatabase(out var database))
+            if (!_redis.TryGetDatabase(out var database))
             {
                 return;
             }
@@ -103,7 +102,7 @@ namespace Fluxy.Application.Services.Authentication
                 return false;
             }
 
-            if (!TryGetDatabase(out var database))
+            if (!_redis.TryGetDatabase(out var database))
             {
                 return false;
             }
@@ -122,33 +121,6 @@ namespace Fluxy.Application.Services.Authentication
 
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Whether redis can be used at all right now. Reports the reason once per call when it
-        /// cannot, which is enough to make a missing connection visible without a log entry per
-        /// request.
-        /// </summary>
-        private bool TryGetDatabase(out IDatabase database)
-        {
-            database = null!;
-
-            if (_multiplexer is null)
-            {
-                return false;
-            }
-
-            if (!_multiplexer.IsConnected)
-            {
-                _logger.LogDebug(
-                    "Redis is not connected, so withdrawn access tokens are not being tracked.");
-
-                return false;
-            }
-
-            database = _multiplexer.GetDatabase();
-
-            return true;
         }
     }
 }

@@ -4,7 +4,7 @@ using Fluxy.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
-namespace Fluxy.Application.Services.Throttling
+namespace Fluxy.DataAccess.Infrastructure.Redis
 {
     /// <summary>
     /// Counts attempts in redis so that several instances of the application agree on them.
@@ -21,10 +21,10 @@ namespace Fluxy.Application.Services.Throttling
     /// because a side counter is down; the cost of the fallback is that the limit then applies
     /// per instance, which is why that is logged rather than hidden.
     /// </remarks>
-    public sealed class RedisAttemptThrottle : IAttemptThrottle
+    internal sealed class RedisAttemptThrottle : IAttemptThrottle
     {
         /// <summary>Prefix of every key this throttle owns.</summary>
-        public const string KeyPrefix = "fluxy:throttle:";
+        internal const string KeyPrefix = "fluxy:throttle:";
 
         /// <summary>
         /// Increments the counter and gives it an expiry the first time a window starts.
@@ -38,23 +38,23 @@ namespace Fluxy.Application.Services.Throttling
             return current
             """;
 
-        private readonly IConnectionMultiplexer? _multiplexer;
+        private readonly RedisConnection _redis;
         private readonly ILogger<RedisAttemptThrottle> _logger;
         private readonly ConcurrentDictionary<string, LocalWindow> _fallback = new(StringComparer.Ordinal);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RedisAttemptThrottle"/> class.
         /// </summary>
-        /// <param name="multiplexer">
-        /// Shared redis connection, or null when the installation has no connection string
-        /// configured. A null is not an error: the throttle simply never leaves this process.
+        /// <param name="redis">
+        /// Shared redis connection. It may be unconfigured, in which case the throttle never
+        /// leaves this process.
         /// </param>
         /// <param name="logger">Logger outages and fallbacks are reported to.</param>
         public RedisAttemptThrottle(
-            IConnectionMultiplexer? multiplexer,
+            RedisConnection redis,
             ILogger<RedisAttemptThrottle> logger)
         {
-            _multiplexer = multiplexer;
+            _redis = redis;
             _logger = logger;
         }
 
@@ -63,14 +63,9 @@ namespace Fluxy.Application.Services.Throttling
         {
             var redisKey = KeyPrefix + key;
 
-            if (TryGetDatabase(redisKey, out var database, out var window))
-            {
-                return window
-                    ? ReadLocalCount(redisKey, policy)
-                    : ReadRemoteCount(database, redisKey, policy);
-            }
-
-            return ReadLocalCount(redisKey, policy);
+            return _redis.TryGetDatabase(out var database)
+                ? ReadRemoteCount(database, redisKey, policy)
+                : ReadLocalCount(redisKey, policy);
         }
 
         /// <inheritdoc />
@@ -78,14 +73,9 @@ namespace Fluxy.Application.Services.Throttling
         {
             var redisKey = KeyPrefix + key;
 
-            if (TryGetDatabase(redisKey, out var database, out var window))
-            {
-                return window
-                    ? RecordLocalAttempt(redisKey, policy)
-                    : RecordRemoteAttempt(database, redisKey, policy);
-            }
-
-            return RecordLocalAttempt(redisKey, policy);
+            return _redis.TryGetDatabase(out var database)
+                ? RecordRemoteAttempt(database, redisKey, policy)
+                : RecordLocalAttempt(redisKey, policy);
         }
 
         /// <inheritdoc />
@@ -93,69 +83,31 @@ namespace Fluxy.Application.Services.Throttling
         {
             var redisKey = KeyPrefix + key;
 
-            if (TryGetDatabase(redisKey, out var database, out var window))
+            // Removed before the local entry rather than instead of it: an instance that has
+            // fallen back to memory must forget too, or the same process would keep counting
+            // what redis has just forgotten.
+            _fallback.TryRemove(redisKey, out _);
+
+            if (!_redis.TryGetDatabase(out var database))
             {
-                // Removed before the local entry rather than instead of it: an instance that has
-                // fallen back to memory must forget too, or the same process would keep counting
-                // what redis has just forgotten.
-                _fallback.TryRemove(redisKey, out _);
-
-                if (window)
-                {
-                    return;
-                }
-
-                try
-                {
-                    // FireAndForget because the caller has already decided the window is over and
-                    // gains nothing from the answer. A key that is not there is the expected
-                    // state, not a failure.
-                    database.KeyDeleteAsync(redisKey, CommandFlags.FireAndForget);
-                }
-                catch (RedisException exception)
-                {
-                    _logger.LogWarning(
-                        exception,
-                        "Redis could not be cleared for {Key}, so the recorded attempts stay " +
-                        "counted until the window closes on its own.",
-                        redisKey);
-                }
-
                 return;
             }
 
-            _fallback.TryRemove(redisKey, out _);
-        }
-
-        /// <summary>
-        /// Whether redis can serve this key right now. Reports the reason once per call when it
-        /// cannot, which is enough to make a misconfigured installation visible without turning
-        /// every request into a log entry.
-        /// </summary>
-        private bool TryGetDatabase(string redisKey, out IDatabase database, out bool unreachable)
-        {
-            database = null!;
-            unreachable = false;
-
-            if (_multiplexer is null)
+            try
             {
-                unreachable = true;
-
-                return false;
+                // FireAndForget because the caller has already decided the window is over and
+                // gains nothing from the answer. A key that is not there is the expected
+                // state, not a failure.
+                database.KeyDeleteAsync(redisKey, CommandFlags.FireAndForget);
             }
-
-            if (!_multiplexer.IsConnected)
+            catch (RedisException exception)
             {
-                unreachable = true;
-                _logger.LogDebug(
-                    "Redis is not connected, so the attempt counter for {Key} is kept in memory.",
+                _logger.LogWarning(
+                    exception,
+                    "Redis could not be cleared for {Key}, so the recorded attempts stay " +
+                    "counted until the window closes on its own.",
                     redisKey);
-
-                return false;
             }
-
-            database = _multiplexer.GetDatabase();
-            return true;
         }
 
         private int ReadRemoteCount(IDatabase database, string redisKey, AttemptPolicy policy)
