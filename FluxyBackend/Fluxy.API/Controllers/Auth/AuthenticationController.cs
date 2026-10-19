@@ -5,7 +5,7 @@ using Fluxy.API.Security;
 using Fluxy.Core.Authentication.Commands;
 using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
-using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Security.Models;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Models;

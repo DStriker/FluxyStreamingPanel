@@ -1,6 +1,6 @@
 using Fluxy.Core.Users.Enums;
 
-namespace Fluxy.Core.Models.Authentication
+namespace Fluxy.Core.Authentication.Options
 {
     /// <summary>
     /// Settings of token issuing and session handling. Bound from the <c>Auth</c> section.
