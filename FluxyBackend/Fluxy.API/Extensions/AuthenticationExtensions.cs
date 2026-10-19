@@ -129,7 +129,7 @@ namespace Fluxy.API.Extensions
                     jwt.Events = new JwtBearerEvents
                     {
                         OnMessageReceived = ReadTokenFromCookie,
-                        OnTokenValidated = RefuseWithdrawnToken
+                        OnTokenValidated = RefuseRevokedSession
                     };
                 });
 
@@ -254,7 +254,7 @@ namespace Fluxy.API.Extensions
                 ValidIssuer = options.Issuer,
                 ValidAudience = options.Audience,
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromSeconds(30),
+                ClockSkew = AuthenticationOptions.ClockSkew,
 
                 // The token names its own issuer and audience, so both are checked against the
                 // configured values rather than against the claim. The signature is verified
@@ -296,36 +296,39 @@ namespace Fluxy.API.Extensions
         }
 
         /// <summary>
-        /// Refuses a token that was withdrawn while it was still inside its own lifetime.
+        /// Refuses an access token whose session was withdrawn while the token was still
+        /// inside its own lifetime.
         /// </summary>
         /// <remarks>
         /// This runs after the signature and the lifetime have been checked, so the only thing
         /// left to decide is whether the token is still one this server chose to honour. A
-        /// signature being valid and a token being live are different claims: the first says the
-        /// token was issued here, the second says it has not been withdrawn since.
+        /// signature being valid and a session being live are different claims: the first says
+        /// the token was issued here, the second says the session it belongs to has not been
+        /// ended since.
         ///
         /// A token that has been signed cannot be edited to say "no longer valid" - that is the
         /// property that makes it checkable without a database - and there is no claim a logout
-        /// could flip. The identifier is the one part that can be named afterwards, which is why
-        /// the token carries it and why a sign-out records it for exactly as long as the token
-        /// would otherwise have worked.
+        /// could flip. The session identifier is the part that can be named afterwards, one
+        /// value covering every access token the session ever held, which is why the token
+        /// carries it and why ending a session records it for exactly as long as the last
+        /// possible token of that session would otherwise have worked.
         ///
         /// One store read per request that presents a token. It is the price of "sign out" being
         /// immediate rather than a request that takes effect in up to five minutes, and it is a
-        /// single keyed read against a value that expires with the token it names.
+        /// single keyed read against a value that expires with the last token it refers to.
         /// </remarks>
-        private static async Task RefuseWithdrawnToken(TokenValidatedContext context)
+        private static async Task RefuseRevokedSession(TokenValidatedContext context)
         {
-            var tokenId = context.Principal?.FindFirst(TokenClaimTypes.TokenId)?.Value;
+            var sessionValue = context.Principal?.FindFirst(TokenClaimTypes.Session)?.Value;
 
-            if (string.IsNullOrEmpty(tokenId))
+            if (!Guid.TryParse(sessionValue, out var sessionId) || sessionId == Guid.Empty)
             {
-                // A token with no identifier cannot be withdrawn, and every token this server
-                // mints carries one. Refusing it is the safe reading: an unidentified token is
-                // either not ours or minted by a build that predates the claim, and neither is
-                // something to honour silently.
-                context.Fail("The access token carries no identifier, so it cannot be checked " +
-                    "against withdrawn tokens.");
+                // A token with no usable session identifier cannot be checked, and every token
+                // this server mints carries one. Refusing it is the safe reading: an
+                // unidentified token is either not ours or minted by a build that predates the
+                // claim, and neither is something to honour silently.
+                context.Fail("The access token carries no valid session identifier, so it " +
+                    "cannot be checked against revoked sessions.");
 
                 return;
             }
@@ -333,9 +336,9 @@ namespace Fluxy.API.Extensions
             var revocations = context.HttpContext.RequestServices
                 .GetRequiredService<ITokenRevocationStore>();
 
-            if (await revocations.IsBlockedAsync(tokenId, context.HttpContext.RequestAborted))
+            if (await revocations.IsSessionBlockedAsync(sessionId, context.HttpContext.RequestAborted))
             {
-                context.Fail("The access token was withdrawn.");
+                context.Fail("The session this access token belongs to was revoked.");
             }
         }
     }

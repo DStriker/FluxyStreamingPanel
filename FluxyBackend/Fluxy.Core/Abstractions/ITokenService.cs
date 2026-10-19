@@ -52,9 +52,12 @@ namespace Fluxy.Core.Abstractions
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>True when at least one live token was revoked.</returns>
         /// <remarks>
-        /// This covers the refresh chain only. An access token that is already in a browser
-        /// keeps working until it expires, which is what
-        /// <see cref="ITokenRevocationStore"/> is for.
+        /// Both halves of the session are ended: the refresh chain is revoked in the database
+        /// so no new token can be minted from it, and the session is recorded in
+        /// <see cref="ITokenRevocationStore"/> so every access token it ever held is refused
+        /// at once rather than at the end of its own lifetime. The marker is written even when
+        /// the chain held no live row any more, because an access token can still be valid
+        /// while the refresh row behind it is already gone.
         /// </remarks>
         Task<bool> RevokeSessionAsync(Guid sessionId, CancellationToken cancellationToken = default);
 
@@ -68,15 +71,16 @@ namespace Fluxy.Core.Abstractions
         /// <remarks>
         /// This is the security answer to a password that changed: whoever held the old
         /// password may hold a session with it, and the only honest reading of that is to assume
-        /// they do. The access tokens already in browsers still run until they expire, which is
-        /// bounded by <c>Auth:AccessLifetime</c> - the refresh chain is what this ends, and it
-        /// is what keeps a session alive.
+        /// they do. Every session the account held is ended in both halves - its refresh chain
+        /// is revoked in the database and its access tokens are refused through
+        /// <see cref="ITokenRevocationStore"/> - so a token minted before the change stops
+        /// working before it would have expired on its own.
         /// </remarks>
         Task<bool> RevokeAllSessionsAsync(Guid userId, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Ends one session of the caller's own account, so that no refresh token in its chain
-        /// can be exchanged again.
+        /// Ends one session of one account, so that no refresh token in its chain can be
+        /// exchanged again and no access token it ever held is accepted any more.
         /// </summary>
         /// <param name="userId">
         /// Account the session must belong to. A session of another account is never touched,
@@ -90,9 +94,11 @@ namespace Fluxy.Core.Abstractions
         /// <remarks>
         /// The ownership rule lives here rather than in the caller: every path that ends a
         /// session on behalf of an account goes through this method, so a future endpoint
-        /// cannot end somebody else's session by forgetting a check. Ending the caller's own
-        /// session is refused by the transport, not here - this service does not know which
-        /// session a request arrived with, and a service that guessed would guess wrong.
+        /// cannot end somebody else's session by forgetting a check. The account's own
+        /// active-session page and the admin area both use it; ending the session a request
+        /// arrived with is refused by the transport, not here, because this service does not
+        /// know which session a request arrived with and a service that guessed would guess
+        /// wrong.
         /// </remarks>
         Task<bool> RevokeUserSessionAsync(
             Guid userId,

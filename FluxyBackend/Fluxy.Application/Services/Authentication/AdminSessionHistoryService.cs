@@ -40,6 +40,7 @@ namespace Fluxy.Application.Services.Authentication
     {
         private readonly IUserRepository _users;
         private readonly IRefreshTokenRepository _tokens;
+        private readonly ITokenService _tokenService;
         private readonly IGeoIpResolver _geoIp;
 
         /// <summary>
@@ -47,14 +48,20 @@ namespace Fluxy.Application.Services.Authentication
         /// </summary>
         /// <param name="users">Repository holding the accounts.</param>
         /// <param name="tokens">Repository holding the token rows.</param>
+        /// <param name="tokenService">
+        /// Service that ends a session in both halves, so an operator's revocation withdraws
+        /// the access tokens as well as the refresh chain.
+        /// </param>
         /// <param name="geoIp">Resolver that places each address on the map.</param>
         public AdminSessionHistoryService(
             IUserRepository users,
             IRefreshTokenRepository tokens,
+            ITokenService tokenService,
             IGeoIpResolver geoIp)
         {
             _users = users;
             _tokens = tokens;
+            _tokenService = tokenService;
             _geoIp = geoIp;
         }
 
@@ -179,13 +186,15 @@ namespace Fluxy.Application.Services.Authentication
             // are history and are left alone, and a token that quietly expired while nothing
             // happened is not a session that can still be refreshed.
             //
-            // The ownership is already settled above rather than repeated in this predicate,
-            // which reads a fraction of a second after it and is not a check on its own - one
-            // operator and one session is one transaction's worth of work, and a second read of
-            // the owner would be a second chance for the two to disagree.
-            var now = DateTimeOffset.UtcNow;
-
-            var revoked = await _tokens.RevokeLiveSessionAsync(sessionId, now, cancellationToken);
+            // Through the token service rather than the repository, so an operator's word ends
+            // both halves of the session: the refresh chain is revoked in the database and every
+            // access token the session held is withdrawn at once. The ownership above is
+            // repeated in the service's predicate, which is the same answer read twice within
+            // one request rather than a second authority on the question.
+            var revoked = await _tokenService.RevokeUserSessionAsync(
+                owner.Value,
+                sessionId,
+                cancellationToken);
 
             return revoked
                 ? AdminSessionRevokeOutcome.Revoked

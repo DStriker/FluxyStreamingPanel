@@ -76,13 +76,17 @@ namespace Fluxy.Core.Abstractions.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Ends every live row of every session of one account.
+        /// Ends every open row of every session of one account.
         /// </summary>
         /// <param name="userId">Account whose sessions end.</param>
         /// <param name="now">Moment the rows are stamped with.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>Number of live rows that were ended.</returns>
-        Task<int> RevokeAllSessionsAsync(
+        /// <returns>
+        /// The distinct sessions whose rows were ended, read before the update. The caller
+        /// uses them to withdraw the access tokens of each session as well, so a count of rows
+        /// would not be enough.
+        /// </returns>
+        Task<IReadOnlyList<Guid>> RevokeAllSessionsAsync(
             Guid userId,
             DateTimeOffset now,
             CancellationToken cancellationToken = default);
@@ -109,8 +113,12 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// <param name="exceptSessionId">Session to spare.</param>
         /// <param name="now">Moment the rows are stamped with.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>Number of sessions that were ended, counted before the update.</returns>
-        Task<int> RevokeAllExceptCurrentAsync(
+        /// <returns>
+        /// The sessions that were ended, read before the update. The caller uses them to
+        /// withdraw the access tokens of each session as well, so counting rows would not be
+        /// enough; the count of sessions is the length of this list.
+        /// </returns>
+        Task<IReadOnlyList<Guid>> RevokeAllExceptCurrentAsync(
             Guid userId,
             Guid exceptSessionId,
             DateTimeOffset now,
@@ -186,18 +194,6 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<Guid?> GetSessionOwnerAsync(
             Guid sessionId,
-            CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Ends the live rows of one session on an operator's word.
-        /// </summary>
-        /// <param name="sessionId">Session to end.</param>
-        /// <param name="now">Moment the rows are stamped with.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>Whether any live row was ended.</returns>
-        Task<bool> RevokeLiveSessionAsync(
-            Guid sessionId,
-            DateTimeOffset now,
             CancellationToken cancellationToken = default);
     }
 }

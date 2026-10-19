@@ -116,18 +116,36 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public async Task<int> RevokeAllSessionsAsync(
+        public async Task<IReadOnlyList<Guid>> RevokeAllSessionsAsync(
             Guid userId,
             DateTimeOffset now,
             CancellationToken cancellationToken = default)
         {
+            // The sessions are read before they are revoked rather than counted from the
+            // update, because the caller has to withdraw the access tokens of each one and a
+            // count would not name them. The predicate matches the update below: every open
+            // row of the account, expired ones included, because one may still have an access
+            // token inside its own lifetime.
+            var sessions = await _context.RefreshTokens
+                .Where(token => token.UserId == userId && token.RevokedAt == null)
+                .Select(token => token.SessionId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            if (sessions.Count == 0)
+            {
+                return sessions;
+            }
+
             // Every chain of the account goes at once rather than one at a time - a password
             // change has to leave nothing behind that could be exchanged later.
-            return await _context.RefreshTokens
+            await _context.RefreshTokens
                 .Where(token => token.UserId == userId && token.RevokedAt == null)
                 .ExecuteUpdateAsync(
                     setters => setters.SetProperty(token => token.RevokedAt, now),
                     cancellationToken);
+
+            return sessions;
         }
 
         /// <inheritdoc />
@@ -154,17 +172,17 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public async Task<int> RevokeAllExceptCurrentAsync(
+        public async Task<IReadOnlyList<Guid>> RevokeAllExceptCurrentAsync(
             Guid userId,
             Guid exceptSessionId,
             DateTimeOffset now,
             CancellationToken cancellationToken = default)
         {
             // The sessions are read before they are revoked rather than counted from the
-            // update, because the number reported back is of sessions and the update touches
-            // tokens. The two agree today - a rotation revokes the row it replaces in the same
-            // save - but counting the distinct ids keeps the answer true even if that stops
-            // being the case.
+            // update, because the caller has to withdraw the access tokens of each one and a
+            // count would not name them. The two agree today - a rotation revokes the row it
+            // replaces in the same save - but reading the distinct ids keeps the answer true
+            // even if that stops being the case.
             var sessions = await _context.RefreshTokens
                 .Where(token =>
                     token.UserId == userId &&
@@ -177,12 +195,12 @@ namespace Fluxy.DataAccess.Repositories
 
             if (sessions.Count == 0)
             {
-                return 0;
+                return sessions;
             }
 
             // Only the live rows are touched, and only of the sessions just named. A named
             // session holds one live row by construction, so this spends exactly the rows the
-            // count above counted.
+            // read above named.
             await _context.RefreshTokens
                 .Where(token =>
                     token.RevokedAt == null &&
@@ -192,7 +210,7 @@ namespace Fluxy.DataAccess.Repositories
                     setters => setters.SetProperty(token => token.RevokedAt, now),
                     cancellationToken);
 
-            return sessions.Count;
+            return sessions;
         }
 
         /// <inheritdoc />
@@ -373,24 +391,6 @@ namespace Fluxy.DataAccess.Repositories
                 .Where(token => token.SessionId == sessionId)
                 .Select(token => (Guid?)token.UserId)
                 .FirstOrDefaultAsync(cancellationToken);
-
-        /// <inheritdoc />
-        public async Task<bool> RevokeLiveSessionAsync(
-            Guid sessionId,
-            DateTimeOffset now,
-            CancellationToken cancellationToken = default)
-        {
-            var revoked = await _context.RefreshTokens
-                .Where(token =>
-                    token.SessionId == sessionId &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
-
-            return revoked > 0;
-        }
 
         /// <summary>
         /// Orders an account's rows, with a tie-break that makes the order total.

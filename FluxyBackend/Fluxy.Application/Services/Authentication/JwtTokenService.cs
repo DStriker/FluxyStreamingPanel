@@ -21,12 +21,13 @@ namespace Fluxy.Application.Services.Authentication
     /// <remarks>
     /// The two tokens are built differently on purpose, because the things they are exposed to
     /// are different. The access token is signed and self contained, so nothing about it can be
-    /// changed after it is written and any request can be accepted from it without a lookup -
-    /// but that same property is why it cannot be withdrawn, which is what bounds its life to
-    /// minutes. The refresh token is an opaque random value with no claims in it at all, and it
-    /// exists in the database only as a hash, so it can be revoked outright, expired, traced
-    /// and ended in a single step. Nothing is gained by making it a signed token: it is never
-    /// read, only exchanged.
+    /// changed after it is written and any request can be accepted from it without a lookup
+    /// beyond the one keyed read that refuses a revoked session - that read is what lets a
+    /// sign-in be ended before the token's own time is up, while the short life bounds what an
+    /// unreachable store can leave open. The refresh token is an opaque random value with no
+    /// claims in it at all, and it exists in the database only as a hash, so it can be revoked
+    /// outright, expired, traced and ended in a single step. Nothing is gained by making it a
+    /// signed token: it is never read, only exchanged.
     ///
     /// Every refresh spends the token it was given and issues a new one in the same session.
     /// A token that is presented a second time is therefore either a replay or a copy, and
@@ -51,6 +52,7 @@ namespace Fluxy.Application.Services.Authentication
         private static readonly HashAlgorithmName HashName = HashAlgorithmName.SHA256;
 
         private readonly IRefreshTokenRepository _tokens;
+        private readonly ITokenRevocationStore _revocations;
         private readonly IUserRepository _users;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IOptionsMonitor<AuthenticationOptions> _options;
@@ -65,6 +67,10 @@ namespace Fluxy.Application.Services.Authentication
         /// Initializes a new instance of the <see cref="JwtTokenService"/> class.
         /// </summary>
         /// <param name="tokens">Repository of the issued refresh tokens.</param>
+        /// <param name="revocations">
+        /// Store the sessions are recorded in when their access tokens have to stop working
+        /// before their own lifetime ends.
+        /// </param>
         /// <param name="users">Repository the accounts are read from.</param>
         /// <param name="unitOfWork">Commits one rotation as one save.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
@@ -82,6 +88,7 @@ namespace Fluxy.Application.Services.Authentication
         /// </exception>
         public JwtTokenService(
             IRefreshTokenRepository tokens,
+            ITokenRevocationStore revocations,
             IUserRepository users,
             IUnitOfWork unitOfWork,
             IOptionsMonitor<AuthenticationOptions> options,
@@ -92,6 +99,7 @@ namespace Fluxy.Application.Services.Authentication
             ILogger<JwtTokenService> logger)
         {
             _tokens = tokens;
+            _revocations = revocations;
             _users = users;
             _unitOfWork = unitOfWork;
             _options = options;
@@ -323,7 +331,17 @@ namespace Fluxy.Application.Services.Authentication
             // destroy the one piece of evidence that distinguishes a spent token from a stolen
             // one. The revoked_at condition is therefore in the query rather than in a filter
             // over everything the session ever had.
-            return await _tokens.RevokeSessionAsync(sessionId, now, cancellationToken);
+            var updated = await _tokens.RevokeSessionAsync(sessionId, now, cancellationToken);
+
+            // Written even when no live refresh row remained: logout can arrive with an access
+            // token whose chain was already ended, and that token still has to stop working.
+            // The marker covers every access token the session ever held, not just this one.
+            await _revocations.BlockSessionAsync(
+                sessionId,
+                _options.CurrentValue.SessionRevocationLifetime,
+                cancellationToken);
+
+            return updated;
         }
 
         /// <inheritdoc />
@@ -333,22 +351,33 @@ namespace Fluxy.Application.Services.Authentication
         {
             var now = _timeProvider.GetUtcNow();
 
-            // Same shape, and for the same reason: only the live rows are touched, because the
+            // Same shape, and for the same reason: only the open rows are touched, because the
             // timestamp on an already revoked row is the record of when it was spent and
             // overwriting it would destroy the one thing that tells a spent token from a stolen
             // one. Every chain of the account goes at once rather than one at a time - a
             // password change has to leave nothing behind that could be exchanged later.
-            var updated = await _tokens.RevokeAllSessionsAsync(userId, now, cancellationToken);
+            var sessions = await _tokens.RevokeAllSessionsAsync(userId, now, cancellationToken);
 
-            if (updated > 0)
+            // The database revocation ends what can be refreshed; these markers end what is
+            // already in a browser. Both halves are needed for a password change or a block to
+            // take effect at once rather than at the end of the access token's life.
+            foreach (var sessionId in sessions)
+            {
+                await _revocations.BlockSessionAsync(
+                    sessionId,
+                    _options.CurrentValue.SessionRevocationLifetime,
+                    cancellationToken);
+            }
+
+            if (sessions.Count > 0)
             {
                 _logger.LogInformation(
-                    "Ended {Count} live refresh token(s) of account {UserId}.",
-                    updated,
+                    "Ended {Count} live session(s) of account {UserId}.",
+                    sessions.Count,
                     userId);
             }
 
-            return updated > 0;
+            return sessions.Count > 0;
         }
 
         /// <inheritdoc />
@@ -381,8 +410,16 @@ namespace Fluxy.Application.Services.Authentication
 
             if (updated)
             {
+                // Only when a live row was ended: an unknown session, one of another account
+                // and one that is already dead all answer false, and none of them should leave
+                // a marker behind.
+                await _revocations.BlockSessionAsync(
+                    sessionId,
+                    _options.CurrentValue.SessionRevocationLifetime,
+                    cancellationToken);
+
                 _logger.LogInformation(
-                    "Ended session {SessionId} of account {UserId} at the account's own request.",
+                    "Ended session {SessionId} of account {UserId}.",
                     sessionId,
                     userId);
             }
@@ -398,24 +435,33 @@ namespace Fluxy.Application.Services.Authentication
         {
             var now = _timeProvider.GetUtcNow();
 
-            // The count is read before the update by the repository, because the number
-            // reported back is of sessions and the update touches tokens. It also requires the
-            // rows to still be live, so a chain that quietly expired is not counted as ended.
-            var count = await _tokens.RevokeAllExceptCurrentAsync(
+            // The sessions are read before the update by the repository, because the caller
+            // has to withdraw the access tokens of each one and the update touches tokens. It
+            // also requires the rows to still be live, so a chain that quietly expired is not
+            // counted as ended.
+            var sessions = await _tokens.RevokeAllExceptCurrentAsync(
                 userId,
                 exceptSessionId,
                 now,
                 cancellationToken);
 
-            if (count > 0)
+            foreach (var sessionId in sessions)
+            {
+                await _revocations.BlockSessionAsync(
+                    sessionId,
+                    _options.CurrentValue.SessionRevocationLifetime,
+                    cancellationToken);
+            }
+
+            if (sessions.Count > 0)
             {
                 _logger.LogInformation(
                     "Ended {Count} session(s) of account {UserId} except its current one.",
-                    count,
+                    sessions.Count,
                     userId);
             }
 
-            return count;
+            return sessions.Count;
         }
 
         /// <summary>
@@ -423,11 +469,12 @@ namespace Fluxy.Application.Services.Authentication
         /// session and token this is.
         /// </summary>
         /// <remarks>
-        /// The claims are exactly the four the protocol needs and nothing more. A role in the
+        /// The claims are exactly the ones the protocol needs and nothing more. A role in the
         /// token is a statement about the moment it was issued, which is why
         /// <see cref="IAccessChecker"/> exists and reads the row back - the claim is a starting
-        /// point, not the answer. The identifier of the token itself is what makes the token
-        /// withdrawable, and the session identifier is what lets a sign-out find the whole chain.
+        /// point, not the answer. The session identifier is what lets a sign-out find the whole
+        /// chain and what lets a withdrawal be remembered once for every token the session ever
+        /// held; the token's own identifier stays as the standard <c>jti</c>.
         /// </remarks>
         private string CreateAccessToken(
             User user,
@@ -439,10 +486,11 @@ namespace Fluxy.Application.Services.Authentication
             {
                 Subject = new ClaimsIdentity(
                 [
-                    // The account, and the three facts about the session. Names come from
-                    // TokenClaimTypes rather than from string literals so that the half that
-                    // writes them and the half that reads them cannot spell one differently -
-                    // a claim read under the wrong name is not an error, it is a missing one.
+                    // The account, its role, and the two identifiers that name the session and
+                    // the token. Names come from TokenClaimTypes rather than from string
+                    // literals so that the half that writes them and the half that reads them
+                    // cannot spell one differently - a claim read under the wrong name is not
+                    // an error, it is a missing one.
                     new Claim(TokenClaimTypes.Subject, user.Id.ToString()),
                     new Claim(TokenClaimTypes.Name, user.Username),
                     new Claim(TokenClaimTypes.Role, ((int)user.Role).ToString(

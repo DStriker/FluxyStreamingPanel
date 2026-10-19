@@ -8,9 +8,9 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
     /// </summary>
     /// <remarks>
     /// The multiplexer is nullable because an installation without a redis connection string is
-    /// a supported degraded state: attempt counters stay in process memory and withdrawn access
-    /// tokens are not tracked. Keeping that state here rather than in every consumer is what
-    /// lets the container resolve those consumers in that configuration - a nullable constructor
+    /// a supported degraded state: attempt counters stay in process memory and revoked sessions
+    /// are not tracked. Keeping that state here rather than in every consumer is what lets the
+    /// container resolve those consumers in that configuration - a nullable constructor
     /// parameter is not an optional dependency to Microsoft.Extensions.DependencyInjection.
     /// </remarks>
     internal sealed class RedisConnection
@@ -36,7 +36,7 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
             {
                 _logger.LogWarning(
                     "No redis connection is configured, so attempt counters are kept in process " +
-                    "memory and withdrawn access tokens are not tracked.");
+                    "memory and revoked sessions are not tracked.");
             }
         }
 

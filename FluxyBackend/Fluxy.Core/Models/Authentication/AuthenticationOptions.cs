@@ -12,12 +12,13 @@ namespace Fluxy.Core.Models.Authentication
     /// renamed cookie from being written by one side and looked for in vain by the other.
     ///
     /// The lifetimes here are the core of the design and they pull in opposite directions. The
-    /// access token is short because it cannot be withdrawn, so the window during which a leaked
-    /// one keeps working is exactly its remaining lifetime. The refresh token is long because it
-    /// is stored hashed, is single use, and can be revoked outright - the properties a
-    /// short-lived access token has none of. Five minutes and a week is what follows from that:
-    /// the one token that cannot be killed lives minutes, and the one that can lives long
-    /// enough that signing in once a week is a reasonable expectation.
+    /// access token is short because it cannot be edited after it is signed: a leaked one keeps
+    /// working for what is left of its life unless the session it belongs to is revoked, and a
+    /// session marker can only be written while the store behind it is reachable. The refresh
+    /// token is long because it is stored hashed, is single use, and can be revoked outright -
+    /// the properties a short-lived access token has none of. Five minutes and a week is what
+    /// follows from that: the token that cannot be killed lives minutes, and the one that can
+    /// lives long enough that signing in once a week is a reasonable expectation.
     /// </remarks>
     public sealed class AuthenticationOptions
     {
@@ -38,7 +39,8 @@ namespace Fluxy.Core.Models.Authentication
 
         /// <summary>
         /// How long an access token is accepted. Deliberately minutes rather than hours: it
-        /// cannot be withdrawn, so this is the exposure a leak gets.
+        /// cannot be edited after signing, so this is the exposure a leaked token gets when its
+        /// session marker could not be written - for example while redis is unreachable.
         /// </summary>
         public TimeSpan AccessLifetime { get; set; } = TimeSpan.FromMinutes(5);
 
@@ -47,6 +49,30 @@ namespace Fluxy.Core.Models.Authentication
         /// so an account in use keeps its session while an abandoned one lapses.
         /// </summary>
         public TimeSpan RefreshLifetime { get; set; } = TimeSpan.FromDays(7);
+
+        /// <summary>
+        /// Tolerance added to both sides of a token's own lifetime, shared by validation and
+        /// by the revocation marker so the two cannot disagree about when a token has died.
+        /// </summary>
+        /// <remarks>
+        /// A token minted by one instance a moment ago can arrive before another one's clock
+        /// has caught up, so validation accepts it for this long after <c>exp</c>. A revoked
+        /// session has to be remembered for at least as long, otherwise the marker would
+        /// expire while that same tolerance still let the token through.
+        /// </remarks>
+        public static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// How long the revocation marker of a session has to outlive every access token the
+        /// session could still present.
+        /// </summary>
+        /// <remarks>
+        /// Every access token of a session is minted with <see cref="AccessLifetime"/>, so the
+        /// oldest one still in circulation has at most that much time left - plus the clock
+        /// skew validation allows. The marker is kept for exactly that long, which is why it
+        /// never needs a cleanup pass.
+        /// </remarks>
+        public TimeSpan SessionRevocationLifetime => AccessLifetime + ClockSkew;
 
         /// <summary>
         /// Secret the access token is signed with, shared with nothing else.

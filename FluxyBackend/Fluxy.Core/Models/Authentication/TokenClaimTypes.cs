@@ -33,14 +33,16 @@ namespace Fluxy.Core.Models.Authentication
 
         /// <summary>
         /// Session the token belongs to, as a GUID. It is what lets a sign-out find the whole
-        /// refresh chain a token came from.
+        /// refresh chain a token came from, and it is the value a withdrawal is remembered by:
+        /// one session identifier covers every access token the session ever held, including
+        /// those minted by earlier rotations.
         /// </summary>
         public const string Session = "sid";
 
         /// <summary>
-        /// Identifier of the token itself, the standard <c>jti</c>. It is what makes a token
-        /// withdrawable before it expires, since a token can otherwise only be ended by
-        /// remembering it as a whole.
+        /// Identifier of the token itself, the standard <c>jti</c>. It identifies the token
+        /// rather than the session and is not what revocation is checked against - the session
+        /// identifier is, so that ending a session does not have to name every token.
         /// </summary>
         public const string TokenId = "jti";
 

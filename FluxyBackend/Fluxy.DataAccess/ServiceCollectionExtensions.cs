@@ -35,7 +35,7 @@ namespace Fluxy.DataAccess
         /// Configuration switch that decides whether a redis outage is fatal.
         /// </summary>
         /// <remarks>
-        /// Redis holds the attempt counters and the withdrawn access token identifiers, and both
+        /// Redis holds the attempt counters and the identifiers of revoked sessions, and both
         /// consumers already degrade on their own when it is unreachable, so a missing server is
         /// a degraded installation rather than a broken one. The default therefore lets the
         /// application start. Setting the value to <c>true</c> turns a missing connection string

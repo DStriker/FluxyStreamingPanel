@@ -41,20 +41,6 @@ namespace Fluxy.API.Controllers.Support
         public static string? Name(this ClaimsPrincipal principal)
             => principal.FindFirst(TokenClaimTypes.Name)?.Value ?? principal.Identity?.Name;
 
-        /// <summary>The token's own identifier, from <c>jti</c>.</summary>
-        public static string? TokenId(this ClaimsPrincipal principal)
-            => principal.FindFirst(TokenClaimTypes.TokenId)?.Value;
-
-        /// <summary>The moment the token stops working, from <c>exp</c>.</summary>
-        public static DateTimeOffset? ExpiresAt(this ClaimsPrincipal principal)
-        {
-            var value = principal.FindFirst(TokenClaimTypes.ExpiresAt)?.Value;
-
-            return long.TryParse(value, out var seconds)
-                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-                : null;
-        }
-
         /// <summary>
         /// The role the token was minted with. A token that carries none defaults to the most
         /// limited role rather than to none at all: every caller of this method already holds a

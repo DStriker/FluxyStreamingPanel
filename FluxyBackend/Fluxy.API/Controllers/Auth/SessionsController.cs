@@ -359,10 +359,11 @@ namespace Fluxy.API.Controllers.Auth
         /// token service's predicate rather than in a separate read, so a session of another
         /// account simply matches nothing.
         ///
-        /// The access token of an ended session cannot be recalled - it is signed and self
-        /// contained - so it keeps working until it expires, bounded by
-        /// <c>Auth:AccessLifetime</c>. Ending a session ends what keeps it alive: no refresh
-        /// can be minted from the chain any more.
+        /// The session is ended in both halves: the refresh chain is revoked in the database so
+        /// no new token can be minted from it, and the session is recorded in the revocation
+        /// store so every access token it ever held is refused at once rather than at the end
+        /// of its own lifetime. If redis is unreachable, the store fails open and the access
+        /// tokens fall back to their own expiry while the refresh chain stays revoked.
         /// </remarks>
         [HttpDelete("active-sessions/{sessionId:guid}")]
         [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]

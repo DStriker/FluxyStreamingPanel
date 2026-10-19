@@ -240,10 +240,11 @@ namespace Fluxy.API.Controllers.Admin
         /// purpose - the id is a guessable value, and a difference in the refusal would turn the
         /// endpoint into a probe for which accounts of the installation hold a signed-in session.
         ///
-        /// The access token of an ended session cannot be recalled - it is signed and self
-        /// contained - so it keeps working until it expires, bounded by
-        /// <c>Auth:AccessLifetime</c>. Ending a session ends what keeps it alive: no refresh can
-        /// be minted from the chain any more.
+        /// The session is ended in both halves: the refresh chain is revoked in the database so
+        /// no new token can be minted from it, and the session is recorded in the revocation
+        /// store so every access token it ever held is refused at once rather than at the end
+        /// of its own lifetime. If redis is unreachable, the store fails open and the access
+        /// tokens fall back to their own expiry while the refresh chain stays revoked.
         /// </remarks>
         [HttpDelete("{sessionId:guid}")]
         [Authorize(Policy = AuthenticationExtensions.ViewAnyUsersPolicy)]

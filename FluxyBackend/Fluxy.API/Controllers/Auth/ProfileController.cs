@@ -494,8 +494,8 @@ namespace Fluxy.API.Controllers.Auth
         /// whoever asked for the old password may be holding a session opened with it. The
         /// browser that made the change is signed straight back in, so the person who changed it
         /// notices nothing; every other device has to sign in again. Access tokens already in
-        /// flight keep working until they expire - they cannot be recalled - which is bounded by
-        /// <c>Auth:AccessLifetime</c>.
+        /// flight are refused at once through the session revocation marker rather than keeping
+        /// working until they expire.
         ///
         /// A new email changes no claim at all, so nothing here runs for it.
         ///

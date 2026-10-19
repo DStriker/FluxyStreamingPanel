@@ -38,7 +38,6 @@ namespace Fluxy.API.Controllers.Auth
     {
         private readonly IAuthenticationService _authenticationService;
         private readonly ITokenService _tokenService;
-        private readonly ITokenRevocationStore _revocations;
         private readonly CaptchaGuard _captchaGuard;
         private readonly AttemptLimiter _limiter;
         private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
@@ -48,7 +47,6 @@ namespace Fluxy.API.Controllers.Auth
         /// </summary>
         /// <param name="authenticationService">Service that checks the credentials.</param>
         /// <param name="tokenService">Service that issues, rotates and ends sessions.</param>
-        /// <param name="revocations">Store of tokens withdrawn before they expired.</param>
         /// <param name="captchaGuard">Check that a request came from a person.</param>
         /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
@@ -57,7 +55,6 @@ namespace Fluxy.API.Controllers.Auth
         public AuthenticationController(
             IAuthenticationService authenticationService,
             ITokenService tokenService,
-            ITokenRevocationStore revocations,
             CaptchaGuard captchaGuard,
             AttemptLimiter limiter,
             IAntiforgery antiforgery,
@@ -67,7 +64,6 @@ namespace Fluxy.API.Controllers.Auth
         {
             _authenticationService = authenticationService;
             _tokenService = tokenService;
-            _revocations = revocations;
             _captchaGuard = captchaGuard;
             _limiter = limiter;
             _authOptions = authOptions;
@@ -236,12 +232,13 @@ namespace Fluxy.API.Controllers.Auth
         /// turns away - a browser refreshes the pair first and the sign-out then arrives with
         /// a token that is still good, so what this refuses is a caller with nothing to end.
         ///
-        /// Two things are withdrawn rather than one. The refresh chain is revoked in the
-        /// database, so no new token can be minted from it, and the access token's identifier is
-        /// blocked for the rest of its life, so the token in the browser stops working at once
-        /// rather than in up to five minutes. Without the second half, "sign out" would be a
-        /// request rather than a fact for as long as the access token lasted, and a shared
-        /// machine would keep working for anybody who came back to it.
+        /// Two things are withdrawn rather than one, and both are owned by the token service.
+        /// The refresh chain is revoked in the database, so no new token can be minted from it,
+        /// and the session is recorded in the revocation store, so every access token it ever
+        /// held stops working at once rather than in up to five minutes. Without the second
+        /// half, "sign out" would be a request rather than a fact for as long as the access
+        /// token lasted, and a shared machine would keep working for anybody who came back to
+        /// it.
         /// </remarks>
         [HttpPost("logout")]
         [Authorize]
@@ -256,25 +253,18 @@ namespace Fluxy.API.Controllers.Auth
             }
 
             var sessionId = User.SessionId();
-            var tokenId = User.TokenId();
-            var remaining = RemainingAccessTokenLifetime();
 
             if (sessionId is { } session)
             {
                 var revoked = await _tokenService.RevokeSessionAsync(session, cancellationToken);
 
                 Logger.LogInformation(
-                    "Ended session {SessionId} of account {UserId}; {Revoked} refresh token(s) " +
-                    "were still live.",
+                    "Ended session {SessionId} of account {UserId}; a live refresh row was " +
+                    "{Revoked}.",
                     session,
                     User.Subject(),
-                    revoked ? 1 : 0);
+                    revoked ? "present" : "absent");
             }
-
-            // The access token cannot be recalled, but it can be refused. The entry is written
-            // for exactly as long as the token would otherwise have worked, so there is no
-            // cleanup to do and nothing outlives the token it names.
-            await _revocations.BlockAsync(tokenId, remaining, cancellationToken);
 
             AuthCookies.Clear(HttpContext);
 
@@ -412,30 +402,6 @@ namespace Fluxy.API.Controllers.Auth
                 outcome.Status,
                 outcome.Role,
                 _authOptions.CurrentValue));
-        }
-
-        /// <summary>
-        /// How much longer the presented access token would have worked.
-        /// </summary>
-        /// <remarks>
-        /// Taken from the token's own expiry claim rather than from the elapsed time since it was
-        /// issued, because a token read from a cookie may be minutes old by the time a request
-        /// carries it - and a withdrawal shorter than the token's real remaining life would let
-        /// the token start working again after a sign-out. A token that has already expired
-        /// yields nothing, which is right: there is nothing left to withdraw.
-        /// </remarks>
-        private TimeSpan RemainingAccessTokenLifetime()
-        {
-            var expires = User.ExpiresAt();
-
-            if (expires is not { } moment)
-            {
-                return TimeSpan.Zero;
-            }
-
-            var remaining = moment - DateTimeOffset.UtcNow;
-
-            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
 
         private string? ReadRefreshCookie()

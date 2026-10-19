@@ -5,15 +5,15 @@ using StackExchange.Redis;
 namespace Fluxy.DataAccess.Infrastructure.Redis
 {
     /// <summary>
-    /// Keeps withdrawn access token identifiers in redis, so a sign-out takes effect at once
-    /// rather than when the token would have expired.
+    /// Keeps the identifiers of withdrawn sessions in redis, so that every access token a
+    /// session ever held is refused at once rather than when its own lifetime ends.
     /// </summary>
     /// <remarks>
-    /// Only identifiers are stored, and only for as long as the token they name would still have
-    /// been accepted. That is what keeps this cheap and self cleaning: an entry expires with the
-    /// token it refers to, so the store empties itself and there is no cleanup to forget. A
-    /// token older than the longest access lifetime is gone from the store because it is already
-    /// gone from circulation.
+    /// Only session identifiers are stored, and only for as long as the longest lived access
+    /// token of that session could still have been accepted. That is what keeps this cheap and
+    /// self cleaning: an entry expires with the last token it refers to, so the store empties
+    /// itself and there is no cleanup to forget. One marker covers every token the session
+    /// produced, including those minted by earlier rotations.
     ///
     /// An unreachable redis makes every check answer "not withdrawn" and is logged rather than
     /// refused. That is the deliberate direction to fail in. Refusing would mean no signed-in
@@ -25,7 +25,7 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
     internal sealed class RedisTokenRevocationStore : ITokenRevocationStore
     {
         /// <summary>Prefix of every key this store owns.</summary>
-        internal const string KeyPrefix = "fluxy:revoked:jti:";
+        internal const string KeyPrefix = "fluxy:revoked:sid:";
 
         private readonly RedisConnection _redis;
         private readonly ILogger<RedisTokenRevocationStore> _logger;
@@ -35,7 +35,7 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
         /// </summary>
         /// <param name="redis">
         /// Shared redis connection. It may be unconfigured, in which case the store never leaves
-        /// this process and reports every token as live.
+        /// this process and reports every session as live.
         /// </param>
         /// <param name="logger">Logger outages and refusals are reported to.</param>
         public RedisTokenRevocationStore(
@@ -47,15 +47,16 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
         }
 
         /// <inheritdoc />
-        public async Task BlockAsync(
-            string? tokenId,
+        public async Task BlockSessionAsync(
+            Guid? sessionId,
             TimeSpan lifetime,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrEmpty(tokenId) || lifetime <= TimeSpan.Zero)
+            if (sessionId is not { } session || session == Guid.Empty || lifetime <= TimeSpan.Zero)
             {
-                // Nothing worth remembering: either the token cannot be named or it has already
-                // expired, and in both cases the store would hold an entry that means nothing.
+                // Nothing worth remembering: either the session cannot be named or every
+                // token it could have produced has already expired, and in both cases the
+                // store would hold an entry that means nothing.
                 return;
             }
 
@@ -66,18 +67,13 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
 
             try
             {
-                // The entry outlives the token by a moment, not by a margin. Keeping it longer
-                // would leave identifiers of tokens that nobody can present any more, and
-                // keeping it shorter would open a gap in which a token that is still valid is
-                // accepted after a sign-out.
-                var key = KeyPrefix + tokenId;
+                // The entry outlives the last possible token by a moment, not by a margin.
+                // Keeping it longer would leave identifiers of sessions that nobody can
+                // present any more, and keeping it shorter would open a gap in which a token
+                // that is still valid is accepted after a sign-out.
+                var key = KeyPrefix + session;
 
-                await database.StringSetAsync(
-                    key,
-                    "1",
-                    lifetime,
-                    When.Always,
-                    CommandFlags.FireAndForget);
+                await database.StringSetAsync(key, "1", lifetime, When.Always);
             }
             catch (RedisException exception)
             {
@@ -87,17 +83,17 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
                 // the database.
                 _logger.LogWarning(
                     exception,
-                    "Redis could not be written for a withdrawn access token, so the withdrawal " +
-                    "will only take effect when the token expires on its own.");
+                    "Redis could not be written for a revoked session, so the withdrawal will " +
+                    "only take effect when its access tokens expire on their own.");
             }
         }
 
         /// <inheritdoc />
-        public async Task<bool> IsBlockedAsync(
-            string? tokenId,
+        public async Task<bool> IsSessionBlockedAsync(
+            Guid? sessionId,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrEmpty(tokenId))
+            if (sessionId is not { } session || session == Guid.Empty)
             {
                 return false;
             }
@@ -109,15 +105,15 @@ namespace Fluxy.DataAccess.Infrastructure.Redis
 
             try
             {
-                return await database.KeyExistsAsync(KeyPrefix + tokenId);
+                return await database.KeyExistsAsync(KeyPrefix + session);
             }
             catch (RedisException exception)
             {
                 _logger.LogWarning(
                     exception,
-                    "Redis could not be read for a withdrawn access token, so the request is " +
-                    "allowed through. A sign-out during a redis outage takes effect only when the " +
-                    "access token expires on its own.");
+                    "Redis could not be read for a revoked session, so the request is allowed " +
+                    "through. A sign-out during a redis outage takes effect only when the " +
+                    "access tokens expire on their own.");
 
                 return false;
             }
