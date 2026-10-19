@@ -2,7 +2,7 @@ import type { UserStatus } from '../../types'
 
 /**
  * The frontend's copy of `UserStatusComposition.Combine`
- * (`Fluxy.Core/Models/Users/UserStatusComposition.cs`): an account's **effective** state is
+ * (`Fluxy.Core/Users/Utils/UserStatusComposition.cs`): an account's **effective** state is
  * its own row combined with its group's, the most restrictive of the two winning.
  *
  * It exists for one job - drawing the note beside the status field of the account form -

@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 
 ## Intended architecture — the layers are isolated
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/` (including `Repositories/`) and `Models/<Feature>/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `Services/` (business rules, the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `<Domain>/<Kind>/` — the business model, the contracts and the shared rules, grouped by domain first and by kind second (see "The core layer is organised by domain, then by kind" below), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `Services/` (business rules, the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -34,10 +34,49 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 
 - **Fluxy.API** — controllers, request/response DTOs (contracts), and the HTTP concerns: DI wiring, middleware, options, security handlers.
 - **Fluxy.Application** — services and business logic. References Core **only**; it has no Entity Framework, StackExchange.Redis or MaxMind.GeoIP2 package and cannot see `Fluxy.DataAccess`.
-- **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
+- **Fluxy.Core** — immutable business models, contracts and shared rules. Depends on nothing.
 - **Fluxy.DataAccess** — persistence infrastructure: PostgreSQL through `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/` and `Repositories/` (data access behind the Core interfaces); Redis through `Infrastructure/Redis/` (shared connection, attempt throttle, revoked-session store) and the MaxMind `.mmdb` reader through `Infrastructure/GeoIp/`. `Infrastructure/` also holds `UnitOfWork` and `DatabaseInitializer`. Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
 **The graph above is wired in the csproj files** — add a class to a layer and it is visible to the consumers named by the arrows, not to the layer above them. Adding `Application → DataAccess` back would defeat the isolation this split exists for.
+
+## The core layer is organised by domain, then by kind
+
+`Fluxy.Core` is a **domain-first** tree: the domain is the senior axis, the kind of type is the second one. The namespace mirrors the folder exactly — `Fluxy.Core.<Domain>.<Kind>` — so the path of a file is the name of its namespace.
+
+```
+Fluxy.Core/
+  Persistence/       Base 1 · Interfaces 2 · Exceptions 1
+  Security/          Models 1 · Interfaces 2 · Enums 1
+  Email/             Commands 1 · Interfaces 1 · Enums 1
+  GeoIp/             ReadModels 1 · Interfaces 1 · Utils 1
+  Users/             Models 5 · Rows 4 · ReadModels 8 · Commands 9 · Outcomes 9 · Enums 17 · Utils 8 · Interfaces 7 · Repositories 4
+  Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1
+  Content/           Models 1 · Commands 3 · Enums 3 · Utils 1 · Interfaces 1 · Repositories 1
+  Streams/           Models 1 · ReadModels 2 · Commands 3 · Enums 6 · Utils 3 · Interfaces 1 · Repositories 1
+```
+
+**The domain is decided by what the type is about, not by who reads it.** `IGeoIpResolver` is GeoIP because it answers a question about an address; `ILoginGuardService` is Users because the allow lists belong to an account and GeoIP is only where the answer comes from; `ITokenRevocationStore` is Authentication because it ends a session, not because it is a "security" thing.
+
+**The kind is decided by the role the type plays**, and every kind answers one question:
+
+| Kind | What it holds | The test |
+| --- | --- | --- |
+| `Models/` | the business model, the direct analogue of `Entities/` in DataAccess | a persisted business thing or its value object |
+| `Rows/` | a projection shaped for one query | it never reaches a response |
+| `ReadModels/` | the form the API answers with | it reaches the HTTP response as it is |
+| `Commands/` | an intent to change something | `New*`, `*Patch`, `*Write`, `*Operation` |
+| `Outcomes/` | how an operation ended | `*Outcome`, `*Result`, `IssuedTokens` |
+| `Enums/` | the enumerations | |
+| `Interfaces/` | the contracts of the business services | |
+| `Repositories/` | the contracts of the data access | |
+| `Exceptions/` | the exceptions | |
+| `Utils/` | static helpers, limit tables, catalogs, constants | no state, no dependency on a layer |
+| `Options/` | the configuration | `AuthenticationOptions` |
+| `Base/` | base types to inherit from | `AuditableEntity` |
+
+**`Models/` holds the business model and nothing else.** It has **nine** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream` (Streams), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
+
+**One type per file.** Twelve files used to hold two or three types each; they were split, so the file name is the type name and nothing else.
 
 **The API layer is organised by area, not by file kind.** The tree and the rule for where a new type goes:
 
@@ -46,7 +85,7 @@ Fluxy.API/
   Program.cs                  composition only: every interface meets its implementation here
   Extensions/                 DI wiring (authentication, CORS, rate limits, antiforgery, .env)
   Middleware/                 ApiAuthorizationResultHandler: 401/403 answered as { code, message }
-  Options/                    RateLimitOptions; AuthenticationOptions lives in Core
+  Options/                    RateLimitOptions; AuthenticationOptions lives in Core, under Authentication/Options/
   Security/                   cookies, role/permission handlers, RequestStandingReader
   Contracts/<Feature>/        request/response DTOs, namespace Fluxy.API.Contracts.<Feature>
   Contracts/Common/           types a second feature names (MessageResponse, bulk answers, ...)
@@ -68,7 +107,7 @@ Fluxy.API/
 
 ## Interfaces belong in Core, implementations in their layer
 
-**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/Abstractions/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/Abstractions/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. The readers of an external data source are the third case: `IGeoIpResolver` lives in Core and its MaxMind implementation in `Fluxy.DataAccess/Infrastructure/GeoIp/`, beside the redis stores. `IUnitOfWork` and `IDatabaseInitializer` stay directly under `Fluxy.Core/Abstractions/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
+**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/<Domain>/Interfaces/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/<Domain>/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. The readers of an external data source are the third case: `IGeoIpResolver` lives in `Fluxy.Core/GeoIp/Interfaces/` and its MaxMind implementation in `Fluxy.DataAccess/Infrastructure/GeoIp/`, beside the redis stores. `IUnitOfWork` and `IDatabaseInitializer` live under `Fluxy.Core/Persistence/Interfaces/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
 
 The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and `Program.cs` wires it to an implementation. `Fluxy.API` also references `Fluxy.DataAccess` so it can call `AddDataAccess`/`AddRedis`/`AddGeoIp`, but it never names a repository class, a `DbContext` or any other EF type.
 
@@ -141,7 +180,7 @@ network, not a stored field.
   Compared as parsed addresses, not as text (`::1` vs `0:0:...:1` must not end a session).
   Access tokens stay stateless, so a move is caught on rotation, within one access lifetime.
 - **Development bypasses local networks with a warning, nothing else does.**
-  `GeoIpAddress.IsLocal` (loopback, private, link-local; in `Fluxy.Core/Models/GeoIp/`, because
+  `GeoIpAddress.IsLocal` (loopback, private, link-local; in `Fluxy.Core/GeoIp/Utils/`, because
   the resolver that needs it and the guard that needs it live in different layers) +
   `IHostEnvironment`:
   in Development a local address skips both the enforcement and the anti-lock below, because
@@ -261,9 +300,10 @@ about it follows from that.
   `created_at DESC, id DESC` — the identifier is the tie-break, because two tokens written in the
   same transaction share a stamp and without it two pages could both show or both skip a row.
 
-Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` / `SessionHistoryLimits` /
-`SessionSortField` / `SessionSortOrder` in `Fluxy.Core/Models/Authentication/`,
-`ISessionHistoryService` in `Fluxy.Core/Abstractions/`,
+Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` in
+`Fluxy.Core/Authentication/ReadModels/`, `SessionHistoryLimits` / `SessionSortField` /
+`SessionSortOrder` in `Fluxy.Core/Authentication/Utils/` and `Enums/`,
+`ISessionHistoryService` in `Fluxy.Core/Authentication/Interfaces/`,
 `SessionHistoryService` in `Fluxy.Application/Services/Authentication/` (Scoped, `AsNoTracking`),
 the contracts in `Fluxy.API/Contracts/Sessions/SessionHistoryResponse.cs`, and the action on
 `SessionsController` — the controller that holds every session read and revoke, beside
@@ -343,7 +383,8 @@ token level, the opposite question.
   same reason the message on the button says "sessions".
 
 Layering follows the usual split: `ActiveSession` / `ActiveSessionList` in
-`Fluxy.Core/Models/Authentication/`, `IActiveSessionService` in `Fluxy.Core/Abstractions/`,
+`Fluxy.Core/Authentication/ReadModels/`, `IActiveSessionService` in
+`Fluxy.Core/Authentication/Interfaces/`,
 `ActiveSessionService` in `Fluxy.Application/Services/Authentication/` (Scoped,
 `AddScoped<IActiveSessionService, ActiveSessionService>()`), `RevokeUserSessionAsync` /
 `RevokeAllExceptCurrentAsync` added to `ITokenService` and implemented in `JwtTokenService`,
@@ -396,7 +437,7 @@ Only `Fluxy.DataAccess` references **StackExchange.Redis 3.3.1**. `Fluxy.Applica
 Only `Fluxy.DataAccess` references **MaxMind.GeoIP2 6.1.0**. The reader of a data source is a mechanism, not a business rule, so `MaxMindGeoIpResolver` and `GeoIpOptions` live in `Fluxy.DataAccess/Infrastructure/GeoIp/`, behind `IGeoIpResolver` from Core — the same shape as the redis stores.
 
 - `Fluxy.DataAccess/ServiceCollectionExtensions.cs` has `AddGeoIp(configuration)`, which binds the `GeoIp` section and registers the resolver as a **singleton**: the readers are opened once and on first use rather than at startup, so a host without the files still starts and every address resolves as unknown.
-- The one answer the reader and the guard share — what a local address is — lives in `Fluxy.Core/Models/GeoIp/GeoIpAddress.cs`, because the reader is in the data access layer and the guard is a business rule, and neither may be the only place that knows it.
+- The one answer the reader and the guard share — what a local address is — lives in `Fluxy.Core/GeoIp/Utils/GeoIpAddress.cs`, because the reader is in the data access layer and the guard is a business rule, and neither may be the only place that knows it.
 - `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.12 is pinned in `Fluxy.DataAccess.csproj` for that binding, and `Microsoft.Extensions.Hosting` 10.0.12 stays pinned in `Fluxy.Application.csproj` for `IHostEnvironment`.
 
 **Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Extensions/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
@@ -418,7 +459,7 @@ Two rules apply to **every** persisted entity. They are enforced by code, not by
 1. The primary key is a **`uuid`**, generated on the client (`Guid.NewGuid()` in the `AuditableEntity` constructor, `ValueGenerated.Never` in the model convention). Never `gen_random_uuid()` and never an `int`.
 2. The row stores **`created_at`** and **`updated_at`** (`timestamp with time zone`, mapped from `DateTimeOffset`). They are stamped by the context, never by the entity.
 
-`Fluxy.Core/Abstractions/AuditableEntity.cs` supplies the three properties — public getters, **private** setters, so EF can write them and nothing else can. It has two constructors: one that generates the key, and one that rehydrates a row (used by `UserEntity.FromModel`).
+`Fluxy.Core/Persistence/Base/AuditableEntity.cs` supplies the three properties — public getters, **private** setters, so EF can write them and nothing else can. It has two constructors: one that generates the key, and one that rehydrates a row (used by `UserEntity.FromModel`).
 
 `FluxyDbContext` does the rest:
 
@@ -435,7 +476,7 @@ One aggregate, four artifacts, plus the first row.
 
 | Artifact | Where | What it is |
 | --- | --- | --- |
-| Model | `Fluxy.Core/Models/Users/User.cs` | `sealed record` with init-only properties, plus `UserRole` and `UserStatus` in the same folder |
+| Model | `Fluxy.Core/Users/Models/User.cs` | `sealed record` with init-only properties; `UserRole` and `UserStatus` are in `Fluxy.Core/Users/Enums/` |
 | Entity | `Fluxy.DataAccess/Entities/UserEntity.cs` | `sealed class UserEntity : AuditableEntity` with `ToModel()` / `FromModel(User)` |
 | Configuration | `Fluxy.DataAccess/Configurations/UserConfiguration.cs` | the `users` table, the limits, the indexes, the CHECK constraint |
 | Migration | `Fluxy.DataAccess/Migrations/20260930145246_InitialCreate.cs` | DDL only, generated by `dotnet ef` |
@@ -853,9 +894,11 @@ antiforgery helper).
   an administrator from locking *themselves* out of *their own* account, and an admin editing
   someone else's allow lists is not on those lists.
 
-Layering follows the usual split: `AdminUser` / `AdminUserPage` / `AdminUserDetail` / `NewUser` /
-`UserPatch` / `AdminUserSortField` / `AdminUserSortOrder` / `AdminUserListLimits` in
-`Fluxy.Core/Models/Users/`, `IUserAdminService` in `Fluxy.Core/Abstractions/`,
+Layering follows the usual split: `AdminUser` / `AdminUserPage` / `AdminUserDetail` in
+`Fluxy.Core/Users/ReadModels/`, `NewUser` / `UserPatch` in `Fluxy.Core/Users/Commands/`,
+`AdminUserSortField` / `AdminUserSortOrder` in `Fluxy.Core/Users/Enums/`,
+`AdminUserListLimits` in `Fluxy.Core/Users/Utils/`,
+`IUserAdminService` in `Fluxy.Core/Users/Interfaces/`,
 `UserAdminService` in `Fluxy.Application/Services/Users/` (registered Scoped), the shared
 `LoginGuardNormalizer`/`LoginGuardStore` and `TimeZonePolicy` beside it (extracted from
 `ProfileService` so both flows agree on what a valid guard and time zone are), and the contracts
@@ -965,11 +1008,13 @@ onto its matching base group → `SET NOT NULL` → drop `users.role` → index 
 fallback for an account that matches no base group: on this installation every account did,
 and a fallback would have hidden a row the backfill had missed instead of surfacing it.
 
-Layering follows the usual split: `UserGroup` / `UserGroupListItem` / `UserGroupPage` /
-`UserGroupDetail` / `NewUserGroup` / `UserGroupPatch` / `UserGroupOutcome` / `UserGroupAction` /
-`UserGroupSortField` / `UserGroupSortOrder` / `UserGroupListLimits` / `UserPermission` /
-`UserPermissionCatalog` / `BaseUserGroups` / `UserStatusComposition` in
-`Fluxy.Core/Models/Users/`, `IUserGroupService` in `Fluxy.Core/Abstractions/`,
+Layering follows the usual split: `UserGroup` in `Fluxy.Core/Users/Models/`,
+`UserGroupListItem` / `UserGroupPage` / `UserGroupDetail` in `Fluxy.Core/Users/ReadModels/`,
+`NewUserGroup` / `UserGroupPatch` in `Fluxy.Core/Users/Commands/`,
+`UserGroupOutcome` / `UserGroupAction` / `UserGroupSortField` / `UserGroupSortOrder` /
+`UserPermission` in `Fluxy.Core/Users/Enums/`,
+`UserGroupListLimits` / `UserPermissionCatalog` / `BaseUserGroups` / `UserStatusComposition` in
+`Fluxy.Core/Users/Utils/`, `IUserGroupService` in `Fluxy.Core/Users/Interfaces/`,
 `UserGroupService` in `Fluxy.Application/Services/Users/` (registered Scoped), the entities and
 their two configurations in `Fluxy.DataAccess/`, and the contracts in
 `Fluxy.API/Contracts/UserGroups/` (`AdminUserGroup*`, `CreateUserGroupRequest` /
@@ -1036,10 +1081,12 @@ pieces of content will be filed under; the content itself does not exist yet.
   also why the request is shaped as a full list: the screen knows all of it the moment the
   visitor is finished.
 
-Layering follows the usual split: `ContentType` / `ContentCategory` / `NewContentCategory` +
-`ContentCategoryPatch` + `ReorderContentCategories` / `ContentCategoryOutcome` +
-`ContentCategoryAction` in `Fluxy.Core/Models/Content/`, `IContentCategoryService` in
-`Fluxy.Core/Abstractions/`, `ContentCategoryService` in
+Layering follows the usual split: `ContentCategory` in `Fluxy.Core/Content/Models/`,
+`NewContentCategory` + `ContentCategoryPatch` + `ReorderContentCategories` in
+`Fluxy.Core/Content/Commands/`, `ContentType` + `ContentCategoryOutcome` +
+`ContentCategoryAction` in `Fluxy.Core/Content/Enums/`, `ContentCategoryLimits` in
+`Fluxy.Core/Content/Utils/`, `IContentCategoryService` in
+`Fluxy.Core/Content/Interfaces/`, `ContentCategoryService` in
 `Fluxy.Application/Services/Content/` (Scoped), the entity and its configuration in
 `Fluxy.DataAccess/` (migration `20261012103956_AddContentCategories`), the contracts in
 `Fluxy.API/Contracts/Content/`, and `ContentCategoriesController` in
@@ -1107,10 +1154,13 @@ relay process plays; the playing itself is not in this API.
   name, and the sort fields are the column keys — `name`, `category`, `status`, `type`,
   `sortOrder` — parsed from plain text case-insensitively.
 
-Layering follows the usual split: `ContentType`-adjacent models in `Fluxy.Core/Models/Streams/`
-(`VideoStream`, `VideoStreamPage`, `VideoStreamDetail`, `NewVideoStream`, `VideoStreamPatch`,
-`VideoStreamOutcome`, `VideoStreamAction`, `VideoStreamSortField`, `VideoStreamSortOrder`,
-`VideoStreamListLimits`) plus `IVideoStreamService` in `Fluxy.Core/Abstractions/`,
+Layering follows the usual split: `VideoStream` in `Fluxy.Core/Streams/Models/`,
+`VideoStreamPage` / `VideoStreamListItem` in `Fluxy.Core/Streams/ReadModels/`,
+`NewVideoStream` / `VideoStreamPatch` / `VideoStreamWrite` in `Fluxy.Core/Streams/Commands/`,
+`VideoStreamOutcome` / `VideoStreamAction` / `VideoStreamSortField` / `VideoStreamSortOrder` /
+`VideoStreamStatus` / `VideoStreamType` in `Fluxy.Core/Streams/Enums/`,
+`VideoStreamLimits` / `VideoStreamListLimits` / `VideoStreamEpg` in
+`Fluxy.Core/Streams/Utils/`, plus `IVideoStreamService` in `Fluxy.Core/Streams/Interfaces/`,
 `VideoStreamService` in `Fluxy.Application/Services/Streams/` (Scoped), the three entities and
 their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the
 contracts in `Fluxy.API/Contracts/Streams/`, and `VideoStreamsController` in

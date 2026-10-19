@@ -1,7 +1,7 @@
 import type { Role, UserPermission } from '../../types'
 
 /**
- * The frontend's copy of `UserPermissionCatalog` (`Fluxy.Core/Models/Users`).
+ * The frontend's copy of `UserPermissionCatalog` (`Fluxy.Core/Users/Utils`).
  *
  * It exists for two jobs, and both are decisions taken *before* a request rather than
  * refusals explained after one. The first is the group form: which checkboxes it is entitled
