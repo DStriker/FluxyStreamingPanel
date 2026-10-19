@@ -30,6 +30,13 @@ namespace Fluxy.DataAccess.Entities
         public Guid UserId { get; set; }
 
         /// <summary>
+        /// Navigation to that account, for queries that read a token and something about the
+        /// account it belongs to in one round trip. Null when the query did not ask for it;
+        /// the foreign key is what every write uses, and it is <c>ON DELETE CASCADE</c>.
+        /// </summary>
+        public UserEntity? User { get; set; }
+
+        /// <summary>
         /// Lower case hexadecimal SHA-256 of the token. Unique, and the only thing about the
         /// token that is kept.
         /// </summary>

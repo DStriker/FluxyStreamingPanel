@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
@@ -26,8 +25,11 @@ namespace Fluxy.Application.Services.Registration
     /// </remarks>
     public sealed class RegistrationService : IRegistrationService
     {
-        /// <summary>Digits a code is built from.</summary>
-        private const string CodeAlphabet = "0123456789";
+        /// <summary>The unique index making a username unique.</summary>
+        private const string UsernameIndexName = "IX_users_username";
+
+        /// <summary>The unique index making an email address unique.</summary>
+        private const string EmailIndexName = "IX_users_email";
 
         private readonly FluxyDbContext _context;
         private readonly IEmailSender _emailSender;
@@ -82,7 +84,7 @@ namespace Fluxy.Application.Services.Registration
             }
 
             var username = registration.Username?.Trim() ?? string.Empty;
-            var email = NormalizeEmail(registration.Email);
+            var email = EmailNormalizer.Normalize(registration.Email);
             var password = registration.Password ?? string.Empty;
 
             var errors = Validate(username, email, password);
@@ -109,7 +111,7 @@ namespace Fluxy.Application.Services.Registration
                 .FirstOrDefaultAsync(user => user.Email == email, cancellationToken);
 
             var now = _timeProvider.GetUtcNow();
-            var code = GenerateCode(options.CodeLength);
+            var code = OneTimeCode.Generate(options.CodeLength);
             var codeHash = BCrypt.Net.BCrypt.HashPassword(code);
 
             // An address that never finished registering may be taken over: the pending code is
@@ -164,7 +166,7 @@ namespace Fluxy.Application.Services.Registration
             string code,
             CancellationToken cancellationToken = default)
         {
-            var normalized = NormalizeEmail(email);
+            var normalized = EmailNormalizer.Normalize(email);
             var trimmedCode = code?.Trim() ?? string.Empty;
 
             if (trimmedCode.Length == 0)
@@ -344,70 +346,29 @@ namespace Fluxy.Application.Services.Registration
         }
 
         /// <summary>
-        /// Folds an address into the single form the database compares against.
-        /// </summary>
-        /// <remarks>
-        /// Addresses are case insensitive in practice, and the column is not: a check that
-        /// folded nothing would let a second free account be taken on a mailbox that already has
-        /// one, by writing the same address with a different case. Trimming matters for the same
-        /// reason - a trailing space from a paste would otherwise make a second account.
-        /// </remarks>
-        private static string NormalizeEmail(string? email)
-            => email?.Trim().ToLowerInvariant() ?? string.Empty;
-
-        /// <summary>
-        /// Builds a code of <paramref name="length"/> digits.
-        /// </summary>
-        /// <remarks>
-        /// The digits come from <see cref="RandomNumberGenerator"/>, not from
-        /// <see cref="Random.Shared"/> and not from a modulo of a random integer, both of which
-        /// bias the result. A short code is only acceptable because the stored value is a hash
-        /// and the endpoint is throttled.
-        /// </remarks>
-        private static string GenerateCode(int length)
-        {
-            var digits = RandomNumberGenerator.GetItems(CodeAlphabet.AsSpan(), length);
-
-            return new string(digits);
-        }
-
-        /// <summary>
         /// Saves the account, turning a lost race for a unique value into the same refusal a
         /// sequential check would have produced.
         /// </summary>
         /// <remarks>
         /// Two requests can both pass the lookup and then both insert. The unique index is the
         /// real guard, and without this the loser would surface as a database exception on what
-        /// is an ordinary outcome for a public form.
+        /// is an ordinary outcome for a public form. Only the two indexes a registration can
+        /// legitimately collide on are interpreted: a refusal by anything else is a bug in this
+        /// service and is left to surface as one.
         /// </remarks>
         private async Task SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException exception)
+                when (exception.IsConstraint(UsernameIndexName)
+                    || exception.IsConstraint(EmailIndexName))
             {
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    throw new DuplicateRegistrationException(exception);
-                }
-
-                throw;
+                throw new DuplicateRegistrationException(exception);
             }
         }
-
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced here,
-        /// so the check is on the message the server sends, which is the documented text of
-        /// <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
 
         /// <summary>
         /// The plain text body of the message that carries a code. The code is the only content:

@@ -29,6 +29,13 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>Account this change belongs to.</summary>
         public Guid UserId { get; set; }
 
+        /// <summary>
+        /// Navigation to that account, for queries that read a staged change and the account
+        /// row it will write in one round trip. Null when the query did not ask for it; the
+        /// foreign key is what every write uses, and it is <c>ON DELETE CASCADE</c>.
+        /// </summary>
+        public UserEntity? User { get; set; }
+
         /// <summary>Which operation this row is waiting to finish.</summary>
         public PendingChangeKind Kind { get; set; }
 

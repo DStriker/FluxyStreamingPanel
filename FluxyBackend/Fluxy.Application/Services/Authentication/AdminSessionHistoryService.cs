@@ -80,9 +80,8 @@ namespace Fluxy.Application.Services.Authentication
 
             var query =
                 from token in _context.RefreshTokens.AsNoTracking()
-                join user in _context.Users.AsNoTracking() on token.UserId equals user.Id
-                join accountGroup in _context.UserGroups.AsNoTracking() on user.GroupId equals accountGroup.Id
-                where visible.Contains(accountGroup.Role)
+                let user = token.User!
+                where visible.Contains(user.Group!.Role)
                 select new StoredVisit
                 {
                     Id = token.Id,

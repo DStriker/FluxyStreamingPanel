@@ -54,7 +54,7 @@ namespace Fluxy.DataAccess.Configurations
             // A token belongs to exactly one account and dies with it, for the same reason a
             // staged change does: deleting an account must not leave sessions that sign in as
             // nobody.
-            builder.HasOne<UserEntity>()
+            builder.HasOne(token => token.User)
                 .WithMany()
                 .HasForeignKey(token => token.UserId)
                 .OnDelete(DeleteBehavior.Cascade);

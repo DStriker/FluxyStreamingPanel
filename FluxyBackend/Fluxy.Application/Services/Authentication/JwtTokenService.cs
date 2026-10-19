@@ -126,7 +126,7 @@ namespace Fluxy.Application.Services.Authentication
             });
 
             await CleanupExpiredAsync(now, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Opened a session for {Username} in role {Role}. It expires at {ExpiresAt}.",
@@ -286,7 +286,7 @@ namespace Fluxy.Application.Services.Authentication
             stored.ReplacedById = replacement.Id;
 
             await CleanupExpiredAsync(now, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             return new RefreshOutcome
             {

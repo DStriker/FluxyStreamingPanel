@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
@@ -31,8 +30,8 @@ namespace Fluxy.Application.Services.Profile
     /// </remarks>
     public sealed class PasswordResetService : IPasswordResetService
     {
-        /// <summary>Digits a code is built from.</summary>
-        private const string CodeAlphabet = "0123456789";
+        /// <summary>The unique index allowing one staged change per account.</summary>
+        private const string PendingChangeIndexName = "IX_pending_changes_user_id";
 
         private readonly FluxyDbContext _context;
         private readonly IEmailSender _emailSender;
@@ -91,7 +90,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var name = username?.Trim() ?? string.Empty;
-            var normalized = NormalizeEmail(email);
+            var normalized = EmailNormalizer.Normalize(email);
             var password = newPassword ?? string.Empty;
 
             if (!RegistrationPolicy.IsPasswordAcceptable(password))
@@ -127,7 +126,7 @@ namespace Fluxy.Application.Services.Profile
             }
 
             var options = _options.CurrentValue;
-            var code = GenerateCode(options.CodeLength);
+            var code = OneTimeCode.Generate(options.CodeLength);
 
             if (!await StageAsync(
                     user.Id,
@@ -237,20 +236,14 @@ namespace Fluxy.Application.Services.Profile
 
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException)
             {
                 // No unique value is written here, so anything the database refuses is a real
-                // failure rather than an outcome of the form.
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
-                }
-
-                throw;
+                // failure rather than an outcome of the form. Reported like a wrong code so a
+                // raced confirmation cannot tell the loser anything about the row.
+                return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
             _logger.LogInformation(
@@ -296,49 +289,15 @@ namespace Fluxy.Application.Services.Profile
 
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException exception)
+                when (exception.IsConstraint(PendingChangeIndexName))
             {
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return false;
-                }
-
-                throw;
+                return false;
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented text
-        /// of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
-
-        /// <summary>Folds an address into the single form the database compares against.</summary>
-        private static string NormalizeEmail(string? email)
-            => email?.Trim().ToLowerInvariant() ?? string.Empty;
-
-        /// <summary>Builds a code of <paramref name="length"/> digits.</summary>
-        /// <remarks>
-        /// The digits come from <see cref="RandomNumberGenerator"/>, not from
-        /// <see cref="Random.Shared"/> and not from a modulo of a random integer, both of which
-        /// bias the result. A short code is only acceptable because the stored value is a hash
-        /// and the endpoint is throttled.
-        /// </remarks>
-        private static string GenerateCode(int length)
-        {
-            var digits = RandomNumberGenerator.GetItems(CodeAlphabet.AsSpan(), length);
-
-            return new string(digits);
         }
 
         /// <summary>The plain text body of the message that carries the code.</summary>

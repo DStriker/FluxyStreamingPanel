@@ -237,7 +237,7 @@ namespace Fluxy.Application.Services.Content
             // survivors here would be a second source for a fact the reorder request owns:
             // the next drag names every row anyway, and until then an order read by position
             // is exactly the same order with or without the gap.
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             return new ContentCategoryOutcome
             {
@@ -291,7 +291,7 @@ namespace Fluxy.Application.Services.Content
                 category.SortOrder = index + 1;
             }
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             return new ContentCategoryOutcome { Action = ContentCategoryAction.Reordered };
         }
@@ -321,32 +321,28 @@ namespace Fluxy.Application.Services.Content
         }
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
-        /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>
-        private async Task<DbUpdateException?> SaveAsync(CancellationToken cancellationToken)
+        /// <returns>Null when it was written, or the exception when the name index refused it.</returns>
+        /// <remarks>
+        /// Only the index making a name unique within its type is interpreted. A refusal by any
+        /// other index is a bug in this service, and answering it as "that name is taken" is how
+        /// such a bug hides behind a sentence about something else - so it is left to surface
+        /// as the failure it is.
+        /// </remarks>
+        private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
                 return null;
             }
-            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+            catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))
             {
-                // The tracker is cleared because the rows it was holding did not reach the
-                // database - leaving them attached would make the next save try the same write.
-                _context.ChangeTracker.Clear();
                 return exception;
             }
         }
 
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented
-        /// text of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
+        /// <summary>The unique index making a category's name unique within its type.</summary>
+        private const string NameIndexName = "IX_content_categories_content_type_name";
 
         private static ContentCategoryOutcome NotFound(Guid id)
             => new() { Action = ContentCategoryAction.NotFound, CategoryId = id };

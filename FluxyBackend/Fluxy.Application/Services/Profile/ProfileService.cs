@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
@@ -36,8 +35,14 @@ namespace Fluxy.Application.Services.Profile
     /// </remarks>
     public sealed class ProfileService : IProfileService
     {
-        /// <summary>Digits a code is built from.</summary>
-        private const string CodeAlphabet = "0123456789";
+        /// <summary>The unique index allowing one staged change per account.</summary>
+        private const string PendingChangeIndexName = "IX_pending_changes_user_id";
+
+        /// <summary>The unique index making a username unique.</summary>
+        private const string UsernameIndexName = "IX_users_username";
+
+        /// <summary>The unique index making an email address unique.</summary>
+        private const string EmailIndexName = "IX_users_email";
 
         private readonly FluxyDbContext _context;
         private readonly IEmailSender _emailSender;
@@ -144,7 +149,7 @@ namespace Fluxy.Application.Services.Profile
 
             // No unique index on this column, so unlike the three changes above a lost race
             // cannot happen and the save needs no interpretation of its failures.
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Set the display time zone of {Username} to {TimeZone}.",
@@ -299,7 +304,7 @@ namespace Fluxy.Application.Services.Profile
                 };
             }
 
-            var code = GenerateCode(options.CodeLength);
+            var code = OneTimeCode.Generate(options.CodeLength);
 
             if (!await StageLoginGuardAsync(
                     userId,
@@ -388,7 +393,7 @@ namespace Fluxy.Application.Services.Profile
             string email,
             CancellationToken cancellationToken = default)
         {
-            var normalized = NormalizeEmail(email);
+            var normalized = EmailNormalizer.Normalize(email);
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
             if (!RegistrationPolicy.IsEmailShapeValid(normalized))
@@ -596,7 +601,7 @@ namespace Fluxy.Application.Services.Profile
                 };
             }
 
-            var code = GenerateCode(options.CodeLength);
+            var code = OneTimeCode.Generate(options.CodeLength);
 
             if (!await StageAsync(
                     userId,
@@ -735,18 +740,12 @@ namespace Fluxy.Application.Services.Profile
 
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException exception)
+                when (exception.IsConstraint(PendingChangeIndexName))
             {
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return false;
-                }
-
-                throw;
+                return false;
             }
 
             return true;
@@ -757,36 +756,25 @@ namespace Fluxy.Application.Services.Profile
         /// sequential check would have produced.
         /// </summary>
         /// <returns>False when the value was taken by a concurrent request.</returns>
+        /// <remarks>
+        /// Only the two indexes a profile change can legitimately collide on are interpreted: a
+        /// refusal by anything else is a bug in this service and is left to surface as one.
+        /// </remarks>
         private async Task<bool> SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException exception)
+                when (exception.IsConstraint(UsernameIndexName)
+                    || exception.IsConstraint(EmailIndexName))
             {
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return false;
-                }
-
-                throw;
+                return false;
             }
 
             return true;
         }
-
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented text
-        /// of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
 
         /// <summary>
         /// Stores the staged guard, replacing whatever this account was waiting for before.
@@ -817,18 +805,12 @@ namespace Fluxy.Application.Services.Profile
 
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException exception)
+                when (exception.IsConstraint(PendingChangeIndexName))
             {
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return false;
-                }
-
-                throw;
+                return false;
             }
 
             return true;
@@ -864,21 +846,14 @@ namespace Fluxy.Application.Services.Profile
 
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
-            catch (DbUpdateException exception)
+            catch (UniqueViolationException)
             {
                 // Two confirmations of the same code raced and the unique index let one win.
                 // The code is spent either way, so the loser gets the same answer a wrong code
                 // gets rather than a conflict about a list it never saw.
-                if (IsUniqueViolation(exception))
-                {
-                    _context.ChangeTracker.Clear();
-
-                    return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
-                }
-
-                throw;
+                return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
             _logger.LogInformation(
@@ -960,24 +935,6 @@ namespace Fluxy.Application.Services.Profile
             return group.Permissions
                 .Select(grant => grant.Permission)
                 .ToHashSet();
-        }
-
-        /// <summary>Folds an address into the single form the database compares against.</summary>
-        private static string NormalizeEmail(string? email)
-            => email?.Trim().ToLowerInvariant() ?? string.Empty;
-
-        /// <summary>Builds a code of <paramref name="length"/> digits.</summary>
-        /// <remarks>
-        /// The digits come from <see cref="RandomNumberGenerator"/>, not from
-        /// <see cref="Random.Shared"/> and not from a modulo of a random integer, both of which
-        /// bias the result. A short code is only acceptable because the stored value is a hash
-        /// and the endpoint is throttled.
-        /// </remarks>
-        private static string GenerateCode(int length)
-        {
-            var digits = RandomNumberGenerator.GetItems(CodeAlphabet.AsSpan(), length);
-
-            return new string(digits);
         }
 
         /// <summary>

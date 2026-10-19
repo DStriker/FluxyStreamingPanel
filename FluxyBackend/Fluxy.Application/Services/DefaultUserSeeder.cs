@@ -97,7 +97,7 @@ namespace Fluxy.Application.Services
                 RegisteredAt = DateTimeOffset.UtcNow
             });
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created the default administrator for this installation.{NewLine}  Username: {Username}{NewLine}  Password: {Password}{NewLine}The password is shown once and is stored nowhere - save it now.",
@@ -157,7 +157,7 @@ namespace Fluxy.Application.Services
 
             if (changed)
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
         }
 

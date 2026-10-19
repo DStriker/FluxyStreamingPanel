@@ -43,7 +43,7 @@ namespace Fluxy.DataAccess.Configurations
             // bare indexed column on purpose, like the refresh tokens still are in prose - but an
             // account can now be deleted, and a code that outlives its account is a confirmation
             // for nobody. The foreign key says so where a comment used to.
-            builder.HasOne<UserEntity>()
+            builder.HasOne(change => change.User)
                 .WithMany()
                 .HasForeignKey(change => change.UserId)
                 .OnDelete(DeleteBehavior.Cascade);

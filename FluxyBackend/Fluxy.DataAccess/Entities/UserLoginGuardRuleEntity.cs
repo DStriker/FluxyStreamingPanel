@@ -28,6 +28,13 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>Account this rule belongs to. Deleted with the account.</summary>
         public Guid UserId { get; set; }
 
+        /// <summary>
+        /// Navigation to that account, for queries that read rules and the account's own
+        /// switches in one round trip. Null when the query did not ask for it; the foreign key
+        /// is what every write uses, and it is <c>ON DELETE CASCADE</c>.
+        /// </summary>
+        public UserEntity? User { get; set; }
+
         /// <summary>Which allow list this rule belongs to.</summary>
         public LoginGuardRuleKind Kind { get; set; }
 

@@ -75,7 +75,7 @@ namespace Fluxy.Application.Services.GeoIp
                 });
             }
 
-            await context.SaveChangesAsync(cancellationToken);
+            await context.SaveChangesCheckedAsync(cancellationToken);
         }
     }
 }

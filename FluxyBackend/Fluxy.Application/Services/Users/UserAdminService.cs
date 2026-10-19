@@ -784,15 +784,7 @@ namespace Fluxy.Application.Services.Users
 
             _context.Users.Remove(user);
 
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException)
-            {
-                _context.ChangeTracker.Clear();
-                throw;
-            }
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             // The refresh tokens, the pending changes and the guard rules went with the row
             // through foreign keys that are `ON DELETE CASCADE`, which is what was verified
@@ -1061,31 +1053,23 @@ namespace Fluxy.Application.Services.Users
         /// expected: a unique index refusing a value another account took meanwhile.
         /// </summary>
         /// <returns>Null when the row was written, or the exception when it was that race.</returns>
-        private async Task<DbUpdateException?> SaveAsync(CancellationToken cancellationToken)
+        private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
                 return null;
             }
-            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+            catch (UniqueViolationException exception)
             {
-                // The tracker is cleared because the row it was holding did not reach the
-                // database - leaving it attached would make the next save try the same write.
-                _context.ChangeTracker.Clear();
+                // Any unique refusal is returned rather than interpreted here: the callers ask
+                // whether the username or the address is what another account now holds, and
+                // rethrow the exception when neither is. That query is the discriminator, so a
+                // refusal by an index this service does not expect cannot be answered as a
+                // taken name.
                 return exception;
             }
         }
-
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented text
-        /// of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
 
         /// <summary>
         /// A predicate over the accounts of the page for one <i>effective</i> status - the

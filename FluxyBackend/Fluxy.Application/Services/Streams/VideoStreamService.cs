@@ -334,7 +334,7 @@ namespace Fluxy.Application.Services.Streams
                 // index is what was refused; any other unique index is a bug in this service,
                 // and answering "that name is taken" for one would hide it behind a sentence
                 // about something else entirely.
-                return IsNameIndexViolation(createFailure)
+                return createFailure.IsConstraint(NameIndexName)
                     ? AlreadyExists(nameof(NewVideoStream.Name))
                     : throw createFailure;
             }
@@ -495,7 +495,7 @@ namespace Fluxy.Application.Services.Streams
                 // is this service writing its own lists wrongly - reporting one as "that name
                 // is taken" is how the bug below stayed hidden for as long as it did, and it
                 // sent the search to the uniqueness rule instead of to the write.
-                return IsNameIndexViolation(updateFailure)
+                return updateFailure.IsConstraint(NameIndexName)
                     ? AlreadyExists(nameof(VideoStreamPatch.Name), id)
                     : throw updateFailure;
             }
@@ -526,7 +526,7 @@ namespace Fluxy.Application.Services.Streams
             // is gone.
             _context.VideoStreams.Remove(stream);
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             return new VideoStreamOutcome
             {
@@ -574,7 +574,7 @@ namespace Fluxy.Application.Services.Streams
             if (stream.Status != status)
             {
                 stream.Status = status;
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
 
             return new VideoStreamOutcome { Action = action, StreamId = id };
@@ -936,50 +936,31 @@ namespace Fluxy.Application.Services.Streams
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
         /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>
-        private async Task<DbUpdateException?> SaveAsync(CancellationToken cancellationToken)
+        /// <remarks>
+        /// Any unique violation is returned rather than thrown here, and the callers sort them:
+        /// only <see cref="NameIndexName"/> becomes a name conflict, everything else is
+        /// rethrown so a bug in the list writer cannot wear the sentence about a taken name.
+        /// </remarks>
+        private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
                 return null;
             }
-            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+            catch (UniqueViolationException exception)
             {
-                // The tracker is cleared because the rows it was holding did not reach the
-                // database - leaving them attached would make the next save try the same write.
-                _context.ChangeTracker.Clear();
                 return exception;
             }
         }
 
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented text
-        /// of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
-
-        /// <summary>
-        /// Whether the index that refused the write is the one making a name unique within
-        /// its category.
-        /// </summary>
-        /// <remarks>
-        /// Three unique indexes exist on this domain and only one of them is about the name:
-        /// the other two are the position columns of the source and file lists. Telling them
-        /// apart by the index name is what lets a genuine race for a name be answered with
-        /// <c>409</c> while a violation of anything else is left to surface as the bug it is.
-        /// The provider is not named here either - the constraint name arrives inside the
-        /// message, the same way the SQLSTATE does.
-        /// </remarks>
-        private static bool IsNameIndexViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                NameIndexName,
-                StringComparison.Ordinal) == true;
-
         /// <summary>The unique index making a stream's name unique within its category.</summary>
+        /// <remarks>
+        /// The callers compare against this name to tell the one expected refusal from the two
+        /// unique indexes on the source and file position columns: a genuine race for a name is
+        /// answered <c>409</c>, while a violation of a position index is a bug in the list
+        /// writer and is left to surface as one.
+        /// </remarks>
         private const string NameIndexName = "IX_video_streams_category_id_name";
 
         /// <summary>The three kinds that relay from a list of URLs rather than from anything else.</summary>

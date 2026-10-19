@@ -58,7 +58,7 @@ namespace Fluxy.DataAccess.Configurations
             // A rule belongs to exactly one account and dies with it. Declared as a real
             // foreign key rather than a bare indexed column, so deleting an account cannot
             // leave rules that allow networks for nobody.
-            builder.HasOne<UserEntity>()
+            builder.HasOne(rule => rule.User)
                 .WithMany()
                 .HasForeignKey(rule => rule.UserId)
                 .OnDelete(DeleteBehavior.Cascade);

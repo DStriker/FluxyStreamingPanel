@@ -432,7 +432,7 @@ namespace Fluxy.Application.Services.Users
 
             _context.UserGroups.Remove(group);
 
-            await _context.SaveChangesAsync(cancellationToken);
+            await _context.SaveChangesCheckedAsync(cancellationToken);
 
             return new UserGroupOutcome
             {
@@ -625,32 +625,27 @@ namespace Fluxy.Application.Services.Users
         }
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
-        /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>
-        private async Task<DbUpdateException?> SaveAsync(CancellationToken cancellationToken)
+        /// <returns>Null when it was written, or the exception when the name index refused it.</returns>
+        /// <remarks>
+        /// Only the index making a group's name unique is interpreted. An update also writes the
+        /// permission rows, and a refusal by their index is a bug in this service rather than a
+        /// name another request took - answering it "already exists" is how such a bug hides.
+        /// </remarks>
+        private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await _context.SaveChangesAsync(cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
                 return null;
             }
-            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+            catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))
             {
-                // The tracker is cleared because the rows it was holding did not reach the
-                // database - leaving them attached would make the next save try the same write.
-                _context.ChangeTracker.Clear();
                 return exception;
             }
         }
 
-        /// <summary>
-        /// Whether the failure was a unique index violation. The provider is not referenced
-        /// here, so the check is on the message the server sends, which is the documented text
-        /// of <c>SQLSTATE 23505</c>.
-        /// </summary>
-        private static bool IsUniqueViolation(DbUpdateException exception)
-            => exception.InnerException?.Message.Contains(
-                "23505",
-                StringComparison.Ordinal) == true;
+        /// <summary>The unique index making a group's name unique.</summary>
+        private const string NameIndexName = "IX_user_groups_name";
 
         private static UserGroupOutcome NotFound(Guid id)
             => new() { Action = UserGroupAction.NotFound, GroupId = id };
