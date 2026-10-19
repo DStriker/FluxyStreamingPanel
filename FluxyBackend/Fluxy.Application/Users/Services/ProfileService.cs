@@ -4,9 +4,9 @@ using Fluxy.Core.Email.Commands;
 using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -260,7 +260,8 @@ namespace Fluxy.Application.Users.Services
             // The anti-lock: a guard that refuses the very network it is saved from is a
             // self-inflicted lockout with the password reset as its only way back. Refused
             // here, while the owner is still holding a session that proves who they are.
-            if (staged.Value.GeoProtectionEnabled && !BypassesGuard(clientAddress))
+            if (staged.Value.GeoProtectionEnabled
+                && !DevelopmentGuardBypass.BypassesAntiLock(clientAddress, _environment, _logger))
             {
                 var geo = await _geoIp.ResolveAsync(clientAddress, cancellationToken);
 
@@ -794,17 +795,7 @@ namespace Fluxy.Application.Users.Services
                 },
                 cancellationToken);
 
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException exception)
-                when (exception.IsConstraint(PendingChangeIndexName))
-            {
-                return false;
-            }
-
-            return true;
+            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
         }
 
         /// <summary>
@@ -817,20 +808,9 @@ namespace Fluxy.Application.Users.Services
         /// refusal by anything else is a bug in this service and is left to surface as one.
         /// </remarks>
         private async Task<bool> SaveAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException exception)
-                when (exception.IsConstraint(UsernameIndexName)
-                    || exception.IsConstraint(EmailIndexName))
-            {
-                return false;
-            }
-
-            return true;
-        }
+            => await _unitOfWork.TrySaveAsync(
+                [UsernameIndexName, EmailIndexName],
+                cancellationToken) is null;
 
         /// <summary>
         /// Stores the staged guard, replacing whatever this account was waiting for before.
@@ -855,17 +835,7 @@ namespace Fluxy.Application.Users.Services
                 },
                 cancellationToken);
 
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException exception)
-                when (exception.IsConstraint(PendingChangeIndexName))
-            {
-                return false;
-            }
-
-            return true;
+            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
         }
 
         /// <summary>
@@ -939,27 +909,6 @@ namespace Fluxy.Application.Users.Services
                 guard.AllowedAutonomousSystemNumber?.ToString(CultureInfo.InvariantCulture) ?? "any");
 
         /// <summary>
-        /// Whether the anti-lock check is skipped for this address. Same rule as on the
-        /// sign-in path: local networks carry no GeoIP data, so in Development they are
-        /// bypassed rather than refused.
-        /// </summary>
-        private bool BypassesGuard(string? clientAddress)
-        {
-            if (!_environment.IsDevelopment()
-                || !GeoIpAddress.IsLocal(clientAddress))
-            {
-                return false;
-            }
-
-            _logger.LogWarning(
-                "The login guard anti-lock check was bypassed for local address " +
-                "{ClientAddress} because this host runs in Development.",
-                clientAddress);
-
-            return true;
-        }
-
-        /// <summary>
         /// The plain text body of the message that carries a code, worded for the change it
         /// confirms.
         /// </summary>
@@ -982,18 +931,14 @@ namespace Fluxy.Application.Users.Services
                 _ => "a change to your account"
             };
 
-            return $"""
-                Hello {username},
-
-                Your Fluxy confirmation code is {code}.
-
+            return CodeMessage.Build(
+                username,
+                $"Your Fluxy confirmation code is {code}.",
+                $"""
                 It confirms that you asked for {askedFor}. It is valid for {minutes} minutes.
                 If you did not ask for this, ignore this message - nothing changes until the
                 code is confirmed, and you can simply request a new change to replace it.
-
-                {Environment.NewLine}-
-                {Environment.NewLine}This is an automated message, please do not reply.
-                """;
+                """);
         }
     }
 }

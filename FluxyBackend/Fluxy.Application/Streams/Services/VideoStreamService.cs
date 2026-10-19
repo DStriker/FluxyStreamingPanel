@@ -1,5 +1,6 @@
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Interfaces;
@@ -645,17 +646,7 @@ namespace Fluxy.Application.Streams.Services
         /// rethrown so a bug in the list writer cannot wear the sentence about a taken name.
         /// </remarks>
         private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-                return null;
-            }
-            catch (UniqueViolationException exception)
-            {
-                return exception;
-            }
-        }
+            => await _unitOfWork.TrySaveAsync(cancellationToken);
 
         /// <summary>The unique index making a stream's name unique within its category.</summary>
         /// <remarks>

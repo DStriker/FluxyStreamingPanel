@@ -1,11 +1,10 @@
+using Fluxy.Application.Authentication.Utils;
 using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.ReadModels;
 using Fluxy.Core.Authentication.Repositories;
 using Fluxy.Core.Authentication.Rows;
 using Fluxy.Core.Authentication.Utils;
-using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.ReadModels;
 using Fluxy.Core.Users.Repositories;
 
 namespace Fluxy.Application.Authentication.Services
@@ -35,18 +34,18 @@ namespace Fluxy.Application.Authentication.Services
     {
         private readonly IUserRepository _users;
         private readonly IRefreshTokenRepository _tokens;
-        private readonly IGeoIpResolver _geoIp;
+        private readonly GeoIpMemo _geoIp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SessionHistoryService"/> class.
         /// </summary>
         /// <param name="users">Repository holding the accounts.</param>
         /// <param name="tokens">Repository holding the token rows.</param>
-        /// <param name="geoIp">Resolver that places each address on the map.</param>
+        /// <param name="geoIp">The lookups of this request, one per address.</param>
         public SessionHistoryService(
             IUserRepository users,
             IRefreshTokenRepository tokens,
-            IGeoIpResolver geoIp)
+            GeoIpMemo geoIp)
         {
             _users = users;
             _tokens = tokens;
@@ -100,14 +99,9 @@ namespace Fluxy.Application.Authentication.Services
 
             if (result.Items.Count > 0)
             {
-                // One page, one memo of the lookups. A page of visits from a home connection is
-                // the same address twenty times over, and resolving it twenty times buys nothing
-                // - the memo is scoped to this read so it cannot outlive the data it describes.
-                var geoByAddress = new Dictionary<string, GeoIpInfo>(StringComparer.Ordinal);
-
                 foreach (var row in result.Items)
                 {
-                    visits.Add(await DescribeAsync(row, currentSessionId, geoByAddress, cancellationToken));
+                    visits.Add(await DescribeAsync(row, currentSessionId, cancellationToken));
                 }
             }
 
@@ -132,16 +126,9 @@ namespace Fluxy.Application.Authentication.Services
         private async Task<SessionVisit> DescribeAsync(
             StoredSessionVisit row,
             Guid? currentSessionId,
-            Dictionary<string, GeoIpInfo> geoByAddress,
             CancellationToken cancellationToken)
         {
-            var key = row.ClientAddress ?? string.Empty;
-
-            if (!geoByAddress.TryGetValue(key, out var geo))
-            {
-                geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
-                geoByAddress[key] = geo;
-            }
+            var geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
 
             return new SessionVisit
             {

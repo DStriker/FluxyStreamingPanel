@@ -3,8 +3,8 @@ using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Email.Commands;
 using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
-using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -252,11 +252,7 @@ namespace Fluxy.Application.Users.Services
 
             await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
 
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException)
+            if (await _unitOfWork.TrySaveAsync(cancellationToken) is not null)
             {
                 // No unique value is written here, so anything the database refuses is a real
                 // failure rather than an outcome of the form. Reported like a wrong code so a
@@ -301,17 +297,7 @@ namespace Fluxy.Application.Users.Services
                 },
                 cancellationToken);
 
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException exception)
-                when (exception.IsConstraint(PendingChangeIndexName))
-            {
-                return false;
-            }
-
-            return true;
+            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
         }
 
         /// <summary>The plain text body of the message that carries the code.</summary>
@@ -319,18 +305,14 @@ namespace Fluxy.Application.Users.Services
         {
             var minutes = (int)lifetime.TotalMinutes;
 
-            return $"""
-                Hello {username},
-
-                Your Fluxy password reset code is {code}.
-
+            return CodeMessage.Build(
+                username,
+                $"Your Fluxy password reset code is {code}.",
+                $"""
                 It is valid for {minutes} minutes and replaces the password only after it is
                 entered. If you did not ask to reset your password, ignore this message and
                 nothing will change - your current password keeps working.
-
-                {Environment.NewLine}-
-                {Environment.NewLine}This is an automated message, please do not reply.
-                """;
+                """);
         }
     }
 }

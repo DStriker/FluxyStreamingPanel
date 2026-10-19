@@ -2,6 +2,7 @@ using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -978,21 +979,11 @@ namespace Fluxy.Application.Users.Services
         /// </summary>
         /// <returns>Null when the row was written, or the exception when it was that race.</returns>
         private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-                return null;
-            }
-            catch (UniqueViolationException exception)
-            {
-                // Any unique refusal is returned rather than interpreted here: the callers ask
-                // whether the username or the address is what another account now holds, and
-                // rethrow the exception when neither is. That query is the discriminator, so a
-                // refusal by an index this service does not expect cannot be answered as a
-                // taken name.
-                return exception;
-            }
-        }
+            // Any unique refusal is returned rather than interpreted here: the callers ask
+            // whether the username or the address is what another account now holds, and
+            // rethrow the exception when neither is. That query is the discriminator, so a
+            // refusal by an index this service does not expect cannot be answered as a
+            // taken name.
+            => await _unitOfWork.TrySaveAsync(cancellationToken);
     }
 }

@@ -1,5 +1,6 @@
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -402,17 +403,7 @@ namespace Fluxy.Application.Users.Services
         /// name another request took - answering it "already exists" is how such a bug hides.
         /// </remarks>
         private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-                return null;
-            }
-            catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))
-            {
-                return exception;
-            }
-        }
+            => await _unitOfWork.TrySaveAsync([NameIndexName], cancellationToken);
 
         /// <summary>The unique index making a group's name unique.</summary>
         private const string NameIndexName = "IX_user_groups_name";

@@ -1,9 +1,8 @@
+using Fluxy.Application.Authentication.Utils;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.ReadModels;
 using Fluxy.Core.Authentication.Repositories;
 using Fluxy.Core.Authentication.Rows;
-using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.ReadModels;
 using Fluxy.Core.Users.Repositories;
 
 namespace Fluxy.Application.Authentication.Services
@@ -44,18 +43,18 @@ namespace Fluxy.Application.Authentication.Services
     {
         private readonly IUserRepository _users;
         private readonly IRefreshTokenRepository _tokens;
-        private readonly IGeoIpResolver _geoIp;
+        private readonly GeoIpMemo _geoIp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ActiveSessionService"/> class.
         /// </summary>
         /// <param name="users">Repository holding the accounts.</param>
         /// <param name="tokens">Repository holding the token rows.</param>
-        /// <param name="geoIp">Resolver that places each address on the map.</param>
+        /// <param name="geoIp">The lookups of this request, one per address.</param>
         public ActiveSessionService(
             IUserRepository users,
             IRefreshTokenRepository tokens,
-            IGeoIpResolver geoIp)
+            GeoIpMemo geoIp)
         {
             _users = users;
             _tokens = tokens;
@@ -91,15 +90,13 @@ namespace Fluxy.Application.Authentication.Services
             // provider may or may not support.
             var rows = await _tokens.GetActiveSessionsAsync(userId, now, cancellationToken);
 
-            // One list, one memo of the lookups. Several sessions from one home connection are
-            // the same address several times over, and resolving it several times buys nothing
-            // - the memo is scoped to this read so it cannot outlive the data it describes.
-            var geoByAddress = new Dictionary<string, GeoIpInfo>(StringComparer.Ordinal);
+            // The list is one card per live session, and the addresses on it are placed through
+            // the memo of this request, so one home connection is looked up once.
             var sessions = new List<ActiveSession>(rows.Count);
 
             foreach (var row in rows)
             {
-                sessions.Add(await DescribeAsync(row, currentSessionId, geoByAddress, cancellationToken));
+                sessions.Add(await DescribeAsync(row, currentSessionId, cancellationToken));
             }
 
             // The query already ordered by the moment, so the order survives the walk above -
@@ -128,16 +125,9 @@ namespace Fluxy.Application.Authentication.Services
         private async Task<ActiveSession> DescribeAsync(
             StoredActiveSession row,
             Guid? currentSessionId,
-            Dictionary<string, GeoIpInfo> geoByAddress,
             CancellationToken cancellationToken)
         {
-            var key = row.ClientAddress ?? string.Empty;
-
-            if (!geoByAddress.TryGetValue(key, out var geo))
-            {
-                geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
-                geoByAddress[key] = geo;
-            }
+            var geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
 
             return new ActiveSession
             {

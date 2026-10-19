@@ -1,4 +1,5 @@
 using Fluxy.Application.Authentication.Services;
+using Fluxy.Application.Authentication.Utils;
 using Fluxy.Application.Content.Services;
 using Fluxy.Application.Email.Options;
 using Fluxy.Application.Email.Services;
@@ -101,6 +102,11 @@ namespace Fluxy.Application
             // it was signed in from. It is the only one of the three that writes, and only ever
             // by ending a session.
             services.AddScoped<IAdminSessionHistoryService, AdminSessionHistoryService>();
+
+            // The lookups of one request, kept so the same address is not looked up twice. The
+            // three services that place addresses on a map share it, and it is scoped rather
+            // than singleton: the answers describe the request being served.
+            services.AddScoped<GeoIpMemo>();
 
             // The mailer is shared too. MailKit opens a connection per message, so there is no
             // connection to keep warm between requests.

@@ -3,8 +3,8 @@ using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Email.Commands;
 using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
-using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Exceptions;
@@ -381,15 +381,13 @@ namespace Fluxy.Application.Users.Services
         /// </remarks>
         private async Task SaveAsync(CancellationToken cancellationToken)
         {
-            try
+            var violation = await _unitOfWork.TrySaveAsync(
+                [UsernameIndexName, EmailIndexName],
+                cancellationToken);
+
+            if (violation is not null)
             {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            catch (UniqueViolationException exception)
-                when (exception.IsConstraint(UsernameIndexName)
-                    || exception.IsConstraint(EmailIndexName))
-            {
-                throw new DuplicateRegistrationException(exception);
+                throw new DuplicateRegistrationException(violation);
             }
         }
 
@@ -401,17 +399,13 @@ namespace Fluxy.Application.Users.Services
         {
             var minutes = (int)lifetime.TotalMinutes;
 
-            return $"""
-                Hello {username},
-
-                Your Fluxy registration code is {code}.
-
+            return CodeMessage.Build(
+                username,
+                $"Your Fluxy registration code is {code}.",
+                $"""
                 It is valid for {minutes} minutes. If you did not ask to register, ignore this
                 message - the account stays inactive until the code is confirmed.
-
-                {Environment.NewLine}-
-                {Environment.NewLine}This is an automated message, please do not reply.
-                """;
+                """);
         }
     }
 }

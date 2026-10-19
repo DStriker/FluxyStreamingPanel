@@ -8,7 +8,6 @@ using Fluxy.Core.Authentication.Outcomes;
 using Fluxy.Core.Authentication.Repositories;
 using Fluxy.Core.Authentication.Utils;
 using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -273,7 +272,8 @@ namespace Fluxy.Application.Authentication.Services
             //
             // Through the model again, for the reason the block above gives: it is the one
             // value here that has already been proved to exist.
-            if (account.GeoProtectionEnabled && !BypassesGuard(clientAddress))
+            if (account.GeoProtectionEnabled
+                && !DevelopmentGuardBypass.BypassesEnforcement(clientAddress, _environment, _logger))
             {
                 var geo = await _geoIp.ResolveAsync(clientAddress, cancellationToken);
 
@@ -551,27 +551,6 @@ namespace Fluxy.Application.Authentication.Services
         /// </remarks>
         private Task CleanupExpiredAsync(DateTimeOffset now, CancellationToken ct)
             => _tokens.CleanupExpiredAsync(now, ct);
-
-        /// <summary>
-        /// Whether the guard is skipped for this address. Same rule as on the sign-in path:
-        /// local networks carry no GeoIP data, so in Development they are bypassed rather than
-        /// refused, and outside Development there is no bypass at all.
-        /// </summary>
-        private bool BypassesGuard(string? clientAddress)
-        {
-            if (!_environment.IsDevelopment()
-                || !GeoIpAddress.IsLocal(clientAddress))
-            {
-                return false;
-            }
-
-            _logger.LogWarning(
-                "The login guard was bypassed for local address {ClientAddress} because this " +
-                "host runs in Development.",
-                clientAddress);
-
-            return true;
-        }
 
         /// <summary>
         /// Cuts a value to what the column holds.

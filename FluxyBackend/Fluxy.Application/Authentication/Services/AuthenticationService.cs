@@ -1,9 +1,9 @@
+using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Authentication.Commands;
 using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Outcomes;
 using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Repositories;
@@ -155,7 +155,11 @@ namespace Fluxy.Application.Authentication.Services
             // guard verdict before the password would let a caller without the password learn
             // whether a network is allowed, and a verdict folded into anything but the one
             // refusal would tell a wrong password from a wrong network.
-            if (user.GeoProtectionEnabled && !BypassesGuard(credentials.ClientAddress))
+            if (user.GeoProtectionEnabled
+                && !DevelopmentGuardBypass.BypassesEnforcement(
+                    credentials.ClientAddress,
+                    _environment,
+                    _logger))
             {
                 var geo = await _geoIp.ResolveAsync(credentials.ClientAddress, cancellationToken);
 
@@ -191,27 +195,5 @@ namespace Fluxy.Application.Authentication.Services
         /// </summary>
         private static AuthenticationOutcome Refused()
             => new() { Status = AuthenticationStatus.InvalidCredentials };
-
-        /// <summary>
-        /// Whether the guard is skipped for this address. Loopback and private networks carry
-        /// no GeoIP data by definition, so in Development - where every client is one - the
-        /// guard would refuse its own developer. Outside Development there is no bypass: a
-        /// local address on a public host is not the developer, it is a misconfiguration.
-        /// </summary>
-        private bool BypassesGuard(string? clientAddress)
-        {
-            if (!_environment.IsDevelopment()
-                || !GeoIpAddress.IsLocal(clientAddress))
-            {
-                return false;
-            }
-
-            _logger.LogWarning(
-                "The login guard was bypassed for local address {ClientAddress} because this " +
-                "host runs in Development.",
-                clientAddress);
-
-            return true;
-        }
     }
 }

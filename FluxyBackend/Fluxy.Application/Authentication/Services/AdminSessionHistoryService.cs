@@ -1,11 +1,10 @@
+using Fluxy.Application.Authentication.Utils;
 using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.ReadModels;
 using Fluxy.Core.Authentication.Repositories;
 using Fluxy.Core.Authentication.Rows;
 using Fluxy.Core.Authentication.Utils;
-using Fluxy.Core.GeoIp.Interfaces;
-using Fluxy.Core.GeoIp.ReadModels;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Users.Utils;
@@ -47,7 +46,7 @@ namespace Fluxy.Application.Authentication.Services
         private readonly IUserRepository _users;
         private readonly IRefreshTokenRepository _tokens;
         private readonly ITokenService _tokenService;
-        private readonly IGeoIpResolver _geoIp;
+        private readonly GeoIpMemo _geoIp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AdminSessionHistoryService"/> class.
@@ -58,12 +57,12 @@ namespace Fluxy.Application.Authentication.Services
         /// Service that ends a session in both halves, so an operator's revocation withdraws
         /// the access tokens as well as the refresh chain.
         /// </param>
-        /// <param name="geoIp">Resolver that places each address on the map.</param>
+        /// <param name="geoIp">The lookups of this request, one per address.</param>
         public AdminSessionHistoryService(
             IUserRepository users,
             IRefreshTokenRepository tokens,
             ITokenService tokenService,
-            IGeoIpResolver geoIp)
+            GeoIpMemo geoIp)
         {
             _users = users;
             _tokens = tokens;
@@ -119,10 +118,8 @@ namespace Fluxy.Application.Authentication.Services
 
             if (result.Items.Count > 0)
             {
-                // One page, one memo of the lookups. A page of visits from one office is the
-                // same address twenty times over, and resolving it twenty times buys nothing -
-                // the memo is scoped to this read so it cannot outlive the data it describes.
-                var geoByAddress = new Dictionary<string, GeoIpInfo>(StringComparer.Ordinal);
+                // The addresses on the page are placed through the memo of this request, so one
+                // office is looked up once.
                 var liveSessions = await _tokens.GetLiveSessionIdsAsync(
                     result.Items.Select(row => row.SessionId).Distinct().ToList(),
                     DateTimeOffset.UtcNow,
@@ -134,7 +131,6 @@ namespace Fluxy.Application.Authentication.Services
                         row,
                         currentSessionId,
                         liveSessions.Contains(row.SessionId),
-                        geoByAddress,
                         cancellationToken));
                 }
             }
@@ -221,16 +217,9 @@ namespace Fluxy.Application.Authentication.Services
             StoredAdminSessionVisit row,
             Guid? currentSessionId,
             bool isActive,
-            Dictionary<string, GeoIpInfo> geoByAddress,
             CancellationToken cancellationToken)
         {
-            var key = row.ClientAddress ?? string.Empty;
-
-            if (!geoByAddress.TryGetValue(key, out var geo))
-            {
-                geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
-                geoByAddress[key] = geo;
-            }
+            var geo = await _geoIp.ResolveAsync(row.ClientAddress, cancellationToken);
 
             return new AdminSessionVisit
             {

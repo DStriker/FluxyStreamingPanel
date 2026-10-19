@@ -6,6 +6,7 @@ using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Content.Utils;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Persistence.Utils;
 
 namespace Fluxy.Application.Content.Services
 {
@@ -290,17 +291,7 @@ namespace Fluxy.Application.Content.Services
         /// as the failure it is.
         /// </remarks>
         private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-                return null;
-            }
-            catch (UniqueViolationException exception) when (exception.IsConstraint(NameIndexName))
-            {
-                return exception;
-            }
-        }
+            => await _unitOfWork.TrySaveAsync([NameIndexName], cancellationToken);
 
         /// <summary>The unique index making a category's name unique within its type.</summary>
         private const string NameIndexName = "IX_content_categories_content_type_name";
