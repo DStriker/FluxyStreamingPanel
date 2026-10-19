@@ -3,7 +3,6 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Security;
-using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Security.Models;

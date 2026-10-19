@@ -1,5 +1,5 @@
-using Fluxy.Application.Services.Email;
-using Fluxy.Application.Services.Security;
+using Fluxy.Application.Email.Options;
+using Fluxy.Application.Security.Options;
 using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Users.Models;
 using Fluxy.DataAccess;
