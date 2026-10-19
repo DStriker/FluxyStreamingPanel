@@ -1,10 +1,7 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.GeoIp;
-using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Authentication
 {
@@ -42,17 +39,23 @@ namespace Fluxy.Application.Services.Authentication
     /// </remarks>
     public sealed class ActiveSessionService : IActiveSessionService
     {
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IRefreshTokenRepository _tokens;
         private readonly IGeoIpResolver _geoIp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ActiveSessionService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and their tokens.</param>
+        /// <param name="users">Repository holding the accounts.</param>
+        /// <param name="tokens">Repository holding the token rows.</param>
         /// <param name="geoIp">Resolver that places each address on the map.</param>
-        public ActiveSessionService(FluxyDbContext context, IGeoIpResolver geoIp)
+        public ActiveSessionService(
+            IUserRepository users,
+            IRefreshTokenRepository tokens,
+            IGeoIpResolver geoIp)
         {
-            _context = context;
+            _users = users;
+            _tokens = tokens;
             _geoIp = geoIp;
         }
 
@@ -65,11 +68,7 @@ namespace Fluxy.Application.Services.Authentication
             // The same gate every read of an account applies. A blocked account is not handed a
             // profile, a history, or a list of the networks its live sessions sit on: the list
             // names exactly what a blocked account should stop revealing.
-            var isActive = await _context.Users
-                .AsNoTracking()
-                .AnyAsync(
-                    entry => entry.Id == userId && entry.Status == UserStatus.Registered,
-                    cancellationToken);
+            var isActive = await _users.IsRegisteredAsync(userId, cancellationToken);
 
             if (!isActive)
             {
@@ -87,22 +86,7 @@ namespace Fluxy.Application.Services.Authentication
             // so the account holds a handful of them, and the GeoIP descriptions below are
             // built per row anyway - a grouping would save nothing and cost a translation the
             // provider may or may not support.
-            var rows = await _context.RefreshTokens
-                .AsNoTracking()
-                .Where(token =>
-                    token.UserId == userId &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .OrderByDescending(token => token.CreatedAt)
-                .ThenByDescending(token => token.Id)
-                .Select(token => new StoredSession
-                {
-                    Id = token.SessionId,
-                    ClientAddress = token.ClientAddress,
-                    UserAgent = token.UserAgent,
-                    LastSeenAt = token.CreatedAt
-                })
-                .ToListAsync(cancellationToken);
+            var rows = await _tokens.GetActiveSessionsAsync(userId, now, cancellationToken);
 
             // One list, one memo of the lookups. Several sessions from one home connection are
             // the same address several times over, and resolving it several times buys nothing
@@ -139,7 +123,7 @@ namespace Fluxy.Application.Services.Authentication
         /// an unknown network is a fact to display, not a reason to fail the whole list.
         /// </remarks>
         private async Task<ActiveSession> DescribeAsync(
-            StoredSession row,
+            StoredActiveSession row,
             Guid? currentSessionId,
             Dictionary<string, GeoIpInfo> geoByAddress,
             CancellationToken cancellationToken)
@@ -163,26 +147,6 @@ namespace Fluxy.Application.Services.Authentication
                 LastSeenAt = row.LastSeenAt,
                 IsCurrent = currentSessionId is { } session && row.Id == session
             };
-        }
-
-        /// <summary>
-        /// The five columns a session is described from, projected in the query so that no
-        /// entity is materialized and no unrelated column is read off the row.
-        /// </summary>
-        /// <remarks>
-        /// A type rather than an anonymous one because a private method has to name it: an
-        /// anonymous type cannot be passed as an argument, and this projection is the point
-        /// where the query stops being a query and becomes a description.
-        /// </remarks>
-        private sealed class StoredSession
-        {
-            public Guid Id { get; init; }
-
-            public string? ClientAddress { get; init; }
-
-            public string? UserAgent { get; init; }
-
-            public DateTimeOffset LastSeenAt { get; init; }
         }
     }
 }

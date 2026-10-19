@@ -11,6 +11,16 @@ namespace Fluxy.Core.Models.Users
     /// </remarks>
     public sealed record NewUserGroup
     {
+        /// <summary>
+        /// Identifier the row must carry, or null to let the store generate one.
+        /// </summary>
+        /// <remarks>
+        /// The startup seeder is the reason this is settable: the three base groups have fixed
+        /// identifiers that the migration, the seeder and the delete guard all name, so a row it
+        /// creates cannot be given a fresh one. Every other caller leaves this null.
+        /// </remarks>
+        public Guid? Id { get; init; }
+
         /// <summary>Name the group gets. Trimmed, compared case sensitively.</summary>
         public required string Name { get; init; }
 

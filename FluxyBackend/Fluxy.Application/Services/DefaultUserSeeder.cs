@@ -1,8 +1,6 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 
@@ -50,17 +48,31 @@ namespace Fluxy.Application.Services
         private const string PasswordAlphabet =
             "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-        private readonly FluxyDbContext _context;
+        private readonly IDatabaseInitializer _database;
+        private readonly IUserRepository _users;
+        private readonly IUserGroupRepository _groups;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<DefaultUserSeeder> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DefaultUserSeeder"/> class.
         /// </summary>
-        /// <param name="context">Context used to apply the migrations and insert the account.</param>
+        /// <param name="database">Initializer that applies the migrations.</param>
+        /// <param name="users">Repository the account is written through.</param>
+        /// <param name="groups">Repository the base groups are reconciled through.</param>
+        /// <param name="unitOfWork">Commits the seeded rows.</param>
         /// <param name="logger">Logger the credentials are reported to.</param>
-        public DefaultUserSeeder(FluxyDbContext context, ILogger<DefaultUserSeeder> logger)
+        public DefaultUserSeeder(
+            IDatabaseInitializer database,
+            IUserRepository users,
+            IUserGroupRepository groups,
+            IUnitOfWork unitOfWork,
+            ILogger<DefaultUserSeeder> logger)
         {
-            _context = context;
+            _database = database;
+            _users = users;
+            _groups = groups;
+            _unitOfWork = unitOfWork;
             _logger = logger;
         }
 
@@ -69,7 +81,7 @@ namespace Fluxy.Application.Services
         {
             // A no-op once the schema is current. Doing it here is what makes the install a
             // single step: "docker compose up" plus "dotnet run" is enough.
-            await _context.Database.MigrateAsync(cancellationToken);
+            await _database.MigrateAsync(cancellationToken);
 
             await EnsureBaseGroupsAsync(cancellationToken);
 
@@ -77,8 +89,7 @@ namespace Fluxy.Application.Services
             // renamed the base group or built another one at the same level has still been
             // given a way in, and seeding a second account for them would be a second
             // bootstrap password nobody asked for.
-            var hasAdmin = await _context.Users
-                .AnyAsync(user => user.Group!.Role == UserRole.Admin, cancellationToken);
+            var hasAdmin = await _users.HasAdminAsync(cancellationToken);
 
             if (hasAdmin)
             {
@@ -87,17 +98,19 @@ namespace Fluxy.Application.Services
 
             var password = GeneratePassword();
 
-            _context.Users.Add(new UserEntity
-            {
-                Username = DefaultUsername,
-                Email = DefaultEmail,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-                GroupId = BaseUserGroups.Administrators,
-                Status = UserStatus.Registered,
-                RegisteredAt = DateTimeOffset.UtcNow
-            });
+            await _users.AddAsync(
+                new NewAccount
+                {
+                    Username = DefaultUsername,
+                    Email = DefaultEmail,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+                    GroupId = BaseUserGroups.Administrators,
+                    Status = UserStatus.Registered,
+                    RegisteredAt = DateTimeOffset.UtcNow
+                },
+                cancellationToken);
 
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Created the default administrator for this installation.{NewLine}  Username: {Username}{NewLine}  Password: {Password}{NewLine}The password is shown once and is stored nowhere - save it now.",
@@ -131,24 +144,25 @@ namespace Fluxy.Application.Services
             {
                 var id = BaseUserGroups.ForRole(role);
 
-                var group = await _context.UserGroups
-                    .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+                var currentRole = await _groups.GetRoleAsync(id, cancellationToken);
 
-                if (group is null)
+                if (currentRole is null)
                 {
-                    group = new UserGroupEntity(id)
-                    {
-                        Name = BaseUserGroups.NameOf(role),
-                        Role = role,
-                        Status = UserStatus.Registered
-                    };
+                    await _groups.AddAsync(
+                        new NewUserGroup
+                        {
+                            Id = id,
+                            Name = BaseUserGroups.NameOf(role),
+                            Role = role,
+                            Status = UserStatus.Registered
+                        },
+                        cancellationToken);
 
-                    _context.UserGroups.Add(group);
                     changed = true;
                 }
-                else if (group.Role != role)
+                else if (currentRole.Value != role)
                 {
-                    group.Role = role;
+                    await _groups.SetRoleAsync(id, role, cancellationToken);
                     changed = true;
                 }
 
@@ -157,7 +171,7 @@ namespace Fluxy.Application.Services
 
             if (changed)
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
         }
 
@@ -173,10 +187,7 @@ namespace Fluxy.Application.Services
         {
             var wanted = UserPermissionCatalog.ForRole(role);
 
-            var current = await _context.GroupPermissions
-                .Where(grant => grant.UserGroupId == groupId)
-                .Select(grant => grant.Permission)
-                .ToListAsync(cancellationToken);
+            var current = await _groups.GetPermissionsAsync(groupId, cancellationToken);
 
             var missing = wanted.Where(permission => !current.Contains(permission)).ToList();
             var stale = current.Where(permission => !wanted.Contains(permission)).ToList();
@@ -191,24 +202,12 @@ namespace Fluxy.Application.Services
                 // Removed rather than left alone: a grant the catalog no longer defines is a
                 // grant nothing can name, and keeping it would make the set on the row differ
                 // from the set the group's own edit form would save back.
-                var row = await _context.GroupPermissions
-                    .FirstOrDefaultAsync(
-                        grant => grant.UserGroupId == groupId && grant.Permission == permission,
-                        cancellationToken);
-
-                if (row is not null)
-                {
-                    _context.GroupPermissions.Remove(row);
-                }
+                await _groups.RemovePermissionAsync(groupId, permission, cancellationToken);
             }
 
             foreach (var permission in missing)
             {
-                _context.GroupPermissions.Add(new UserGroupPermissionEntity
-                {
-                    UserGroupId = groupId,
-                    Permission = permission
-                });
+                await _groups.AddPermissionAsync(groupId, permission, cancellationToken);
             }
 
             return true;

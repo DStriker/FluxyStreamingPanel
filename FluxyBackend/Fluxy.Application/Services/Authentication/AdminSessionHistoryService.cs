@@ -1,10 +1,8 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.GeoIp;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Authentication
 {
@@ -40,17 +38,23 @@ namespace Fluxy.Application.Services.Authentication
     /// </remarks>
     public sealed class AdminSessionHistoryService : IAdminSessionHistoryService
     {
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IRefreshTokenRepository _tokens;
         private readonly IGeoIpResolver _geoIp;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AdminSessionHistoryService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and their tokens.</param>
+        /// <param name="users">Repository holding the accounts.</param>
+        /// <param name="tokens">Repository holding the token rows.</param>
         /// <param name="geoIp">Resolver that places each address on the map.</param>
-        public AdminSessionHistoryService(FluxyDbContext context, IGeoIpResolver geoIp)
+        public AdminSessionHistoryService(
+            IUserRepository users,
+            IRefreshTokenRepository tokens,
+            IGeoIpResolver geoIp)
         {
-            _context = context;
+            _users = users;
+            _tokens = tokens;
             _geoIp = geoIp;
         }
 
@@ -78,67 +82,40 @@ namespace Fluxy.Application.Services.Authentication
             // zero rows rather than every row of the installation.
             var visible = UserPermissionCatalog.VisibleRoles(granted);
 
-            var query =
-                from token in _context.RefreshTokens.AsNoTracking()
-                let user = token.User!
-                where visible.Contains(user.Group!.Role)
-                select new StoredVisit
-                {
-                    Id = token.Id,
-                    SessionId = token.SessionId,
-                    UserId = user.Id,
-                    Username = user.Username,
-                    ClientAddress = token.ClientAddress,
-                    UserAgent = token.UserAgent,
-                    VisitedAt = token.CreatedAt
-                };
-
-            if (userId is { } wantedUser)
-            {
-                query = query.Where(row => row.UserId == wantedUser);
-            }
-
-            // The filter is built before the count, and that ordering is the whole reason search
-            // is server side rather than a client-side trim of the rows already on screen. Only
-            // the stored columns are searched: country and provider are resolved below while the
-            // page is built, so filtering on them here would mean resolving every row the
-            // operator may see before one page of them could be shown.
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                // Lowered on both sides rather than compared with a case-insensitive operator:
-                // the needle is already short, and keeping the expression provider-neutral means
-                // this service does not have to know which database it is reading from.
-                var needle = search.Trim().ToLowerInvariant();
-
-                query = query.Where(row =>
-                    (row.ClientAddress != null && row.ClientAddress.ToLower().Contains(needle)) ||
-                    (row.UserAgent != null && row.UserAgent.ToLower().Contains(needle)));
-            }
-
-            var total = await query.CountAsync(cancellationToken);
-
             // Read as a long rather than an int: a page number taken from a query string can be
             // large enough that `(page - 1) * pageSize` overflows, and a negative offset would
             // reach EF Core as an argument it refuses. Bounding it here means the arithmetic
             // below cannot overflow, and a page past the end simply reads as an empty one.
             var offset = (long)(page - 1) * pageSize;
 
+            // The filter is applied before the count inside the repository, and the visible
+            // roles are part of the query rather than a filter over the rows it returns: a
+            // total taken over every row would advertise pages whose rows the caller was never
+            // going to be shown.
+            var result = await _tokens.GetAdminHistoryAsync(
+                visible,
+                userId,
+                offset,
+                pageSize,
+                search,
+                sortBy,
+                sortOrder,
+                cancellationToken);
+
             var visits = new List<AdminSessionVisit>(pageSize);
 
-            if (offset < total)
+            if (result.Items.Count > 0)
             {
-                var rows = await Sort(query, sortBy, sortOrder)
-                    .Skip((int)Math.Min(offset, int.MaxValue))
-                    .Take(pageSize)
-                    .ToListAsync(cancellationToken);
-
                 // One page, one memo of the lookups. A page of visits from one office is the
                 // same address twenty times over, and resolving it twenty times buys nothing -
                 // the memo is scoped to this read so it cannot outlive the data it describes.
                 var geoByAddress = new Dictionary<string, GeoIpInfo>(StringComparer.Ordinal);
-                var liveSessions = await LiveSessionIdsAsync(rows, cancellationToken);
+                var liveSessions = await _tokens.GetLiveSessionIdsAsync(
+                    result.Items.Select(row => row.SessionId).Distinct().ToList(),
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
 
-                foreach (var row in rows)
+                foreach (var row in result.Items)
                 {
                     visits.Add(await DescribeAsync(
                         row,
@@ -152,7 +129,7 @@ namespace Fluxy.Application.Services.Authentication
             return new AdminSessionHistoryPage
             {
                 Visits = visits,
-                Total = total,
+                Total = result.Total,
                 Page = page,
                 PageSize = pageSize
             };
@@ -179,11 +156,7 @@ namespace Fluxy.Application.Services.Authentication
             // The owner of a session, before anything is written. A session belongs to exactly
             // one account, so any row of its chain answers - and reading the chain rather than a
             // separate table is the same decision the whole history rests on.
-            var owner = await _context.RefreshTokens
-                .AsNoTracking()
-                .Where(token => token.SessionId == sessionId)
-                .Select(token => new { token.UserId })
-                .FirstOrDefaultAsync(cancellationToken);
+            var owner = await _tokens.GetSessionOwnerAsync(sessionId, cancellationToken);
 
             if (owner is null)
             {
@@ -194,11 +167,7 @@ namespace Fluxy.Application.Services.Authentication
             // account must not be able to end its sessions, and must not be able to tell such a
             // session apart from one that never existed - so this is the same word as an unknown
             // identifier, not a permission refusal naming a row the caller was not shown.
-            var role = await _context.Users
-                .AsNoTracking()
-                .Where(user => user.Id == owner.UserId)
-                .Select(user => (UserRole?)user.Group!.Role)
-                .FirstOrDefaultAsync(cancellationToken);
+            var role = await _users.GetRoleAsync(owner.Value, cancellationToken);
 
             if (role is not { } ownerRole || !UserPermissionCatalog.CanView(granted, ownerRole))
             {
@@ -216,108 +185,11 @@ namespace Fluxy.Application.Services.Authentication
             // the owner would be a second chance for the two to disagree.
             var now = DateTimeOffset.UtcNow;
 
-            var revoked = await _context.RefreshTokens
-                .Where(token =>
-                    token.SessionId == sessionId &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
+            var revoked = await _tokens.RevokeLiveSessionAsync(sessionId, now, cancellationToken);
 
-            return revoked > 0
+            return revoked
                 ? AdminSessionRevokeOutcome.Revoked
                 : AdminSessionRevokeOutcome.NotFound;
-        }
-
-        /// <summary>
-        /// Orders the rows, with a tie-break that makes the order total.
-        /// </summary>
-        /// <remarks>
-        /// Every branch ends in a unique column, because without one two pages can disagree
-        /// about rows that compare equal: a row could be shown on both pages or on neither, and
-        /// the operator would have no way to notice. For the moment that tie-break is the
-        /// identifier - two tokens written in one transaction share a stamp.
-        ///
-        /// The address branch puts a missing address last in <b>both</b> directions. Reversing
-        /// the comparison would reverse that too, and an account with no stored address on half
-        /// its rows would then open with a screenful of blanks - "unknown" is not a value, and a
-        /// list somebody is scanning for a network they recognise should not be led by its own
-        /// holes.
-        ///
-        /// It is the same function <see cref="SessionHistoryService"/> answers with, spelled out
-        /// again because the two sort different types and a shared one would have to be generic
-        /// over a property the compiler cannot see. What they must not disagree about is the
-        /// answer, and that is what the two branches above say.
-        /// </remarks>
-        private static IOrderedQueryable<StoredVisit> Sort(
-            IQueryable<StoredVisit> query,
-            SessionSortField sortBy,
-            SessionSortOrder sortOrder)
-        {
-            var descending = sortOrder == SessionSortOrder.Descending;
-
-            if (sortBy == SessionSortField.Ip)
-            {
-                return descending
-                    ? query.OrderBy(row => row.ClientAddress == null)
-                        .ThenByDescending(row => row.ClientAddress)
-                    : query.OrderBy(row => row.ClientAddress == null)
-                        .ThenBy(row => row.ClientAddress);
-            }
-
-            return descending
-                ? query.OrderByDescending(row => row.VisitedAt)
-                    .ThenByDescending(row => row.Id)
-                : query.OrderBy(row => row.VisitedAt)
-                    .ThenBy(row => row.Id);
-        }
-
-        /// <summary>
-        /// Which of this page's sessions are still worth ending: one whose chain still holds a
-        /// token that is neither revoked nor expired.
-        /// </summary>
-        /// <remarks>
-        /// Answered for the page's own session ids rather than per row, so a session with three
-        /// rotations costs one look rather than three - and answered separately from the visit
-        /// itself because the two facts have nothing to do with each other: a spent rotation is
-        /// a legitimate visit and a perfectly dead session, which is exactly why the page cannot
-        /// decide from the freshness of the row it is drawing.
-        ///
-        /// It also means the list does not depend on when cleanup last ran, the same way the
-        /// active sessions list does not: an expired chain is not active however recently its
-        /// rows happened to be removed.
-        /// </remarks>
-        private async Task<IReadOnlySet<Guid>> LiveSessionIdsAsync(
-            IReadOnlyList<StoredVisit> rows,
-            CancellationToken cancellationToken)
-        {
-            var result = new HashSet<Guid>();
-
-            if (rows.Count == 0)
-            {
-                return result;
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            var wanted = rows.Select(row => row.SessionId).Distinct().ToList();
-
-            var live = await _context.RefreshTokens
-                .AsNoTracking()
-                .Where(token =>
-                    wanted.Contains(token.SessionId) &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .Select(token => token.SessionId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
-
-            foreach (var sessionId in live)
-            {
-                result.Add(sessionId);
-            }
-
-            return result;
         }
 
         /// <summary>
@@ -331,7 +203,7 @@ namespace Fluxy.Application.Services.Authentication
         /// an unknown network is a fact to display, not a reason to fail the whole page.
         /// </remarks>
         private async Task<AdminSessionVisit> DescribeAsync(
-            StoredVisit row,
+            StoredAdminSessionVisit row,
             Guid? currentSessionId,
             bool isActive,
             Dictionary<string, GeoIpInfo> geoByAddress,
@@ -360,32 +232,6 @@ namespace Fluxy.Application.Services.Authentication
                 IsCurrent = currentSessionId is { } session && row.SessionId == session,
                 IsActive = isActive
             };
-        }
-
-        /// <summary>
-        /// The columns a visit is described from, projected in the query so that no entity is
-        /// materialized and no unrelated column is read off the row.
-        /// </summary>
-        /// <remarks>
-        /// A type rather than an anonymous one because private methods have to name it: an
-        /// anonymous type cannot be passed as an argument, and this projection is the point
-        /// where the query stops being a query and becomes a description.
-        /// </remarks>
-        private sealed class StoredVisit
-        {
-            public Guid Id { get; init; }
-
-            public Guid SessionId { get; init; }
-
-            public Guid UserId { get; init; }
-
-            public string Username { get; init; } = string.Empty;
-
-            public string? ClientAddress { get; init; }
-
-            public string? UserAgent { get; init; }
-
-            public DateTimeOffset VisitedAt { get; init; }
         }
     }
 }

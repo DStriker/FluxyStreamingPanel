@@ -1,8 +1,7 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -42,7 +41,7 @@ namespace Fluxy.Application.Services.Authentication
                 BCrypt.Net.BCrypt.GenerateSalt()),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
         private readonly ITokenService _tokenService;
         private readonly IGeoIpResolver _geoIp;
         private readonly ILoginGuardService _guard;
@@ -52,21 +51,21 @@ namespace Fluxy.Application.Services.Authentication
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthenticationService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts.</param>
+        /// <param name="users">Repository of the account rows.</param>
         /// <param name="tokenService">Minter of the session tokens.</param>
         /// <param name="geoIp">Resolver that places the client address on the map.</param>
         /// <param name="guard">Enforcer of the account's allow lists.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public AuthenticationService(
-            FluxyDbContext context,
+            IUserRepository users,
             ITokenService tokenService,
             IGeoIpResolver geoIp,
             ILoginGuardService guard,
             IHostEnvironment environment,
             ILogger<AuthenticationService> logger)
         {
-            _context = context;
+            _users = users;
             _tokenService = tokenService;
             _geoIp = geoIp;
             _guard = guard;
@@ -93,10 +92,7 @@ namespace Fluxy.Application.Services.Authentication
                 return Refused();
             }
 
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Username == username, cancellationToken);
+            var user = await _users.FindByUsernameAsync(username, cancellationToken);
 
             if (user is null)
             {
@@ -118,10 +114,10 @@ namespace Fluxy.Application.Services.Authentication
             }
 
             // The level and the state are both facts about the account's group as much as
-            // about the row, so both are read from the model, where the two halves have
-            // already been combined - a blocked group blocks its members here for exactly the
-            // same reason a blocked row does, and there is one rule rather than two.
-            var account = user.ToModel();
+            // about the row, and the repository has already combined the two - a blocked group
+            // blocks its members here for exactly the same reason a blocked row does, and there
+            // is one rule rather than two.
+            var account = user;
 
             if (account.Status is not UserStatus.Registered)
             {

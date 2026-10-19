@@ -1,4 +1,8 @@
+using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.DataAccess.Context;
+using Fluxy.DataAccess.Infrastructure;
+using Fluxy.DataAccess.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -67,6 +71,17 @@ namespace Fluxy.DataAccess
             }
 
             services.AddDbContext<FluxyDbContext>(options => options.UseNpgsql(connectionString));
+
+            // The repositories and the unit of work are scoped with the context they wrap: a
+            // DbContext is not safe to share between requests, and the tracker that carries a
+            // staged write from one repository call to the next belongs to one request only.
+            services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+            services.AddScoped<IPendingChangeRepository, PendingChangeRepository>();
+            services.AddScoped<ILoginGuardRepository, LoginGuardRepository>();
+            services.AddScoped<IUserGroupRepository, UserGroupRepository>();
+            services.AddScoped<IUnitOfWork, UnitOfWork>();
+            services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 
             return services;
         }

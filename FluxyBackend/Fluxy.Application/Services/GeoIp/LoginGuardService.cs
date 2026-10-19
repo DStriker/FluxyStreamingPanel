@@ -1,9 +1,8 @@
 using System.Globalization;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.GeoIp;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Fluxy.Application.Services.GeoIp
@@ -19,17 +18,17 @@ namespace Fluxy.Application.Services.GeoIp
     /// </remarks>
     public sealed class LoginGuardService : ILoginGuardService
     {
-        private readonly FluxyDbContext _context;
+        private readonly ILoginGuardRepository _guards;
         private readonly ILogger<LoginGuardService> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LoginGuardService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and their rules.</param>
+        /// <param name="guards">Repository holding the accounts and their rules.</param>
         /// <param name="logger">Logger the refusals are reported to.</param>
-        public LoginGuardService(FluxyDbContext context, ILogger<LoginGuardService> logger)
+        public LoginGuardService(ILoginGuardRepository guards, ILogger<LoginGuardService> logger)
         {
-            _context = context;
+            _guards = guards;
             _logger = logger;
         }
 
@@ -39,11 +38,11 @@ namespace Fluxy.Application.Services.GeoIp
             GeoIpInfo where,
             CancellationToken cancellationToken = default)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var geoProtectionEnabled = await _guards.GetGeoProtectionEnabledAsync(
+                userId,
+                cancellationToken);
 
-            if (user is null)
+            if (geoProtectionEnabled is null)
             {
                 _logger.LogInformation(
                     "Refused a guarded sign-in for a missing account {UserId}.",
@@ -52,15 +51,12 @@ namespace Fluxy.Application.Services.GeoIp
                 return false;
             }
 
-            if (!user.GeoProtectionEnabled)
+            if (!geoProtectionEnabled.Value)
             {
                 return true;
             }
 
-            var rules = await _context.LoginGuardRules
-                .AsNoTracking()
-                .Where(rule => rule.UserId == userId)
-                .ToListAsync(cancellationToken);
+            var rules = await _guards.GetRulesAsync(userId, cancellationToken);
 
             if (rules.Count == 0)
             {

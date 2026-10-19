@@ -1,8 +1,7 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.Application.Services.Authorization
 {
@@ -30,60 +29,26 @@ namespace Fluxy.Application.Services.Authorization
     /// </remarks>
     public sealed class AccessChecker : IAccessChecker
     {
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AccessChecker"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts.</param>
-        public AccessChecker(FluxyDbContext context)
+        /// <param name="users">Repository the standing is read from.</param>
+        public AccessChecker(IUserRepository users)
         {
-            _context = context;
+            _users = users;
         }
 
         /// <inheritdoc />
-        public async Task<AccountStanding> GetStandingAsync(
+        public Task<AccountStanding> GetStandingAsync(
             Guid userId,
             CancellationToken cancellationToken = default)
         {
-            // The projection is the point: one indexed read of an account and its group by
-            // primary key, rather than materializing either entity. The password hash and the
-            // registration code are not fetched at all, so a mistake that logged this would
-            // have far less to leak.
-            var row = await _context.Users
-                .AsNoTracking()
-                .Where(user => user.Id == userId)
-                .Select(user => new
-                {
-                    user.Status,
-
-                    // The null-forgiving operators are about the *declaration*, not about the
-                    // database: the foreign key is NOT NULL and RESTRICT, so the join EF builds
-                    // for a required relationship cannot leave the group out. The property is
-                    // still nullable on purpose - a query that did not include it really does
-                    // have nothing there, and ToModel() is the one place allowed to refuse -
-                    // so the sites that did include it are the ones that say so.
-                    GroupStatus = user.Group!.Status,
-                    Role = user.Group!.Role,
-                    Permissions = user.Group!.Permissions
-                        .Select(grant => grant.Permission)
-                        .ToList()
-                })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (row is null)
-            {
-                // A token that names an account which no longer exists. Status null rather than
-                // a state of its own, so the caller checks one thing.
-                return new AccountStanding();
-            }
-
-            return new AccountStanding
-            {
-                Status = UserStatusComposition.Combine(row.Status, row.GroupStatus),
-                Role = row.Role,
-                Permissions = row.Permissions.ToHashSet()
-            };
+            // The repository projects exactly these values: one indexed read of an account and
+            // its group by primary key, with no password hash or registration code fetched at
+            // all. A null Status means the token names an account that no longer exists.
+            return _users.GetStandingAsync(userId, cancellationToken);
         }
     }
 }

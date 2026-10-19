@@ -5,11 +5,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -52,7 +50,9 @@ namespace Fluxy.Application.Services.Authentication
         /// </summary>
         private static readonly HashAlgorithmName HashName = HashAlgorithmName.SHA256;
 
-        private readonly FluxyDbContext _context;
+        private readonly IRefreshTokenRepository _tokens;
+        private readonly IUserRepository _users;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IOptionsMonitor<AuthenticationOptions> _options;
         private readonly IGeoIpResolver _geoIp;
         private readonly ILoginGuardService _guard;
@@ -64,7 +64,9 @@ namespace Fluxy.Application.Services.Authentication
         /// <summary>
         /// Initializes a new instance of the <see cref="JwtTokenService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the issued refresh tokens.</param>
+        /// <param name="tokens">Repository of the issued refresh tokens.</param>
+        /// <param name="users">Repository the accounts are read from.</param>
+        /// <param name="unitOfWork">Commits one rotation as one save.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="geoIp">Resolver that places the client address on the map.</param>
         /// <param name="guard">Enforcer of the account's allow lists.</param>
@@ -79,7 +81,9 @@ namespace Fluxy.Application.Services.Authentication
         /// installation refuses to start rather than minting tokens nobody can verify.
         /// </exception>
         public JwtTokenService(
-            FluxyDbContext context,
+            IRefreshTokenRepository tokens,
+            IUserRepository users,
+            IUnitOfWork unitOfWork,
             IOptionsMonitor<AuthenticationOptions> options,
             IGeoIpResolver geoIp,
             ILoginGuardService guard,
@@ -87,7 +91,9 @@ namespace Fluxy.Application.Services.Authentication
             TimeProvider timeProvider,
             ILogger<JwtTokenService> logger)
         {
-            _context = context;
+            _tokens = tokens;
+            _users = users;
+            _unitOfWork = unitOfWork;
             _options = options;
             _geoIp = geoIp;
             _guard = guard;
@@ -115,18 +121,22 @@ namespace Fluxy.Application.Services.Authentication
             var refreshToken = GenerateRefreshToken();
             var accessToken = CreateAccessToken(user, sessionId, now, options);
 
-            _context.RefreshTokens.Add(new RefreshTokenEntity
-            {
-                UserId = user.Id,
-                TokenHash = HashToken(refreshToken),
-                SessionId = sessionId,
-                ExpiresAt = now.Add(options.RefreshLifetime),
-                ClientAddress = Truncate(clientAddress, RefreshTokenConfigurationLimits.ClientAddress),
-                UserAgent = Truncate(userAgent, RefreshTokenConfigurationLimits.UserAgent)
-            });
+            await _tokens.AddAsync(
+                new StoredRefreshToken
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    TokenHash = HashToken(refreshToken),
+                    SessionId = sessionId,
+                    ExpiresAt = now.Add(options.RefreshLifetime),
+                    CreatedAt = now,
+                    ClientAddress = Truncate(clientAddress, RefreshTokenConfigurationLimits.ClientAddress),
+                    UserAgent = Truncate(userAgent, RefreshTokenConfigurationLimits.UserAgent)
+                },
+                cancellationToken);
 
             await CleanupExpiredAsync(now, cancellationToken);
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Opened a session for {Username} in role {Role}. It expires at {ExpiresAt}.",
@@ -156,8 +166,9 @@ namespace Fluxy.Application.Services.Authentication
                 return new RefreshOutcome { Status = RefreshStatus.InvalidToken };
             }
 
-            var stored = await _context.RefreshTokens
-                .FirstOrDefaultAsync(token => token.TokenHash == HashToken(presentedToken), cancellationToken);
+            var stored = await _tokens.FindByHashAsync(
+                HashToken(presentedToken),
+                cancellationToken);
 
             if (stored is null)
             {
@@ -189,14 +200,10 @@ namespace Fluxy.Application.Services.Authentication
                 return new RefreshOutcome { Status = RefreshStatus.SessionRevoked };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == stored.UserId, cancellationToken);
-
             // Read once, and read as the model: what matters here is the account's effective
             // status, which is its own row combined with its group's. A blocked group ends the
             // session for the same reason a blocked account does.
-            var account = user?.ToModel();
+            var account = await _users.FindByIdAsync(stored.UserId, cancellationToken);
 
             if (account is null || account.Status is not UserStatus.Registered)
             {
@@ -221,11 +228,10 @@ namespace Fluxy.Application.Services.Authentication
             // on the presented token is the last one the session was seen at, so a different one
             // now means the session moved. Compared as addresses rather than as text, because one
             // IPv6 peer has many spellings and a session must not end over formatting.
-            // Read from the model rather than from the row: the block above already returned on
-            // a missing account, so `account` is the one that has been proved to exist - while
-            // `user`, the row it was built from, is only ever a step on the way here. Going
-            // through the model is also the honest reading of what is being asked, since the
-            // effective status that decided the block came from the same place.
+            // Read from the model rather than from the token's own row: the block above already
+            // returned on a missing account, so `account` is the one that has been proved to
+            // exist. Going through the model is also the honest reading of what is being asked,
+            // since the effective status that decided the block came from the same place.
             if (account.BindSessionToIp && !LoginGuardPolicy.AddressesEqual(stored.ClientAddress, clientAddress))
             {
                 await RevokeSessionAsync(stored.SessionId, cancellationToken);
@@ -265,28 +271,29 @@ namespace Fluxy.Application.Services.Authentication
                 }
             }
 
-            // Mapped to the model rather than passed as the entity, because the token service
-            // deals in accounts and has no business knowing how one is stored. Done above: the
-            // refresh refuses an account that is not Registered, and that refusal is read from
-            // the model because the state it refuses with is the effective one.
+            // The identifier is chosen here rather than by the database, so the row being spent
+            // can name its replacement in the same save. That link is what makes a chain
+            // walkable, and it cannot be filled in after the insert returns.
+            var replacementId = Guid.NewGuid();
 
-            var replacement = new RefreshTokenEntity
-            {
-                UserId = stored.UserId,
-                TokenHash = HashToken(refreshToken),
-                SessionId = stored.SessionId,
-                ExpiresAt = now.Add(options.RefreshLifetime),
-                ClientAddress = Truncate(clientAddress, RefreshTokenConfigurationLimits.ClientAddress),
-                UserAgent = Truncate(userAgent, RefreshTokenConfigurationLimits.UserAgent)
-            };
+            await _tokens.AddAsync(
+                new StoredRefreshToken
+                {
+                    Id = replacementId,
+                    UserId = stored.UserId,
+                    TokenHash = HashToken(refreshToken),
+                    SessionId = stored.SessionId,
+                    ExpiresAt = now.Add(options.RefreshLifetime),
+                    CreatedAt = now,
+                    ClientAddress = Truncate(clientAddress, RefreshTokenConfigurationLimits.ClientAddress),
+                    UserAgent = Truncate(userAgent, RefreshTokenConfigurationLimits.UserAgent)
+                },
+                cancellationToken);
 
-            _context.RefreshTokens.Add(replacement);
-
-            stored.RevokedAt = now;
-            stored.ReplacedById = replacement.Id;
+            await _tokens.SpendAsync(stored.Id, replacementId, now, cancellationToken);
 
             await CleanupExpiredAsync(now, cancellationToken);
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return new RefreshOutcome
             {
@@ -316,13 +323,7 @@ namespace Fluxy.Application.Services.Authentication
             // destroy the one piece of evidence that distinguishes a spent token from a stolen
             // one. The revoked_at condition is therefore in the query rather than in a filter
             // over everything the session ever had.
-            var updated = await _context.RefreshTokens
-                .Where(token => token.SessionId == sessionId && token.RevokedAt == null)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
-
-            return updated > 0;
+            return await _tokens.RevokeSessionAsync(sessionId, now, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -337,11 +338,7 @@ namespace Fluxy.Application.Services.Authentication
             // overwriting it would destroy the one thing that tells a spent token from a stolen
             // one. Every chain of the account goes at once rather than one at a time - a
             // password change has to leave nothing behind that could be exchanged later.
-            var updated = await _context.RefreshTokens
-                .Where(token => token.UserId == userId && token.RevokedAt == null)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
+            var updated = await _tokens.RevokeAllSessionsAsync(userId, now, cancellationToken);
 
             if (updated > 0)
             {
@@ -376,17 +373,13 @@ namespace Fluxy.Application.Services.Authentication
             // refreshed - already dead - so it answers 404 like every other dead session
             // rather than 200 for an ending that changes nothing, and the refusal vocabulary
             // stays the one the page's id could have come from.
-            var updated = await _context.RefreshTokens
-                .Where(token =>
-                    token.UserId == userId &&
-                    token.SessionId == sessionId &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
+            var updated = await _tokens.RevokeUserSessionAsync(
+                userId,
+                sessionId,
+                now,
+                cancellationToken);
 
-            if (updated > 0)
+            if (updated)
             {
                 _logger.LogInformation(
                     "Ended session {SessionId} of account {UserId} at the account's own request.",
@@ -394,7 +387,7 @@ namespace Fluxy.Application.Services.Authentication
                     userId);
             }
 
-            return updated > 0;
+            return updated;
         }
 
         /// <inheritdoc />
@@ -405,52 +398,24 @@ namespace Fluxy.Application.Services.Authentication
         {
             var now = _timeProvider.GetUtcNow();
 
-            // The sessions are read before they are revoked rather than counted from the
-            // update, because the number reported back is of sessions and the update touches
-            // tokens. The two agree today - a rotation revokes the row it replaces in the same
-            // save, so every chain holds exactly one live row - but reporting the distinct
-            // session ids keeps the answer true even if that ever stops being the case.
-            //
-            // `ExpiresAt > now` is here for the same reason the list has it: the count is read
-            // by the page as "how many cards does this button end", and a chain whose only row
-            // quietly expired is not on that page - so a session that cannot be refreshed any
-            // more must not be counted as ended, or the sentence would name a card the reader
-            // never saw. The update then spends only the rows this count admitted.
-            var sessions = await _context.RefreshTokens
-                .Where(token =>
-                    token.UserId == userId &&
-                    token.SessionId != exceptSessionId &&
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now)
-                .Select(token => token.SessionId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
+            // The count is read before the update by the repository, because the number
+            // reported back is of sessions and the update touches tokens. It also requires the
+            // rows to still be live, so a chain that quietly expired is not counted as ended.
+            var count = await _tokens.RevokeAllExceptCurrentAsync(
+                userId,
+                exceptSessionId,
+                now,
+                cancellationToken);
 
-            if (sessions.Count == 0)
+            if (count > 0)
             {
-                return 0;
+                _logger.LogInformation(
+                    "Ended {Count} session(s) of account {UserId} except its current one.",
+                    count,
+                    userId);
             }
 
-            // Only the live rows are touched, and only of the sessions just named - the spared
-            // one is excluded by the id list rather than by a second condition, because the
-            // list is already in hand and a condition the database could prune further buys
-            // nothing at this size. A named session holds one live row by construction, so
-            // this spends exactly the rows the count above counted.
-            await _context.RefreshTokens
-                .Where(token =>
-                    token.RevokedAt == null &&
-                    token.ExpiresAt > now &&
-                    sessions.Contains(token.SessionId))
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(token => token.RevokedAt, now),
-                    cancellationToken);
-
-            _logger.LogInformation(
-                "Ended {Count} session(s) of account {UserId} except its current one.",
-                sessions.Count,
-                userId);
-
-            return sessions.Count;
+            return count;
         }
 
         /// <summary>
@@ -525,14 +490,8 @@ namespace Fluxy.Application.Services.Authentication
         /// history, and the cleanup is run during issuance and rotation where writes already
         /// happen - cheap enough not to need a separate hosted service.
         /// </remarks>
-        private async Task CleanupExpiredAsync(DateTimeOffset now, CancellationToken ct)
-        {
-            var cutoff = now.AddDays(-30);
-
-            await _context.RefreshTokens
-                .Where(t => t.ExpiresAt <= now || (t.RevokedAt != null && t.RevokedAt < cutoff))
-                .ExecuteDeleteAsync(ct);
-        }
+        private Task CleanupExpiredAsync(DateTimeOffset now, CancellationToken ct)
+            => _tokens.CleanupExpiredAsync(now, ct);
 
         /// <summary>
         /// Whether the guard is skipped for this address. Same rule as on the sign-in path:

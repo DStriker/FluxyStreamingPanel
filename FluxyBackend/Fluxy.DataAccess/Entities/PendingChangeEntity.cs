@@ -26,6 +26,16 @@ namespace Fluxy.DataAccess.Entities
         {
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PendingChangeEntity"/> class for a row
+        /// whose identifier is already known, so a caller can name it before the save.
+        /// </summary>
+        /// <param name="id">The identifier the row must carry.</param>
+        public PendingChangeEntity(Guid id)
+            : base(id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
+        {
+        }
+
         /// <summary>Account this change belongs to.</summary>
         public Guid UserId { get; set; }
 

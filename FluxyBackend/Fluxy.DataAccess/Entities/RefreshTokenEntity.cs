@@ -26,6 +26,17 @@ namespace Fluxy.DataAccess.Entities
         {
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenEntity"/> class for a token
+        /// whose identifier is already known, so the row that replaces it can link to it in the
+        /// same save.
+        /// </summary>
+        /// <param name="id">The identifier the row must carry.</param>
+        public RefreshTokenEntity(Guid id)
+            : base(id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
+        {
+        }
+
         /// <summary>Account the token signs in.</summary>
         public Guid UserId { get; set; }
 
