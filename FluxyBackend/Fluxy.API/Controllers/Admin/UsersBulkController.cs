@@ -48,7 +48,7 @@ namespace Fluxy.API.Controllers.Admin
         /// <summary>Sentence a set of identifiers that is not all uuids gets.</summary>
         private const string IdsHint = "Every identifier must be the uuid of an account.";
 
-        private readonly IUserAdminService _users;
+        private readonly IUserBulkService _users;
 
         /// <summary>
         /// Reader of this request's account, shared with the authorization handlers that ran
@@ -64,7 +64,7 @@ namespace Fluxy.API.Controllers.Admin
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public UsersBulkController(
-            IUserAdminService users,
+            IUserBulkService users,
             RequestStandingReader standing,
             IAntiforgery antiforgery,
             ILogger<UsersBulkController> logger)

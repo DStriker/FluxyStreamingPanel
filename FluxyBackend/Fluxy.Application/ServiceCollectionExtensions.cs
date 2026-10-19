@@ -53,6 +53,11 @@ namespace Fluxy.Application
             // blocked account or a changed password takes them with it.
             services.AddScoped<IUserAdminService, UserAdminService>();
 
+            // The collective operations over the same rows. Its own service, because a bulk
+            // request names a set and answers with an entry per row, and a client asking for
+            // it must not have to know which single-row method it is built on.
+            services.AddScoped<IUserBulkService, UserBulkService>();
+
             // The groups those accounts belong to are their own resource, with rules that have
             // no counterpart on an account row - a base group that may only be renamed, a group
             // with members that may not be deleted - so they are their own service rather than
@@ -71,6 +76,10 @@ namespace Fluxy.Application
             // service carrying both would answer "whose row?" for every call. Scoped because
             // it reads and writes through the context, like every other service here.
             services.AddScoped<IVideoStreamService, VideoStreamService>();
+
+            // The machinery of a change that waits for a code, shared by the profile change and
+            // the password reset. Scoped, because it holds the unit of work of the request.
+            services.AddScoped<PendingChangeService>();
 
             // The sign-in service is scoped because it reads and writes through the context.
             // The token service is scoped with it rather than shared, for the same reason: it

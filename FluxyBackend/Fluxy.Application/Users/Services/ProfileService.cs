@@ -46,9 +46,6 @@ namespace Fluxy.Application.Users.Services
     /// </remarks>
     public sealed class ProfileService : IProfileService
     {
-        /// <summary>The unique index allowing one staged change per account.</summary>
-        private const string PendingChangeIndexName = "IX_pending_changes_user_id";
-
         /// <summary>The unique index making a username unique.</summary>
         private const string UsernameIndexName = "IX_users_username";
 
@@ -59,6 +56,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IPendingChangeRepository _pendingChanges;
         private readonly ILoginGuardRepository _guards;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly PendingChangeService _pendingChangeService;
         private readonly IEmailSender _emailSender;
         private readonly IGeoIpResolver _geoIp;
         private readonly IHostEnvironment _environment;
@@ -73,6 +71,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="pendingChanges">Repository holding the staged changes.</param>
         /// <param name="guards">Repository that replaces an account's allow lists.</param>
         /// <param name="unitOfWork">Commits one change as one save.</param>
+        /// <param name="pendingChangeService">The machinery of a change that waits for a code.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="geoIp">Resolver that places the client address on the map.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
@@ -87,6 +86,7 @@ namespace Fluxy.Application.Users.Services
             IPendingChangeRepository pendingChanges,
             ILoginGuardRepository guards,
             IUnitOfWork unitOfWork,
+            PendingChangeService pendingChangeService,
             IEmailSender emailSender,
             IGeoIpResolver geoIp,
             IHostEnvironment environment,
@@ -98,6 +98,7 @@ namespace Fluxy.Application.Users.Services
             _pendingChanges = pendingChanges;
             _guards = guards;
             _unitOfWork = unitOfWork;
+            _pendingChangeService = pendingChangeService;
             _emailSender = emailSender;
             _geoIp = geoIp;
             _environment = environment;
@@ -481,17 +482,13 @@ namespace Fluxy.Application.Users.Services
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
-            // BCrypt recomputes the hash from the salt inside the stored value, so verifying a
-            // code costs as much as producing one. That is why the endpoint is throttled before
-            // it gets here rather than after.
-            if (!BCrypt.Net.BCrypt.Verify(trimmedCode, pending.CodeHash))
+            switch (_pendingChangeService.Verify(pending, trimmedCode))
             {
-                return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
-            }
+                case PendingCodeStatus.Invalid:
+                    return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
 
-            if (_timeProvider.GetUtcNow() > pending.ExpiresAt)
-            {
-                return new ProfileChangeOutcome { Status = ProfileChangeStatus.CodeExpired };
+                case PendingCodeStatus.Expired:
+                    return new ProfileChangeOutcome { Status = ProfileChangeStatus.CodeExpired };
             }
 
             // The guard carries its content in the payload rather than in the staged columns,
@@ -517,7 +514,7 @@ namespace Fluxy.Application.Users.Services
                 pending.NewPasswordHash,
                 cancellationToken);
 
-            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
+            await _pendingChangeService.RemoveAsync(pending.Id, cancellationToken);
 
             if (!await SaveAsync(cancellationToken))
             {
@@ -625,14 +622,14 @@ namespace Fluxy.Application.Users.Services
 
             var code = OneTimeCode.Generate(options.CodeLength);
 
-            if (!await StageAsync(
+            if (!await _pendingChangeService.StageAsync(
                     userId,
                     kind,
-                    targetValue,
-                    newPassword,
                     code,
                     now.Add(options.CodeLifetime),
-                    cancellationToken))
+                    targetValue: targetValue,
+                    newPassword: newPassword,
+                    cancellationToken: cancellationToken))
             {
                 // Two requests for the same account arrived at the same moment and the unique
                 // index let one of them win. The winner stored a row and mailed a code of its
@@ -768,36 +765,6 @@ namespace Fluxy.Application.Users.Services
             };
 
         /// <summary>
-        /// Stores the pending change, replacing whatever this account was waiting for before.
-        /// </summary>
-        /// <returns>False when a concurrent request for the same account won the race.</returns>
-        private async Task<bool> StageAsync(
-            Guid userId,
-            PendingChangeKind kind,
-            string? targetValue,
-            string? newPassword,
-            string code,
-            DateTimeOffset expiresAt,
-            CancellationToken cancellationToken)
-        {
-            await _pendingChanges.StageAsync(
-                new PendingChange
-                {
-                    Id = Guid.Empty,
-                    UserId = userId,
-                    Kind = kind,
-                    TargetValue = targetValue,
-                    NewPasswordHash = newPassword is null
-                        ? null
-                        : BCrypt.Net.BCrypt.HashPassword(newPassword),
-                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
-                    ExpiresAt = expiresAt
-                },
-                cancellationToken);
-
-            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
-        }
-
         /// <summary>
         /// Saves the account, turning a lost race for a unique value into the same refusal a
         /// sequential check would have produced.
@@ -823,19 +790,13 @@ namespace Fluxy.Application.Users.Services
             DateTimeOffset expiresAt,
             CancellationToken cancellationToken)
         {
-            await _pendingChanges.StageAsync(
-                new PendingChange
-                {
-                    Id = Guid.Empty,
-                    UserId = userId,
-                    Kind = PendingChangeKind.ChangeLoginGuard,
-                    Payload = JsonSerializer.Serialize(staged),
-                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
-                    ExpiresAt = expiresAt
-                },
-                cancellationToken);
-
-            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
+            return await _pendingChangeService.StageAsync(
+                userId,
+                PendingChangeKind.ChangeLoginGuard,
+                code,
+                expiresAt,
+                payload: JsonSerializer.Serialize(staged),
+                cancellationToken: cancellationToken);
         }
 
         /// <summary>
@@ -864,7 +825,7 @@ namespace Fluxy.Application.Users.Services
             }
 
             await _guards.ApplyAsync(candidate.Account.Id, staged, cancellationToken);
-            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
+            await _pendingChangeService.RemoveAsync(pending.Id, cancellationToken);
 
             try
             {

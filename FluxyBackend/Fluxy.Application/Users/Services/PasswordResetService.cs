@@ -8,7 +8,6 @@ using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
-using Fluxy.Core.Users.Models;
 using Fluxy.Core.Users.Outcomes;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Users.Utils;
@@ -38,13 +37,11 @@ namespace Fluxy.Application.Users.Services
     /// </remarks>
     public sealed class PasswordResetService : IPasswordResetService
     {
-        /// <summary>The unique index allowing one staged change per account.</summary>
-        private const string PendingChangeIndexName = "IX_pending_changes_user_id";
-
         private readonly IUserRepository _users;
         private readonly IPendingChangeRepository _pendingChanges;
         private readonly ILoginGuardRepository _guards;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly PendingChangeService _pendingChangeService;
         private readonly IEmailSender _emailSender;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
@@ -57,6 +54,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="pendingChanges">Repository holding the staged resets.</param>
         /// <param name="guards">Repository that clears the account's allow lists.</param>
         /// <param name="unitOfWork">Commits one reset as one save.</param>
+        /// <param name="pendingChangeService">The machinery of a change that waits for a code.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
@@ -69,6 +67,7 @@ namespace Fluxy.Application.Users.Services
             IPendingChangeRepository pendingChanges,
             ILoginGuardRepository guards,
             IUnitOfWork unitOfWork,
+            PendingChangeService pendingChangeService,
             IEmailSender emailSender,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
@@ -78,6 +77,7 @@ namespace Fluxy.Application.Users.Services
             _pendingChanges = pendingChanges;
             _guards = guards;
             _unitOfWork = unitOfWork;
+            _pendingChangeService = pendingChangeService;
             _emailSender = emailSender;
             _options = options;
             _timeProvider = timeProvider;
@@ -147,12 +147,13 @@ namespace Fluxy.Application.Users.Services
             var options = _options.CurrentValue;
             var code = OneTimeCode.Generate(options.CodeLength);
 
-            if (!await StageAsync(
+            if (!await _pendingChangeService.StageAsync(
                     user.Id,
-                    password,
+                    PendingChangeKind.PasswordReset,
                     code,
                     _timeProvider.GetUtcNow().Add(options.CodeLifetime),
-                    cancellationToken))
+                    newPassword: password,
+                    cancellationToken: cancellationToken))
             {
                 // A concurrent request for the same account won the unique index and mailed a
                 // code of its own. Sending a second one here would put two codes in the inbox
@@ -226,17 +227,13 @@ namespace Fluxy.Application.Users.Services
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
-            // BCrypt recomputes the hash from the salt inside the stored value, so verifying a
-            // code costs as much as producing one - which is why the endpoint counts the attempt
-            // before it calls in here.
-            if (!BCrypt.Net.BCrypt.Verify(trimmedCode, pending.CodeHash))
+            switch (_pendingChangeService.Verify(pending, trimmedCode))
             {
-                return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
-            }
+                case PendingCodeStatus.Invalid:
+                    return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
 
-            if (_timeProvider.GetUtcNow() > pending.ExpiresAt)
-            {
-                return new PasswordResetOutcome { Status = PasswordResetStatus.CodeExpired };
+                case PendingCodeStatus.Expired:
+                    return new PasswordResetOutcome { Status = PasswordResetStatus.CodeExpired };
             }
 
             await _users.SetPasswordHashAsync(user.Id, pending.NewPasswordHash, cancellationToken);
@@ -250,7 +247,7 @@ namespace Fluxy.Application.Users.Services
                 new NormalizedLoginGuard(false, false, [], null, null),
                 cancellationToken);
 
-            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
+            await _pendingChangeService.RemoveAsync(pending.Id, cancellationToken);
 
             if (await _unitOfWork.TrySaveAsync(cancellationToken) is not null)
             {
@@ -270,34 +267,6 @@ namespace Fluxy.Application.Users.Services
                 Status = PasswordResetStatus.Confirmed,
                 UserId = user.Id
             };
-        }
-
-        /// <summary>
-        /// Stores the pending reset, replacing whatever this account was waiting for before.
-        /// </summary>
-        /// <returns>False when a concurrent request for the same account won the race.</returns>
-        private async Task<bool> StageAsync(
-            Guid userId,
-            string newPassword,
-            string code,
-            DateTimeOffset expiresAt,
-            CancellationToken cancellationToken)
-        {
-            // The password is hashed here, once, and copied onto the account only after the
-            // code matches. No clear text and no reversible form of it is ever stored.
-            await _pendingChanges.StageAsync(
-                new PendingChange
-                {
-                    Id = Guid.Empty,
-                    UserId = userId,
-                    Kind = PendingChangeKind.PasswordReset,
-                    NewPasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword),
-                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
-                    ExpiresAt = expiresAt
-                },
-                cancellationToken);
-
-            return await _unitOfWork.TrySaveAsync([PendingChangeIndexName], cancellationToken) is null;
         }
 
         /// <summary>The plain text body of the message that carries the code.</summary>
