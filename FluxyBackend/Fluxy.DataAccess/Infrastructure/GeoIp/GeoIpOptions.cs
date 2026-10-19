@@ -1,4 +1,4 @@
-namespace Fluxy.Application.Services.GeoIp
+namespace Fluxy.DataAccess.Infrastructure.GeoIp
 {
     /// <summary>
     /// Where the GeoIP databases live. Bound from the <c>GeoIp</c> section.

@@ -30,6 +30,13 @@
     </PackageReference>
     <!-- Redis-backed infrastructure: the shared connection and the stores behind the Core interfaces. -->
     <PackageReference Include="StackExchange.Redis" Version="3.3.1" />
+    <!-- The MaxMind databases the login guard resolves addresses with. They are a data source
+         read from local files, so the reader belongs to this layer like the redis stores do. -->
+    <PackageReference Include="MaxMind.GeoIP2" Version="6.1.0" />
+    <!-- Options binding for the paths of those databases. Pinned to the version the host
+         already resolves through Microsoft.Extensions.Hosting, so this layer does not dictate
+         a different one. -->
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>

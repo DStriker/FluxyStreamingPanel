@@ -34,6 +34,7 @@ namespace Fluxy.API
 
             builder.Services.AddDataAccess(builder.Configuration);
             builder.Services.AddRedis(builder.Configuration);
+            builder.Services.AddGeoIp(builder.Configuration);
             builder.Services.AddApplicationServices(builder.Configuration);
             builder.Services.AddFluxyAntiforgery();
             builder.Services.AddFrontendCors(builder.Configuration);

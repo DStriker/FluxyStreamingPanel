@@ -33,9 +33,9 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 ```
 
 - **Fluxy.API** — controllers, request/response DTOs (contracts), and the HTTP concerns: DI wiring, middleware, options, security handlers.
-- **Fluxy.Application** — services and business logic. References Core **only**; it has no Entity Framework or StackExchange.Redis package and cannot see `Fluxy.DataAccess`.
+- **Fluxy.Application** — services and business logic. References Core **only**; it has no Entity Framework, StackExchange.Redis or MaxMind.GeoIP2 package and cannot see `Fluxy.DataAccess`.
 - **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
-- **Fluxy.DataAccess** — persistence infrastructure: PostgreSQL through `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/` and `Repositories/` (data access behind the Core interfaces); Redis through `Infrastructure/Redis/` (shared connection, attempt throttle, revoked-session store). `Infrastructure/` also holds `UnitOfWork` and `DatabaseInitializer`. Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
+- **Fluxy.DataAccess** — persistence infrastructure: PostgreSQL through `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/` and `Repositories/` (data access behind the Core interfaces); Redis through `Infrastructure/Redis/` (shared connection, attempt throttle, revoked-session store) and the MaxMind `.mmdb` reader through `Infrastructure/GeoIp/`. `Infrastructure/` also holds `UnitOfWork` and `DatabaseInitializer`. Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
 **The graph above is wired in the csproj files** — add a class to a layer and it is visible to the consumers named by the arrows, not to the layer above them. Adding `Application → DataAccess` back would defeat the isolation this split exists for.
 
@@ -68,9 +68,9 @@ Fluxy.API/
 
 ## Interfaces belong in Core, implementations in their layer
 
-**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/Abstractions/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/Abstractions/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. `IUnitOfWork` and `IDatabaseInitializer` stay directly under `Fluxy.Core/Abstractions/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
+**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/Abstractions/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/Abstractions/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. The readers of an external data source are the third case: `IGeoIpResolver` lives in Core and its MaxMind implementation in `Fluxy.DataAccess/Infrastructure/GeoIp/`, beside the redis stores. `IUnitOfWork` and `IDatabaseInitializer` stay directly under `Fluxy.Core/Abstractions/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
 
-The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and `Program.cs` wires it to an implementation. `Fluxy.API` also references `Fluxy.DataAccess` so it can call `AddDataAccess`/`AddRedis`, but it never names a repository class, a `DbContext` or any other EF type.
+The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and `Program.cs` wires it to an implementation. `Fluxy.API` also references `Fluxy.DataAccess` so it can call `AddDataAccess`/`AddRedis`/`AddGeoIp`, but it never names a repository class, a `DbContext` or any other EF type.
 
 Why it matters here: it keeps the dependency graph honest. Core depends on nothing, Application depends on Core only, DataAccess depends on Core, and API depends on Application and DataAccess. If a repository interface leaked into DataAccess, the API could reach infrastructure abstractions directly and the layering would stop meaning anything.
 
@@ -119,7 +119,9 @@ network, not a stored field.
 
 - **Source of truth is local MaxMind files**, not a lookup API: `GeoLite2-City.mmdb` (country)
   + `GeoLite2-ASN.mmdb` (provider), read by `MaxMindGeoIpResolver` (`MaxMind.GeoIP2` 6.1.0 in
-  `Fluxy.Application`). The files live next to the solution and are linked into the API output
+  `Fluxy.DataAccess/Infrastructure/GeoIp/` — the reader of a data source belongs to the layer
+  that owns data sources, not to the business rules that consult it). The files live next to
+  the solution and are linked into the API output
   as `Content` with `PreserveNewest` (`Fluxy.API.csproj`), so they travel with the binaries
   into publish as well. Paths come from the gitignored `.env` as `GEOIP_CITY_DB_PATH` /
   `GEOIP_ASN_DB_PATH` → `GeoIp:CityDbPath` / `GeoIp:AsnDbPath`; a relative path is resolved
@@ -139,7 +141,9 @@ network, not a stored field.
   Compared as parsed addresses, not as text (`::1` vs `0:0:...:1` must not end a session).
   Access tokens stay stateless, so a move is caught on rotation, within one access lifetime.
 - **Development bypasses local networks with a warning, nothing else does.**
-  `LoginGuardPolicy.IsLocalAddress` (loopback, private, link-local) + `IHostEnvironment`:
+  `GeoIpAddress.IsLocal` (loopback, private, link-local; in `Fluxy.Core/Models/GeoIp/`, because
+  the resolver that needs it and the guard that needs it live in different layers) +
+  `IHostEnvironment`:
   in Development a local address skips both the enforcement and the anti-lock below, because
   loopback carries no GeoIP data and would otherwise refuse its own developer. Outside
   Development there is no bypass - a local address there is a misconfiguration, not the
@@ -185,6 +189,7 @@ were exercised as `Unknown` and the address list carried the allow decisions):
 | Session bound, stored address tampered to another | `POST /auth/refresh` → 401 `session_expired`, session revoked |
 | Development + loopback + guard on | 200 with a bypass warning naming the address, no lockout of the developer |
 | Missing `.mmdb` files | startup warning naming the `GeoIp` section, lookups `Unknown` |
+| The reader in `Fluxy.DataAccess` with the real files | `8.8.8.8` → `US`, ASN `15169`, `Google LLC`; a local address → `Unknown` |
 | `DELETE FROM users` | rules, refresh rows and pending rows of that account gone, other accounts untouched |
 | `POST /auth/admin-login` with the old `Test1234` after the rotation | 401 (the password printed during verification no longer works) |
 
@@ -385,6 +390,14 @@ Only `Fluxy.DataAccess` references **StackExchange.Redis 3.3.1**. `Fluxy.Applica
 - `RedisAttemptThrottle` (DataAccess/Infrastructure/Redis) uses a Lua script (`INCR` + `PEXPIRE` on first) so several instances share the window. It **falls back to a `ConcurrentDictionary` in process memory** when redis is unreachable, so registration keeps working even with redis down.
 - `RedisTokenRevocationStore` (same folder) keeps revoked session identifiers for `Auth:AccessLifetime` plus the 30 s clock skew and **fails open** when redis is unreachable.
 - **The `Redis:Required` config key (`true`/`false`) controls whether a missing connection string is fatal.** It defaults to non-fatal; `false` leaves the stores registered with a null connection, which is the documented degraded state.
+
+### The GeoIP databases live in the data access layer (MaxMind.GeoIP2 6.1.0)
+
+Only `Fluxy.DataAccess` references **MaxMind.GeoIP2 6.1.0**. The reader of a data source is a mechanism, not a business rule, so `MaxMindGeoIpResolver` and `GeoIpOptions` live in `Fluxy.DataAccess/Infrastructure/GeoIp/`, behind `IGeoIpResolver` from Core — the same shape as the redis stores.
+
+- `Fluxy.DataAccess/ServiceCollectionExtensions.cs` has `AddGeoIp(configuration)`, which binds the `GeoIp` section and registers the resolver as a **singleton**: the readers are opened once and on first use rather than at startup, so a host without the files still starts and every address resolves as unknown.
+- The one answer the reader and the guard share — what a local address is — lives in `Fluxy.Core/Models/GeoIp/GeoIpAddress.cs`, because the reader is in the data access layer and the guard is a business rule, and neither may be the only place that knows it.
+- `Microsoft.Extensions.Options.ConfigurationExtensions` 10.0.12 is pinned in `Fluxy.DataAccess.csproj` for that binding, and `Microsoft.Extensions.Hosting` 10.0.12 stays pinned in `Fluxy.Application.csproj` for `IHostEnvironment`.
 
 **Where the connection string comes from.** There is no `ConnectionStrings` section in either appsettings file. `Extensions/DotEnvConfigurationExtensions.cs` loads the compose `.env` and **composes** `ConnectionStrings:Postgres` from its `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` keys (`POSTGRES_HOST` / `POSTGRES_PORT` are honoured, defaulting to `localhost:5432`, which is right for a host process and wrong for a container — that would need the service name `postgres`). Consequences worth remembering:
 

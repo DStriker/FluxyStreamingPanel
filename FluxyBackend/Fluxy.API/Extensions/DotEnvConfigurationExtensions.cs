@@ -1,8 +1,8 @@
 using Fluxy.Application.Services.Email;
-using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Security;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.DataAccess;
+using Fluxy.DataAccess.Infrastructure.GeoIp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
 

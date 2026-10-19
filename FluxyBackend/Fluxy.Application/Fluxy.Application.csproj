@@ -7,14 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- This layer references Core only. Persistence lives behind the Core interfaces, so
-         neither Entity Framework nor StackExchange.Redis belongs here - and without a
-         DataAccess reference the MSB3277 pin that used to be necessary has nothing left to pin. -->
+    <!-- This layer references Core only. Persistence and the readers of external data live
+         behind the Core interfaces, so neither Entity Framework, nor StackExchange.Redis, nor
+         MaxMind.GeoIP2 belongs here - and without a DataAccess reference the MSB3277 pin that
+         used to be necessary has nothing left to pin. -->
     <PackageReference Include="MailKit" Version="4.18.1" />
     <!-- MimeKit 4.18.1 asks for Pkcs 10.0.0, which carries two published advisories. Pinning
          the patched servicing version keeps the mail dependency from dictating a vulnerable one. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-    <PackageReference Include="MaxMind.GeoIP2" Version="6.1.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <!-- Pinned for the same reason as Http above: IHostEnvironment is what the sign-in, refresh
          and profile paths ask whether local networks are bypassed in Development, and an

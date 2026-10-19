@@ -4,6 +4,7 @@ using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
+using Fluxy.Core.Models.GeoIp;
 using Fluxy.Core.Models.Users;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -933,7 +934,7 @@ namespace Fluxy.Application.Services.Profile
         private bool BypassesGuard(string? clientAddress)
         {
             if (!_environment.IsDevelopment()
-                || !LoginGuardPolicy.IsLocalAddress(clientAddress))
+                || !GeoIpAddress.IsLocal(clientAddress))
             {
                 return false;
             }

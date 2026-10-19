@@ -26,20 +26,6 @@ namespace Fluxy.Application.Services.GeoIp
         private static readonly HashSet<string> CountryCodes = BuildCountryCodes();
 
         /// <summary>
-        /// Whether the address is a loopback or a private one. Such an address never reaches a
-        /// GeoIP database - it is not on the public map - so the guard treats it separately.
-        /// </summary>
-        public static bool IsLocalAddress(string? clientAddress)
-        {
-            if (!IPAddress.TryParse(clientAddress?.Trim(), out var address))
-            {
-                return false;
-            }
-
-            return IPAddress.IsLoopback(address) || IsPrivate(address);
-        }
-
-        /// <summary>
         /// Whether two recorded addresses name the same peer. Parsed rather than compared as
         /// text, because one IPv6 address has many spellings and a session must not end over
         /// <c>::1</c> versus <c>0:0:0:0:0:0:0:1</c>.
@@ -213,23 +199,6 @@ namespace Fluxy.Application.Services.GeoIp
             }
 
             return where.AutonomousSystemNumber is { } asn && systems.Contains(asn);
-        }
-
-        private static bool IsPrivate(IPAddress address)
-        {
-            var bytes = address.GetAddressBytes();
-
-            // IPv4 private ranges and link local, compared as bytes so no DNS is involved.
-            if (bytes.Length == 4)
-            {
-                return bytes[0] == 10
-                    || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31)
-                    || (bytes[0] == 192 && bytes[1] == 168)
-                    || (bytes[0] == 169 && bytes[1] == 254);
-            }
-
-            // IPv6 unique local (fc00::/7) and link local (fe80::/10).
-            return (bytes[0] & 0xFE) == 0xFC || (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80);
         }
 
         private static HashSet<string> BuildCountryCodes()

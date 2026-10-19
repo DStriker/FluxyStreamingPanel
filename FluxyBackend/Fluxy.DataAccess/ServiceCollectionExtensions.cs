@@ -2,6 +2,7 @@ using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Infrastructure;
+using Fluxy.DataAccess.Infrastructure.GeoIp;
 using Fluxy.DataAccess.Infrastructure.Redis;
 using Fluxy.DataAccess.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -162,6 +163,35 @@ namespace Fluxy.DataAccess
 
             services.AddSingleton<IAttemptThrottle, RedisAttemptThrottle>();
             services.AddSingleton<ITokenRevocationStore, RedisTokenRevocationStore>();
+
+            return services;
+        }
+
+        /// <summary>
+        /// Registers the reader of the local MaxMind databases.
+        /// </summary>
+        /// <param name="services">Service collection to register the resolver in.</param>
+        /// <param name="configuration">
+        /// Configuration that provides the <c>GeoIp</c> section with the paths of the city and
+        /// the ASN database.
+        /// </param>
+        /// <returns>The same <paramref name="services"/> instance, for chaining.</returns>
+        /// <remarks>
+        /// The databases are opened on first use rather than at startup, so an installation
+        /// without the files still starts: the resolver answers "unknown" for every address and
+        /// the guard refuses the accounts that asked to be protected. Nothing here throws for a
+        /// missing file, because a host without the files is a configuration it is allowed to
+        /// have.
+        /// </remarks>
+        public static IServiceCollection AddGeoIp(
+            this IServiceCollection services,
+            IConfiguration configuration)
+        {
+            services.Configure<GeoIpOptions>(configuration.GetSection(GeoIpOptions.SectionName));
+
+            // The readers are opened once and shared between requests. They are safe to share,
+            // and holding them in a scope would reopen the files per request.
+            services.AddSingleton<IGeoIpResolver, MaxMindGeoIpResolver>();
 
             return services;
         }

@@ -99,10 +99,6 @@ namespace Fluxy.Application
             // by ending a session.
             services.AddScoped<IAdminSessionHistoryService, AdminSessionHistoryService>();
 
-            // The GeoIP databases are opened once and shared between requests. The readers are
-            // safe to share, and holding them in a scope would reopen the files per request.
-            services.AddSingleton<IGeoIpResolver, MaxMindGeoIpResolver>();
-
             // The mailer is shared too. MailKit opens a connection per message, so there is no
             // connection to keep warm between requests.
             services.AddSingleton<IEmailSender, SmtpEmailSender>();
@@ -127,8 +123,6 @@ namespace Fluxy.Application
                     configuration.GetSection(RegistrationOptions.SectionName));
                 services.Configure<AuthenticationOptions>(
                     configuration.GetSection(AuthenticationOptions.SectionName));
-                services.Configure<GeoIpOptions>(
-                    configuration.GetSection(GeoIpOptions.SectionName));
             }
 
             return services;

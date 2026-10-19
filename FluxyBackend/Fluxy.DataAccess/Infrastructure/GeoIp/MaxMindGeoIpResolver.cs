@@ -5,7 +5,7 @@ using MaxMind.GeoIP2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Fluxy.Application.Services.GeoIp
+namespace Fluxy.DataAccess.Infrastructure.GeoIp
 {
     /// <summary>
     /// Places a client address on the map using local MaxMind databases.
@@ -16,6 +16,10 @@ namespace Fluxy.Application.Services.GeoIp
     /// third party being up. The readers are held for the life of the process and are safe to
     /// share between requests; a missing file means <c>Unknown</c> for every address, never an
     /// exception, and the guard service is what turns that into a refusal.
+    ///
+    /// The resolver lives in this layer because it is a reader of an external data source and
+    /// not a business rule: the file format, the paths and the failure modes are all details of
+    /// the mechanism, and the guard that consults the answer lives above.
     /// </remarks>
     public sealed class MaxMindGeoIpResolver : IGeoIpResolver, IDisposable
     {
@@ -49,7 +53,7 @@ namespace Fluxy.Application.Services.GeoIp
             var trimmed = clientAddress?.Trim();
             if (string.IsNullOrEmpty(trimmed)
                 || !IPAddress.TryParse(trimmed, out var address)
-                || LoginGuardPolicy.IsLocalAddress(trimmed))
+                || GeoIpAddress.IsLocal(trimmed))
             {
                 // A private address is not on the public map by definition: there is nothing to
                 // look up, and asking the database would only produce its miss path.
