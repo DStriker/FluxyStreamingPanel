@@ -1,6 +1,8 @@
+using System.Globalization;
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
+using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fluxy.DataAccess.Repositories
@@ -50,5 +52,60 @@ namespace Fluxy.DataAccess.Repositories
                     Value = rule.Value
                 })
                 .ToListAsync(cancellationToken);
+
+        /// <inheritdoc />
+        public async Task ApplyAsync(
+            Guid userId,
+            NormalizedLoginGuard guard,
+            CancellationToken cancellationToken = default)
+        {
+            var entity = await _context.Users.FindAsync([userId], cancellationToken);
+
+            if (entity is null)
+            {
+                return;
+            }
+
+            entity.GeoProtectionEnabled = guard.GeoProtectionEnabled;
+            entity.BindSessionToIp = guard.BindSessionToIp;
+
+            // Deleted before the new rows are added, so a list that drops a network does not
+            // keep it beside the new one. The table gives every row to exactly one account and
+            // nobody reads a row's identity, which is why this is delete-and-insert rather
+            // than a diff.
+            await _context.LoginGuardRules
+                .Where(rule => rule.UserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            foreach (var ip in guard.AllowedIps)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = userId,
+                    Kind = LoginGuardRuleKind.IpAddress,
+                    Value = ip
+                });
+            }
+
+            if (guard.AllowedCountry is { } country)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = userId,
+                    Kind = LoginGuardRuleKind.Country,
+                    Value = country
+                });
+            }
+
+            if (guard.AllowedAutonomousSystemNumber is { } asn)
+            {
+                _context.LoginGuardRules.Add(new UserLoginGuardRuleEntity
+                {
+                    UserId = userId,
+                    Kind = LoginGuardRuleKind.AutonomousSystem,
+                    Value = asn.ToString(CultureInfo.InvariantCulture)
+                });
+            }
+        }
     }
 }

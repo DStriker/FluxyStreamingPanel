@@ -1,9 +1,7 @@
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -33,7 +31,10 @@ namespace Fluxy.Application.Services.Profile
         /// <summary>The unique index allowing one staged change per account.</summary>
         private const string PendingChangeIndexName = "IX_pending_changes_user_id";
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IPendingChangeRepository _pendingChanges;
+        private readonly ILoginGuardRepository _guards;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IEmailSender _emailSender;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
@@ -42,7 +43,10 @@ namespace Fluxy.Application.Services.Profile
         /// <summary>
         /// Initializes a new instance of the <see cref="PasswordResetService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and the pending changes.</param>
+        /// <param name="users">Repository holding the accounts.</param>
+        /// <param name="pendingChanges">Repository holding the staged resets.</param>
+        /// <param name="guards">Repository that clears the account's allow lists.</param>
+        /// <param name="unitOfWork">Commits one reset as one save.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
@@ -51,13 +55,19 @@ namespace Fluxy.Application.Services.Profile
         /// </param>
         /// <param name="logger">Logger the security relevant steps are reported to.</param>
         public PasswordResetService(
-            FluxyDbContext context,
+            IUserRepository users,
+            IPendingChangeRepository pendingChanges,
+            ILoginGuardRepository guards,
+            IUnitOfWork unitOfWork,
             IEmailSender emailSender,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
             ILogger<PasswordResetService> logger)
         {
-            _context = context;
+            _users = users;
+            _pendingChanges = pendingChanges;
+            _guards = guards;
+            _unitOfWork = unitOfWork;
             _emailSender = emailSender;
             _options = options;
             _timeProvider = timeProvider;
@@ -110,8 +120,7 @@ namespace Fluxy.Application.Services.Profile
                 };
             }
 
-            var user = await _context.Users
-                .FirstOrDefaultAsync(entry => entry.Username == name, cancellationToken);
+            var user = await _users.FindForPasswordResetAsync(name, cancellationToken);
 
             // One answer for all three reasons the pair can fail - no such account, an account
             // under a different address, an account that is not usable - so the form cannot be
@@ -120,7 +129,7 @@ namespace Fluxy.Application.Services.Profile
             // handful of guesses a sign-in gets.
             if (user is null
                 || user.Email != normalized
-                || user.Status is not UserStatus.Registered)
+                || user.RowStatus is not UserStatus.Registered)
             {
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidPair };
             }
@@ -188,18 +197,18 @@ namespace Fluxy.Application.Services.Profile
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
-            var user = await _context.Users
-                .FirstOrDefaultAsync(entry => entry.Username == name, cancellationToken);
+            var user = await _users.FindForPasswordResetAsync(name, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (user is null || user.RowStatus is not UserStatus.Registered)
             {
                 // Reported exactly like a wrong code, so the endpoint does not confirm which
                 // login names hold an account.
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
-            var pending = await _context.PendingChanges.FirstOrDefaultAsync(
-                change => change.UserId == user.Id && change.Kind == PendingChangeKind.PasswordReset,
+            var pending = await _pendingChanges.FindByUserIdAsync(
+                user.Id,
+                PendingChangeKind.PasswordReset,
                 cancellationToken);
 
             if (pending is null || pending.NewPasswordHash is null)
@@ -220,23 +229,22 @@ namespace Fluxy.Application.Services.Profile
                 return new PasswordResetOutcome { Status = PasswordResetStatus.CodeExpired };
             }
 
-            user.PasswordHash = pending.NewPasswordHash;
+            await _users.SetPasswordHashAsync(user.Id, pending.NewPasswordHash, cancellationToken);
 
             // A password reset proves the mailbox, which is also the recovery path for a guard
             // that locked its owner out - so the guard goes with the password rather than
             // staying on to refuse the sign-in the reset was made for. The sessions end in the
             // controller, like every other password replacement.
-            user.GeoProtectionEnabled = false;
-            user.BindSessionToIp = false;
-            await _context.LoginGuardRules
-                .Where(rule => rule.UserId == user.Id)
-                .ExecuteDeleteAsync(cancellationToken);
+            await _guards.ApplyAsync(
+                user.Id,
+                new NormalizedLoginGuard(false, false, [], null, null),
+                cancellationToken);
 
-            _context.PendingChanges.Remove(pending);
+            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
 
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException)
             {
@@ -269,27 +277,23 @@ namespace Fluxy.Application.Services.Profile
             DateTimeOffset expiresAt,
             CancellationToken cancellationToken)
         {
-            var pending = await _context.PendingChanges
-                .FirstOrDefaultAsync(change => change.UserId == userId, cancellationToken);
-
-            if (pending is null)
-            {
-                pending = new PendingChangeEntity { UserId = userId };
-                _context.PendingChanges.Add(pending);
-            }
-
-            pending.Kind = PendingChangeKind.PasswordReset;
-            pending.TargetValue = null;
-
             // The password is hashed here, once, and copied onto the account only after the
             // code matches. No clear text and no reversible form of it is ever stored.
-            pending.NewPasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-            pending.CodeHash = BCrypt.Net.BCrypt.HashPassword(code);
-            pending.ExpiresAt = expiresAt;
+            await _pendingChanges.StageAsync(
+                new StoredPendingChange
+                {
+                    Id = Guid.Empty,
+                    UserId = userId,
+                    Kind = PendingChangeKind.PasswordReset,
+                    NewPasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword),
+                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+                    ExpiresAt = expiresAt
+                },
+                cancellationToken);
 
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException exception)
                 when (exception.IsConstraint(PendingChangeIndexName))

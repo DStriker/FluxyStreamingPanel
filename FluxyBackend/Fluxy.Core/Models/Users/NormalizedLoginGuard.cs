@@ -1,4 +1,4 @@
-namespace Fluxy.Application.Services.GeoIp
+namespace Fluxy.Core.Models.Users
 {
     /// <summary>
     /// A login guard after validation: both switches and the three lists in the exact form the

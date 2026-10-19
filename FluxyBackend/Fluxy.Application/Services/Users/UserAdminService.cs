@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
@@ -55,6 +56,7 @@ namespace Fluxy.Application.Services.Users
         ];
 
         private readonly FluxyDbContext _context;
+        private readonly ILoginGuardRepository _guards;
         private readonly ITokenService _tokenService;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<UserAdminService> _logger;
@@ -62,17 +64,20 @@ namespace Fluxy.Application.Services.Users
         /// <summary>
         /// Initializes a new instance of the <see cref="UserAdminService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts, their tokens and their rules.</param>
+        /// <param name="context">Context holding the accounts and their tokens.</param>
+        /// <param name="guards">Repository that replaces an account's allow lists.</param>
         /// <param name="tokenService">Ends the sessions a state change takes with it.</param>
         /// <param name="timeProvider">Clock, so a stamp is not wall time hard coded into a rule.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public UserAdminService(
             FluxyDbContext context,
+            ILoginGuardRepository guards,
             ITokenService tokenService,
             TimeProvider timeProvider,
             ILogger<UserAdminService> logger)
         {
             _context = context;
+            _guards = guards;
             _tokenService = tokenService;
             _timeProvider = timeProvider;
             _logger = logger;
@@ -336,7 +341,8 @@ namespace Fluxy.Application.Services.Users
 
             if (guard is not null)
             {
-                await LoginGuardStore.ReplaceRulesAsync(_context, entity.Id, guard, cancellationToken);
+                await _guards.ApplyAsync(entity.Id, guard, cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
 
             _logger.LogInformation(
@@ -544,7 +550,8 @@ namespace Fluxy.Application.Services.Users
 
             if (guard is not null)
             {
-                await LoginGuardStore.ReplaceRulesAsync(_context, user.Id, guard, cancellationToken);
+                await _guards.ApplyAsync(user.Id, guard, cancellationToken);
+                await _context.SaveChangesCheckedAsync(cancellationToken);
             }
 
             // Both events end the sessions the account holds, and for the same reason: a

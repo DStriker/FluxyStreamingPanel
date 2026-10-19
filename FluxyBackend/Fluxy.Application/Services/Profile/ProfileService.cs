@@ -3,10 +3,8 @@ using System.Text.Json;
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -44,7 +42,10 @@ namespace Fluxy.Application.Services.Profile
         /// <summary>The unique index making an email address unique.</summary>
         private const string EmailIndexName = "IX_users_email";
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IPendingChangeRepository _pendingChanges;
+        private readonly ILoginGuardRepository _guards;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IEmailSender _emailSender;
         private readonly IGeoIpResolver _geoIp;
         private readonly IHostEnvironment _environment;
@@ -55,7 +56,10 @@ namespace Fluxy.Application.Services.Profile
         /// <summary>
         /// Initializes a new instance of the <see cref="ProfileService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the accounts and the pending changes.</param>
+        /// <param name="users">Repository holding the accounts.</param>
+        /// <param name="pendingChanges">Repository holding the staged changes.</param>
+        /// <param name="guards">Repository that replaces an account's allow lists.</param>
+        /// <param name="unitOfWork">Commits one change as one save.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="geoIp">Resolver that places the client address on the map.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
@@ -66,7 +70,10 @@ namespace Fluxy.Application.Services.Profile
         /// </param>
         /// <param name="logger">Logger the security relevant steps are reported to.</param>
         public ProfileService(
-            FluxyDbContext context,
+            IUserRepository users,
+            IPendingChangeRepository pendingChanges,
+            ILoginGuardRepository guards,
+            IUnitOfWork unitOfWork,
             IEmailSender emailSender,
             IGeoIpResolver geoIp,
             IHostEnvironment environment,
@@ -74,7 +81,10 @@ namespace Fluxy.Application.Services.Profile
             TimeProvider timeProvider,
             ILogger<ProfileService> logger)
         {
-            _context = context;
+            _users = users;
+            _pendingChanges = pendingChanges;
+            _guards = guards;
+            _unitOfWork = unitOfWork;
             _emailSender = emailSender;
             _geoIp = geoIp;
             _environment = environment;
@@ -88,13 +98,9 @@ namespace Fluxy.Application.Services.Profile
             Guid userId,
             CancellationToken cancellationToken = default)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(entry => entry.Group)
-                .ThenInclude(entry => entry!.Permissions)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var profile = await _users.GetProfileAsync(userId, cancellationToken);
 
-            if (user is null)
+            if (profile is null)
             {
                 return null;
             }
@@ -102,20 +108,18 @@ namespace Fluxy.Application.Services.Profile
             // The effective status rather than the row's own: a blocked group blocks its
             // members everywhere, and the profile endpoint answers with "no such active
             // account" for exactly the accounts a sign-in would refuse.
-            var account = user.ToModel();
-
-            if (account.Status is not UserStatus.Registered)
+            if (profile.Status is not UserStatus.Registered)
             {
                 return null;
             }
 
             return new AccountProfile
             {
-                Username = user.Username,
-                Email = user.Email,
-                Role = account.Role,
-                TimeZone = user.TimeZone,
-                Permissions = ReadPermissions(user.Group)
+                Username = profile.Username,
+                Email = profile.Email,
+                Role = profile.Role,
+                TimeZone = profile.TimeZone,
+                Permissions = profile.Permissions
             };
         }
 
@@ -133,11 +137,9 @@ namespace Fluxy.Application.Services.Profile
                 return InvalidTimeZone();
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var candidate = await _users.FindEditableByIdAsync(userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
@@ -145,16 +147,16 @@ namespace Fluxy.Application.Services.Profile
             // A cleared zone is written rather than skipped, so that going back to "auto"
             // cannot leave the old one behind: the absence of the value is the state that
             // says "read it from the browser".
-            user.TimeZone = requested;
+            await _users.SetTimeZoneAsync(userId, requested, cancellationToken);
 
             // No unique index on this column, so unlike the three changes above a lost race
             // cannot happen and the save needs no interpretation of its failures.
-            await _context.SaveChangesCheckedAsync(cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
                 "Set the display time zone of {Username} to {TimeZone}.",
-                user.Username,
-                user.TimeZone ?? "(browser default)");
+                candidate.Account.Username,
+                requested ?? "(browser default)");
 
             return new ProfileChangeOutcome { Status = ProfileChangeStatus.Applied };
 
@@ -176,27 +178,21 @@ namespace Fluxy.Application.Services.Profile
             Guid userId,
             CancellationToken cancellationToken = default)
         {
-            var user = await _context.Users
-                .AsNoTracking()
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var candidate = await _users.FindEditableByIdAsync(userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
                 return null;
             }
 
-            var rules = await _context.LoginGuardRules
-                .AsNoTracking()
-                .Where(rule => rule.UserId == userId)
-                .ToListAsync(cancellationToken);
+            var rules = await _guards.GetRulesAsync(userId, cancellationToken);
 
             var provider = rules.FirstOrDefault(rule => rule.Kind is LoginGuardRuleKind.AutonomousSystem);
 
             return new LoginGuardSettings
             {
-                GeoProtectionEnabled = user.GeoProtectionEnabled,
-                BindSessionToIp = user.BindSessionToIp,
+                GeoProtectionEnabled = candidate.Account.GeoProtectionEnabled,
+                BindSessionToIp = candidate.Account.BindSessionToIp,
                 AllowedIps = rules
                     .Where(rule => rule.Kind is LoginGuardRuleKind.IpAddress)
                     .Select(rule => rule.Value)
@@ -230,11 +226,9 @@ namespace Fluxy.Application.Services.Profile
                 };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var candidate = await _users.FindEditableByIdAsync(userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
@@ -242,7 +236,7 @@ namespace Fluxy.Application.Services.Profile
             // The expensive step of this path, so the endpoint counts the attempt before it
             // calls in - the same order the sign-in endpoint uses for the same reason.
             if (string.IsNullOrEmpty(currentPassword)
-                || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+                || !BCrypt.Net.BCrypt.Verify(currentPassword, candidate.Account.PasswordHash))
             {
                 return new ProfileChangeOutcome
                 {
@@ -294,13 +288,15 @@ namespace Fluxy.Application.Services.Profile
                     "installation has no mail server configured. See the Email configuration " +
                     "section.");
 
-                await ApplyLoginGuardAsync(user, staged.Value, cancellationToken);
+                await _guards.ApplyAsync(userId, staged.Value, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                LogGuardChanged(candidate.Account, staged.Value);
 
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.Applied,
                     Kind = PendingChangeKind.ChangeLoginGuard,
-                    Account = user.ToModel()
+                    Account = ApplyGuard(candidate.Account, staged.Value)
                 };
             }
 
@@ -327,10 +323,10 @@ namespace Fluxy.Application.Services.Profile
             var result = await _emailSender.SendAsync(
                 new EmailMessage
                 {
-                    To = user.Email,
+                    To = candidate.Account.Email,
                     Subject = "Your Fluxy confirmation code",
                     Body = BuildCodeBody(
-                        user.Username,
+                        candidate.Account.Username,
                         PendingChangeKind.ChangeLoginGuard,
                         null,
                         code,
@@ -454,17 +450,14 @@ namespace Fluxy.Application.Services.Profile
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var candidate = await _users.FindEditableByIdAsync(userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
 
-            var pending = await _context.PendingChanges
-                .FirstOrDefaultAsync(change => change.UserId == userId, cancellationToken);
+            var pending = await _pendingChanges.FindByUserIdAsync(userId, cancellationToken: cancellationToken);
 
             // A code minted for the public password reset form never confirms a profile change,
             // and the other way round: the two flows are separate proofs, and one row can only
@@ -492,7 +485,7 @@ namespace Fluxy.Application.Services.Profile
             // say about networks, and the generic apply knows nothing about rules.
             if (pending.Kind is PendingChangeKind.ChangeLoginGuard)
             {
-                return await ConfirmLoginGuardAsync(user, pending, cancellationToken);
+                return await ConfirmLoginGuardAsync(candidate, pending, cancellationToken);
             }
 
             // The value was checked when the change was requested, and the code may have spent
@@ -503,8 +496,14 @@ namespace Fluxy.Application.Services.Profile
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AlreadyExists };
             }
 
-            Apply(user, pending.Kind, pending.TargetValue, pending.NewPasswordHash);
-            _context.PendingChanges.Remove(pending);
+            await ApplyChangeAsync(
+                candidate.Account.Id,
+                pending.Kind,
+                pending.TargetValue,
+                pending.NewPasswordHash,
+                cancellationToken);
+
+            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
 
             if (!await SaveAsync(cancellationToken))
             {
@@ -514,13 +513,17 @@ namespace Fluxy.Application.Services.Profile
             _logger.LogInformation(
                 "Applied a confirmed {Kind} for {Username}.",
                 pending.Kind,
-                user.Username);
+                candidate.Account.Username);
 
             return new ProfileChangeOutcome
             {
                 Status = ProfileChangeStatus.Confirmed,
                 Kind = pending.Kind,
-                Account = user.ToModel()
+                Account = ApplyChange(
+                    candidate.Account,
+                    pending.Kind,
+                    pending.TargetValue,
+                    pending.NewPasswordHash)
             };
         }
 
@@ -545,11 +548,9 @@ namespace Fluxy.Application.Services.Profile
                 };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Id == userId, cancellationToken);
+            var candidate = await _users.FindEditableByIdAsync(userId, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Registered)
+            if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
@@ -558,7 +559,7 @@ namespace Fluxy.Application.Services.Profile
             // the expensive step of this path, so the endpoint counts the attempt before it
             // calls in - the same order the sign-in endpoint uses for the same reason.
             if (string.IsNullOrEmpty(currentPassword)
-                || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+                || !BCrypt.Net.BCrypt.Verify(currentPassword, candidate.Account.PasswordHash))
             {
                 return new ProfileChangeOutcome
                 {
@@ -584,9 +585,16 @@ namespace Fluxy.Application.Services.Profile
                     "mail server configured. See the Email configuration section.",
                     kind);
 
-                Apply(user, kind, targetValue, newPassword is null
+                var passwordHash = newPassword is null
                     ? null
-                    : BCrypt.Net.BCrypt.HashPassword(newPassword));
+                    : BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+                await ApplyChangeAsync(
+                    candidate.Account.Id,
+                    kind,
+                    targetValue,
+                    passwordHash,
+                    cancellationToken);
 
                 if (!await SaveAsync(cancellationToken))
                 {
@@ -597,7 +605,7 @@ namespace Fluxy.Application.Services.Profile
                 {
                     Status = ProfileChangeStatus.Applied,
                     Kind = kind,
-                    Account = user.ToModel()
+                    Account = ApplyChange(candidate.Account, kind, targetValue, passwordHash)
                 };
             }
 
@@ -625,14 +633,19 @@ namespace Fluxy.Application.Services.Profile
 
             var recipient = kind is PendingChangeKind.ChangeEmail
                 ? targetValue!
-                : user.Email;
+                : candidate.Account.Email;
 
             var result = await _emailSender.SendAsync(
                 new EmailMessage
                 {
                     To = recipient,
                     Subject = "Your Fluxy confirmation code",
-                    Body = BuildCodeBody(user.Username, kind, targetValue, code, options.CodeLifetime)
+                    Body = BuildCodeBody(
+                        candidate.Account.Username,
+                        kind,
+                        targetValue,
+                        code,
+                        options.CodeLifetime)
                 },
                 cancellationToken);
 
@@ -670,12 +683,14 @@ namespace Fluxy.Application.Services.Profile
 
             return kind switch
             {
-                PendingChangeKind.ChangeUsername => await _context.Users.AnyAsync(
-                    entry => entry.Id != userId && entry.Username == targetValue,
+                PendingChangeKind.ChangeUsername => await _users.IsUsernameTakenAsync(
+                    targetValue,
+                    userId,
                     cancellationToken),
 
-                PendingChangeKind.ChangeEmail => await _context.Users.AnyAsync(
-                    entry => entry.Id != userId && entry.Email == targetValue,
+                PendingChangeKind.ChangeEmail => await _users.IsEmailTakenAsync(
+                    targetValue,
+                    userId,
                     cancellationToken),
 
                 _ => false
@@ -683,30 +698,60 @@ namespace Fluxy.Application.Services.Profile
         }
 
         /// <summary>
-        /// Writes the change to the account. The row that owns the value does the rest: the
+        /// Stages the change on the account. The row that owns the value does the rest: the
         /// unique indexes are what actually refuse a taken one.
         /// </summary>
-        private static void Apply(
-            UserEntity user,
+        private async Task ApplyChangeAsync(
+            Guid userId,
             PendingChangeKind kind,
             string? targetValue,
-            string? passwordHash)
+            string? passwordHash,
+            CancellationToken cancellationToken)
         {
             switch (kind)
             {
-                case PendingChangeKind.ChangeUsername:
-                    user.Username = targetValue ?? user.Username;
+                case PendingChangeKind.ChangeUsername when targetValue is not null:
+                    await _users.SetUsernameAsync(userId, targetValue, cancellationToken);
                     break;
 
-                case PendingChangeKind.ChangeEmail:
-                    user.Email = targetValue ?? user.Email;
+                case PendingChangeKind.ChangeEmail when targetValue is not null:
+                    await _users.SetEmailAsync(userId, targetValue, cancellationToken);
                     break;
 
-                case PendingChangeKind.ChangePassword:
-                    user.PasswordHash = passwordHash ?? user.PasswordHash;
+                case PendingChangeKind.ChangePassword when passwordHash is not null:
+                    await _users.SetPasswordHashAsync(userId, passwordHash, cancellationToken);
                     break;
             }
         }
+
+        /// <summary>
+        /// The account model after the change, without reading the row again.
+        /// </summary>
+        private static User ApplyChange(
+            User account,
+            PendingChangeKind kind,
+            string? targetValue,
+            string? passwordHash)
+            => kind switch
+            {
+                PendingChangeKind.ChangeUsername when targetValue is not null =>
+                    account with { Username = targetValue },
+                PendingChangeKind.ChangeEmail when targetValue is not null =>
+                    account with { Email = targetValue },
+                PendingChangeKind.ChangePassword when passwordHash is not null =>
+                    account with { PasswordHash = passwordHash },
+                _ => account
+            };
+
+        /// <summary>
+        /// The account model after its guard switches changed.
+        /// </summary>
+        private static User ApplyGuard(User account, NormalizedLoginGuard guard)
+            => account with
+            {
+                GeoProtectionEnabled = guard.GeoProtectionEnabled,
+                BindSessionToIp = guard.BindSessionToIp
+            };
 
         /// <summary>
         /// Stores the pending change, replacing whatever this account was waiting for before.
@@ -721,26 +766,24 @@ namespace Fluxy.Application.Services.Profile
             DateTimeOffset expiresAt,
             CancellationToken cancellationToken)
         {
-            var pending = await _context.PendingChanges
-                .FirstOrDefaultAsync(change => change.UserId == userId, cancellationToken);
-
-            if (pending is null)
-            {
-                pending = new PendingChangeEntity { UserId = userId };
-                _context.PendingChanges.Add(pending);
-            }
-
-            pending.Kind = kind;
-            pending.TargetValue = targetValue;
-            pending.NewPasswordHash = newPassword is null
-                ? null
-                : BCrypt.Net.BCrypt.HashPassword(newPassword);
-            pending.CodeHash = BCrypt.Net.BCrypt.HashPassword(code);
-            pending.ExpiresAt = expiresAt;
+            await _pendingChanges.StageAsync(
+                new StoredPendingChange
+                {
+                    Id = Guid.Empty,
+                    UserId = userId,
+                    Kind = kind,
+                    TargetValue = targetValue,
+                    NewPasswordHash = newPassword is null
+                        ? null
+                        : BCrypt.Net.BCrypt.HashPassword(newPassword),
+                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+                    ExpiresAt = expiresAt
+                },
+                cancellationToken);
 
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException exception)
                 when (exception.IsConstraint(PendingChangeIndexName))
@@ -764,7 +807,7 @@ namespace Fluxy.Application.Services.Profile
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException exception)
                 when (exception.IsConstraint(UsernameIndexName)
@@ -787,25 +830,21 @@ namespace Fluxy.Application.Services.Profile
             DateTimeOffset expiresAt,
             CancellationToken cancellationToken)
         {
-            var pending = await _context.PendingChanges
-                .FirstOrDefaultAsync(change => change.UserId == userId, cancellationToken);
-
-            if (pending is null)
-            {
-                pending = new PendingChangeEntity { UserId = userId };
-                _context.PendingChanges.Add(pending);
-            }
-
-            pending.Kind = PendingChangeKind.ChangeLoginGuard;
-            pending.TargetValue = null;
-            pending.NewPasswordHash = null;
-            pending.Payload = JsonSerializer.Serialize(staged);
-            pending.CodeHash = BCrypt.Net.BCrypt.HashPassword(code);
-            pending.ExpiresAt = expiresAt;
+            await _pendingChanges.StageAsync(
+                new StoredPendingChange
+                {
+                    Id = Guid.Empty,
+                    UserId = userId,
+                    Kind = PendingChangeKind.ChangeLoginGuard,
+                    Payload = JsonSerializer.Serialize(staged),
+                    CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+                    ExpiresAt = expiresAt
+                },
+                cancellationToken);
 
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException exception)
                 when (exception.IsConstraint(PendingChangeIndexName))
@@ -821,8 +860,8 @@ namespace Fluxy.Application.Services.Profile
         /// whatever the account held before.
         /// </summary>
         private async Task<ProfileChangeOutcome> ConfirmLoginGuardAsync(
-            UserEntity user,
-            PendingChangeEntity pending,
+            EditableAccount candidate,
+            StoredPendingChange pending,
             CancellationToken cancellationToken)
         {
             NormalizedLoginGuard? staged = null;
@@ -841,12 +880,12 @@ namespace Fluxy.Application.Services.Profile
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
-            await ApplyLoginGuardAsync(user, staged, cancellationToken);
-            _context.PendingChanges.Remove(pending);
+            await _guards.ApplyAsync(candidate.Account.Id, staged, cancellationToken);
+            await _pendingChanges.RemoveAsync(pending.Id, cancellationToken);
 
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException)
             {
@@ -856,43 +895,35 @@ namespace Fluxy.Application.Services.Profile
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
+            LogGuardChanged(candidate.Account, staged);
+
             _logger.LogInformation(
                 "Applied a confirmed {Kind} for {Username}.",
                 pending.Kind,
-                user.Username);
+                candidate.Account.Username);
 
             return new ProfileChangeOutcome
             {
                 Status = ProfileChangeStatus.Confirmed,
                 Kind = pending.Kind,
-                Account = user.ToModel()
+                Account = ApplyGuard(candidate.Account, staged)
             };
         }
 
         /// <summary>
-        /// Writes the switches and replaces the rules. The old lists are deleted by the shared
-        /// store, so a guard that drops a network does not keep it beside the new one.
+        /// Writes the switches and replaces the rules. The old lists are deleted by the guard
+        /// repository, so a guard that drops a network does not keep it beside the new one.
         /// </summary>
-        private async Task ApplyLoginGuardAsync(
-            UserEntity user,
-            NormalizedLoginGuard staged,
-            CancellationToken cancellationToken)
-        {
-            user.GeoProtectionEnabled = staged.GeoProtectionEnabled;
-            user.BindSessionToIp = staged.BindSessionToIp;
-
-            await LoginGuardStore.ReplaceRulesAsync(_context, user.Id, staged, cancellationToken);
-
-            _logger.LogInformation(
+        private void LogGuardChanged(User account, NormalizedLoginGuard guard)
+            => _logger.LogInformation(
                 "Set the login guard of {Username}: protection {Protection}, session binding " +
                 "{Binding}, {Ips} address(es), country {Country}, provider AS{Asn}.",
-                user.Username,
-                staged.GeoProtectionEnabled ? "on" : "off",
-                staged.BindSessionToIp ? "on" : "off",
-                staged.AllowedIps.Length,
-                staged.AllowedCountry ?? "any",
-                staged.AllowedAutonomousSystemNumber?.ToString(CultureInfo.InvariantCulture) ?? "any");
-        }
+                account.Username,
+                guard.GeoProtectionEnabled ? "on" : "off",
+                guard.BindSessionToIp ? "on" : "off",
+                guard.AllowedIps.Length,
+                guard.AllowedCountry ?? "any",
+                guard.AllowedAutonomousSystemNumber?.ToString(CultureInfo.InvariantCulture) ?? "any");
 
         /// <summary>
         /// Whether the anti-lock check is skipped for this address. Same rule as on the
@@ -913,28 +944,6 @@ namespace Fluxy.Application.Services.Profile
                 clientAddress);
 
             return true;
-        }
-
-        /// <summary>
-        /// The permissions of the group an account points at, read from the rows the include
-        /// already loaded.
-        /// </summary>
-        /// <param name="group">The group the account belongs to, or null when it has none.</param>
-        /// <returns>
-        /// The grants of that group, or an empty set when the navigation was not loaded. An
-        /// account whose group could not be read is granted nothing, which is the safe answer
-        /// for a field whose only job is to draw buttons - the server refuses either way.
-        /// </returns>
-        private static IReadOnlySet<UserPermission> ReadPermissions(UserGroupEntity? group)
-        {
-            if (group?.Permissions is null)
-            {
-                return new HashSet<UserPermission>();
-            }
-
-            return group.Permissions
-                .Select(grant => grant.Permission)
-                .ToHashSet();
         }
 
         /// <summary>

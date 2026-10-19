@@ -1,8 +1,6 @@
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
-using Fluxy.DataAccess.Context;
-using Fluxy.DataAccess.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -31,7 +29,8 @@ namespace Fluxy.Application.Services.Registration
         /// <summary>The unique index making an email address unique.</summary>
         private const string EmailIndexName = "IX_users_email";
 
-        private readonly FluxyDbContext _context;
+        private readonly IUserRepository _users;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IEmailSender _emailSender;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
@@ -40,7 +39,8 @@ namespace Fluxy.Application.Services.Registration
         /// <summary>
         /// Initializes a new instance of the <see cref="RegistrationService"/> class.
         /// </summary>
-        /// <param name="context">Context holding the account.</param>
+        /// <param name="users">Repository holding the accounts.</param>
+        /// <param name="unitOfWork">Commits one registration step as one save.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
@@ -49,13 +49,15 @@ namespace Fluxy.Application.Services.Registration
         /// </param>
         /// <param name="logger">Logger the security relevant steps are reported to.</param>
         public RegistrationService(
-            FluxyDbContext context,
+            IUserRepository users,
+            IUnitOfWork unitOfWork,
             IEmailSender emailSender,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
             ILogger<RegistrationService> logger)
         {
-            _context = context;
+            _users = users;
+            _unitOfWork = unitOfWork;
             _emailSender = emailSender;
             _options = options;
             _timeProvider = timeProvider;
@@ -100,15 +102,17 @@ namespace Fluxy.Application.Services.Registration
 
             var options = _options.CurrentValue;
 
-            var byUsername = await _context.Users
-                .FirstOrDefaultAsync(user => user.Username == username, cancellationToken);
+            var byUsername = await _users.FindForRegistrationByUsernameAsync(
+                username,
+                cancellationToken);
 
             // The address is matched on the normalized value only. The column is compared case
             // sensitively, so storing the normalized value is what keeps "Admin@example.com"
             // from sitting next to "admin@example.com" as a second free address on the same
             // mailbox.
-            var byEmail = await _context.Users
-                .FirstOrDefaultAsync(user => user.Email == email, cancellationToken);
+            var byEmail = await _users.FindForRegistrationByEmailAsync(
+                email,
+                cancellationToken);
 
             var now = _timeProvider.GetUtcNow();
             var code = OneTimeCode.Generate(options.CodeLength);
@@ -118,9 +122,21 @@ namespace Fluxy.Application.Services.Registration
             // replaced, the password is the one just submitted, and a fresh message goes out. A
             // finished account is never touched, because resetting its password from a public
             // form would be an account takeover.
-            if (TryReusePending(byUsername, username, email, password, code, codeHash, options, now)
-                || TryReusePending(byEmail, username, email, password, code, codeHash, options, now))
+            var reusable = TryReusePending(byUsername, username, email)
+                ? byUsername
+                : TryReusePending(byEmail, username, email)
+                    ? byEmail
+                    : null;
+
+            if (reusable is not null)
             {
+                await _users.UpdatePendingRegistrationAsync(
+                    reusable.Id,
+                    BCrypt.Net.BCrypt.HashPassword(password),
+                    codeHash,
+                    now.Add(options.CodeLifetime),
+                    cancellationToken);
+
                 await SaveAsync(cancellationToken);
 
                 return await DeliverAsync(email, username, code, rowPersisted: true, cancellationToken);
@@ -134,20 +150,22 @@ namespace Fluxy.Application.Services.Registration
                 };
             }
 
-            _context.Users.Add(new UserEntity
-            {
-                Username = username,
-                Email = email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+            await _users.AddAsync(
+                new NewAccount
+                {
+                    Username = username,
+                    Email = email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
 
-                // The base clients group, not a level: a fresh account arrives with the
-                // group every client belongs to, and everything about what it may do follows
-                // from the group rather than from anything written on this row.
-                GroupId = BaseUserGroups.Clients,
-                Status = UserStatus.Unregistered,
-                RegistrationCodeHash = codeHash,
-                RegistrationCodeExpiresAt = now.Add(options.CodeLifetime)
-            });
+                    // The base clients group, not a level: a fresh account arrives with the
+                    // group every client belongs to, and everything about what it may do follows
+                    // from the group rather than from anything written on this row.
+                    GroupId = BaseUserGroups.Clients,
+                    Status = UserStatus.Unregistered,
+                    RegistrationCodeHash = codeHash,
+                    RegistrationCodeExpiresAt = now.Add(options.CodeLifetime)
+                },
+                cancellationToken);
 
             await SaveAsync(cancellationToken);
 
@@ -177,12 +195,10 @@ namespace Fluxy.Application.Services.Registration
                 };
             }
 
-            var user = await _context.Users
-                .Include(entry => entry.Group)
-                .FirstOrDefaultAsync(entry => entry.Email == normalized, cancellationToken);
+            var user = await _users.FindEditableByEmailAsync(normalized, cancellationToken);
 
-            if (user is null || user.Status is not UserStatus.Unregistered
-                || user.RegistrationCodeHash is null)
+            if (user is null || user.RowStatus is not UserStatus.Unregistered
+                || user.Account.RegistrationCodeHash is null)
             {
                 // Reported exactly like a wrong code, so the endpoint does not confirm which
                 // addresses have an account. There is nothing here worth a log line either: a
@@ -197,7 +213,7 @@ namespace Fluxy.Application.Services.Registration
             // value - so verifying a code costs as much as producing one. That is the point of
             // the algorithm, and it is why the endpoint has to be throttled rather than left
             // open as a free way to make the server do work.
-            if (!BCrypt.Net.BCrypt.Verify(trimmedCode, user.RegistrationCodeHash))
+            if (!BCrypt.Net.BCrypt.Verify(trimmedCode, user.Account.RegistrationCodeHash))
             {
                 return new RegistrationOutcome
                 {
@@ -205,7 +221,8 @@ namespace Fluxy.Application.Services.Registration
                 };
             }
 
-            if (user.RegistrationCodeExpiresAt is not { } expiresAt || _timeProvider.GetUtcNow() > expiresAt)
+            if (user.Account.RegistrationCodeExpiresAt is not { } expiresAt
+                || _timeProvider.GetUtcNow() > expiresAt)
             {
                 return new RegistrationOutcome
                 {
@@ -215,17 +232,27 @@ namespace Fluxy.Application.Services.Registration
 
             // The code is spent either way. An expired one is cleared so a later confirmation
             // reports "no pending code" rather than the same expiry forever.
-            user.Status = UserStatus.Registered;
-            user.RegisteredAt = _timeProvider.GetUtcNow();
-            user.RegistrationCodeHash = null;
-            user.RegistrationCodeExpiresAt = null;
+            var registeredAt = _timeProvider.GetUtcNow();
+
+            await _users.ConfirmRegistrationAsync(
+                user.Account.Id,
+                registeredAt,
+                cancellationToken);
 
             await SaveAsync(cancellationToken);
 
+            var confirmed = user.Account with
+            {
+                Status = UserStatusComposition.Combine(UserStatus.Registered, user.GroupStatus),
+                RegisteredAt = registeredAt,
+                RegistrationCodeHash = null,
+                RegistrationCodeExpiresAt = null
+            };
+
             _logger.LogInformation(
                 "Confirmed the registration of {Username}. The account is now {Status}.",
-                user.Username,
-                user.Status);
+                confirmed.Username,
+                confirmed.Status);
 
             return new RegistrationOutcome
             {
@@ -234,43 +261,27 @@ namespace Fluxy.Application.Services.Registration
                 // The account is handed back rather than looked up again by the transport layer.
                 // Proving a mailbox was never a right to name an account, and re-reading the row
                 // by the address the visitor typed would make that string the credential.
-                ConfirmedAccount = user.ToModel()
+                ConfirmedAccount = confirmed
             };
         }
 
         /// <summary>
-        /// Whether an existing row may be taken over by this request, and prepares it when so.
+        /// Whether an existing row may be taken over by this request.
         /// </summary>
-        /// <returns>True when the row was prepared and has to be saved.</returns>
+        /// <returns>True when the row is an unfinished registration of these values.</returns>
         private static bool TryReusePending(
-            UserEntity? existing,
+            StoredAccount? existing,
             string username,
-            string email,
-            string password,
-            string code,
-            string codeHash,
-            RegistrationOptions options,
-            DateTimeOffset now)
-        {
-            if (existing is null
-                || existing.Status is not UserStatus.Unregistered
-                || existing.Username != username
-                || existing.Email != email)
-            {
-                return false;
-            }
-
-            existing.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-            existing.RegistrationCodeHash = codeHash;
-            existing.RegistrationCodeExpiresAt = now.Add(options.CodeLifetime);
-
-            return true;
-        }
+            string email)
+            => existing is not null
+                && existing.RowStatus is UserStatus.Unregistered
+                && existing.Username == username
+                && existing.Email == email;
 
         /// <summary>
         /// Whether a row blocks this request because it holds one of the two taken values.
         /// </summary>
-        private static bool IsTaken(UserEntity? existing, string value)
+        private static bool IsTaken(StoredAccount? existing, string value)
             => existing is not null
                 && (existing.Username == value || existing.Email == value);
 
@@ -360,7 +371,7 @@ namespace Fluxy.Application.Services.Registration
         {
             try
             {
-                await _context.SaveChangesCheckedAsync(cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
             }
             catch (UniqueViolationException exception)
                 when (exception.IsConstraint(UsernameIndexName)
