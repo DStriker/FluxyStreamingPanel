@@ -12,7 +12,7 @@ namespace Fluxy.DataAccess.Infrastructure
     /// than by a second configuration the host would have to keep in step. This is called once
     /// at startup, before the host begins serving.
     /// </remarks>
-    public sealed class DatabaseInitializer : IDatabaseInitializer
+    internal sealed class DatabaseInitializer : IDatabaseInitializer
     {
         private readonly FluxyDbContext _context;
 

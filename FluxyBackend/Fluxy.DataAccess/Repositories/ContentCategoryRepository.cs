@@ -15,7 +15,7 @@ namespace Fluxy.DataAccess.Repositories
     /// deletion leaves a gap and a raced create can share a position; without them the database
     /// is free to answer a different order on every read.
     /// </remarks>
-    public sealed class ContentCategoryRepository : IContentCategoryRepository
+    internal sealed class ContentCategoryRepository : IContentCategoryRepository
     {
         private readonly FluxyDbContext _context;
 

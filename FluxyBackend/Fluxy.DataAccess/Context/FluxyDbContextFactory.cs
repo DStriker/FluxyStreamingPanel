@@ -14,7 +14,7 @@ namespace Fluxy.DataAccess.Context
     /// use the real one when a migration has to talk to the database, for example with
     /// <c>dotnet ef database update</c>.
     /// </remarks>
-    public sealed class FluxyDbContextFactory : IDesignTimeDbContextFactory<FluxyDbContext>
+    internal sealed class FluxyDbContextFactory : IDesignTimeDbContextFactory<FluxyDbContext>
     {
         /// <summary>Configuration key the connection string is read from, in environment variable form.</summary>
         public const string ConnectionStringVariable = "ConnectionStrings__Postgres";

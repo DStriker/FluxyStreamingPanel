@@ -8,7 +8,7 @@ namespace Fluxy.DataAccess.Context
     /// Saving extensions for <see cref="FluxyDbContext"/>: the one entry point through which
     /// every write in this solution goes.
     /// </summary>
-    public static class DbContextExtensions
+    internal static class DbContextExtensions
     {
         /// <summary>
         /// Saves every staged change, turning the one database refusal the application

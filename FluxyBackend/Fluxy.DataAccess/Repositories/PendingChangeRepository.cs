@@ -15,7 +15,7 @@ namespace Fluxy.DataAccess.Repositories
     /// keeps interpreting that refusal. This class does not catch it, because only the service
     /// knows which refusal is a race and which one is a bug.
     /// </remarks>
-    public sealed class PendingChangeRepository : IPendingChangeRepository
+    internal sealed class PendingChangeRepository : IPendingChangeRepository
     {
         private readonly FluxyDbContext _context;
 

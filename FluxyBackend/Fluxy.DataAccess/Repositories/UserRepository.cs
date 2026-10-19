@@ -17,7 +17,7 @@ namespace Fluxy.DataAccess.Repositories
     /// built without it would have to invent those three values. The standing read is the one
     /// exception, and it projects instead of materializing so no entity exists to map.
     /// </remarks>
-    public sealed class UserRepository : IUserRepository
+    internal sealed class UserRepository : IUserRepository
     {
         private readonly FluxyDbContext _context;
 

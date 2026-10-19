@@ -20,9 +20,9 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 - Single branch, commit directly. Don't open branches or PRs.
 - `git` 2.43.0 is on PATH via the **user** PATH entry `C:\Users\user\Tools\Git\cmd` (a copy of the portable git that ships inside `C:\Program Files\BeefLang\bin\Git`; `msys64` has no git). It works on the repo one level up. New shells pick it up; a shell started before the change needs a restart.
 
-## Intended architecture — the layers are wired, the API layer is still thin
+## Intended architecture — the layers are isolated
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/AuditableEntity` and `Models/Users/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations and the migrations, `Fluxy.Application` holds `Services/` (the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `Abstractions/` (including `Repositories/`) and `Models/<Feature>/` (the business model), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `Services/` (business rules, the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -33,11 +33,11 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 ```
 
 - **Fluxy.API** — controllers, request/response DTOs (contracts), and the HTTP concerns: DI wiring, middleware, options, security handlers.
-- **Fluxy.Application** — services and business logic. References Core **and** DataAccess.
+- **Fluxy.Application** — services and business logic. References Core **only**; it has no Entity Framework package and cannot see `Fluxy.DataAccess`.
 - **Fluxy.Core** — immutable business models and interfaces. Depends on nothing.
-- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/`, and the planned `Repositories/` (data-access logic). Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
+- **Fluxy.DataAccess** — PostgreSQL infrastructure: `Context/FluxyDbContext.cs` + `Context/FluxyDbContextFactory.cs`, `ServiceCollectionExtensions.cs` (`AddDataAccess`), `Entities/`, `Configurations/` (table configs), `Migrations/`, `Repositories/` (data access behind the Core interfaces) and `Infrastructure/` (`UnitOfWork`, `DatabaseInitializer`). Empty folders are declared explicitly as `<Folder Include>` in the csproj, because empty folders are invisible to git.
 
-**The graph above is already wired in the csproj files** — add a class to a layer and it is visible to the consumers immediately, no `ProjectReference` editing needed.
+**The graph above is wired in the csproj files** — add a class to a layer and it is visible to the consumers named by the arrows, not to the layer above them. Adding `Application → DataAccess` back would defeat the isolation this split exists for.
 
 **The API layer is organised by area, not by file kind.** The tree and the rule for where a new type goes:
 
@@ -66,15 +66,25 @@ Fluxy.API/
 - **`SuppressMapClientErrors = true` is what lets 415 reach the envelope.** With `[ApiController]`, MVC otherwise turns the bodyless `UnsupportedMediaTypeResult` into a `ProblemDetails` body before `UseStatusCodePages` can see it. Suppressing that mapping leaves the result bodyless; the status pages then describe 404/405/415, while a controller that has something to say still returns its own `ObjectResult`.
 - **The status filter is deliberate.** `UseStatusCodePages` only touches a response with no body at all, and the explicit 404/405/415 mapping leaves every `auth_required`, `permission_denied` and feature-level `*_not_found` body exactly as its owner wrote it. A 404 from a real action is still `user_not_found` / `session_not_found`, not the generic `not_found`.
 
-## Interfaces belong in Core, implementations in Application
+## Interfaces belong in Core, implementations in their layer
 
-**Every business-logic interface lives in `Fluxy.Core`. Every implementation lives in `Fluxy.Application`.** This is not a new convention being invented — `IUserSeeder` already follows it, and so does everything added since.
+**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/Abstractions/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/Abstractions/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. `IUnitOfWork` and `IDatabaseInitializer` stay directly under `Fluxy.Core/Abstractions/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
 
-The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and the API csproj never names a concrete implementation type. `Program.cs` wires them together and is the only place where an interface and a class meet.
+The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and `Program.cs` wires it to an implementation. `Fluxy.API` also references `Fluxy.DataAccess` so it can call `AddDataAccess`/`AddRedis`, but it never names a repository class, a `DbContext` or any other EF type.
 
-Why it matters here: it keeps the dependency graph honest. Core depends on nothing, Application depends on Core and DataAccess, API depends on Core and Application. If an interface leaked into DataAccess, the API would be able to reach infrastructure abstractions directly and the layering would stop meaning anything.
+Why it matters here: it keeps the dependency graph honest. Core depends on nothing, Application depends on Core only, DataAccess depends on Core, and API depends on Application and DataAccess. If a repository interface leaked into DataAccess, the API could reach infrastructure abstractions directly and the layering would stop meaning anything.
 
-**Watch out for the MSB3277 trap.** Any new project that references `Fluxy.DataAccess` and touches EF types must explicitly pin `Microsoft.EntityFrameworkCore.Relational` 10.0.12 (see the PostgreSQL section below for the full explanation). The registration service in `Fluxy.Application` does this already.
+### Repository rules
+
+- **A repository speaks Core models.** Reads return Core models or page models (`AdminUserPage`, `VideoStreamDetail`, …); writes are intent methods (`SetStatusAsync`, `ReplaceSourcesAsync`, `RemoveAsync`). An `IQueryable` never leaves DataAccess.
+- **Business rules stay in Application.** Role visibility, status transitions, anti-lock, which permission a write needs, and the meaning of a uniqueness conflict are decided by the service. The repository owns SQL shape, tracking, paging and the storage of rows.
+- **One `SaveChangesAsync` per business operation**, through `IUnitOfWork`. Repositories stage changes; the service calls the single save after every rule has passed. A new group and its permission rows, or an account and its guard rows, therefore commit together.
+- **`ExecuteUpdate`/`ExecuteDelete` are immediate** and are not rolled back by the unit of work. Each such call says so in remarks; it is used where the old code also executed immediately (guard-rule replacement, token revocation, cleanup).
+- **Unique violations are matched by the exact constraint name** (`IX_user_groups_name`, `IX_content_categories_content_type_name`, `IX_video_streams_category_id_name`, …) and mapped to their feature's `already_exists` outcome. Any other violation is rethrown — a future bug must not be reported as a plausible name conflict.
+- **Paging, search and sort are server side** in the repository because `total` must be counted under the same predicate; silently applying them after paging would make the pager lie.
+- **`FluxyDbContext` is `internal`.** The repository classes and `DbContextExtensions` are internal too, so nothing outside DataAccess can name the persistence model. The design-time factory is internal as well; `dotnet ef migrations list --no-connect` still discovers it (verified).
+
+**Watch out for the MSB3277 trap.** Any project that references `Fluxy.DataAccess` builds against EF Core 10.0.12 but only receives Relational 10.0.4 transitively, because the 10.0.12 that `Microsoft.EntityFrameworkCore.Design` brings is `PrivateAssets=all`. Such a project must pin `Microsoft.EntityFrameworkCore.Relational` 10.0.12 explicitly (see the PostgreSQL section below). `Fluxy.API` is that project and carries the pin; `Fluxy.Application` deliberately does not reference DataAccess, so it needs neither the reference nor the pin.
 
 ## Auth is wired: JWT in cookies, rotation on disk and Redis
 
@@ -356,11 +366,11 @@ launch profiles auto-detected by the harness — 45 checks, all passing):
 The app talks to the compose postgres, to the already existing `fluxy` database, through EF Core:
 
 - `Fluxy.DataAccess` references `Npgsql.EntityFrameworkCore.PostgreSQL` **10.0.3**, `Microsoft.EntityFrameworkCore` **10.0.12** (pinned explicitly) and `Microsoft.EntityFrameworkCore.Design` **10.0.12** (`PrivateAssets=all`). The explicit EF reference is not redundant: the provider only requires EF `>= 10.0.4`, so without it NuGet resolved 10.0.4 against the 10.0.12 of Design and the build failed with **MSB3277**. Never use the 11.x line of the provider — it targets EF Core 11.
-- **The same MSB3277 trap now applies to `Fluxy.Application`**, which uses `AnyAsync`/`MigrateAsync`. Because Design is `PrivateAssets=all`, the 10.0.12 it drags in does not flow, so NuGet resolved Relational 10.0.4 there while `Fluxy.DataAccess.dll` wanted 10.0.12. Fixed by pinning `Microsoft.EntityFrameworkCore.Relational` **10.0.12** explicitly in `Fluxy.Application.csproj` (Relational brings Core 10.0.12 with it). **Any new project that references `Fluxy.DataAccess` and touches EF types must do the same**, otherwise it builds with MSB3277 and then throws a confusing `ServiceProvider` failure at runtime.
-- `Fluxy.DataAccess/Context/FluxyDbContext.cs` — plain `DbContext`, one `DbContextOptions<FluxyDbContext>` constructor, `DbSet<UserEntity> Users`, both `SaveChanges` overloads stamping the audit columns, and `OnModelCreating` that applies all `IEntityTypeConfiguration` from its own assembly and then the entity conventions (see "Domain rules" below). The model is no longer empty: it holds the `users` entity.
-- `Fluxy.DataAccess/Context/FluxyDbContextFactory.cs` — `IDesignTimeDbContextFactory`, so `dotnet ef` works without starting the application. The connection string only selects the provider and is never used to connect; it reads `ConnectionStrings__Postgres` and otherwise falls back to a placeholder. Set that variable for `dotnet ef database update`, otherwise the command would try the placeholder credentials.
-- `Fluxy.DataAccess/ServiceCollectionExtensions.cs` — `services.AddDataAccess(configuration)` reads `ConnectionStrings:Postgres` and calls `UseNpgsql`. It **throws `InvalidOperationException` at startup** when the connection string is missing, with a message naming the three ways to provide it. That is the intended fail-fast, not a bug to silence.
-- `Program.cs` calls `builder.Services.AddDataAccess(builder.Configuration)` — the API layer never names Npgsql or EF Core.
+- **The MSB3277 trap now belongs to `Fluxy.API`.** Because Design is `PrivateAssets=all`, the Relational 10.0.12 it drags into DataAccess does not flow to consumers, so the API would resolve Relational 10.0.4 against the 10.0.12 of `Fluxy.DataAccess.dll`. Fixed by pinning `Microsoft.EntityFrameworkCore.Relational` **10.0.12** explicitly in `Fluxy.API.csproj`. `Fluxy.Application` references Core only and has no EF package at all. **Any new project that references `Fluxy.DataAccess` must carry the same pin**, otherwise it builds with MSB3277 and then throws a confusing `ServiceProvider` failure at runtime.
+- `Fluxy.DataAccess/Context/FluxyDbContext.cs` — plain **internal** `DbContext`, one `DbContextOptions<FluxyDbContext>` constructor, its own `DbSet`s, both `SaveChanges` overloads stamping the audit columns, and `OnModelCreating` that applies all `IEntityTypeConfiguration` from its own assembly and then the entity conventions (see "Domain rules" below). Internal is what makes "Application cannot reach EF" a compiler rule rather than a habit.
+- `Fluxy.DataAccess/Context/FluxyDbContextFactory.cs` — internal `IDesignTimeDbContextFactory`, so `dotnet ef` works without starting the application, and still discovers the factory when it is not public. The connection string only selects the provider and is never used to connect; it reads `ConnectionStrings__Postgres` and otherwise falls back to a placeholder. Set that variable for `dotnet ef database update`, otherwise the command would try the placeholder credentials.
+- `Fluxy.DataAccess/ServiceCollectionExtensions.cs` — `services.AddDataAccess(configuration)` reads `ConnectionStrings:Postgres`, calls `UseNpgsql`, and registers every repository plus `IUnitOfWork` and `IDatabaseInitializer` Scoped. It **throws `InvalidOperationException` at startup** when the connection string is missing, with a message naming the three ways to provide it. That is the intended fail-fast, not a bug to silence.
+- `Program.cs` calls `builder.Services.AddDataAccess(builder.Configuration)` — the API layer never names Npgsql or EF Core, and never names a repository implementation.
 
 ### Redis is now connected (StackExchange.Redis 3.3.1)
 

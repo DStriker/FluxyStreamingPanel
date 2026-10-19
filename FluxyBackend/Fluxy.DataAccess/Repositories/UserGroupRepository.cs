@@ -16,7 +16,7 @@ namespace Fluxy.DataAccess.Repositories
     /// the installation stay in the service: they are rules about what the rows mean, not about
     /// how they are read or written.
     /// </remarks>
-    public sealed class UserGroupRepository : IUserGroupRepository
+    internal sealed class UserGroupRepository : IUserGroupRepository
     {
         private readonly FluxyDbContext _context;
 

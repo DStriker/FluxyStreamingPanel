@@ -16,7 +16,7 @@ namespace Fluxy.DataAccess.Repositories
     /// hide that the two questions are separate. The service asks both, in the order it has
     /// always asked them.
     /// </remarks>
-    public sealed class LoginGuardRepository : ILoginGuardRepository
+    internal sealed class LoginGuardRepository : ILoginGuardRepository
     {
         private readonly FluxyDbContext _context;
 

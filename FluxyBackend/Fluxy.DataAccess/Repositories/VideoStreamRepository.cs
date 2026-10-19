@@ -18,7 +18,7 @@ namespace Fluxy.DataAccess.Repositories
     /// remove is a comparison against what the row already holds - and an unloaded collection
     /// reads as empty rather than as "unknown".
     /// </remarks>
-    public sealed class VideoStreamRepository : IVideoStreamRepository
+    internal sealed class VideoStreamRepository : IVideoStreamRepository
     {
         private readonly FluxyDbContext _context;
 

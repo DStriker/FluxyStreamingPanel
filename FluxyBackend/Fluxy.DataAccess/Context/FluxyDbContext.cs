@@ -12,7 +12,7 @@ namespace Fluxy.DataAccess.Context
     /// <c>ServiceCollectionExtensions.AddDataAccess</c>, so this class only
     /// describes the shape of the database and stays provider-agnostic.
     /// </summary>
-    public class FluxyDbContext : DbContext
+    internal sealed class FluxyDbContext : DbContext
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="FluxyDbContext"/> class.

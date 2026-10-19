@@ -16,7 +16,7 @@ namespace Fluxy.DataAccess.Repositories
     /// The one method that returns a whole row is <see cref="FindByHashAsync"/>, because the
     /// rotation that follows has to stamp that same row and link it to its replacement.
     /// </remarks>
-    public sealed class RefreshTokenRepository : IRefreshTokenRepository
+    internal sealed class RefreshTokenRepository : IRefreshTokenRepository
     {
         private readonly FluxyDbContext _context;
 

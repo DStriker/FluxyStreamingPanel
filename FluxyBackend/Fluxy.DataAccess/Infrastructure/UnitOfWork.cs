@@ -12,7 +12,7 @@ namespace Fluxy.DataAccess.Infrastructure
     /// tracker is cleared before the exception leaves. A service that catches the refusal can
     /// therefore continue with a clean tracker instead of retrying the rows that were refused.
     /// </remarks>
-    public sealed class UnitOfWork : IUnitOfWork
+    internal sealed class UnitOfWork : IUnitOfWork
     {
         private readonly FluxyDbContext _context;
 
