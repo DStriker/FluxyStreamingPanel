@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Utils;
 
 namespace Fluxy.API.Contracts.Users
 {

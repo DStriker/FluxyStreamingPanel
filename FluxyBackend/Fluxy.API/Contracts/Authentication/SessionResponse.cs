@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
 
 namespace Fluxy.API.Contracts.Authentication
 {

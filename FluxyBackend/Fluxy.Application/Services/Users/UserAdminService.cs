@@ -1,10 +1,16 @@
 using Fluxy.Application.Services.GeoIp;
 using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Users;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Users.Commands;
+using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Interfaces;
+using Fluxy.Core.Users.Models;
+using Fluxy.Core.Users.Outcomes;
+using Fluxy.Core.Users.ReadModels;
+using Fluxy.Core.Users.Repositories;
+using Fluxy.Core.Users.Utils;
 using Microsoft.Extensions.Logging;
 
 namespace Fluxy.Application.Services.Users

@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
 using Fluxy.API.Contracts.Common;
 using Microsoft.AspNetCore.Http;
 

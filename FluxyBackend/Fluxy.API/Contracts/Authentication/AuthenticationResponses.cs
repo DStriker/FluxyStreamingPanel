@@ -1,6 +1,6 @@
 using Fluxy.API.Contracts.Common;
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
 using Microsoft.AspNetCore.Http;
 
 namespace Fluxy.API.Contracts.Authentication

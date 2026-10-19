@@ -1,4 +1,5 @@
 using Fluxy.Core.Models.Content;
+using Fluxy.Core.Users.Interfaces;
 
 namespace Fluxy.Core.Abstractions
 {

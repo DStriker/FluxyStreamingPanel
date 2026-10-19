@@ -13,6 +13,7 @@ using Fluxy.Core.Abstractions;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Users.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 

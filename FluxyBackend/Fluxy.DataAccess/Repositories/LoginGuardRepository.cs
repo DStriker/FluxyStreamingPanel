@@ -1,6 +1,8 @@
 using System.Globalization;
-using Fluxy.Core.Abstractions.Repositories;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Commands;
+using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Models;
+using Fluxy.Core.Users.Repositories;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;

@@ -1,7 +1,7 @@
 using Fluxy.Core.Email.Commands;
 using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Models;
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

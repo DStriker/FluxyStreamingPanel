@@ -3,6 +3,7 @@ using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Users.Repositories;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Infrastructure;
 using Fluxy.DataAccess.Infrastructure.GeoIp;

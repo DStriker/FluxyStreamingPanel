@@ -27,7 +27,7 @@ namespace Fluxy.Core.Models.Authentication
         public const string Name = "name";
 
         /// <summary>
-        /// Role of the account, carried as the numeric value of <see cref="Fluxy.Core.Models.Users.UserRole"/>.
+        /// Role of the account, carried as the numeric value of <see cref="Fluxy.Core.Users.Enums.UserRole"/>.
         /// </summary>
         public const string Role = "role";
 

@@ -1,5 +1,5 @@
 using Fluxy.Core.Models.Streams;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Models;
 
 namespace Fluxy.API.Contracts.Streams
 {

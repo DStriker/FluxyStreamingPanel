@@ -1,5 +1,5 @@
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Utils;
 
 namespace Fluxy.Core.Models.Streams
 {

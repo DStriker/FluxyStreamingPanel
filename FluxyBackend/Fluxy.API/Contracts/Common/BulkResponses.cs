@@ -1,6 +1,7 @@
-using Fluxy.Core.Models.Users;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
+using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Outcomes;
 
 namespace Fluxy.API.Contracts.Common
 {

@@ -3,6 +3,7 @@ using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.GeoIp.ReadModels;
 using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Users.Repositories;
 
 namespace Fluxy.Application.Services.Authentication
 {

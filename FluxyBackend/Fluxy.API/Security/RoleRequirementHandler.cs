@@ -110,7 +110,7 @@ namespace Fluxy.API.Security
         /// The role the token carries, or null when it carries none or carries something that is
         /// not a role.
         /// </summary>
-        private static Fluxy.Core.Models.Users.UserRole? ReadRole(System.Security.Claims.ClaimsPrincipal user)
+        private static Fluxy.Core.Users.Enums.UserRole? ReadRole(System.Security.Claims.ClaimsPrincipal user)
         {
             var value = user.FindFirst(TokenClaimTypes.Role)?.Value
                 ?? user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
@@ -119,8 +119,8 @@ namespace Fluxy.API.Security
             // than as the nearest member. Casting an undefined number into the enum would make
             // a token signed with a nonsense role pass a check it has no business passing.
             return int.TryParse(value, out var role)
-                && Enum.IsDefined(typeof(Fluxy.Core.Models.Users.UserRole), role)
-                ? (Fluxy.Core.Models.Users.UserRole)role
+                && Enum.IsDefined(typeof(Fluxy.Core.Users.Enums.UserRole), role)
+                ? (Fluxy.Core.Users.Enums.UserRole)role
                 : null;
         }
     }

@@ -21,12 +21,12 @@ namespace Fluxy.API.Security
         /// Initializes a new instance of the <see cref="RoleRequirement"/> class.
         /// </summary>
         /// <param name="role">Role the endpoint accepts, and only that role.</param>
-        public RoleRequirement(Fluxy.Core.Models.Users.UserRole role)
+        public RoleRequirement(Fluxy.Core.Users.Enums.UserRole role)
         {
             Role = role;
         }
 
         /// <summary>Role the endpoint accepts.</summary>
-        public Fluxy.Core.Models.Users.UserRole Role { get; }
+        public Fluxy.Core.Users.Enums.UserRole Role { get; }
     }
 }

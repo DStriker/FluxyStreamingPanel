@@ -1,4 +1,5 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Commands;
+using Fluxy.Core.Users.Models;
 
 namespace Fluxy.Application.Services.GeoIp
 {

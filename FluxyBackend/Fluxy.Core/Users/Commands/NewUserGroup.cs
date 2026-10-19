@@ -1,0 +1,50 @@
+using Fluxy.Core.Users.Enums;
+
+namespace Fluxy.Core.Users.Commands
+{
+    /// <summary>
+    /// Everything an admin supplies to create a group in one request.
+    /// </summary>
+    /// <remarks>
+    /// Permissions travel as a set rather than five booleans because that is what they are:
+    /// one value the group either holds or does not, whose members grow as the system does.
+    /// A permission of a role the group does not have is dropped rather than refused, so
+    /// saving a group can never write a grant that means nothing.
+    /// </remarks>
+    public sealed record NewUserGroup
+    {
+        /// <summary>
+        /// Identifier the row must carry, or null to let the store generate one.
+        /// </summary>
+        /// <remarks>
+        /// The startup seeder is the reason this is settable: the three base groups have fixed
+        /// identifiers that the migration, the seeder and the delete guard all name, so a row it
+        /// creates cannot be given a fresh one. Every other caller leaves this null.
+        /// </remarks>
+        public Guid? Id { get; init; }
+
+        /// <summary>Name the group gets. Trimmed, compared case sensitively.</summary>
+        public required string Name { get; init; }
+
+        /// <summary>Access level every member of this group will hold.</summary>
+        public required UserRole Role { get; init; }
+
+        /// <summary>State the group starts in.</summary>
+        public required UserStatus Status { get; init; }
+
+        /// <summary>Permissions the group grants, filtered to what <see cref="Role"/> allows.</summary>
+        public IReadOnlySet<UserPermission>? Permissions { get; init; }
+    }
+
+    /// <summary>
+    /// What an admin changes about an existing group. Every property is optional, and an
+    /// absent one means "leave it alone".
+    /// </summary>
+    /// <remarks>
+    /// That is what makes one record serve the form and the rename a row offers, and it is
+    /// also what stops a request from clearing a value simply because it forgot to include
+    /// it. Two cases are the service's rather than the body's: a base group accepts
+    /// <see cref="Name"/> and nothing else, and a role change re-checks every permission the
+    /// group still holds.
+    /// </remarks>
+}

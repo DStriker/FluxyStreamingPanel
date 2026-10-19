@@ -1,4 +1,4 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Users.Interfaces;
 
 namespace Fluxy.Core.Persistence.Interfaces
 {

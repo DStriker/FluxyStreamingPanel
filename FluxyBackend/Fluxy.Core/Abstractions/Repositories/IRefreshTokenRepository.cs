@@ -1,6 +1,6 @@
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.Users;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Users.Enums;
 
 namespace Fluxy.Core.Abstractions.Repositories
 {

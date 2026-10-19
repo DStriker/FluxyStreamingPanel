@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Utils;
 using System.ComponentModel.DataAnnotations;
 
 namespace Fluxy.API.Contracts.Profile

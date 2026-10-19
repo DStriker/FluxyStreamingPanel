@@ -1,5 +1,5 @@
-using Fluxy.Core.Models.Users;
 using Fluxy.Core.Persistence.Base;
+using Fluxy.Core.Users.Enums;
 
 namespace Fluxy.DataAccess.Entities
 {

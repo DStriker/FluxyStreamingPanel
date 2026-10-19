@@ -2,7 +2,7 @@ using Fluxy.API.Middleware;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
@@ -137,13 +137,13 @@ namespace Fluxy.API.Extensions
             services.AddAuthorizationBuilder()
                 .AddPolicy(AdminPolicy, policy => policy
                     .RequireAuthenticatedUser()
-                    .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin)))
+                    .AddRequirements(new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin)))
                 .AddPolicy(ResellerPolicy, policy => policy
                     .RequireAuthenticatedUser()
-                    .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Reseller)))
+                    .AddRequirements(new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Reseller)))
                 .AddPolicy(ClientPolicy, policy => policy
                     .RequireAuthenticatedUser()
-                    .AddRequirements(new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Client)))
+                    .AddRequirements(new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Client)))
 
                 // The permission policies. Each one carries *both* requirements, and that is
                 // the whole design: the role stays the base gate, so an endpoint behind one of
@@ -166,27 +166,27 @@ namespace Fluxy.API.Extensions
                 .AddPolicy(ViewAnyUsersPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(
-                            Fluxy.Core.Models.Users.UserPermissionCatalog.ViewingAccounts
+                            Fluxy.Core.Users.Utils.UserPermissionCatalog.ViewingAccounts
                                 .ToArray())))
                 .AddPolicy(EditAnyUsersPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(
-                            Fluxy.Core.Models.Users.UserPermissionCatalog.EditingAccounts
+                            Fluxy.Core.Users.Utils.UserPermissionCatalog.EditingAccounts
                                 .ToArray())))
                 .AddPolicy(ViewUserGroupsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewUserGroups)))
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewUserGroups)))
                 .AddPolicy(EditUserGroupsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditUserGroups)))
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditUserGroups)))
 
                 // The two stream policies are single-key rather than "any of", the way the
                 // group ones are: there is one list of streams and one screen that draws it,
@@ -197,13 +197,13 @@ namespace Fluxy.API.Extensions
                 .AddPolicy(ViewStreamsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.ViewStreams)))
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewStreams)))
                 .AddPolicy(EditStreamsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
-                        new RoleRequirement(Fluxy.Core.Models.Users.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Models.Users.UserPermission.EditStreams)));
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditStreams)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

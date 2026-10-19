@@ -38,7 +38,7 @@ namespace Fluxy.API.Security
         /// named - a requirement with nothing to ask for would succeed for everybody, which is
         /// the one answer it exists to prevent.
         /// </param>
-        public PermissionRequirement(params Fluxy.Core.Models.Users.UserPermission[] permissions)
+        public PermissionRequirement(params Fluxy.Core.Users.Enums.UserPermission[] permissions)
         {
             if (permissions is null || permissions.Length is 0)
             {
@@ -51,6 +51,6 @@ namespace Fluxy.API.Security
         }
 
         /// <summary>Permissions the endpoint demands; any one of them satisfies the requirement.</summary>
-        public IReadOnlyList<Fluxy.Core.Models.Users.UserPermission> Permissions { get; }
+        public IReadOnlyList<Fluxy.Core.Users.Enums.UserPermission> Permissions { get; }
     }
 }

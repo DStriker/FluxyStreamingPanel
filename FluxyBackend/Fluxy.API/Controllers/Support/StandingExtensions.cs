@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
 using Fluxy.API.Security;
 
 namespace Fluxy.API.Controllers.Support

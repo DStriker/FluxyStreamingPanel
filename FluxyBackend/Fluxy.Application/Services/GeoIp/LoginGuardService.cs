@@ -1,7 +1,7 @@
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.GeoIp.ReadModels;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Interfaces;
+using Fluxy.Core.Users.Repositories;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 

@@ -1,4 +1,5 @@
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Models;
 
 namespace Fluxy.Core.Models.Authentication
 {

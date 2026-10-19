@@ -1,5 +1,5 @@
-using Fluxy.Core.Models.Users;
 using Fluxy.Core.Persistence.Base;
+using Fluxy.Core.Users.Utils;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;

@@ -1,6 +1,6 @@
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.Users;
+using Fluxy.Core.Users.Enums;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;

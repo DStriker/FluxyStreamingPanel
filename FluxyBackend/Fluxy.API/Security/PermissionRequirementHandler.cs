@@ -78,7 +78,7 @@ namespace Fluxy.API.Security
                     string.Join(
                         ", ",
                         requirement.Permissions.Select(
-                            Fluxy.Core.Models.Users.UserPermissionCatalog.NameOf)));
+                            Fluxy.Core.Users.Utils.UserPermissionCatalog.NameOf)));
 
                 return;
             }
