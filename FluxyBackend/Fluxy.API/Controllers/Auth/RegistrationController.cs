@@ -9,6 +9,7 @@ using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Security.Models;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Exceptions;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Outcomes;
 using Microsoft.AspNetCore.Antiforgery;

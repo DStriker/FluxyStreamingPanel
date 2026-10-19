@@ -5,6 +5,7 @@ using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Exceptions;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Outcomes;
 using Fluxy.Core.Users.Repositories;
@@ -409,26 +410,6 @@ namespace Fluxy.Application.Services.Registration
                 {Environment.NewLine}-
                 {Environment.NewLine}This is an automated message, please do not reply.
                 """;
-        }
-    }
-
-    /// <summary>
-    /// Raised when a registration lost the race for a value the database requires to be unique.
-    /// </summary>
-    /// <remarks>
-    /// It exists so the transport layer can answer the loser with the same refusal the winner
-    /// would have received, instead of a database error. A sequential check cannot see the race,
-    /// which is why this type exists at all.
-    /// </remarks>
-    public sealed class DuplicateRegistrationException : Exception
-    {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DuplicateRegistrationException"/> class.
-        /// </summary>
-        /// <param name="innerException">The database failure that triggered it.</param>
-        public DuplicateRegistrationException(Exception innerException)
-            : base("The username or the email was taken by a concurrent request.", innerException)
-        {
         }
     }
 }
