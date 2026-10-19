@@ -36,12 +36,11 @@ namespace Fluxy.Core.Abstractions.Repositories
         /// Stages the two switches and replaces the account's allow lists.
         /// </summary>
         /// <remarks>
-        /// The old rows are deleted immediately, because the table has no identity a caller
-        /// reads and replacing the lists is the only write it supports. The new rows and the
-        /// account's switches are then staged for <see cref="IUnitOfWork"/>: one save commits
-        /// them together, so a guard is never half applied. The deletion is not part of that
-        /// transaction - the same accepted trade-off the store has always made - and a failed
-        /// save leaves the account with no lists rather than the old ones.
+        /// The old rows are removed through the change tracker, because the table has no
+        /// identity a caller reads and replacing the lists is the only write it supports. The
+        /// deletion, the new rows and the account's switches are then committed by one
+        /// <see cref="IUnitOfWork.SaveChangesAsync"/> call: together they are one transaction,
+        /// so a guard is never half applied and a failed save leaves the previous guard intact.
         /// </remarks>
         /// <param name="userId">Account whose guard is written.</param>
         /// <param name="guard">Canonical switches and lists to store.</param>

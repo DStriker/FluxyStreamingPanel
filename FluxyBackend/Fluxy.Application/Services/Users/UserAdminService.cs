@@ -221,9 +221,8 @@ namespace Fluxy.Application.Services.Users
 
             // The guard is staged before the one save rather than written by a second one:
             // the account and the lists it starts with are one operation, and a failure on
-            // either must not leave the other committed. The repository's delete of the
-            // previous rules is immediate by design; there are none for a row this request
-            // is still inserting.
+            // either must not leave the other committed. A row this request is still inserting
+            // has no previous rules, so ApplyAsync only stages the new ones.
             if (guard is not null)
             {
                 await _guards.ApplyAsync(userId, guard, cancellationToken);
@@ -444,8 +443,8 @@ namespace Fluxy.Application.Services.Users
             }
 
             // Staged before the one save, so the account and the lists that guard it are one
-            // operation. The repository's delete of the previous rules is immediate by design;
-            // the new rows commit with the rest of this request.
+            // operation. The repository removes the previous rules through the change tracker,
+            // so their deletion and the new rows commit with the rest of this request.
             if (guard is not null)
             {
                 await _guards.ApplyAsync(userId, guard, cancellationToken);

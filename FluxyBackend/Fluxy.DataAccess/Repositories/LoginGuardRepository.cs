@@ -69,13 +69,17 @@ namespace Fluxy.DataAccess.Repositories
             entity.GeoProtectionEnabled = guard.GeoProtectionEnabled;
             entity.BindSessionToIp = guard.BindSessionToIp;
 
-            // Deleted before the new rows are added, so a list that drops a network does not
-            // keep it beside the new one. The table gives every row to exactly one account and
-            // nobody reads a row's identity, which is why this is delete-and-insert rather
-            // than a diff.
-            await _context.LoginGuardRules
+            // Loaded and removed through the change tracker rather than with ExecuteDelete, so
+            // the old rows, the new rows and the account's switches commit in one SaveChanges
+            // transaction. An immediate delete would survive a failed save and could leave a
+            // geo-guarded account with no lists, which means no restriction at all. The table
+            // gives every row to exactly one account and nobody reads a row's identity, which
+            // is why this is delete-and-insert rather than a diff.
+            var existing = await _context.LoginGuardRules
                 .Where(rule => rule.UserId == userId)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+
+            _context.LoginGuardRules.RemoveRange(existing);
 
             foreach (var ip in guard.AllowedIps)
             {
