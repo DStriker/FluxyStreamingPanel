@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)genera
 
 ## Intended architecture — the layers are isolated
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `<Domain>/<Kind>/` — the business model, the contracts and the shared rules, grouped by domain first and by kind second (see "The core layer is organised by domain, then by kind" below), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `Services/` (business rules, the default user seeder) and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
+`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `<Domain>/<Kind>/` — the business model, the contracts and the shared rules, grouped by domain first and by kind second (see "The core layer is organised by domain, then by kind" below), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `<Domain>/<Kind>/` — the business services, the helpers around them and the configuration they read (see "The application layer is organised by domain, then by kind" below), and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -105,9 +105,59 @@ Fluxy.API/
 - **`SuppressMapClientErrors = true` is what lets 415 reach the envelope.** With `[ApiController]`, MVC otherwise turns the bodyless `UnsupportedMediaTypeResult` into a `ProblemDetails` body before `UseStatusCodePages` can see it. Suppressing that mapping leaves the result bodyless; the status pages then describe 404/405/415, while a controller that has something to say still returns its own `ObjectResult`.
 - **The status filter is deliberate.** `UseStatusCodePages` only touches a response with no body at all, and the explicit 404/405/415 mapping leaves every `auth_required`, `permission_denied` and feature-level `*_not_found` body exactly as its owner wrote it. A 404 from a real action is still `user_not_found` / `session_not_found`, not the generic `not_found`.
 
+## The application layer is organised by domain, then by kind
+
+`Fluxy.Application` mirrors the shape of `Fluxy.Core`: the domain is the senior axis, the kind of type is the second one, and the namespace mirrors the folder exactly — `Fluxy.Application.<Domain>.<Kind>`. What the layer holds is what differs: Core holds the model and the contracts, Application holds the services that use them and the helpers around them.
+
+```
+Fluxy.Application/
+  ServiceCollectionExtensions.cs   the assembly's DI surface: AddApplicationServices
+  Authentication/  Services 6 · Utils 2
+  Content/         Services 1
+  Email/           Services 1 · Options 1
+  Security/        Services 1 · Options 1
+  Streams/         Services 1
+  Users/           Services 9 · Utils 8 · Options 1
+```
+
+**The domain is the same domain it is in Core.** A service that ends a session is Authentication even though the row it writes is a refresh token; a service that replaces an account's allow lists is Users even though the answer to the question is GeoIP. The two layers answer the same question in the same place, so a type's domain never depends on the layer it sits in.
+
+**The kinds are three, and each one is decided by what the type is for.**
+
+| Kind | What it holds | The test |
+| --- | --- | --- |
+| `Services/` | the business services | it implements a contract of `Fluxy.Core/<Domain>/Interfaces/` |
+| `Utils/` | the helpers the services share — a normalizer, a policy, a memo, the frame of a message | it is not a business operation: no contract, no outcome |
+| `Options/` | the configuration the services read | it is bound from a configuration section |
+
+**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `AuthenticationService`, `JwtTokenService` and the three session readers all implement an interface of `Fluxy.Core`; the API layer names that interface and never the class. `AccessChecker` is the one service without one of its own — it is a helper the authorization handlers call, not an operation a client asks for — and it sits beside them because it is a service in the ordinary sense.
+
+**A file that is not a service does not live in `Services/`.** That is the rule the kind column above encodes: `CodeMessage` (the frame of a message carrying a code), `DevelopmentGuardBypass` (the rule that lets a local address past the login guard in Development), `GeoIpMemo` (the lookups of one request, one per address), `OneTimeCode`, `EmailNormalizer`, `RegistrationPolicy`, `LoginGuardPolicy`, `LoginGuardNormalizer` and `TimeZonePolicy` are helpers, and a helper in `Services/` is a service that answers nothing.
+
+**Two domains of Core have no folder here, and that is the point.** `GeoIp` — the reader of the `.mmdb` files is a mechanism, and a mechanism belongs to the layer that owns data sources (`Fluxy.DataAccess/Infrastructure/GeoIp/`); the Application layer knows only the `IGeoIpResolver` contract from Core. `Persistence` — the transaction and the database lifecycle are Core contracts implemented in DataAccess, and the Application layer calls `IUnitOfWork` without ever naming a `DbContext`. `Persistence` would also be the wrong word for what the layer does: a service does not persist, it asks for a change to be committed.
+
+**`ServiceCollectionExtensions.cs` sits at the root of the project**, with the namespace `Fluxy.Application`: it is the assembly's DI surface and belongs to no domain. `Program.cs` calls `AddApplicationServices` and nothing else of this layer.
+
+**The two internal collaborators stayed concrete.** `PendingChangeService` and `UserBulkService` are not in Core: they are called by other services of the same layer and answer to no client, so there is no contract for them to implement and no reason for the API to know they exist. `UserBulkService` is the exception that proves the rule — the API *does* call it, so it has a contract of its own (`IUserBulkService`), and `BulkAsync` is no longer a method of `IUserAdminService`. A bulk request names a set a table assembled on screen and answers with an entry per row of that set, which is a different shape from the one outcome per row of the single-account methods; a client asking for the second must not have to know which single-row method it is built on.
+
+## The rules that are written once
+
+The Application layer had four rules written more than once. Each is now written once, and it lives where the rule belongs rather than where it happened to be used.
+
+| Rule | Was | Now |
+| --- | --- | --- |
+| the Development bypass of the login guard | three copies of `BypassesGuard` | `Users/Utils/DevelopmentGuardBypass.cs` |
+| the frame of a message carrying a code | three copies of `BuildCodeBody` | `Users/Utils/CodeMessage.cs` |
+| the memo of the GeoIP lookups of one request | three dictionaries, one per service | `Authentication/Utils/GeoIpMemo.cs` |
+| the shape of a refused write | six `try`/`catch` blocks around `SaveChangesAsync` | `Core/Persistence/Utils/UnitOfWorkExtensions.cs` |
+
+**`TrySaveAsync` is where the rule about unique violations now lives.** The overload without a list of indexes hands the violation back and lets the caller ask `IsConstraint` about the index it knows; the overload that takes the list returns only a violation from one of them and **rethrows anything else**. That is the "a violation from an index the caller does not recognise is not a name conflict" rule of the repository section, written once instead of once per service, and it is why a bug in a list writer cannot be announced as "that name is already taken".
+
+**Two seams came out of the deduplication.** `PendingChangeService` holds the machinery of a change that waits for a one-time code — staging the row, hashing the code, checking a code against the row that holds it, removing the row once it is spent — because the profile change and the password reset were each writing their own copy of those three steps. The flows keep what is theirs: the wording of the message, where it is sent, and what happens after the code is accepted. `PendingCodeStatus` (in `Core/Users/Enums/`) is the verdict of a code, because "wrong", "expired" and "valid" are the same three answers wherever a code is checked.
+
 ## Interfaces belong in Core, implementations in their layer
 
-**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/<Domain>/Interfaces/` and live in `Fluxy.Application/Services/`; persistence interfaces live under `Fluxy.Core/<Domain>/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. The readers of an external data source are the third case: `IGeoIpResolver` lives in `Fluxy.Core/GeoIp/Interfaces/` and its MaxMind implementation in `Fluxy.DataAccess/Infrastructure/GeoIp/`, beside the redis stores. `IUnitOfWork` and `IDatabaseInitializer` live under `Fluxy.Core/Persistence/Interfaces/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
+**Every interface lives in `Fluxy.Core`. The implementation lives in the layer that owns the mechanism.** Business services implement interfaces under `Fluxy.Core/<Domain>/Interfaces/` and live in `Fluxy.Application/<Domain>/Services/`; persistence interfaces live under `Fluxy.Core/<Domain>/Repositories/` and are implemented in `Fluxy.DataAccess/Repositories/`. The readers of an external data source are the third case: `IGeoIpResolver` lives in `Fluxy.Core/GeoIp/Interfaces/` and its MaxMind implementation in `Fluxy.DataAccess/Infrastructure/GeoIp/`, beside the redis stores. `IUnitOfWork` and `IDatabaseInitializer` live under `Fluxy.Core/Persistence/Interfaces/` and are implemented in `Fluxy.DataAccess/Infrastructure/` — they describe a transaction and the database lifecycle, not a repository, and the owner asked for that separation explicitly.
 
 The practical rule: if the API layer needs to *call* something, it references the interface from `Fluxy.Core`, and `Program.cs` wires it to an implementation. `Fluxy.API` also references `Fluxy.DataAccess` so it can call `AddDataAccess`/`AddRedis`/`AddGeoIp`, but it never names a repository class, a `DbContext` or any other EF type.
 
@@ -304,7 +354,7 @@ Layering follows the usual split: `SessionVisit` / `SessionHistoryPage` in
 `Fluxy.Core/Authentication/ReadModels/`, `SessionHistoryLimits` / `SessionSortField` /
 `SessionSortOrder` in `Fluxy.Core/Authentication/Utils/` and `Enums/`,
 `ISessionHistoryService` in `Fluxy.Core/Authentication/Interfaces/`,
-`SessionHistoryService` in `Fluxy.Application/Services/Authentication/` (Scoped, `AsNoTracking`),
+`SessionHistoryService` in `Fluxy.Application/Authentication/Services/` (Scoped, `AsNoTracking`),
 the contracts in `Fluxy.API/Contracts/Sessions/SessionHistoryResponse.cs`, and the action on
 `SessionsController` — the controller that holds every session read and revoke, beside
 `ProfileController`, which owns `GET/PATCH /auth/profile` and `GET /auth/geo/lookup`.
@@ -385,7 +435,7 @@ token level, the opposite question.
 Layering follows the usual split: `ActiveSession` / `ActiveSessionList` in
 `Fluxy.Core/Authentication/ReadModels/`, `IActiveSessionService` in
 `Fluxy.Core/Authentication/Interfaces/`,
-`ActiveSessionService` in `Fluxy.Application/Services/Authentication/` (Scoped,
+`ActiveSessionService` in `Fluxy.Application/Authentication/Services/` (Scoped,
 `AddScoped<IActiveSessionService, ActiveSessionService>()`), `RevokeUserSessionAsync` /
 `RevokeAllExceptCurrentAsync` added to `ITokenService` and implemented in `JwtTokenService`,
 the contracts in `Fluxy.API/Contracts/Sessions/ActiveSessionResponse.cs`, and the three actions on
@@ -495,7 +545,7 @@ Decisions worth not re-litigating:
 
 ### The first administrator
 
-`Fluxy.Application/Services/DefaultUserSeeder.cs`, reached through `AddApplicationServices()` in `Program.cs` and run by `await app.Services.SeedDatabaseAsync()` **before** `app.Run()`.
+`Fluxy.Application/Users/Services/DefaultUserSeeder.cs`, reached through `AddApplicationServices()` in `Program.cs` and run by `await app.Services.SeedDatabaseAsync()` **before** `app.Run()`.
 
 - It calls `Database.MigrateAsync()` first — idempotent, so installing is `docker compose up` plus `dotnet run`, and `dotnet ef database update` is not needed.
 - If any user with `Role = Admin` exists, it does nothing and prints nothing.
@@ -899,7 +949,7 @@ Layering follows the usual split: `AdminUser` / `AdminUserPage` / `AdminUserDeta
 `AdminUserSortField` / `AdminUserSortOrder` in `Fluxy.Core/Users/Enums/`,
 `AdminUserListLimits` in `Fluxy.Core/Users/Utils/`,
 `IUserAdminService` in `Fluxy.Core/Users/Interfaces/`,
-`UserAdminService` in `Fluxy.Application/Services/Users/` (registered Scoped), the shared
+`UserAdminService` in `Fluxy.Application/Users/Services/` (registered Scoped), the shared
 `LoginGuardNormalizer`/`LoginGuardStore` and `TimeZonePolicy` beside it (extracted from
 `ProfileService` so both flows agree on what a valid guard and time zone are), and the contracts
 in `Fluxy.API/Contracts/Users/`.
@@ -1015,7 +1065,7 @@ Layering follows the usual split: `UserGroup` in `Fluxy.Core/Users/Models/`,
 `UserPermission` in `Fluxy.Core/Users/Enums/`,
 `UserGroupListLimits` / `UserPermissionCatalog` / `BaseUserGroups` / `UserStatusComposition` in
 `Fluxy.Core/Users/Utils/`, `IUserGroupService` in `Fluxy.Core/Users/Interfaces/`,
-`UserGroupService` in `Fluxy.Application/Services/Users/` (registered Scoped), the entities and
+`UserGroupService` in `Fluxy.Application/Users/Services/` (registered Scoped), the entities and
 their two configurations in `Fluxy.DataAccess/`, and the contracts in
 `Fluxy.API/Contracts/UserGroups/` (`AdminUserGroup*`, `CreateUserGroupRequest` /
 `UpdateUserGroupRequest`, `BulkUserGroupsRequest`, `UserGroupResponses`).
@@ -1087,7 +1137,7 @@ Layering follows the usual split: `ContentCategory` in `Fluxy.Core/Content/Model
 `ContentCategoryAction` in `Fluxy.Core/Content/Enums/`, `ContentCategoryLimits` in
 `Fluxy.Core/Content/Utils/`, `IContentCategoryService` in
 `Fluxy.Core/Content/Interfaces/`, `ContentCategoryService` in
-`Fluxy.Application/Services/Content/` (Scoped), the entity and its configuration in
+`Fluxy.Application/Content/Services/` (Scoped), the entity and its configuration in
 `Fluxy.DataAccess/` (migration `20261012103956_AddContentCategories`), the contracts in
 `Fluxy.API/Contracts/Content/`, and `ContentCategoriesController` in
 `Fluxy.API/Controllers/Content/`.
@@ -1161,7 +1211,7 @@ Layering follows the usual split: `VideoStream` in `Fluxy.Core/Streams/Models/`,
 `VideoStreamStatus` / `VideoStreamType` in `Fluxy.Core/Streams/Enums/`,
 `VideoStreamLimits` / `VideoStreamListLimits` / `VideoStreamEpg` in
 `Fluxy.Core/Streams/Utils/`, plus `IVideoStreamService` in `Fluxy.Core/Streams/Interfaces/`,
-`VideoStreamService` in `Fluxy.Application/Services/Streams/` (Scoped), the three entities and
+`VideoStreamService` in `Fluxy.Application/Streams/Services/` (Scoped), the three entities and
 their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the
 contracts in `Fluxy.API/Contracts/Streams/`, and `VideoStreamsController` in
 `Fluxy.API/Controllers/Content/`.
@@ -1210,6 +1260,7 @@ non-Permanent kind → `400` naming it; a half guide → `400` naming both field
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
 - **API contracts are grouped by feature**: `Fluxy.API/Contracts/<Feature>/` holds the request and response types one controller speaks, and the folder name is the namespace segment — `Fluxy.API.Contracts.Authentication`, `Fluxy.API.Contracts.Users`, and so on. The few types more than one feature names — `MessageResponse`, the bulk answers, `FieldErrorKeys` — live in `Fluxy.API.Contracts.Common`. A contract belongs in `Common/` the moment a second feature needs it, not in whichever feature happened to define it first.
 - `ImplicitUsings` and `Nullable` are enabled in all 4 projects.
+- **One type per file**, in every layer: the file name is the type name and nothing else. A type that only one other type uses is still a file of its own.
 - **Comments in project files are written in English** — code, config files and this rule itself. Russian stays where it belongs: this document and anything that is prose for humans, not source. XML doc comments (`///`) are preferred over inline comments.
 - **Commit messages are written in English and kept short** — one line for the subject, a body of a few lines at most, and only when the change genuinely needs it.
 - Identifier naming is standard .NET (`FluxyDbContext`, not `FluxyContext`/`DBContext`); folder names are `Configurations/`, `Entities/`, `Context/`, `Migrations/`, `Repositories/`.
