@@ -1,4 +1,5 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Models.Users;
+using Fluxy.Core.Persistence.Base;
 
 namespace Fluxy.DataAccess.Entities
 {

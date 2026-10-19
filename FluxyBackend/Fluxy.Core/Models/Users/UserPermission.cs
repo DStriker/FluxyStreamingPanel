@@ -10,13 +10,13 @@ namespace Fluxy.Core.Models.Users
     /// <see cref="UserRole"/>, which decides what part of the API and of the interface an
     /// account reaches at all; a permission only answers a question asked <i>inside</i> that
     /// part. An account whose group holds <see cref="EditAdmins"/> but sits in a group with
-    /// role <see cref="Users.UserRole.Client"/> still cannot reach the administrator's
+    /// role <see cref="Fluxy.Core.Models.Users.UserRole.Client"/> still cannot reach the administrator's
     /// endpoints, because the role gate is checked first and separately.
     /// </para>
     /// <para>
     /// <b>The account permissions are split by the role of the account they act on, not by
     /// the role of the account doing the acting.</b> Every one of them is owned by
-    /// <see cref="Users.UserRole.Admin"/> - they are questions asked inside the admin area -
+    /// <see cref="Fluxy.Core.Models.Users.UserRole.Admin"/> - they are questions asked inside the admin area -
     /// and what they differ on is which accounts of the installation they reach:
     /// <see cref="ViewClients"/> answers for rows whose group is a group of clients, while
     /// <see cref="ViewAdmins"/> answers for the administrators. That is what lets a group of

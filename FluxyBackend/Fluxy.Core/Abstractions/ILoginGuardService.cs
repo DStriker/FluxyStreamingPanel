@@ -1,4 +1,4 @@
-using Fluxy.Core.Models.GeoIp;
+using Fluxy.Core.GeoIp.ReadModels;
 
 namespace Fluxy.Core.Abstractions
 {

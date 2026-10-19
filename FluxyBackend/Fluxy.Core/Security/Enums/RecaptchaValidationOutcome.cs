@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Security.Enums
 {
     /// <summary>
     /// Why a reCAPTCHA check ended the way it did.

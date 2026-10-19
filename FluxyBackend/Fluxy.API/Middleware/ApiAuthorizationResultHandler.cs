@@ -1,9 +1,9 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Fluxy.Core.Models.Authentication;
 using Fluxy.API.Contracts.Authentication;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Security;
-using Fluxy.Core.Models.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;

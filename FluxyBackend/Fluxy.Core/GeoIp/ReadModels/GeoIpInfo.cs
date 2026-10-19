@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Models.GeoIp
+namespace Fluxy.Core.GeoIp.ReadModels
 {
     /// <summary>
     /// What the GeoIP database knows about one client address.

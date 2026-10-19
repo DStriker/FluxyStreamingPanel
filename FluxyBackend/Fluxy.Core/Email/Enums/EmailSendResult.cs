@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Email.Enums
 {
     /// <summary>
     /// Outcome of a delivery attempt. It is a result rather than an exception because a

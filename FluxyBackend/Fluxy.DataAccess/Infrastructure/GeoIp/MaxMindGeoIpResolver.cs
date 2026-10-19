@@ -1,6 +1,7 @@
+using Fluxy.Core.GeoIp.Interfaces;
+using Fluxy.Core.GeoIp.ReadModels;
+using Fluxy.Core.GeoIp.Utils;
 using System.Net;
-using Fluxy.Core.Abstractions;
-using Fluxy.Core.Models.GeoIp;
 using MaxMind.GeoIP2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

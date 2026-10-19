@@ -1,3 +1,5 @@
+using Fluxy.Core.Models.Streams;
+
 namespace Fluxy.Core.Models.Content
 {
     /// <summary>
@@ -11,7 +13,7 @@ namespace Fluxy.Core.Models.Content
     /// the past as much as about the code. A new member is added at the end.
     /// </para>
     /// <para>
-    /// Like <see cref="Users.UserStatus"/>, this is not an ordered scale - the members are
+    /// Like <see cref="Fluxy.Core.Models.Users.UserStatus"/>, this is not an ordered scale - the members are
     /// kinds of content, not levels of anything - so nothing anywhere may compare two of
     /// them with <c>></c> or <c><</c>. A category belongs to exactly one kind, and
     /// moving content between kinds is not a thing this domain has.

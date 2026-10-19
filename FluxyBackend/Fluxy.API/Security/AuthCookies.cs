@@ -1,5 +1,5 @@
-using Fluxy.API.Extensions;
 using Fluxy.Core.Models.Authentication;
+using Fluxy.API.Extensions;
 using Microsoft.AspNetCore.Http;
 
 namespace Fluxy.API.Security

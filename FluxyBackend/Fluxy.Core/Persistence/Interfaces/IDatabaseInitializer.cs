@@ -1,4 +1,6 @@
-namespace Fluxy.Core.Abstractions
+using Fluxy.Core.Abstractions;
+
+namespace Fluxy.Core.Persistence.Interfaces
 {
     /// <summary>
     /// Brings the database schema up to the version the application expects.

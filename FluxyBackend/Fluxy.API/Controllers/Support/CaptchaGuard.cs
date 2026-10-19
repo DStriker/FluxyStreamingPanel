@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Common;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Security.Enums;
+using Fluxy.Core.Security.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fluxy.API.Controllers.Support

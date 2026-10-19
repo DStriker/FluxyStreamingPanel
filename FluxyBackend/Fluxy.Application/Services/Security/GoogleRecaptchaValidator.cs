@@ -1,6 +1,7 @@
+using Fluxy.Core.Security.Enums;
+using Fluxy.Core.Security.Interfaces;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
-using Fluxy.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 

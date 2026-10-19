@@ -1,4 +1,6 @@
-namespace Fluxy.Core.Abstractions
+using Fluxy.Core.Persistence.Exceptions;
+
+namespace Fluxy.Core.Persistence.Interfaces
 {
     /// <summary>
     /// Commits everything the repositories of one request have staged.

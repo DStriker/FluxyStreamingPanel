@@ -1,4 +1,5 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Persistence.Exceptions;
+using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.DataAccess.Context;
 
 namespace Fluxy.DataAccess.Infrastructure

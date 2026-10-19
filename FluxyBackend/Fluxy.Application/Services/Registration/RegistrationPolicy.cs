@@ -1,5 +1,5 @@
-using System.Text.RegularExpressions;
 using Fluxy.Core.Models.Users;
+using System.Text.RegularExpressions;
 
 namespace Fluxy.Application.Services.Registration
 {

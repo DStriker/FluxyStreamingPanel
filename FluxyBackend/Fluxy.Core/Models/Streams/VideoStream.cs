@@ -1,3 +1,5 @@
+using Fluxy.Core.Models.Users;
+
 namespace Fluxy.Core.Models.Streams
 {
     /// <summary>
@@ -45,7 +47,7 @@ namespace Fluxy.Core.Models.Streams
 
         /// <summary>
         /// Category the stream is filed under, always a category of
-        /// <see cref="Content.ContentType.VideoStream"/>.
+        /// <see cref="Fluxy.Core.Models.Content.ContentType.VideoStream"/>.
         /// </summary>
         public required Guid CategoryId { get; init; }
 

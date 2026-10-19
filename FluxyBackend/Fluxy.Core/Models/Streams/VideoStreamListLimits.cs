@@ -1,3 +1,6 @@
+using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Models.Users;
+
 namespace Fluxy.Core.Models.Streams
 {
     /// <summary>

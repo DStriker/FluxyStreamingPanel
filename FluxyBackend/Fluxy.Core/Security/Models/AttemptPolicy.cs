@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Security.Models
 {
     /// <summary>
     /// How many attempts one caller may spend on an operation before the operation has to

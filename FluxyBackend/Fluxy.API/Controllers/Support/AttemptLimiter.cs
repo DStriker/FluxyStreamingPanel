@@ -1,7 +1,8 @@
 using System.Globalization;
 using Fluxy.API.Contracts.Common;
 using Fluxy.API.Options;
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Security.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 

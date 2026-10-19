@@ -11,7 +11,7 @@ namespace Fluxy.Core.Models.Streams
     /// the past as much as about the code. A new member is added at the end.
     /// </para>
     /// <para>
-    /// Like <see cref="Users.UserStatus"/> and <see cref="Content.ContentType"/>, this is not an
+    /// Like <see cref="Fluxy.Core.Models.Users.UserStatus"/> and <see cref="Fluxy.Core.Models.Content.ContentType"/>, this is not an
     /// ordered scale - the members are kinds of stream, not levels of anything - so nothing
     /// anywhere may compare two of them with <c>&gt;</c> or <c>&lt;</c>.
     /// </para>

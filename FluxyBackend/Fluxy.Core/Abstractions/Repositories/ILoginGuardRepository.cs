@@ -1,4 +1,5 @@
 using Fluxy.Core.Models.Users;
+using Fluxy.Core.Persistence.Interfaces;
 
 namespace Fluxy.Core.Abstractions.Repositories
 {

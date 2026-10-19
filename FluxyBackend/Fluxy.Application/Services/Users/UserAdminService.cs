@@ -3,6 +3,8 @@ using Fluxy.Application.Services.Registration;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
+using Fluxy.Core.Persistence.Exceptions;
+using Fluxy.Core.Persistence.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Fluxy.Application.Services.Users

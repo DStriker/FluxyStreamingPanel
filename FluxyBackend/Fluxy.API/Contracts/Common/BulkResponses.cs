@@ -1,6 +1,6 @@
+using Fluxy.Core.Models.Users;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
-using Fluxy.Core.Models.Users;
 
 namespace Fluxy.API.Contracts.Common
 {

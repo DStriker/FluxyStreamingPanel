@@ -4,6 +4,7 @@ using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Content;
+using Fluxy.Core.Models.Streams;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

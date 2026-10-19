@@ -1,3 +1,5 @@
+using Fluxy.Core.Models.Users;
+
 namespace Fluxy.API.Contracts.UserGroups
 {
     /// <summary>

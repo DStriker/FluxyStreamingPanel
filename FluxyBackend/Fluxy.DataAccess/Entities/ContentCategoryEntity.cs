@@ -1,5 +1,5 @@
-using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Content;
+using Fluxy.Core.Persistence.Base;
 
 namespace Fluxy.DataAccess.Entities
 {

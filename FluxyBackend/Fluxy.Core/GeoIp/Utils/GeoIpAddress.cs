@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Fluxy.Core.Models.GeoIp
+namespace Fluxy.Core.GeoIp.Utils
 {
     /// <summary>
     /// Facts about a client address that more than one layer has to agree on.

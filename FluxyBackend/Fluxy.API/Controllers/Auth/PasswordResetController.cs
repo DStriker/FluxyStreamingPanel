@@ -3,6 +3,7 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Controllers.Support;
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Models.Users;
+using Fluxy.Core.Security.Models;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 

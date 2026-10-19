@@ -10,7 +10,9 @@ using Fluxy.Application.Services.Security;
 using Fluxy.Application.Services.Streams;
 using Fluxy.Application.Services.Users;
 using Fluxy.Core.Abstractions;
+using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Models.Authentication;
+using Fluxy.Core.Security.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 

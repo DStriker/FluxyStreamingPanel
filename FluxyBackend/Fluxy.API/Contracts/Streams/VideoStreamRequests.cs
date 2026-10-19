@@ -1,3 +1,6 @@
+using Fluxy.Core.Models.Streams;
+using Fluxy.Core.Models.Users;
+
 namespace Fluxy.API.Contracts.Streams
 {
     /// <summary>

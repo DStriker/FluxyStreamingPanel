@@ -1,4 +1,6 @@
-namespace Fluxy.Core.Abstractions
+using Fluxy.Core.Security.Enums;
+
+namespace Fluxy.Core.Security.Interfaces
 {
     /// <summary>
     /// Verifies the token a browser obtained from reCAPTCHA against the verification service.

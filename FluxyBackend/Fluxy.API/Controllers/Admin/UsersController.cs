@@ -5,7 +5,6 @@ using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Security;
 using Fluxy.Core.Abstractions;
-using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;

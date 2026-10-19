@@ -1,6 +1,8 @@
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
 using Fluxy.Core.Models.Users;
+using Fluxy.Core.Persistence.Exceptions;
+using Fluxy.Core.Persistence.Interfaces;
 
 namespace Fluxy.Application.Services.Users
 {

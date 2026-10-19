@@ -1,4 +1,4 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Persistence.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 

@@ -1,5 +1,8 @@
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
+using Fluxy.Core.GeoIp.Interfaces;
+using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Security.Interfaces;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Infrastructure;
 using Fluxy.DataAccess.Infrastructure.GeoIp;

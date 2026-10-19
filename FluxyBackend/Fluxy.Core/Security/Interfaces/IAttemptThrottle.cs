@@ -1,4 +1,6 @@
-namespace Fluxy.Core.Abstractions
+using Fluxy.Core.Security.Models;
+
+namespace Fluxy.Core.Security.Interfaces
 {
     /// <summary>
     /// Counts how often a caller has tried something, so an expensive or abusable operation

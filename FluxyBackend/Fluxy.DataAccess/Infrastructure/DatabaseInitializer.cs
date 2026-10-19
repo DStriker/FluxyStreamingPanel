@@ -1,4 +1,4 @@
-using Fluxy.Core.Abstractions;
+using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.DataAccess.Context;
 using Microsoft.EntityFrameworkCore;
 

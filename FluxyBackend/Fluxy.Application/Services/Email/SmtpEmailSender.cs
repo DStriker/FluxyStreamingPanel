@@ -1,8 +1,11 @@
+using Fluxy.Core.Email.Commands;
+using Fluxy.Core.Email.Enums;
+using Fluxy.Core.Email.Interfaces;
+using Fluxy.Core.Models.Users;
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MimeKit;
-using Fluxy.Core.Abstractions;
 
 namespace Fluxy.Application.Services.Email
 {

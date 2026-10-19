@@ -1,6 +1,6 @@
-using Fluxy.Core.Models.GeoIp;
+using Fluxy.Core.GeoIp.ReadModels;
 
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.GeoIp.Interfaces
 {
     /// <summary>
     /// Places a client address on the map: country and provider.

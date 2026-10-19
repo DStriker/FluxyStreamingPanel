@@ -1,5 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using Fluxy.Core.Models.Users;
+using System.ComponentModel.DataAnnotations;
 
 namespace Fluxy.API.Contracts.Authentication
 {

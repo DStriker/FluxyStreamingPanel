@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Email.Commands
 {
     /// <summary>
     /// A message to deliver to a single recipient. It is intentionally plain text and

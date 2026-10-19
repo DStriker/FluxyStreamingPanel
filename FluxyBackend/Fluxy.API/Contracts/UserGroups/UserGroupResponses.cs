@@ -1,5 +1,5 @@
-using Fluxy.API.Contracts.Common;
 using Fluxy.Core.Models.Users;
+using Fluxy.API.Contracts.Common;
 using Microsoft.AspNetCore.Http;
 
 namespace Fluxy.API.Contracts.UserGroups

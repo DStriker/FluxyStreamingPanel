@@ -1,7 +1,8 @@
 using Fluxy.Core.Abstractions;
 using Fluxy.Core.Abstractions.Repositories;
+using Fluxy.Core.GeoIp.Interfaces;
+using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Models.Authentication;
-using Fluxy.Core.Models.GeoIp;
 using Fluxy.Core.Models.Users;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

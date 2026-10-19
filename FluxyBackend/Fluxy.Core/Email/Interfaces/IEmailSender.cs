@@ -1,4 +1,7 @@
-namespace Fluxy.Core.Abstractions
+using Fluxy.Core.Email.Commands;
+using Fluxy.Core.Email.Enums;
+
+namespace Fluxy.Core.Email.Interfaces
 {
     /// <summary>
     /// Delivers a message to a recipient.

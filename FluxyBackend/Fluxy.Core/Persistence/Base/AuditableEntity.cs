@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Persistence.Base
 {
     /// <summary>
     /// Base class of every persisted entity. It carries the two rules that the project

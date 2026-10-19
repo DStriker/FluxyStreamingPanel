@@ -1,3 +1,5 @@
+using Fluxy.Core.Models.Content;
+
 namespace Fluxy.API.Contracts.Content
 {
     /// <summary>

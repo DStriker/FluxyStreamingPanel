@@ -1,6 +1,7 @@
+using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Security.Models;
 using System.Collections.Concurrent;
 using System.Globalization;
-using Fluxy.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 

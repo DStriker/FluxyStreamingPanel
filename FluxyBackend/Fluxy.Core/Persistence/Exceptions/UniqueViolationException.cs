@@ -1,4 +1,4 @@
-namespace Fluxy.Core.Abstractions
+namespace Fluxy.Core.Persistence.Exceptions
 {
     /// <summary>
     /// Raised when the database refused a write because a unique index would have been

@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using Fluxy.Core.Models.Authentication;
 using Fluxy.Core.Models.Users;
+using System.Security.Claims;
 
 namespace Fluxy.API.Controllers.Support
 {

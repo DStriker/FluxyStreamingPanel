@@ -1,7 +1,7 @@
+using Fluxy.Core.GeoIp.ReadModels;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using Fluxy.Core.Models.GeoIp;
 
 namespace Fluxy.Application.Services.GeoIp
 {
