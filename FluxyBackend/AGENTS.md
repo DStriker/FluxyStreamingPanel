@@ -226,9 +226,10 @@ network, not a stored field.
   + `GeoLite2-ASN.mmdb` (provider), read by `MaxMindGeoIpResolver` (`MaxMind.GeoIP2` 6.1.0 in
   `Fluxy.DataAccess/Infrastructure/GeoIp/` — the reader of a data source belongs to the layer
   that owns data sources, not to the business rules that consult it). The files live next to
-  the solution and are linked into the API output
-  as `Content` with `PreserveNewest` (`Fluxy.API.csproj`), so they travel with the binaries
-  into publish as well. Paths come from the gitignored `.env` as `GEOIP_CITY_DB_PATH` /
+  the solution and are linked into the API output as `Content` with `PreserveNewest`
+  (`Fluxy.API.csproj`), each behind an `Exists` condition: when present they travel with the
+  binaries into publish, and when absent a fresh clone or CI still builds. Paths come from the
+  gitignored `.env` as `GEOIP_CITY_DB_PATH` /
   `GEOIP_ASN_DB_PATH` → `GeoIp:CityDbPath` / `GeoIp:AsnDbPath`; a relative path is resolved
   against the API output folder, not the working directory, so a bare file name works however
   the host was started. The `.mmdb` files are not in git (tens of megabytes, refreshed
