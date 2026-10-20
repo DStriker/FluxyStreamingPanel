@@ -16,6 +16,7 @@ import {
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import { VIDEO_STREAMS_PAGE_SIZE } from '../../features/video-streams/api'
 import type { VideoStreamSortField } from '../../features/video-streams/api'
+import StreamStateCell from '../../features/video-streams/components/StreamStateCell'
 import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../../features/video-streams/types'
 import { hinted } from '../../utils/hinted'
 import { areaForRole } from '../../utils/session'
@@ -23,6 +24,7 @@ import { useSession } from '../../utils/sessionContext'
 import { tableResults } from '../../utils/tableResults'
 import { dashedCell, idCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
+import { actionsColumnWidth } from '../../utils/tableWidths'
 import { RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
@@ -68,16 +70,40 @@ const COLUMN_KEYS: readonly StreamsColumnKey[] = [
  * truncate into tooltips - the identifier prints eight characters with the full GUID on
  * hover, and the active source is whatever an address happens to be - while the name keeps
  * the room, because it is the one thing on this page nothing truncates a second time.
+ *
+ * The state column is 150 because it carries two lines: the status, and the kind of stream
+ * under it. The longest of the six kinds in Russian - "Перенаправление" - has to fit
+ * without being cut, and the room comes out of the active source, which is an address that
+ * truncates into a tooltip anyway.
+ *
+ * The actions column is not one of these numbers: it is exactly as wide as the five buttons
+ * a row draws (`actionsColumnWidth`), and the room that frees goes to the name - the one
+ * thing on this page that nothing truncates a second time. The eight still add up to 1230.
  */
-const DEFAULT_COLUMN_WIDTHS: Record<StreamsColumnKey, number> = {
+const FIXED_COLUMN_WIDTHS = {
   id: 100,
   icon: 70,
-  name: 260,
   category: 170,
-  activeSource: 220,
-  status: 110,
+  activeSource: 180,
+  status: 150,
   epg: 90,
-  actions: 210,
+}
+
+/** The width the five buttons of a row's cluster need, and nothing more. */
+const ACTIONS_WIDTH = actionsColumnWidth(5)
+
+/** The width the eight columns add up to. */
+const TABLE_WIDTH = 1230
+
+const DEFAULT_COLUMN_WIDTHS: Record<StreamsColumnKey, number> = {
+  ...FIXED_COLUMN_WIDTHS,
+  // The name takes the room the actions column does not need, so the total is the one this
+  // table has always had.
+  name:
+    TABLE_WIDTH -
+    Object.values(FIXED_COLUMN_WIDTHS).reduce((sum, width) => sum + width, 0) -
+    ACTIONS_WIDTH,
+  actions: ACTIONS_WIDTH,
 }
 
 /** Where this table remembers the widths the visitor gave its columns. */
@@ -94,25 +120,14 @@ const TYPES: VideoStreamType[] = [
   'FilePlaylist',
 ]
 
-/**
- * Two descriptions, not a ramp.
- *
- * `VideoStreamStatus` is not an ordered scale - a stream is broadcasting or it is not, and
- * neither is "more" of anything than the other - so the colours say what the state *is*.
- */
-const STATUS_COLOR: Record<VideoStreamStatus, string> = {
-  Stopped: 'default',
-  Running: 'success',
-}
-
 interface VideoStreamsPageProps {
   /**
    * The menu key this route carries, accepted and deliberately unread - the same as on
    * `UserGroupsPage` and for the same reason. The card is headed by its own
-   * `videoStreams.listTitle`, because the menu item here is the verb `Manage`/`Управление`
-   * and a card saying only "Manage" over a table would name neither the page nor its
-   * subject. The two names are `Video streams` beside `Manage`, one naming what is looked
-   * at and one naming how the visitor got there.
+   * `videoStreams.listTitle`, because the menu item here names the action
+   * (`Manage video streams`/`Управление`) and a card repeating it would name neither the
+   * page nor its subject. The two names are `Video streams` beside `Manage video streams`,
+   * one naming what is looked at and one naming how the visitor got there.
    */
   sectionKey: string
 }
@@ -409,6 +424,12 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       // read as two labels next to each other down a column, which is what a scanning
       // administrator is looking for - and the colour is a description, not a rank
       // (`VideoStreamStatus` is not an ordered scale).
+      //
+      // The kind of stream rides under the state rather than in a column of its own, which
+      // is the same question the table asked before it had a `type` column: a running
+      // `Permanent` stream and a running `FilePlaylist` stream are different things, and
+      // the row has to say which one it is. Nine columns would have meant a ninth width to
+      // divide; two facts in one cell is what the column was widened for.
       title: t('videoStreams.columns.status'),
       dataIndex: 'status',
       key: 'status',
@@ -416,10 +437,8 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       sorter: true,
       sortOrder: table.orderOf('status'),
       onHeaderCell: () => resizer('status'),
-      render: (value: VideoStreamStatus) => (
-        <Tag color={STATUS_COLOR[value]} style={{ marginInlineEnd: 0 }}>
-          {t(`videoStreams.statuses.${value}`)}
-        </Tag>
+      render: (value: VideoStreamStatus, stream: VideoStream) => (
+        <StreamStateCell status={value} type={stream.type} />
       ),
     },
     {

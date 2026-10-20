@@ -1,7 +1,9 @@
 import { Table } from 'antd'
 import type { TableColumnsType, TablePaginationConfig } from 'antd'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Key } from 'react'
 import type { useServerTable } from '../../hooks/table'
+import { MIN_COLUMN_WIDTH, distributeWidths } from '../../utils/tableWidths'
 import LoadErrorAlert from './LoadErrorAlert'
 import ResizableHeaderCell from './ResizableHeaderCell'
 
@@ -21,6 +23,16 @@ import ResizableHeaderCell from './ResizableHeaderCell'
  * occupies.
  */
 const SELECTION_WIDTH = 40
+
+/**
+ * The layout effect that measures the box before the first paint - and the plain effect on
+ * the server, where a layout effect does nothing but warn.
+ *
+ * The measure has to happen before the first paint, or the table would be drawn at its
+ * full width for one frame and then squeezed into the box, which is a visible jump on
+ * every page load and on every toggle of the sidebar.
+ */
+const useMeasuredLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 /**
  * The selection half of a table, exactly as `useBulkAction` hands it over: the keys the
@@ -78,6 +90,13 @@ interface ServerTableProps<Row extends object, SortField extends string> {
  * - the scroll box: `scroll.x` is the page's own widths plus the checkbox column when there
  *   is one, so the table never widens its card and the columns a page owns keep their own
  *   widths, reset and memory;
+ * - the fit: the room between the columns is **divided again** to the width of the box the
+ *   table is drawn in, which is what keeps the right-hand column - the actions - on the
+ *   screen whether the sidebar is open or closed. The table is measured rather than assumed,
+ *   because the box is a fact about the window, the zoom and the sidebar, and none of the
+ *   three is a number this application knows. The division is done here rather than left to
+ *   the browser, because a browser stretches a fixed-layout table's columns in proportion
+ *   and would hand the actions column the dead space its width was measured to remove;
  * - the pager: `useServerTable`'s page/pageSize/pageSizeOptions, the endpoint's `total`
  *   (which is what the pager counts, not the rows on screen), and the page's own `showTotal`
  *   wording, handed in already translated.
@@ -100,34 +119,147 @@ export default function ServerTable<Row extends object, SortField extends string
   showTotal,
   selection,
 }: ServerTableProps<Row, SortField>) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [boxWidth, setBoxWidth] = useState<number | null>(null)
+
+  /**
+   * The width of the box the table is drawn in, measured rather than assumed.
+   *
+   * The box is the card's own body, and what it is depends on three things this
+   * application does not control: how wide the window is, how far the browser is zoomed in,
+   * and whether the sidebar is open - which is 164 pixels of difference on its own. A table
+   * that assumes a width therefore overflows on somebody's screen and not on the one it was
+   * written on, and the column that disappears is the one at the far right: the actions.
+   *
+   * The observer rather than a single measurement, because the box changes under the
+   * visitor's hand - collapsing the sidebar is the same gesture as opening a page, and the
+   * table has to answer both without a reload.
+   */
+  useMeasuredLayoutEffect(() => {
+    const element = boxRef.current
+    if (!element) return
+
+    const measure = () => setBoxWidth(element.clientWidth)
+    measure()
+
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
   if (loadError) {
     return <LoadErrorAlert message={loadError} loading={loading} onRetry={onRetry} />
   }
 
+  /**
+   * The fit of the columns into the box.
+   *
+   * Every column has a width of its own and the table is a fixed-layout one, so the sum of
+   * those widths is the width the table wants. The room between the columns is then divided
+   * again - in the same proportions the visitor arranged them in, and never below the floor
+   * - and `scroll.x` becomes the width they now take. The table fills the box exactly, and
+   * nothing is cut off at its right edge.
+   *
+   * The room is divided here rather than left to the browser, and that is the whole point of
+   * doing it: a browser stretches a fixed-layout table that is narrower than its box, and it
+   * stretches every column in proportion - which would hand the actions column, whose width
+   * is a measurement rather than a preference, the very dead space the measurement was taken
+   * to remove. Here the extra room goes to the columns that can take it, and the actions
+   * column stays exactly as wide as the buttons in it.
+   *
+   * **Not every column is squeezed.** A column that truncates - one with `ellipsis` - can
+   * be narrower, because its content has a smaller form. A column that holds something
+   * fixed - a logo, a tag, a row's buttons - keeps its width, because its content has none.
+   * The actions column is the one this matters for: squeezing it would put the buttons
+   * outside their own cell, which is the very thing the column's width was measured for.
+   *
+   * **And the table has a floor.** A squeezed table on a phone would be eight columns of
+   * forty pixels, which is not a table anybody can read, so a squeezed column stops at the
+   * width a cell still reads at (`MIN_COLUMN_WIDTH`) and the table keeps the sum
+   * of those floors when the box is narrower still: it then scrolls inside the card, which
+   * is what a table on a phone is supposed to do. The room a floored column does not need
+   * is given to the columns that can still take it, so the table ends up at the width of the
+   * box rather than a little past it.
+   *
+   * The fitting is a fact about the screen and not about the arrangement: the widths the
+   * visitor chose stay as they are, so a wider window - or a collapsed sidebar - gives the
+   * columns their room back.
+   */
+  const selectionWidth = selection ? SELECTION_WIDTH : 0
+  const room = boxWidth === null ? null : boxWidth - selectionWidth
+
+  // The columns that may be squeezed, and the ones that may not, with the widths of each.
+  const squeezable = columns.map((column, index) => ({ column, index })).filter(
+    ({ column }) => column.ellipsis !== undefined && typeof column.width === 'number',
+  )
+  const squeezableWidth = squeezable.reduce(
+    (sum, { column }) => sum + (column.width as number),
+    0,
+  )
+  const fixedWidth = tableWidth - squeezableWidth
+
+  // The table's own floor: the fixed columns as they are, and the squeezable ones at the
+  // width a cell still reads at.
+  const minimum = fixedWidth + squeezable.length * MIN_COLUMN_WIDTH
+
+  // The width the columns are given room for: what the box has, but never less than the
+  // floor. It is *not* capped at the width the columns asked for: a box wider than the
+  // table is handed out as well, and handing it out here rather than leaving it to the
+  // browser is the point - a browser that stretches a fixed-layout table stretches every
+  // column in proportion, and the actions column is the one column whose width is a
+  // measurement rather than a preference.
+  const target = room === null ? tableWidth : Math.max(room, minimum)
+
+  // The room divided between the squeezable columns, in the proportions the visitor arranged
+  // them in and never below the floor.
+  const fitted = distributeWidths(
+    squeezable.map(({ column }) => column.width as number),
+    target - fixedWidth,
+    MIN_COLUMN_WIDTH,
+  )
+
+  const fittedColumns = columns.map((column, index) => {
+    const position = squeezable.findIndex((entry) => entry.index === index)
+    return position === -1 ? column : { ...column, width: fitted[position] }
+  })
+
+  // The width the fitted columns actually take. It is read off the columns rather than off
+  // the target, because the floor can make them wider than the target asked for: a column
+  // squeezed to its last pixel stops there, and the table is then a little wider than the
+  // room it was given - which is the floor doing its job, and not a rounding error to be
+  // hidden from `scroll.x`.
+  const fittedWidth = fittedColumns.reduce(
+    (sum, column) => sum + (typeof column.width === 'number' ? column.width : 0),
+    0,
+  )
+
   return (
-    <Table<Row>
-      rowKey="id"
-      columns={columns}
-      dataSource={rows}
-      loading={loading}
-      components={{ header: { cell: ResizableHeaderCell } }}
-      rowSelection={
-        selection
-          ? {
-              selectedRowKeys: selection.selectedRowKeys,
-              onChange: selection.onChange,
-              columnWidth: SELECTION_WIDTH,
-            }
-          : undefined
-      }
-      scroll={{ x: tableWidth + (selection ? SELECTION_WIDTH : 0) }}
-      onChange={table.handleTableChange}
-      locale={{ emptyText }}
-      pagination={{
-        ...table.pagination,
-        total,
-        showTotal,
-      }}
-    />
+    <div ref={boxRef} style={{ width: '100%' }}>
+      <Table<Row>
+        rowKey="id"
+        columns={fittedColumns}
+        dataSource={rows}
+        loading={loading}
+        components={{ header: { cell: ResizableHeaderCell } }}
+        rowSelection={
+          selection
+            ? {
+                selectedRowKeys: selection.selectedRowKeys,
+                onChange: selection.onChange,
+                columnWidth: SELECTION_WIDTH,
+              }
+            : undefined
+        }
+        scroll={{ x: fittedWidth + selectionWidth }}
+        onChange={table.handleTableChange}
+        locale={{ emptyText }}
+        pagination={{
+          ...table.pagination,
+          total,
+          showTotal,
+        }}
+      />
+    </div>
   )
 }

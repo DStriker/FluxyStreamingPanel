@@ -211,6 +211,26 @@ body {
   text-align: center;
 }
 
+/* --- The tables ----------------------------------------------------------------- */
+
+/* The name of a column is the one thing in it that cannot be cut.
+   antd sets `white-space: nowrap` on the title of a column that truncates - `ellipsis` on
+   a column reaches the heading as well as the cells - and a column showing a letter where
+   a heading should be is a column with no name. On a wide screen the heading fits on one
+   line and nothing happens; on a narrow one it wraps onto the next, and the name is still
+   a name.
+
+   The selector is longer than it looks: antd's own rule reads
+   `.ant-table-wrapper .ant-table-cell-ellipsis .ant-table-column-title` - three classes -
+   and a shorter selector of ours would lose the cascade, whatever order the two
+   stylesheets were read in. `break-word` rather than `normal` because a column can be
+   narrower than its longest word, and a word that overflows its cell is worse than a
+   broken one. */
+.ant-table-wrapper .ant-table-thead .ant-table-cell-ellipsis .ant-table-column-title {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
 /* --- The visit history table -------------------------------------------------- */
 
 /* The resize handle at the right edge of every header, on the visit history page.

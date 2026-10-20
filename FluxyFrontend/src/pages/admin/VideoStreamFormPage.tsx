@@ -28,6 +28,11 @@ import {
   useUpdateVideoStream,
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreamDetail } from '../../features/video-streams/hooks/queries'
+import {
+  acceptsArchive,
+  acceptsDelay,
+  acceptsRestream,
+} from '../../features/video-streams/capabilities'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import type { VideoStreamType } from '../../features/video-streams/types'
 
@@ -146,31 +151,36 @@ const cleanList = (list: string[] | undefined): string[] =>
  * between "absent" and "empty" is exactly the difference PATCH uses to mean "keep" and
  * "clear" - so absent is never allowed to reach the wire.
  */
-const toBody = (values: VideoStreamValues): VideoStreamValues => ({
-  name: values.name ?? '',
-  type: values.type ?? CREATE_VALUES.type,
-  categoryId: values.categoryId ?? '',
-  logoUrl: values.logoUrl ?? '',
-  enigma2Sid: values.enigma2Sid ?? '',
-  delayMinutes: values.delayMinutes ?? 0,
-  seriesId: values.seriesId ?? '',
-  vodId: values.vodId ?? '',
-  epgSourceId: values.epgSourceId ?? '',
-  epgChannelKey: values.epgChannelKey ?? '',
-  // Zeroed for a kind that keeps no archive. The field is greyed out while the kind is not
-  // `Permanent`, so a number here would be a value nothing on screen claims - and the
-  // server refuses it rather than dropping it, which is the one asymmetry between the two
-  // halves of "the type owns the fields only it can use" (payloads are dropped, an archive
-  // is refused). Refusing a body the form itself built would be a 400 with no mistake in
-  // it, so the form never builds one.
-  archiveDays: values.type === 'Permanent' ? (values.archiveDays ?? 0) : 0,
-  restreamUserAgent: values.restreamUserAgent ?? '',
-  restreamProxy: values.restreamProxy ?? '',
-  restreamCookies: values.restreamCookies ?? '',
-  restreamHeaders: values.restreamHeaders ?? '',
-  sources: cleanList(values.sources),
-  files: cleanList(values.files),
-})
+const toBody = (values: VideoStreamValues): VideoStreamValues => {
+  const type = values.type ?? CREATE_VALUES.type
+  const restream = acceptsRestream(type)
+
+  return {
+    name: values.name ?? '',
+    type,
+    categoryId: values.categoryId ?? '',
+    logoUrl: values.logoUrl ?? '',
+    enigma2Sid: values.enigma2Sid ?? '',
+    // The three settings a kind may not carry are neutralized rather than sent as whatever
+    // the form still holds. The fields are greyed out for those kinds, so a value here
+    // would be one nothing on screen claims - and the archive refusal would turn it into a
+    // 400 the form itself built. Delay and restreaming are the form's own rule today (the
+    // server accepts them on every type); keeping all three normalized here means the body
+    // always describes what the enabled controls show.
+    delayMinutes: acceptsDelay(type) ? (values.delayMinutes ?? 0) : 0,
+    seriesId: values.seriesId ?? '',
+    vodId: values.vodId ?? '',
+    epgSourceId: values.epgSourceId ?? '',
+    epgChannelKey: values.epgChannelKey ?? '',
+    archiveDays: acceptsArchive(type) ? (values.archiveDays ?? 0) : 0,
+    restreamUserAgent: restream ? (values.restreamUserAgent ?? '') : '',
+    restreamProxy: restream ? (values.restreamProxy ?? '') : '',
+    restreamCookies: restream ? (values.restreamCookies ?? '') : '',
+    restreamHeaders: restream ? (values.restreamHeaders ?? '') : '',
+    sources: cleanList(values.sources),
+    files: cleanList(values.files),
+  }
+}
 
 /** The stored stream spelled as form content, drawn over `CREATE_VALUES` when the answer arrives. */
 const detailToFormValues = (detail: {
@@ -191,30 +201,37 @@ const detailToFormValues = (detail: {
   restreamHeaders: string | null
   sources: string[]
   files: string[]
-}): VideoStreamValues => ({
-  name: detail.name,
-  type: detail.type,
-  categoryId: detail.categoryId,
-  logoUrl: detail.logoUrl ?? '',
-  enigma2Sid: detail.enigma2Sid ?? '',
-  delayMinutes: detail.delayMinutes,
-  seriesId: detail.seriesId ?? '',
-  vodId: detail.vodId ?? '',
-  epgSourceId: detail.epgSourceId ?? '',
-  epgChannelKey: detail.epgChannelKey ?? '',
-  archiveDays: detail.archiveDays,
-  restreamUserAgent: detail.restreamUserAgent ?? '',
-  restreamProxy: detail.restreamProxy ?? '',
-  restreamCookies: detail.restreamCookies ?? '',
-  restreamHeaders: detail.restreamHeaders ?? '',
-  // The lists arrive in relay order and are sent back in that same order, which is the
-  // contract on both sides. An empty list still becomes one blank row for the editor: a
-  // stored stream always has at least one entry of the list its kind uses, so this only
-  // ever happens to the list its kind *does not* use - and then it is the list nobody
-  // draws, holding one field nobody presses anything on.
-  sources: detail.sources.length > 0 ? detail.sources : [''],
-  files: detail.files.length > 0 ? detail.files : [''],
-})
+}): VideoStreamValues => {
+  const restream = acceptsRestream(detail.type)
+
+  return {
+    name: detail.name,
+    type: detail.type,
+    categoryId: detail.categoryId,
+    logoUrl: detail.logoUrl ?? '',
+    enigma2Sid: detail.enigma2Sid ?? '',
+    // Values a kind cannot carry are not painted either, for the same reason `toBody`
+    // neutralizes them: a disabled field showing last week's delay would describe a setting
+    // the next save is about to clear, and the form would be disagreeing with itself.
+    delayMinutes: acceptsDelay(detail.type) ? detail.delayMinutes : 0,
+    seriesId: detail.seriesId ?? '',
+    vodId: detail.vodId ?? '',
+    epgSourceId: detail.epgSourceId ?? '',
+    epgChannelKey: detail.epgChannelKey ?? '',
+    archiveDays: acceptsArchive(detail.type) ? detail.archiveDays : 0,
+    restreamUserAgent: restream ? (detail.restreamUserAgent ?? '') : '',
+    restreamProxy: restream ? (detail.restreamProxy ?? '') : '',
+    restreamCookies: restream ? (detail.restreamCookies ?? '') : '',
+    restreamHeaders: restream ? (detail.restreamHeaders ?? '') : '',
+    // The lists arrive in relay order and are sent back in that same order, which is the
+    // contract on both sides. An empty list still becomes one blank row for the editor: a
+    // stored stream always has at least one entry of the list its kind uses, so this only
+    // ever happens to the list its kind *does not* use - and then it is the list nobody
+    // draws, holding one field nobody presses anything on.
+    sources: detail.sources.length > 0 ? detail.sources : [''],
+    files: detail.files.length > 0 ? detail.files : [''],
+  }
+}
 
 interface VideoStreamFormPageProps {
   /**
@@ -243,7 +260,7 @@ interface VideoStreamFormPageProps {
  * against nothing, which is what a static render of this page lands in and what
  * `probe:render` asserts.
  *
- * Four rules on the page are the server's, not this form's:
+ * The rules on the page are the server's, not this form's, with one deliberate exception:
  *
  * - **The kind decides which payload exists.** The three address-taking kinds draw the
  *   ordered list, a series stream draws one reference, a video-playlist stream draws its
@@ -265,6 +282,13 @@ interface VideoStreamFormPageProps {
  *   no one in this interface at all. They are labels with no `name`, so nothing here can
  *   collect them - which is the difference between "shown" and "collectable", the same
  *   one the account id's own `Form.Item` rests on.
+ *
+ * One rule is the form's rather than the server's today: **a delay belongs to `Permanent`
+ * and the HTTP restreaming settings to `Permanent` and `OnDemand`**. The endpoint accepts
+ * those values on every kind, so the greyed fields plus the neutralized body keep this
+ * form from building a configuration the product does not offer; another client could
+ * still send one. The conditions live in `capabilities.ts` so the disabled state, the
+ * reason and the body all read the same fact.
  *
  * Success goes back to the list, which is where the new row is visible among the others.
  */
@@ -366,8 +390,15 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const chosenType: VideoStreamType =
     Form.useWatch('type', form) ?? detail?.type ?? CREATE_VALUES.type
 
+  // The three conditions the fields below share. Read once here rather than rebuilt at
+  // every Form.Item, so the greyed state and the sentence beside it cannot disagree.
+  const delayAllowed = acceptsDelay(chosenType)
+  const archiveAllowed = acceptsArchive(chosenType)
+  const restreamAllowed = acceptsRestream(chosenType)
+
   /**
-   * The *raw* watch, for the effect that greys the archive field.
+   * The *raw* watch, for the effect that neutralizes the settings a newly chosen kind cannot
+   * carry.
    *
    * Kept apart from `chosenType` above on purpose: that one has to be a value so the
    * payload section can be drawn, and this one has to be able to be `undefined` so the
@@ -377,13 +408,21 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const watchedType = Form.useWatch('type', form)
 
   useEffect(() => {
-    if (!watchedType || watchedType === 'Permanent') return
-    if (form.getFieldValue('archiveDays') === 0) return
+    if (!watchedType) return
 
     // Written here rather than left to the server's refusal, for the reason `toBody`
-    // repeats: the field is greyed out for this kind, so a number would be a value nothing
-    // on screen claims, and a save would then be refused for a mistake the form made.
-    form.setFieldValue('archiveDays', 0)
+    // repeats: these fields are greyed out for this kind, so a value would be one nothing
+    // on screen claims. Archive is the server's rule; delay and restreaming are the form's.
+    if (!acceptsArchive(watchedType)) form.setFieldValue('archiveDays', 0)
+    if (!acceptsDelay(watchedType)) form.setFieldValue('delayMinutes', 0)
+    if (!acceptsRestream(watchedType)) {
+      form.setFieldsValue({
+        restreamUserAgent: '',
+        restreamProxy: '',
+        restreamCookies: '',
+        restreamHeaders: '',
+      })
+    }
   }, [watchedType, form])
 
   const categoryOptions = useMemo(
@@ -543,27 +582,13 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
           </Form.Item>
 
           <Form.Item
-            name="type"
-            label={t('videoStreams.columns.type')}
-            // Always one of the six. The kind is not a preference - it decides which
-            // payload this form collects and what the relaying process does with it - so
-            // there is no state for the visitor to clear their way into.
-            rules={[{ required: true, message: t('videoStreamsForm.typeRequired') }]}
-            // What the choice *is* rather than what it is called: the label above says
-            // "Type" and the visitor is choosing between names, and the payload below is
-            // the fact they are actually deciding. Drawn live rather than from a lookup,
-            // so the sentence cannot disagree with the controls it introduces.
-            extra={t(`videoStreamsForm.hints.${chosenType}`)}
-          >
-            <Select options={typeOptions} />
-          </Form.Item>
-
-          <Form.Item
             name="categoryId"
             label={t('videoStreams.columns.category')}
             // Required, and there is no "no category" state for a stream to be in: the
             // position within its category, the uniqueness of its name and the whole
-            // grouping of the table are read out of wherever this lands.
+            // grouping of the table are read out of wherever this lands. It comes before
+            // the kind because it is the broader fact: the category says where the stream
+            // belongs, the kind says what it does once it is there.
             rules={[{ required: true, message: t('videoStreamsForm.categoryRequired') }]}
           >
             <Select
@@ -581,6 +606,22 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
           )}
 
+          <Form.Item
+            name="type"
+            label={t('videoStreams.columns.type')}
+            // Always one of the six. The kind is not a preference - it decides which
+            // payload this form collects and what the relaying process does with it - so
+            // there is no state for the visitor to clear their way into.
+            rules={[{ required: true, message: t('videoStreamsForm.typeRequired') }]}
+            // What the choice *is* rather than what it is called: the label above says
+            // "Type" and the visitor is choosing between names, and the payload below is
+            // the fact they are actually deciding. Drawn live rather than from a lookup,
+            // so the sentence cannot disagree with the controls it introduces.
+            extra={t(`videoStreamsForm.hints.${chosenType}`)}
+          >
+            <Select options={typeOptions} />
+          </Form.Item>
+
           <Divider titlePlacement="start">{t('videoStreamsForm.payloadDivider')}</Divider>
 
           {/* The payload the chosen kind can carry, and nothing else. The kinds that take
@@ -597,8 +638,9 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
                 labels={{
                   up: t('videoStreamsForm.moveUp'),
                   down: t('videoStreamsForm.moveDown'),
-                  remove: t('videoStreamsForm.removeRow'),
-                  add: t('videoStreamsForm.listAdd'),
+                  remove: t('videoStreamsForm.removeSource'),
+                  add: t('videoStreamsForm.addSource'),
+                  required: t('videoStreamsForm.sourcesRequired'),
                 }}
               />
             </Form.Item>
@@ -629,14 +671,15 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
                 labels={{
                   up: t('videoStreamsForm.moveUp'),
                   down: t('videoStreamsForm.moveDown'),
-                  remove: t('videoStreamsForm.removeRow'),
-                  add: t('videoStreamsForm.listAdd'),
+                  remove: t('videoStreamsForm.removeFile'),
+                  add: t('videoStreamsForm.addFile'),
+                  required: t('videoStreamsForm.filesRequired'),
                 }}
               />
             </Form.Item>
           )}
 
-          <Divider titlePlacement="start">{t('videoStreamsForm.scheduleDivider')}</Divider>
+          <Divider titlePlacement="start">{t('videoStreamsForm.timingDivider')}</Divider>
 
           <Form.Item
             name="delayMinutes"
@@ -652,9 +695,23 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
                     : Promise.reject(new Error(t('videoStreamsForm.nonNegative'))),
               },
             ]}
-            extra={t('videoStreamsForm.delayHint')}
+            // The unit is in the label as well as the hint, because minutes and hours are
+            // one keystroke apart in an operator's head and this field used to state
+            // neither. The reason replaces the hint while the field is closed: the unit is
+            // still in the label, so nothing about the field goes unexplained.
+            extra={
+              delayAllowed
+                ? t('videoStreamsForm.delayHint')
+                : t('videoStreamsForm.delayPermanentOnly')
+            }
           >
-            <InputNumber min={0} step={1} precision={0} style={{ width: 160 }} />
+            <InputNumber
+              min={0}
+              step={1}
+              precision={0}
+              style={{ width: 160 }}
+              disabled={!delayAllowed}
+            />
           </Form.Item>
 
           <Form.Item
@@ -674,7 +731,7 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             // the whole of the difference between a permanent stream and the other five.
             // The number itself is zeroed as well - see `toBody`.
             extra={
-              chosenType === 'Permanent'
+              archiveAllowed
                 ? t('videoStreamsForm.archiveHint')
                 : t('videoStreamsForm.archivePermanentOnly')
             }
@@ -689,9 +746,11 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
               // refuses a keystroke. Nothing else about the field is conditional - the
               // label, the hint and the rule are all drawn either way, which is what keeps
               // the reason readable while the field is closed.
-              disabled={chosenType !== 'Permanent'}
+              disabled={!archiveAllowed}
             />
           </Form.Item>
+
+          <Divider titlePlacement="start">{t('videoStreamsForm.guideDivider')}</Divider>
 
           {/* The guide pair, refused together when only one half is present - which is what
               `dependencies` below buys: filling in either side re-checks the other, so the
@@ -742,6 +801,19 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
 
           <Divider titlePlacement="start">{t('videoStreamsForm.restreamDivider')}</Divider>
 
+          {/* The four controls are greyed together, so one sentence above them says why
+              rather than four copies of the same reason under each field. It replaces
+              nothing: unlike the delay and archive hints, these fields never carried a
+              per-field explanation. */}
+          {!restreamAllowed && (
+            <Typography.Text
+              type="secondary"
+              style={{ display: 'block', marginBottom: 16 }}
+            >
+              {t('videoStreamsForm.restreamPermanentOnDemandOnly')}
+            </Typography.Text>
+          )}
+
           <Form.Item
             name="restreamUserAgent"
             label={t('videoStreamsForm.userAgentLabel')}
@@ -749,7 +821,10 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
               { max: RESTREAM_USER_AGENT_MAX, message: t('videoStreamsForm.maxLength', { max: RESTREAM_USER_AGENT_MAX }) },
             ]}
           >
-            <Input placeholder={t('videoStreamsForm.userAgentPlaceholder')} />
+            <Input
+              placeholder={t('videoStreamsForm.userAgentPlaceholder')}
+              disabled={!restreamAllowed}
+            />
           </Form.Item>
 
           <Form.Item
@@ -757,18 +832,29 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             label={t('videoStreamsForm.proxyLabel')}
             rules={[{ max: RESTREAM_PROXY_MAX, message: t('videoStreamsForm.maxLength', { max: RESTREAM_PROXY_MAX }) }]}
           >
-            <Input placeholder={t('videoStreamsForm.proxyPlaceholder')} />
+            <Input
+              placeholder={t('videoStreamsForm.proxyPlaceholder')}
+              disabled={!restreamAllowed}
+            />
           </Form.Item>
 
           {/* Cookies and headers are free text with no length bound on either side, because
               what they hold is a request line the relay copies verbatim - a maxlength here
               would be a number this form invented. */}
           <Form.Item name="restreamCookies" label={t('videoStreamsForm.cookiesLabel')}>
-            <Input.TextArea rows={3} placeholder={t('videoStreamsForm.cookiesPlaceholder')} />
+            <Input.TextArea
+              rows={3}
+              placeholder={t('videoStreamsForm.cookiesPlaceholder')}
+              disabled={!restreamAllowed}
+            />
           </Form.Item>
 
           <Form.Item name="restreamHeaders" label={t('videoStreamsForm.headersLabel')}>
-            <Input.TextArea rows={3} placeholder={t('videoStreamsForm.headersPlaceholder')} />
+            <Input.TextArea
+              rows={3}
+              placeholder={t('videoStreamsForm.headersPlaceholder')}
+              disabled={!restreamAllowed}
+            />
           </Form.Item>
 
           {/* The two facts about this row that nothing here writes. Labels with no `name`,

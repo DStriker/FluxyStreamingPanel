@@ -1,17 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import type { ResizableHeaderCellProps } from '../../components/table'
-
-/**
- * The floor and the ceiling of a dragged column.
- *
- * The floor is a header width rather than zero: a column narrowed to nothing is a column whose
- * resize handle can no longer be reached to widen it again, and the handle lives at the right
- * edge of the cell. The ceiling exists so a drag cannot produce a table wider than any screen
- * could show - 1200 per column is already past that.
- */
-const MIN_COLUMN_WIDTH = 90
-const MAX_COLUMN_WIDTH = 1200
+import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from '../../utils/tableWidths'
 
 /**
  * What one table's columns start at, where they are remembered, and which of them exist.

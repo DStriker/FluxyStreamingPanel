@@ -111,8 +111,9 @@ const VideoStreamFormPage = lazy(() => import('../pages/admin/VideoStreamFormPag
  *   would have already shown them the admin shell. `RequireAuth` refuses with a 404
  *   instead, which is what "this address is not yours" means.
  * - The layout is mounted once per area, so moving between two sections replaces only the
- *   outlet. The sidebar's scroll position, its open categories and its collapsed state all
- *   survive a click; a layout wrapped around each page individually would reset them.
+ *   outlet. The sidebar's scroll position and its collapsed state survive a click, while
+ *   its one open category follows the page; a layout wrapped around each page individually
+ *   would reset all of them.
  *
  * The area's own path is the role's **prefix and nothing more** - `/client`, `/admin` -
  * while the landing path the server names in `redirect` is a page *inside* that prefix:

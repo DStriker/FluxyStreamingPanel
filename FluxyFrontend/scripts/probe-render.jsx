@@ -34,6 +34,7 @@ import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
 import VideoStreamFormPage from '../src/pages/admin/VideoStreamFormPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
+import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import { RowActions } from '../src/components/table'
 import TimeZoneCard from '../src/features/profile/components/TimeZoneCard'
 import LoginGuardCard from '../src/features/profile/components/LoginGuardCard'
@@ -682,10 +683,15 @@ async function main() {
   // order, with `email` at 160 rather than the 200 it was before - the forty the checkbox
   // takes came out of the one column that truncates into a tooltip anyway, which is why the
   // total is still the 1230 the sidebar has always left room for.
+  //
+  // The actions column is the one width that is not chosen: it is what the four buttons of
+  // a row need and not a pixel more (`actionsColumnWidth`), and the room that frees went to
+  // the username. A column wider than the buttons in it is dead space at the end of every
+  // row, which is the part of a table that reads as something missing.
   check(
     'the users table is fixed-layout with a selection column and its eight deliberate widths, in order',
     /table-layout:\s*fixed/.test(usersHtml) &&
-      usersWidths.join(',') === '40,100,170,160,150,150,180,130,150' &&
+      usersWidths.join(',') === '40,100,180,160,150,150,180,130,140' &&
       usersTotal === 1230,
     `${usersCols.length} columns: [${usersWidths.join(', ')}] = ${usersTotal}px`,
   )
@@ -882,17 +888,17 @@ async function main() {
   // Seven columns, and the same 1230px the accounts table holds on one Full HD screen: the
   // two tables sit under one sidebar and a visitor who can see one of them whole should be
   // able to see the other. The widths differ because the content does - the name column is
-  // 360 rather than 170 because a group name is the one thing on this page nobody truncates
-  // into a tooltip, and `id` gives back the room by staying at 110. The first `<col>` is
-  // the 40px checkbox column the selection adds, which neither this table's six widths nor
-  // the hook's memory know anything about.
+  // 420 rather than 170 because a group name is the one thing on this page nobody truncates
+  // into a tooltip, and it is also where the room the actions column gave up went. The first
+  // `<col>` is the 40px checkbox column the selection adds, which neither this table's six
+  // widths nor the hook's memory know anything about.
   const groupsCols = [...groupsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
   const groupsWidths = groupsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
   const groupsTotal = groupsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
   check(
     'the groups table is fixed-layout with a selection column and its six deliberate widths, in order',
     /table-layout:\s*fixed/.test(groupsHtml) &&
-      groupsWidths.join(',') === '40,110,360,180,200,140,200' &&
+      groupsWidths.join(',') === '40,110,420,180,200,140,140' &&
       groupsTotal === 1230,
     `${groupsCols.length} columns: [${groupsWidths.join(', ')}] = ${groupsTotal}px`,
   )
@@ -1212,13 +1218,18 @@ async function main() {
   const streamsTotal = streamsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
   // Eight columns and no selection column in front of them - this table has no bulk
   // actions - so the eight alone are the 1230 the accounts and the groups tables reach
-  // only with their checkbox. `name` is 260 rather than the 170 beside it because it is the
-  // one column nothing truncates a second time; `icon` is 70 because a logo is drawn at a
-  // fixed 28px and a column sized by its widest image changes width when a logo is replaced.
+  // only with their checkbox. `name` is 302 rather than the 170 beside it because it is the
+  // one column nothing truncates a second time, and because it is where the room the
+  // actions column gave up went; `icon` is 70 because a logo is drawn at a fixed 28px and a
+  // column sized by its widest image changes width when a logo is replaced. `status` is 150
+  // because it carries two lines - the state and the kind of stream under it - and the
+  // longest of the six kinds in Russian has to fit without being cut. The actions column is
+  // the one width that is not chosen: it is what the five buttons of a row need and not a
+  // pixel more (`actionsColumnWidth`).
   check(
     'the streams table is fixed-layout with its eight deliberate widths, in order',
     /table-layout:\s*fixed/.test(streamsHtml) &&
-      streamsWidths.join(',') === '100,70,260,170,220,110,90,210' &&
+      streamsWidths.join(',') === '100,70,302,170,180,150,90,168' &&
       streamsTotal === 1230,
     `${streamsCols.length} columns: [${streamsWidths.join(', ')}] = ${streamsTotal}px`,
   )
@@ -1251,6 +1262,27 @@ async function main() {
     } sortable`,
   )
 
+  // The state cell, which no page render reaches: it is drawn by a column's `render`, which
+  // runs only once a row exists, and every table render above lands before the first answer
+  // arrives. A cell that drew the state and forgot the kind of stream under it - or drew the
+  // kind and forgot the state - would look exactly like a healthy one.
+  //
+  // The order is asserted as well as the two words: the state is the line a visitor scans
+  // the column for, and the kind is the quieter line under it, so a cell that put them the
+  // other way round would still contain both.
+  const streamStateHtml = renderToStaticMarkup(
+    <AntApp>
+      <StreamStateCell status="Running" type="Permanent" />
+    </AntApp>,
+  )
+  check(
+    'the state cell draws the status and the kind of stream under it',
+    streamStateHtml.includes('Running') &&
+      streamStateHtml.includes('Permanent') &&
+      streamStateHtml.indexOf('Running') < streamStateHtml.indexOf('Permanent'),
+    `rendered ${streamStateHtml.length} bytes: ${streamStateHtml.slice(0, 220)}`,
+  )
+
   // The add form, which draws at once under its own title - and the shared ordered-list
   // editor with it, which is the control the whole payload half of this form rests on. A
   // form that rendered without it would still compile: `SourceListEditor` is a component
@@ -1263,17 +1295,33 @@ async function main() {
     )),
   )
   check(
-    'the stream add form draws its fields at once, with the ordered list and without an id row',
+    'the stream add form draws its fields at once, with the ordered source list and without an id field',
     streamFormHtml.includes('Add stream') &&
       streamFormHtml.includes('Create') &&
       streamFormHtml.includes('What it plays') &&
       streamFormHtml.includes('Sources, in relay order') &&
-      streamFormHtml.includes('Add a row') &&
+      streamFormHtml.includes('Add a source') &&
+      streamFormHtml.includes('Delay (minutes)') &&
+      streamFormHtml.includes('Delay and archive') &&
+      streamFormHtml.includes('Programme guide') &&
+      streamFormHtml.includes('Restreaming') &&
       !streamFormHtml.includes('Edit stream') &&
-      // No id row: the identifier does not exist until the row does, and the copy
+      // No id field: the identifier does not exist until the row does, and the copy
       // affordance is the one thing on this form that would give it away.
       !streamFormHtml.includes('anticon-copy'),
     `rendered ${streamFormHtml.length} bytes of the add form`,
+  )
+
+  // The category is the broader fact - where the stream belongs - so it comes before the
+  // kind, which only says what it does once it is there. The two labels are compared by
+  // their `title` attributes because that is the markup antd puts on a field label, and a
+  // plain text search would match the hint or a placeholder as well.
+  const categoryLabelAt = streamFormHtml.indexOf('title="Category"')
+  const typeLabelAt = streamFormHtml.indexOf('title="Type"')
+  check(
+    'the category field sits above the stream type',
+    categoryLabelAt !== -1 && typeLabelAt !== -1 && categoryLabelAt < typeLabelAt,
+    `category label at ${categoryLabelAt}, type label at ${typeLabelAt}`,
   )
 
   // The edit address, which waits. `useParams` needs a real route match, so the router is
@@ -1941,10 +1989,24 @@ async function main() {
   check(
     'the shell renders a scrolling sidebar carrying the role own menu',
     clientShell.includes('layout-shell__sider-scroll') &&
-      ['Dashboard', 'Orders', 'Profile'].every((needle) => clientShell.includes(needle)),
+      ['Dashboard', 'Orders'].every((needle) => clientShell.includes(needle)),
     clientShell.includes('layout-shell__sider-scroll')
-      ? 'sider scrolls, and the client items are in it'
+      ? "sider scrolls, and the open category's items are in it"
       : 'NO SCROLL CONTAINER IN THE SIDER',
+  )
+  // The categories are an accordion whose open one follows the page. Both shells are
+  // rendered at their role's home, which belongs to `overview`; the account category is
+  // therefore closed, and its items must not be in the markup. The static render is the
+  // right place for this: it proves the *initial* state is one open category rather than
+  // every category, which is exactly what `defaultOpenKeys` used to get wrong.
+  check(
+    'the sidebar opens only the category of the page being read',
+    clientShell.includes('Dashboard') &&
+      clientShell.includes('Orders') &&
+      !clientShell.includes('Profile') &&
+      adminShell.includes('Dashboard') &&
+      !adminShell.includes('Manage users'),
+    'the client overview is open and the account category is closed; the admin users list is closed',
   )
   check(
     "each role is shown its own menu and never another role's",

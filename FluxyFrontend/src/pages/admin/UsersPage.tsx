@@ -22,6 +22,7 @@ import { formatTimestamp } from '../../utils/dateFormat'
 import { tableResults } from '../../utils/tableResults'
 import { idCell, ipCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
+import { actionsColumnWidth } from '../../utils/tableWidths'
 import LastSeenCell from '../../features/users/components/LastSeenCell'
 import { RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
@@ -86,16 +87,37 @@ const COLUMN_KEYS: readonly UsersColumnKey[] = [
  * forty it gave up are exactly the forty that column takes - the checkbox is paid for by the
  * one cell that truncates into a tooltip anyway, rather than by the table growing or by one
  * of the narrower columns losing a third of its width.
+ *
+ * The actions column is not one of these numbers: it is exactly as wide as the four buttons
+ * a row draws (`actionsColumnWidth`), and the room that frees goes to the username - the
+ * column this table is read by, and the one thing here that truncates a second time only
+ * when it has to. The eight still add up to 1190, and the selection column takes the total
+ * back to 1230.
  */
-const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
+const FIXED_COLUMN_WIDTHS = {
   id: 100,
-  username: 170,
   email: 160,
   group: 150,
   status: 150,
   lastSeenAt: 180,
   ip: 130,
-  actions: 150,
+}
+
+/** The width the four buttons of a row's cluster need, and nothing more. */
+const ACTIONS_WIDTH = actionsColumnWidth(4)
+
+/** The width the eight columns add up to, the selection column apart. */
+const TABLE_WIDTH = 1190
+
+const DEFAULT_COLUMN_WIDTHS: Record<UsersColumnKey, number> = {
+  ...FIXED_COLUMN_WIDTHS,
+  // The username takes the room the actions column does not need, so the total is the one
+  // this table has always had.
+  username:
+    TABLE_WIDTH -
+    Object.values(FIXED_COLUMN_WIDTHS).reduce((sum, width) => sum + width, 0) -
+    ACTIONS_WIDTH,
+  actions: ACTIONS_WIDTH,
 }
 
 /** Where this table remembers the widths the visitor gave its columns. */

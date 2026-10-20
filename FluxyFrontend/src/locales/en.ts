@@ -134,21 +134,22 @@ const en = {
       // the way the two above it do: the menu names how you got there, the card names what
       // you are looking at.
       adminSessions: 'User sessions',
-      // The three entries of each content section are one shape repeated four times, so
-      // the labels are one word each and are shared by all four sections - what differs
-      // between them is the group they sit under, which the rail already says. `Add` and
-      // `Manage` are placeholders today; `Categories` is the real page.
-      videoStreamsAdd: 'Add',
-      videoStreamsManage: 'Manage',
+      // The three entries of each content section are one shape repeated four times. Unlike
+      // the labels around them, every `add`/`manage` entry names its object as well as its
+      // verb: a bare `Add` beside `Add user` read as a different kind of control, and the
+      // group header alone is easy to skip while scanning the rail. `Add`/`Manage` entries
+      // are placeholders today; `Categories` is the real page.
+      videoStreamsAdd: 'Add video stream',
+      videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
-      audioStreamsAdd: 'Add',
-      audioStreamsManage: 'Manage',
+      audioStreamsAdd: 'Add audio stream',
+      audioStreamsManage: 'Manage audio streams',
       audioStreamsCategories: 'Categories',
-      videoOnDemandAdd: 'Add',
-      videoOnDemandManage: 'Manage',
+      videoOnDemandAdd: 'Add video',
+      videoOnDemandManage: 'Manage videos',
       videoOnDemandCategories: 'Categories',
-      seriesAdd: 'Add',
-      seriesManage: 'Manage',
+      seriesAdd: 'Add series',
+      seriesManage: 'Manage series',
       seriesCategories: 'Categories',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
@@ -726,10 +727,11 @@ const en = {
   // the four content sections whose `add` and `manage` entries actually open something.
   // Everything here is copy the server does not send.
   videoStreams: {
-    // The list page's heading. Deliberately *not* `nav.items.videoStreamsManage`, which is
-    // the verb `Manage`/`Управление` - a card titled "Manage" over a table would name
-    // neither the page nor its subject. The pair here is `Video streams` beside `Manage`:
-    // one naming what is looked at, one naming how the visitor got there.
+    // The list page's heading. Deliberately *not* `nav.items.videoStreamsManage`, which
+    // names the action (`Manage video streams`/`Управление`) - a card titled after the menu
+    // item would name neither the page nor its subject. The pair here is `Video streams`
+    // beside `Manage video streams`: one naming what is looked at, one naming how the
+    // visitor got there.
     listTitle: 'Video streams',
     // The form's heading, and the label of the add button above the table. One component
     // serves both addresses, so the title is chosen here rather than read from
@@ -739,9 +741,9 @@ const en = {
     editTitle: 'Edit stream',
     create: 'Create',
     backToList: 'Back to the list',
-    // The nine columns of the table. `type` has no column of its own - it is the header of
-    // the filter rather than a field of a row - but it is named here because the sort field
-    // shares its name and the filter's own accessible label comes from this block too.
+    // The eight columns of the table, and one more name. `type` has no column of its own -
+    // it rides in the state column, under the status - but it is named here because the sort
+    // field shares its name and the filter's own accessible label comes from this block too.
     columns: {
       id: 'ID',
       icon: 'Icon',
@@ -834,10 +836,15 @@ const en = {
       VodPlaylist: 'Plays one video-on-demand item, by its identifier.',
       FilePlaylist: 'Plays a list of stored files, in order.',
     },
-    // The five dividers. Each names the section it opens rather than a field inside it, so
-    // the visitor can find the group they came for without reading every label.
+    // The six dividers. Each names the section it opens rather than a field inside it, so
+    // the visitor can find the group they came for without reading every label. The delay
+    // and archive pair and the guide pair are separate sections because they answer
+    // different questions - "how far behind live is it, and what does it keep" versus
+    // "where does the programme guide come from" - and because the first pair is the one a
+    // kind may not carry at all.
     payloadDivider: 'What it plays',
-    scheduleDivider: 'Schedule and guide',
+    timingDivider: 'Delay and archive',
+    guideDivider: 'Programme guide',
     identityDivider: 'Identity',
     restreamDivider: 'Restreaming',
     // The ordered list of addresses (or of paths), which is one control used twice.
@@ -845,15 +852,20 @@ const en = {
     sourcesPlaceholder: 'https://example.com/stream.ts',
     filesLabel: 'Files, in play order',
     filesPlaceholder: '/media/news-1900.ts',
-    // The three buttons of one row, plus the one that adds a row underneath. Their names
-    // are the only text those buttons carry.
+    // The three buttons of one entry, plus the one that adds another entry underneath. The
+    // labels name the list's own noun - a source or a file - because the same component
+    // draws both and "row" would describe the control rather than its contents.
     moveUp: 'Move up',
     moveDown: 'Move down',
-    removeRow: 'Remove this row',
-    listAdd: 'Add a row',
-    // The whole-list rule: at least one row has to be filled in. It names the list rather
-    // than any one row, because no particular row is at fault - they are all blank.
-    listRequired: 'Add at least one entry.',
+    removeSource: 'Remove this source',
+    addSource: 'Add a source',
+    removeFile: 'Remove this file',
+    addFile: 'Add a file',
+    // The whole-list rule: at least one entry has to be filled in. Each sentence names its
+    // list rather than any one entry, because no particular entry is at fault - they are
+    // all blank.
+    sourcesRequired: 'Add at least one source.',
+    filesRequired: 'Add at least one file.',
     // The three identifier fields. Each label doubles as the name inside the "not a
     // uuid" sentence, so a refusal under two inputs of the guide pair says which fact each
     // one is missing.
@@ -870,15 +882,22 @@ const en = {
     // lands under both inputs, because neither one alone is the mistake.
     epgPair: 'Set both the source and the channel key, or neither.',
     epgPairHint: 'A programme guide needs both of these. Leave both empty for none.',
-    delayLabel: 'Delay',
-    delayHint: 'How far behind live the relay runs. Zero means no deliberate delay.',
-    archiveLabel: 'Archive length (days)',
-    archiveHint: 'How many days of archive a permanent stream keeps. Zero keeps none.',
+    delayLabel: 'Delay (minutes)',
+    delayHint: 'How many minutes behind live the relay runs. Zero means no delay.',
     // Why the field is greyed out for the other five kinds, stated as the fact rather than
     // as a refusal: it is drawn rather than hidden, so a visitor can see that the control
     // exists and learn what kind of stream it belongs to.
+    delayPermanentOnly: 'Only a permanent stream can have a delay.',
+    archiveLabel: 'Archive length (days)',
+    archiveHint: 'How many days of archive a permanent stream keeps. Zero keeps none.',
+    // The same treatment for the archive: the field stays visible, the reason takes the
+    // hint's place, and `toBody` sends zero for a kind that cannot keep one.
     archivePermanentOnly: 'Only a permanent stream keeps an archive.',
     nonNegative: 'Enter zero or more.',
+    // Why the four restreaming controls are greyed together - one sentence above the group
+    // rather than the same reason four times under each field.
+    restreamPermanentOnDemandOnly:
+      'HTTP restreaming settings are available only for permanent and on-demand streams.',
     logoUrlLabel: 'Icon address',
     urlPlaceholder: 'https://example.com/logo.png',
     enigma2SidLabel: 'Enigma2 service id',

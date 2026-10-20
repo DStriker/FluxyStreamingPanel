@@ -31,6 +31,7 @@ import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import type { ContentCategory, ContentType } from '../../features/content-categories/types'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
+import { actionsColumnWidth } from '../../utils/tableWidths'
 import { RowActions } from '../../components/table'
 import type { RowAction } from '../../components/table'
 import {
@@ -386,9 +387,12 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
       key: 'name',
     },
     {
+      // As narrow as the three buttons it holds, for the reason every actions column is
+      // now: a column wider than its content is a column of dead space, and the dead space
+      // at the end of a row reads as something missing that is not there.
       title: t('contentCategories.columns.actions'),
       key: 'actions',
-      width: 120,
+      width: actionsColumnWidth(3),
       render: (_, category) => {
         const busy = busyId === category.id
 

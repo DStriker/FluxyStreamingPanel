@@ -1,5 +1,4 @@
 import { Button, Form, Input } from 'antd'
-import { useTranslation } from 'react-i18next'
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
@@ -9,14 +8,15 @@ import {
 import { hinted } from '../../../utils/hinted'
 
 /**
- * The three per-row buttons as one strip, so the row below reads as the row it draws.
+ * The three per-entry buttons as one strip, so the entry beside them reads as the thing
+ * they act on.
  *
  * The labels arrive as arguments rather than being read here: only the page knows what a
  * column of this list is called, and a translation key is not something a component can
  * hold without inventing a prefix for every caller. Same reason `useColumnWidths` takes
  * its accessible name as an argument rather than building one.
  */
-const RowActions = ({
+const EntryActions = ({
   labels,
   handlers,
   first,
@@ -71,41 +71,37 @@ const RowActions = ({
  * it to press its own buttons on. Add appends below (the newest entry is the last
  * fallback, which is where you would add one), and both up and down are disabled at their
  * own end rather than hidden: a button that disappears tells the visitor nothing about why
- * there is no second row to reach for.
+ * there is no second entry to reach for.
  *
  * The `Form.List` carries the **whole-list rule** - at least one entry has to be filled in
- * - because that is a question about the list and not about any one of its rows, so the
- * rows themselves stay free to be blank while the visitor is still filling them out. The
+ * - because that is a question about the list and not about any one of its entries, so the
+ * entries themselves stay free to be blank while the visitor is still filling them out. The
  * server asks the same question with the same answer (`VideoStreamService.HasUsableEntries`),
  * so this is the same rule told before the request rather than explained after one.
  *
- * Blank rows are dropped rather than sent: a row nobody filled in is not a source, and the
- * server refuses a list containing *any* blank entry rather than silently ignoring it. What
- * is left is then either empty - which is exactly the refusal the rule above gives, with the
- * list named - or a clean list the columns can hold.
+ * Blank entries are dropped rather than sent: an entry nobody filled in is not a source,
+ * and the server refuses a list containing *any* blank entry rather than silently ignoring
+ * it. What is left is then either empty - which is exactly the refusal the rule above gives,
+ * with the list named - or a clean list the columns can hold.
  */
 interface SourceListEditorProps {
   /** Where the list lives in the form: `['sources']` or `['files']`. */
   name: string[]
-  /** What one row is a field for - a source address, a file path. */
+  /** What one entry is a field for - a source address, a file path. */
   placeholder: string
-  /** The most characters one row may hold, mirroring the column on the other side. */
+  /** The most characters one entry may hold, mirroring the column on the other side. */
   max: number
-  /** The three button names, since only the page knows what this column is called. */
-  labels: { up: string; down: string; remove: string; add: string }
+  /** The three button names and the whole-list rule, since only the page names the list. */
+  labels: { up: string; down: string; remove: string; add: string; required: string }
 }
 
 export default function SourceListEditor({ name, placeholder, max, labels }: SourceListEditorProps) {
-  const { t } = useTranslation()
-
-  /** The whole-list rule. The sentence names the list, because no one row is at fault. */
+  /** The whole-list rule. The sentence names the list, because no one entry is at fault. */
   const listRule = {
     validator: (_: unknown, value: string[] | undefined) => {
       const filled = (value ?? []).some((entry) => entry.trim() !== '')
 
-      return filled
-        ? Promise.resolve()
-        : Promise.reject(new Error(t('videoStreamsForm.listRequired')))
+      return filled ? Promise.resolve() : Promise.reject(new Error(labels.required))
     },
   }
 
@@ -118,16 +114,16 @@ export default function SourceListEditor({ name, placeholder, max, labels }: Sou
               <Form.Item
                 name={field.name}
                 style={{ flex: 1, marginBottom: 8 }}
-                // `max` rather than `length`, and no `required`: a row may be blank while the
-                // visitor is filling out another one, but a row that *is* filled in has to fit
-                // the column it will be written to - otherwise the refusal would arrive from
-                // the database instead of from the rule.
+                // `max` rather than `length`, and no `required`: an entry may be blank while
+                // the visitor is filling out another one, but an entry that *is* filled in has
+                // to fit the column it will be written to - otherwise the refusal would arrive
+                // from the database instead of from the rule.
                 rules={[{ max }]}
               >
                 <Input placeholder={placeholder} allowClear />
               </Form.Item>
 
-              <RowActions
+              <EntryActions
                 labels={labels}
                 first={index === 0}
                 last={index === fields.length - 1}

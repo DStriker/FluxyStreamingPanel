@@ -23,6 +23,7 @@ import { useSession } from '../../utils/sessionContext'
 import { tableResults } from '../../utils/tableResults'
 import { idCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
+import { actionsColumnWidth } from '../../utils/tableWidths'
 import { RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import {
@@ -62,14 +63,34 @@ const COLUMN_KEYS: readonly GroupsColumnKey[] = [
  * forty it gave up are exactly the forty that column takes - the checkbox is paid for by the
  * one column this page would have widened anyway, rather than by the table growing or by the
  * identifier losing a third of what it has.
+ *
+ * The actions column is not one of these numbers: it is exactly as wide as the four buttons
+ * a row draws (`actionsColumnWidth`), and the room that frees goes to the name - the one
+ * thing on this page that nothing truncates a second time. The six still add up to 1190, and
+ * the selection column takes the total back to 1230.
  */
-const DEFAULT_COLUMN_WIDTHS: Record<GroupsColumnKey, number> = {
+const FIXED_COLUMN_WIDTHS = {
   id: 110,
-  name: 360,
   role: 180,
   status: 200,
   permissionsCount: 140,
-  actions: 200,
+}
+
+/** The width the four buttons of a row's cluster need, and nothing more. */
+const ACTIONS_WIDTH = actionsColumnWidth(4)
+
+/** The width the six columns add up to, the selection column apart. */
+const TABLE_WIDTH = 1190
+
+const DEFAULT_COLUMN_WIDTHS: Record<GroupsColumnKey, number> = {
+  ...FIXED_COLUMN_WIDTHS,
+  // The name takes the room the actions column does not need, so the total is the one this
+  // table has always had.
+  name:
+    TABLE_WIDTH -
+    Object.values(FIXED_COLUMN_WIDTHS).reduce((sum, width) => sum + width, 0) -
+    ACTIONS_WIDTH,
+  actions: ACTIONS_WIDTH,
 }
 
 /** Where this table remembers the widths the visitor gave its columns. */

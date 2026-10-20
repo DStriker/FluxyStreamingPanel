@@ -29,9 +29,10 @@ const writeCollapsed = (value: boolean): void => {
  *
  * It renders `<Outlet/>` rather than children, which is the point of nesting the three
  * areas under it in the router: moving between two sections of the same area replaces
- * only what is inside the outlet, so the header, the sidebar and its scroll position and
- * open categories all survive navigation. A layout re-mounted per page would reset all
- * three, and the reset would be visible as a flash of collapsed menu on every click.
+ * only what is inside the outlet, so the header, the sidebar's scroll position and its
+ * collapsed state survive navigation, while the one open category follows the page rather
+ * than being reset by a remount. A layout re-mounted per page would reset all of them, and
+ * the reset would be visible as a flash of collapsed menu on every click.
  *
  * The backgrounds are antd's, not ours. `.ant-layout` paints itself from `Layout.bodyBg`,
  * the bar from `Layout.headerBg` and the rail from `Layout.siderBg` in the dark variant
@@ -95,7 +96,7 @@ export default function AccountLayout({ titleKey }: { titleKey: string }) {
           breakpoint="lg"
           onBreakpoint={setCollapsed}
         >
-          <AccountSidebar />
+          <AccountSidebar collapsed={collapsed} />
         </Layout.Sider>
 
         <Layout.Content className="layout-shell__content">

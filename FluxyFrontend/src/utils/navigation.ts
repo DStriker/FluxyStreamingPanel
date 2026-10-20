@@ -20,6 +20,7 @@ import {
   VideoCameraOutlined,
 } from '@ant-design/icons'
 import type { Role } from '../types'
+import { areaForRole, homeForRole } from './session'
 
 /**
  * An icon as this table stores it.
@@ -411,6 +412,45 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
   ],
+}
+
+/**
+ * The absolute address of one menu item.
+ *
+ * Section items hang off the role's area, while the item with no path of its own *is* the
+ * landing page the server names in `redirect` - so `''` takes `homeForRole`, not the area.
+ * This is the key `AccountSidebar` hands to antd, and the same key `groupKeyForPath` has to
+ * rebuild to decide which category is open; keeping the rule in one function is what stops
+ * the two from disagreeing about an address.
+ */
+export const menuPath = (role: Role, path: string): string =>
+  path ? `${areaForRole(role)}/${path}` : homeForRole(role)
+
+/**
+ * The category a browser path belongs to, or `null` when no menu item covers it.
+ *
+ * The rail needs this to open the category of the page being read, and `selectedKeys`
+ * cannot answer it alone: `/admin/users/{id}`, `/admin/user-groups/add` and
+ * `/admin/video-streams/{id}` are routes with no item of their own. An item therefore owns
+ * its exact address **and everything below it**, which is the same rule the router uses
+ * when it resolves a nested section - with the segment boundary kept on purpose, because
+ * `/admin/users` is not the owner of `/admin/usersomething`.
+ *
+ * A trailing slash is stripped before matching, exactly as `AccountSidebar` strips it from
+ * `location.pathname`; the index route's lone `/` survives that operation.
+ */
+export const groupKeyForPath = (role: Role, pathname: string): string | null => {
+  const path = pathname.replace(/\/+$/, '') || '/'
+
+  for (const group of NAVIGATION[role] ?? []) {
+    for (const item of group.items) {
+      const itemPath = menuPath(role, item.path)
+
+      if (path === itemPath || path.startsWith(`${itemPath}/`)) return group.key
+    }
+  }
+
+  return null
 }
 
 /** Every menu item of a role, flattened in display order. */

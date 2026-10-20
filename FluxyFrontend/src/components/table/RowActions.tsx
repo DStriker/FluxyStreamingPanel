@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { Button, Space } from 'antd'
 import { hinted } from '../../utils/hinted'
+import { ROW_ACTION_GAP } from '../../utils/tableWidths'
 
 /**
  * One button of a row's action cluster, as the page that owns the row names it.
@@ -33,13 +34,18 @@ export interface RowAction {
  * sit four pixels apart in one `Space`, so the cluster keeps its rhythm when a status
  * changes which buttons a row draws.
  *
+ * The gap is `ROW_ACTION_GAP` rather than a literal, because the same number is what
+ * `actionsColumnWidth` adds up to size the column the cluster sits in: the column is meant
+ * to be exactly as wide as this cluster, and two copies of the gap would be two places for
+ * that to be quietly wrong.
+ *
  * The page keeps what differs: which actions a row has, in what order, what each one says,
  * and whether it may be pressed - where "may" is a per-row question (`isSelf`, `isBase`, the
  * one id whose request is in flight) that only the page can answer.
  */
 export default function RowActions({ actions }: { actions: readonly RowAction[] }) {
   return (
-    <Space size={4}>
+    <Space size={ROW_ACTION_GAP}>
       {actions.map((action) => (
         <Fragment key={action.key}>
           {hinted(
