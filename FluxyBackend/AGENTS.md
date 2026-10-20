@@ -5,7 +5,10 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 ## Commands
 
 ```bash
-dotnet build FluxyBackend.slnx                                 # 4 projects, ~4s, 0 warnings
+dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
+dotnet test --project tests\Fluxy.UnitTests                     # 171 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 75 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 246 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -14,15 +17,28 @@ docker_run.bat                                                # generates .env i
 powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)generate secrets in .env; -Force regenerates all
 ```
 
-- Needs the .NET 10 SDK (installed: 10.0.401). Solution uses the new XML `.slnx` format.
-- **No test project, no `.editorconfig`, no lint/format config, no CI, no `Directory.Build.props`/`Directory.Packages.props` (no central package management).** Verification is `dotnet build` plus hitting the endpoint.
+- Needs the .NET 10 SDK (installed: 10.0.401; `global.json` pins the 10.0.4xx feature band with `latestPatch`). Solution uses the new XML `.slnx` format.
+- **The unit tests need nothing but the SDK; the integration tests need Docker Desktop because Testcontainers starts `postgres:18.6` and `redis:8.6`.** They use the real composition root, migrations and HTTP pipeline, reset the database and Redis before each test, and run sequentially in one xUnit collection. The test host runs in the `Testing` environment, so the production error envelope is what is asserted.
+- **No `.editorconfig`, no lint/format config, no `Directory.Build.props`/`Directory.Packages.props` (no central package management).** Verification is `dotnet build`, `dotnet test`, and hitting the endpoint. `dotnet format` is deliberately not a gate yet.
+- `dotnet-ef` is pinned in `.config/dotnet-tools.json`; run `dotnet tool restore` once after cloning.
 - All three launch profiles hardcode `ASPNETCORE_ENVIRONMENT=Development`, so the dev-only middleware is on even outside Visual Studio — and the `lan` profile therefore serves Swagger and the developer exception page to the whole network. Content root is `Fluxy.API/`, not the repo root — run docker from `FluxyBackend/`, not from the project folder.
 - Single branch, commit directly. Don't open branches or PRs.
 - `git` 2.43.0 is on PATH via the **user** PATH entry `C:\Users\user\Tools\Git\cmd` (a copy of the portable git that ships inside `C:\Program Files\BeefLang\bin\Git`; `msys64` has no git). It works on the repo one level up. New shells pick it up; a shell started before the change needs a restart.
 
+## Tests and CI
+
+Two xUnit v3 projects (Microsoft Testing Platform) live under `tests/` and are part of the solution:
+
+- **`Fluxy.UnitTests`** — pure unit tests for the rules in Core and Application (login guard, GeoIP address handling, status composition, permissions, registration, time zones, one-time codes, token signing) plus architecture checks that keep Application free of EF Core/DataAccess/Redis/MaxMind and Core free of project references. No Docker, no database, ~1 s.
+- **`Fluxy.IntegrationTests`** — `WebApplicationFactory<Program>` drives the real composition root over HTTP. Testcontainers starts PostgreSQL 18.6 and Redis 8.6 once per run; Respawn truncates the database and Redis is flushed before every test, then the three base groups are recreated. Tests run sequentially in one `[Collection]`. `IEmailSender`, `IRecaptchaValidator`, `IGeoIpResolver`, `TimeProvider` and `IUserSeeder` are replaced with deterministic fakes, and the host runs in `Testing`, so the assertions see the production status-code/error-envelope pipeline. Docker Desktop must be running for this project.
+- **Tests never call internal persistence types.** Data is planted through Core repository interfaces (`TestDataSeeder`), except for a few deliberate SQL fixtures (for example an expired registration code).
+- **Do not change API behaviour to make a test pass.** If a scenario disagrees with the code, the test documents the actual contract or the code has a bug worth reporting separately.
+- **CI**: `.github/workflows/backend.yml` runs on pushes/PRs touching `FluxyBackend/**` (and on demand). It restores, builds Release with `-warnaserror`, runs both projects separately with a minimum test count and their own Cobertura coverage file, verifies `dotnet ef migrations has-pending-model-changes`, and fails if `dotnet list package --vulnerable` reports any package. Test results and coverage are uploaded as the `backend-test-results` artifact.
+- Coverage has no threshold yet; the baseline is collected so one can be chosen deliberately later. `dotnet format` is not a gate because there is no `.editorconfig`.
+
 ## Intended architecture — the layers are isolated
 
-`FluxyBackend.slnx` contains **4** projects, wired as the graph below. `Fluxy.Core` holds `<Domain>/<Kind>/` — the business model, the contracts and the shared rules, grouped by domain first and by kind second (see "The core layer is organised by domain, then by kind" below), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `<Domain>/<Kind>/` — the business services, the helpers around them and the configuration they read (see "The application layer is organised by domain, then by kind" below), and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
+`FluxyBackend.slnx` contains **4 production projects and 2 test projects**, wired as the graph below. `Fluxy.Core` holds `<Domain>/<Kind>/` — the business model, the contracts and the shared rules, grouped by domain first and by kind second (see "The core layer is organised by domain, then by kind" below), `Fluxy.DataAccess` holds the `DbContext`, the entities, their table configurations, the migrations, the repository implementations and `Infrastructure/` (unit of work and database initializer), `Fluxy.Application` holds `<Domain>/<Kind>/` — the business services, the helpers around them and the configuration they read (see "The application layer is organised by domain, then by kind" below), and its DI extension. `Fluxy.API` holds the `Program.cs` wiring, the top-level `Extensions`/`Middleware`/`Options`/`Security` folders, `Contracts/<Feature>/` and `Controllers/<Area>/`.
 
 The dependency graph (confirmed by the owner — this is the contract, not a guess):
 
@@ -1259,7 +1275,7 @@ non-Permanent kind → `400` naming it; a half guide → `400` naming both field
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
 - **API contracts are grouped by feature**: `Fluxy.API/Contracts/<Feature>/` holds the request and response types one controller speaks, and the folder name is the namespace segment — `Fluxy.API.Contracts.Authentication`, `Fluxy.API.Contracts.Users`, and so on. The few types more than one feature names — `MessageResponse`, the bulk answers, `FieldErrorKeys` — live in `Fluxy.API.Contracts.Common`. A contract belongs in `Common/` the moment a second feature needs it, not in whichever feature happened to define it first.
-- `ImplicitUsings` and `Nullable` are enabled in all 4 projects.
+- `ImplicitUsings` and `Nullable` are enabled in all 6 projects.
 - **One type per file**, in every layer: the file name is the type name and nothing else. A type that only one other type uses is still a file of its own.
 - **Comments in project files are written in English** — code, config files and this rule itself. Russian stays where it belongs: this document and anything that is prose for humans, not source. XML doc comments (`///`) are preferred over inline comments.
 - **Commit messages are written in English and kept short** — one line for the subject, a body of a few lines at most, and only when the change genuinely needs it.

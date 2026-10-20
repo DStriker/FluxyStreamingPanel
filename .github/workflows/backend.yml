@@ -1,0 +1,108 @@
+name: Backend
+
+# Verification for FluxyBackend: the build, both test projects and the checks that keep the
+# schema and dependencies honest. The integration tests start their own PostgreSQL and Redis
+# containers through Testcontainers, so no service container is declared here - the Docker
+# daemon on the runner is the only external requirement.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'FluxyBackend/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'FluxyBackend/**'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+
+# One run per branch: a superseded run is cancelled rather than allowed to race the new one.
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: FluxyBackend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: FluxyBackend/global.json
+
+      - name: Restore
+        run: dotnet restore FluxyBackend.slnx
+
+      - name: Build
+        run: dotnet build FluxyBackend.slnx -c Release --no-restore -warnaserror
+
+      # The two projects are run separately so each one writes its own coverage file. A single
+      # `dotnet test --solution` runs both modules but both try to write the same coverage path,
+      # and the second one to finish silently replaces the first.
+      - name: Test unit
+        run: >
+          dotnet test --project tests/Fluxy.UnitTests
+          -c Release --no-build
+          --minimum-expected-tests 170
+          --coverage
+          --coverage-output unit.coverage.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --results-directory TestResults/unit
+
+      - name: Test integration
+        run: >
+          dotnet test --project tests/Fluxy.IntegrationTests
+          -c Release --no-build
+          --minimum-expected-tests 70
+          --coverage
+          --coverage-output integration.coverage.xml
+          --coverage-output-format cobertura
+          --report-xunit-trx
+          --results-directory TestResults/integration
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Check for pending EF Core model changes
+        run: >
+          dotnet ef migrations has-pending-model-changes
+          --project Fluxy.DataAccess
+          --no-build
+          --configuration Release
+
+      - name: Check for vulnerable NuGet packages
+        shell: bash
+        run: |
+          dotnet list FluxyBackend.slnx package \
+            --vulnerable --include-transitive --format json --no-restore \
+            > "$RUNNER_TEMP/vulnerabilities.json"
+
+          if jq -e '.. | objects | select((.vulnerabilities? // []) | length > 0)' \
+              "$RUNNER_TEMP/vulnerabilities.json" > /dev/null; then
+            echo "::error::Vulnerable NuGet packages were found."
+            jq '.. | objects | select((.vulnerabilities? // []) | length > 0)' \
+              "$RUNNER_TEMP/vulnerabilities.json"
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: FluxyBackend/TestResults
+          if-no-files-found: ignore
+          retention-days: 14
