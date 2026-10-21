@@ -247,6 +247,7 @@ export default function ActiveSessionsPage({ sectionKey }: { sectionKey: string 
     // to the title, where the history keeps its search and its width reset, so the page's one
     // action sits where every other section puts its controls.
     <Card
+      className="page-card"
       title={t(sectionKey)}
       extra={
         <Button

@@ -9,7 +9,7 @@ import { formatTimestamp } from '../../utils/dateFormat'
 import { tableResults } from '../../utils/tableResults'
 import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../../utils/tableCells'
 import { withFilter } from '../../utils/tableParams'
-import { ServerTable, TableSearch } from '../../components/table'
+import { ResetColumnWidths, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps } from '../../components/table'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useRevokeAdminSession } from '../../features/sessions/hooks/mutations'
@@ -415,6 +415,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
 
   return (
     <Card
+      className="page-card"
       title={t('adminSessions.listTitle')}
       // Pinned to one line so the *toolbar* is what yields when the row is too wide, for
       // the reason the accounts table pins its own: antd otherwise shrinks both halves and
@@ -449,10 +450,13 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
-              until somebody has actually dragged something. */}
-          <Button disabled={atDefaults} onClick={() => reset()}>
-            {t('adminSessions.resetWidths')}
-          </Button>
+              until somebody has actually dragged something. The icon keeps the label out of
+              a toolbar that shares its row with the table's title. */}
+          <ResetColumnWidths
+            label={t('adminSessions.resetWidths')}
+            disabled={atDefaults}
+            onClick={() => reset()}
+          />
         </Space>
       }
     >

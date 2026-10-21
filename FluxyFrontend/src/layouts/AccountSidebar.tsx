@@ -51,7 +51,18 @@ import { useIsDark } from '../utils/theme'
  * down, so this half is written here as well as on the rail in `AccountLayout` - one
  * declaration each, both from `useIsDark`.
  */
-export default function AccountSidebar({ collapsed }: { collapsed: boolean }) {
+export default function AccountSidebar({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed: boolean
+  /**
+   * Called after a menu item navigates. The drawer needs it to close itself - a route change
+   * closes it too, but choosing the page already on screen changes no address, and a menu
+   * that stayed open over the page it just re-selected would look unresponsive.
+   */
+  onNavigate?: () => void
+}) {
   const { t } = useTranslation()
   const dark = useIsDark()
   const { token } = theme.useToken()
@@ -179,7 +190,10 @@ export default function AccountSidebar({ collapsed }: { collapsed: boolean }) {
         selectedKeys={[current]}
         openKeys={openKeys}
         onOpenChange={handleOpenChange}
-        onClick={({ key }) => navigate(key)}
+        onClick={({ key }) => {
+          navigate(key)
+          onNavigate?.()
+        }}
         // rc-menu writes `padding-left` as `depth * inlineIndent`, counting depth from 1:
         // the category title lands on `inlineIndent`, every page inside it on twice that.
         // The default 24px therefore puts a page's icon at 48px - a fifth of this rail -

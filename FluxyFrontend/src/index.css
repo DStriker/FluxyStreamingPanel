@@ -29,7 +29,10 @@ body {
    overflow: header fixed at the top, sidebar scrolling its own list, workspace scrolling
    its own widgets. */
 .layout-shell {
+  /* The second line is what a phone measures against its *visible* viewport. The first is
+     the floor for browsers that do not know `dvh`. */
   height: 100vh;
+  height: 100dvh;
 }
 
 /* The shell's own rules are scoped under `.layout-shell` where they land on an element
@@ -60,6 +63,14 @@ body {
 
 .layout-shell__logo {
   flex: none;
+  /* The width is a stylesheet decision rather than an `Image` prop so the compact rules
+     below can shrink it - and then hide it - without fighting an inline style. */
+  width: 132px;
+}
+
+.layout-shell__logo .ant-image-img {
+  width: 100%;
+  height: auto;
 }
 
 /* The area's name, and the only thing in the bar that is a title rather than a control.
@@ -83,6 +94,30 @@ body {
   min-width: 0;
 }
 
+/* The identity and its menu are one control. The gap restores what the `Space` beside the
+   avatar used to provide, and the maximum width keeps a long account name from pushing the
+   language picker and the theme switch off the bar. antd gives a text button 15px of
+   padding on each side, which turns the hover highlight into a bar much wider than the
+   avatar and the name inside it; six keeps the target comfortable without the dead space.
+   The 8px on the end lines the highlight up with the 24px inset the page content uses,
+   rather than the header's own 16px padding. */
+.layout-shell .layout-shell__user {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  min-width: 0;
+  margin-inline-end: 8px;
+  padding-inline: 6px;
+}
+
+.layout-shell__user .layout-shell__username {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .layout-shell__username {
   white-space: nowrap;
 }
@@ -96,6 +131,21 @@ body {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* The compact menu is the same menu in a drawer. The drawer body is already a flex column
+   with its own scroll, so the wrapper hands its height to it instead of creating a second
+   scrollbar; the body padding is removed at the Drawer itself. */
+.layout-shell__drawer .ant-drawer-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.layout-shell__drawer .layout-shell__sider-scroll {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 /* The title of the category you are standing in. antd gives `-submenu-selected` a colour
@@ -131,20 +181,128 @@ body {
   padding: 24px;
 }
 
-/* The header loses its periphery before it loses anything load-bearing: the collapse
-   trigger, the logo and the way out. The title and the name are both repeated elsewhere -
-   in the tab, and in the dropdown beside the avatar. */
+/* Below the rail's breakpoint the shell is the header and the page. The menu is a drawer,
+   so the content starts at the viewport edge; 16px keeps the card aligned with the header's
+   8px padding plus the account chip's own 8px end margin. */
+@media (max-width: 991px) {
+  .layout-shell .layout-shell__header {
+    gap: 8px;
+    padding: 0 8px;
+  }
+
+  .layout-shell__header-side {
+    gap: 8px;
+  }
+
+  .layout-shell .layout-shell__content {
+    padding: 16px;
+  }
+}
+
+/* The header loses its periphery before it loses anything load-bearing: the title and the
+   name. The avatar keeps the account menu reachable, and the menu itself still says whose
+   session it is through the button's own accessible name. The logo is the next thing to
+   give way, first shrinking and then disappearing on the narrowest phones. */
 @media (max-width: 768px) {
   .layout-shell .layout-shell__title,
-  .layout-shell__username,
-  .layout-shell__signout-label {
+  .layout-shell__username {
     display: none;
+  }
+
+  .layout-shell__logo {
+    width: 96px;
+  }
+
+  .layout-shell__drawer .ant-drawer-header {
+    padding: 16px;
+  }
+
+  .layout-shell .ant-card-body {
+    padding: 16px;
+  }
+
+  .layout-shell .page-card .ant-card-head {
+    padding-inline: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Two classes, because antd's own `.ant-image` rule sets `display: inline-block` and
+     would otherwise win the cascade for a class of equal weight. */
+  .layout-shell__header-side > .layout-shell__logo {
+    display: none;
+  }
+}
+
+/* An antd card header is one row by default, and on a narrow screen the toolbar wins that
+   row outright: `.ant-card-head-title` can be measured at width 0 while every control stays
+   visible. Below `xl` the title therefore takes a row of its own and the toolbar moves under
+   it. The controls themselves stay horizontal until the phone breakpoint, where the toolbar
+   becomes the stack of full-width controls a thumb expects. */
+@media (max-width: 1200px) {
+  .layout-shell .page-card .ant-card-head-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding-block: 12px;
+  }
+
+  .layout-shell .page-card .ant-card-head-title {
+    flex: none;
+    width: 100%;
+  }
+
+  .layout-shell .page-card .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .layout-shell .page-card .ant-card-extra > .ant-space {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .layout-shell .page-card .ant-card-head-title {
+    /* The desktop rule is inline on the pages (`styles.title`), so only an important
+       declaration can let a long Russian heading wrap on a phone. */
+    white-space: normal !important;
+  }
+
+  .layout-shell .page-card .ant-card-extra .ant-space {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap !important;
+    width: 100%;
+  }
+
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item {
+    width: 100%;
+  }
+
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item > .ant-btn,
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item > .ant-select,
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item > .ant-input-search,
+  .layout-shell .page-card .ant-card-extra > .ant-btn {
+    width: 100% !important;
+  }
+
+  /* `hinted` wraps a disabled button in an inline-flex span. The span has to become a
+     block-level full-width box before the button inside it can do the same. */
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item > span {
+    display: flex !important;
+    width: 100%;
+  }
+
+  .layout-shell .page-card .ant-card-extra .ant-space .ant-space-item > span > .ant-btn {
+    width: 100%;
   }
 }
 
 .auth-page {
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;

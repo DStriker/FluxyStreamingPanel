@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom'
-import { App, Avatar, Button, Image, Segmented, Space, Tooltip, Typography } from 'antd'
+import { App, Avatar, Button, Dropdown, Image, Segmented, Tooltip, Typography } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   LaptopOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
+  MenuOutlined,
   MenuUnfoldOutlined,
   MoonOutlined,
-  SettingOutlined,
   SunOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -22,29 +23,48 @@ import { internalPath } from '../utils/url'
 import { useSignOut } from '../features/auth/hooks/mutations'
 
 /**
- * The pinned top bar: where this area is, who is signed in, how to get to their settings,
- * how to change the theme, and how to get out.
+ * The pinned top bar: where this area is, who is signed in, how to change the theme, and
+ * the account's own two actions - the profile and the way out - behind the identity.
  *
  * The username comes from `RequireAuth`'s read of `/auth/me` rather than from a second
  * request of this component's own - the guard had to ask anyway, and two answers to the
  * same question are two chances for them to disagree.
  *
- * The settings shortcut points at the profile section of *this* role's area, computed
+ * The profile shortcut points at the profile section of *this* role's area, computed
  * through `areaForRole`, because that is the one section every role has and it needs no
  * path invented here that the router might not have. It is the area and never
  * `homeForRole`: profile is a sibling of the dashboard, and hanging it off the landing
  * path is what once made this button go to `/admin/dashboard/profile`.
+ *
+ * The avatar and the name are one trigger, and the two actions live in the menu it opens
+ * on hover or a click - and on a tap below the rail's breakpoint, where there is no pointer
+ * to hover.
+ * They used to sit beside it as their own buttons, which put two rarely used controls at
+ * the end of every page's bar; the extra gesture is the price of that room, and it is the
+ * one place this bar deliberately trades one for the other. The identity itself stays
+ * visible because knowing whose session is on screen is not a menu's job.
+ *
+ * The leading button changes meaning with the shell: on the desktop it folds and unfolds
+ * the rail, and in compact mode it opens the drawer that replaces the rail. The icon and
+ * the accessible name follow that difference, and `aria-expanded` is stated only where
+ * there is a drawer whose state it can describe.
  */
 export default function AccountHeader({
   titleKey,
   collapsed,
+  compact,
+  menuOpen,
   onToggle,
 }: {
   /** Locale key of the heading the layout put in the bar. */
   titleKey: string
   /** Whether the rail is currently narrowed to its icons. */
   collapsed: boolean
-  /** Flips `collapsed`, and writes it so the next visit remembers. */
+  /** Whether the shell is below the rail's breakpoint and the menu is a drawer. */
+  compact: boolean
+  /** Whether that drawer is open - what tells a screen reader the button's state. */
+  menuOpen: boolean
+  /** Opens the drawer in compact mode, or flips and stores `collapsed` on the desktop. */
   onToggle: () => void
 }) {
   const navigate = useNavigate()
@@ -57,12 +77,17 @@ export default function AccountHeader({
 
   // Only `RequireAuth` renders this bar, and it always publishes a session - so `null` here
   // means the guard was bypassed rather than that nobody happens to be signed in. An empty
-  // bar would still draw the logo, the theme switch and a sign-out button for a visitor
-  // with no session to end, so it draws nothing at all.
+  // bar would still draw the logo, the theme switch and an account menu for a visitor with
+  // no session to read or end, so it draws nothing at all.
   if (!session) return null
 
   const profilePath = `${areaForRole(session.role)}/profile`
-  const toggleLabel = collapsed ? t('header.expandMenu') : t('header.collapseMenu')
+  const toggleLabel = compact
+    ? t('header.openMenu')
+    : collapsed
+      ? t('header.expandMenu')
+      : t('header.collapseMenu')
+  const accountLabel = `${t('header.accountMenu')}: ${session.username}`
 
   const themeOptions = [
     { value: ThemeChoice.Light, icon: <SunOutlined />, tooltip: t('header.themeLight') },
@@ -99,6 +124,32 @@ export default function AccountHeader({
     }
   }
 
+  // The two things a visitor does with their own session, in the order they are reached for:
+  // the profile (a place they may return to) and then the way out, set apart because ending
+  // the session is not one more item in the same list.
+  const accountItems: MenuProps['items'] = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: t('nav.items.profile'),
+    },
+    { type: 'divider' },
+    {
+      key: 'sign-out',
+      icon: <LogoutOutlined />,
+      label: t('actions.signOut'),
+    },
+  ]
+
+  const handleAccountMenu: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'profile') {
+      navigate(profilePath)
+      return
+    }
+
+    if (key === 'sign-out') void handleSignOut()
+  }
+
   return (
     <>
       <div className="layout-shell__header-side">
@@ -106,16 +157,26 @@ export default function AccountHeader({
           <Button
             type="text"
             aria-label={toggleLabel}
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-expanded={compact ? menuOpen : undefined}
+            icon={
+              compact ? (
+                <MenuOutlined />
+              ) : collapsed ? (
+                <MenuUnfoldOutlined />
+              ) : (
+                <MenuFoldOutlined />
+              )
+            }
             onClick={onToggle}
           />
         </Tooltip>
 
+        {/* The width lives in `index.css` so the phone breakpoints can shrink it. The
+            image keeps its own aspect ratio from that width. */}
         <Image
-          className="layout-shell__logo"
+          rootClassName="layout-shell__logo"
           src="/logo.jpg"
           alt="Fluxy"
-          width={132}
           preview={false}
         />
 
@@ -134,26 +195,30 @@ export default function AccountHeader({
           options={themeOptions}
         />
 
-        {/* Identity rather than a control: it says whose session this is, and the two
-            things a visitor does with it sit beside it as their own buttons. Hiding both
-            behind one menu would have made "quick transition to settings" two clicks. */}
-        <Space size={8} className="layout-shell__user">
-          <Avatar size="small" icon={<UserOutlined />} />
-          <span className="layout-shell__username">{session.username}</span>
-        </Space>
-
-        <Tooltip title={t('header.settings')}>
+        {/* The identity is the trigger: whose session this is and what may be done with it
+            are one question, so they are one control rather than three. The menu follows the
+            pointer on the desktop and the tap in compact mode; `aria-haspopup` is stated
+            because antd's dropdown does not add it to its trigger, and without it nothing
+            would tell a screen reader that a menu is coming. */}
+        <Dropdown
+          menu={{ items: accountItems, onClick: handleAccountMenu }}
+          placement="bottomRight"
+          // A pointer can hover; a finger cannot. The tap is the compact equivalent of the
+          // gesture the desktop has always used. The desktop keeps `click` as well, because
+          // a trigger that only opens on hover cannot be opened by Enter on a focused
+          // button - the keyboard path would end at a menu that never appears.
+          trigger={compact ? ['click'] : ['hover', 'click']}
+        >
           <Button
             type="text"
-            aria-label={t('header.settings')}
-            icon={<SettingOutlined />}
-            onClick={() => navigate(profilePath)}
-          />
-        </Tooltip>
-
-        <Button type="text" icon={<LogoutOutlined />} onClick={handleSignOut}>
-          <span className="layout-shell__signout-label">{t('actions.signOut')}</span>
-        </Button>
+            className="layout-shell__user"
+            aria-label={accountLabel}
+            aria-haspopup="menu"
+          >
+            <Avatar size="small" icon={<UserOutlined />} />
+            <span className="layout-shell__username">{session.username}</span>
+          </Button>
+        </Dropdown>
       </div>
     </>
   )

@@ -25,7 +25,7 @@ import { tableResults } from '../../utils/tableResults'
 import { dashedCell, idCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
 import { actionsColumnWidth } from '../../utils/tableWidths'
-import { RowActions, ServerTable, TableSearch } from '../../components/table'
+import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import {
@@ -571,6 +571,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
 
   return (
     <Card
+      className="page-card"
       title={t('videoStreams.listTitle')}
       // The title pinned to one line, for the reason the other two tables pin theirs: this
       // row shares the card header with a toolbar that is now the widest of the three.
@@ -629,10 +630,13 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
-              until somebody has actually dragged something. */}
-          <Button disabled={atDefaults} onClick={() => reset()}>
-            {t('videoStreams.resetWidths')}
-          </Button>
+              until somebody has actually dragged something. The icon keeps the label out of
+              a toolbar that shares its row with the table's title. */}
+          <ResetColumnWidths
+            label={t('videoStreams.resetWidths')}
+            disabled={atDefaults}
+            onClick={() => reset()}
+          />
           {/* The same address the "add" route opens, offered here because this is the screen
               from which adding one is a decision. Its label comes from the form's own title
               rather than from `nav.items.videoStreamsManage`, which is the *list's* menu

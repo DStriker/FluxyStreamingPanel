@@ -162,9 +162,10 @@ const ru: Translation = {
     },
   },
   header: {
-    settings: 'Настройки',
+    accountMenu: 'Меню аккаунта',
     collapseMenu: 'Свернуть меню',
     expandMenu: 'Развернуть меню',
+    openMenu: 'Открыть меню',
     themeLight: 'Светлая тема',
     themeDark: 'Тёмная тема',
     themeSystem: 'Как в системе',

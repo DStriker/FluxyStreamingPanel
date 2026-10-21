@@ -432,6 +432,7 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
 
   return (
     <Card
+      className="page-card"
       // The heading names the kind of content the categories belong to, because the four
       // addresses of this page differ in nothing else - and a card that said only
       // "Categories" on all four would leave the visitor reading four identical screens

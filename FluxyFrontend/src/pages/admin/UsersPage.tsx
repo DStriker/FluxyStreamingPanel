@@ -24,7 +24,7 @@ import { idCell, ipCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
 import { actionsColumnWidth } from '../../utils/tableWidths'
 import LastSeenCell from '../../features/users/components/LastSeenCell'
-import { RowActions, ServerTable, TableSearch } from '../../components/table'
+import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useAllUserGroups } from '../../features/user-groups/hooks/queries'
@@ -696,6 +696,7 @@ export default function UsersPage(_props: UsersPageProps) {
 
   return (
     <Card
+      className="page-card"
       title={t('users.listTitle')}
       // The title is the one thing in this header that must never yield. Without this, antd
       // shrinks both halves when the row is too wide and the title's own text wraps to a
@@ -712,8 +713,8 @@ export default function UsersPage(_props: UsersPageProps) {
               button rather than a label beside one. The count rides inside the button the
               count enables - see `menuWithCount` in the locales for why, which is a width
               decision about this row before it is anything else. Both states are drawn with
-              nothing selected, for the reason the "Reset widths" button below is drawn while
-              disabled: a control that appears and disappears reads as a broken one, and the
+              nothing selected, for the reason the width reset below is drawn while disabled:
+              a control that appears and disappears reads as a broken one, and the
               count is what says *why* the menu is greyed. The tooltip carries the permission
               sentence only where there is one - with the grants in place it would be
               repeating the button's own label back at the visitor, which is what the "Add
@@ -733,10 +734,11 @@ export default function UsersPage(_props: UsersPageProps) {
           )}
           {/*200 rather than 260, and the two selects below are narrower for the same reason:
               this row has to fit **beside the card's own title** on one Full HD screen, and
-              in Russian it does not. `Сбросить ширину`, `Добавить пользователя` and
-              `Действия` are all longer than their English twins, so the budget the English
-              layout never noticed is the one the Russian one spends. What the search loses in
-              room it keeps in its aria-label, which still names the whole field. */}
+              in Russian it does not. `Добавить пользователя` and `Действия` are longer than
+              their English twins, and the width reset is an icon rather than a third long
+              label, so the budget the English layout never noticed is the one the Russian one
+              spends. What the search loses in room it keeps in its aria-label, which still
+              names the whole field. */}
           <TableSearch
             value={table.searchText}
             onChange={table.setSearchText}
@@ -767,10 +769,13 @@ export default function UsersPage(_props: UsersPageProps) {
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
-              until somebody has actually dragged something. */}
-          <Button disabled={atDefaults} onClick={() => reset()}>
-            {t('users.resetWidths')}
-          </Button>
+              until somebody has actually dragged something. The icon keeps the label out of
+              a toolbar that shares its row with the table's title. */}
+          <ResetColumnWidths
+            label={t('users.resetWidths')}
+            disabled={atDefaults}
+            onClick={() => reset()}
+          />
           {/* The same address the sidebar's own "Add user" opens, offered here because this
               is the screen from which adding one is a decision: the list is where "there is
               no account for that person yet" becomes visible. Greyed for an operator who may

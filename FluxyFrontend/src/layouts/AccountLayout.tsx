@@ -1,8 +1,10 @@
-import { useState } from 'react'
-import { Layout } from 'antd'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Drawer, Layout } from 'antd'
+import { useTranslation } from 'react-i18next'
+import { Outlet, useLocation } from 'react-router-dom'
 import AccountHeader from './AccountHeader'
 import AccountSidebar from './AccountSidebar'
+import { useIsCompact } from '../hooks/useIsCompact'
 import { useIsDark } from '../utils/theme'
 
 const SIDEBAR_KEY = 'fluxy-sidebar-collapsed'
@@ -59,17 +61,39 @@ const writeCollapsed = (value: boolean): void => {
  *
  * The sidebar's collapsed state is remembered per browser rather than per visit, because
  * it is a preference about the shape of the screen and not about a page - re-expanding it
- * on every load would be the shell forgetting what the visitor told it. The responsive
- * breakpoint still collapses it on a narrow window, deliberately without writing that to
- * storage: it is a fact about the viewport, and storing it would leave somebody who once
- * resized the window with a sidebar they cannot get back.
+ * on every load would be the shell forgetting what the visitor told it. That memory belongs
+ * to the desktop rail alone. Below `lg` the rail is not drawn at all: the menu becomes a
+ * `Drawer`, which is a layer over the page rather than a column taking 76 pixels from it,
+ * and its open/closed state is a fact about the current visit rather than a preference worth
+ * storing.
+ *
+ * The compact decision is made in JavaScript rather than left to `Sider`'s own `breakpoint`:
+ * one hook answers the question for the whole shell, so the rail and the drawer can never
+ * both be mounted, and the content width is full on the very first mobile paint.
  */
 /** The locale key of the area's heading - `titles.clientArea`, `titles.adminArea`. */
 export default function AccountLayout({ titleKey }: { titleKey: string }) {
   const dark = useIsDark()
+  const compact = useIsCompact()
+  const location = useLocation()
+  const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // A drawer is a layer over a page, not a part of its history: every move to another
+  // address closes it, including back/forward and a navigation a page performs itself. The
+  // menu's own `onNavigate` covers the one move this effect cannot see - choosing the page
+  // that is already open, which leaves the address unchanged.
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [compact, location.pathname])
 
   const toggle = () => {
+    if (compact) {
+      setDrawerOpen((open) => !open)
+      return
+    }
+
     // Written outside the updater on purpose: a state updater has to be pure, and React
     // may call it twice in development to check that it is. The value is computed from
     // what is on screen now, which is what a click always means.
@@ -81,23 +105,41 @@ export default function AccountLayout({ titleKey }: { titleKey: string }) {
   return (
     <Layout className="layout-shell">
       <Layout.Header className="layout-shell__header">
-        <AccountHeader titleKey={titleKey} collapsed={collapsed} onToggle={toggle} />
+        <AccountHeader
+          titleKey={titleKey}
+          collapsed={collapsed}
+          compact={compact}
+          menuOpen={drawerOpen}
+          onToggle={toggle}
+        />
       </Layout.Header>
 
-      <Layout hasSider className="layout-shell__body">
-        <Layout.Sider
-          className="layout-shell__sider"
-          theme={dark ? 'dark' : 'light'}
-          width={240}
-          collapsedWidth={76}
-          collapsible
-          trigger={null}
-          collapsed={collapsed}
-          breakpoint="lg"
-          onBreakpoint={setCollapsed}
-        >
-          <AccountSidebar collapsed={collapsed} />
-        </Layout.Sider>
+      <Layout hasSider={!compact} className="layout-shell__body">
+        {compact ? (
+          <Drawer
+            rootClassName="layout-shell__drawer"
+            placement="left"
+            width="min(84vw, 320px)"
+            title={t(titleKey)}
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            styles={{ body: { padding: 0 } }}
+          >
+            <AccountSidebar collapsed={false} onNavigate={() => setDrawerOpen(false)} />
+          </Drawer>
+        ) : (
+          <Layout.Sider
+            className="layout-shell__sider"
+            theme={dark ? 'dark' : 'light'}
+            width={240}
+            collapsedWidth={76}
+            collapsible
+            trigger={null}
+            collapsed={collapsed}
+          >
+            <AccountSidebar collapsed={collapsed} />
+          </Layout.Sider>
+        )}
 
         <Layout.Content className="layout-shell__content">
           <Outlet />

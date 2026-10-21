@@ -191,6 +191,15 @@ export const appTheme = (dark: boolean): AppTheme => {
           // answer from `onPrimary` above.
           darkItemSelectedColor: onPrimary,
         },
+        Table: {
+          // antd tints every body cell of the sorted column (`td.ant-table-column-sort`)
+          // as well as its header. The header is where the sort state belongs - the arrow
+          // and the tint read as one control - while a wash down the column makes the rows
+          // look striped for a reason the visitor did not choose. The header keeps its
+          // `headerSortActiveBg`; only `bodySortBg` is cleared, so row hover and selection
+          // still paint over these cells as they do over every other row.
+          bodySortBg: 'transparent',
+        },
       },
     },
     /** The tokens of this exact theme, for anything `ConfigProvider` cannot reach - `body`. */

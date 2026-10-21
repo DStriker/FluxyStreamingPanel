@@ -636,7 +636,7 @@ async function main() {
     usersHtml.includes('Search by username or email') &&
       usersHtml.includes('Any group') &&
       usersHtml.includes('Any status') &&
-      usersHtml.includes('Reset widths') &&
+      usersHtml.includes('aria-label="Reset widths"') &&
       usersHtml.includes('Add user'),
     usersHtml.includes('Add user') ? `rendered ${usersHtml.length} bytes` : 'the add button went missing',
   )
@@ -660,15 +660,15 @@ async function main() {
     `${usersBulkButtons.length} button(s) labelled "Actions": ${usersBulkButtons[0]?.slice(0, 180) ?? 'none'}`,
   )
 
-  // The header's tie-break, and the half of the fix a narrower toolbar is not: when the row
-  // is still too wide - a longer label, a narrower window, a browser at 150% - the title is
-  // pinned to one line so the *toolbar* is what yields, wrapping its controls onto a second
-  // row through `Space wrap`. Without it antd shrinks both halves and the page's own heading
-  // wraps to two lines, which is what a visitor sees as "the title does not fit". No CSS in
-  // this repo reaches into `.ant-card-head-title`, and the prop is the only handle there is,
-  // so this is asserted rather than trusted.
+  // The header's desktop tie-break, and the half of the fix a narrower toolbar is not: when
+  // the row is still too wide - a longer label, a narrower window, a browser at 150% - the
+  // title is pinned to one line so the *toolbar* is what yields, wrapping its controls onto
+  // a second row through `Space wrap`. Below 1200px the `page-card` rules in `index.css`
+  // take over and give the title a row of its own; below 768px they release this inline
+  // `nowrap` so a long heading may wrap. The prop is still the desktop answer and the static
+  // render has no media query to consult, so it is asserted here rather than trusted.
   check(
-    'the users card pins its title to one line so the toolbar is what yields',
+    'the users card pins its title to one line on the desktop so the toolbar is what yields',
     /<div[^>]*class="ant-card-head-title"[^>]*style="white-space:nowrap"/.test(usersHtml),
     `head title: ${
       /<div[^>]*class="ant-card-head-title"[^>]*>/.exec(usersHtml)?.[0] ?? 'not found'
@@ -854,7 +854,7 @@ async function main() {
     groupsHtml.includes('Search by group name') &&
       groupsHtml.includes('Any role') &&
       groupsHtml.includes('Any status') &&
-      groupsHtml.includes('Reset widths') &&
+      groupsHtml.includes('aria-label="Reset widths"') &&
       groupsHtml.includes('Add group'),
     groupsHtml.includes('Add group')
       ? `rendered ${groupsHtml.length} bytes`
@@ -874,11 +874,13 @@ async function main() {
     `${groupsBulkButtons.length} button(s) labelled "Actions": ${groupsBulkButtons[0]?.slice(0, 180) ?? 'none'}`,
   )
 
-  // The same tie-break as the accounts table's, and the more load-bearing of the two here:
-  // `Группы пользователей` is the longest heading either table carries, sitting beside what
-  // is now the wider of the two toolbars.
+  // The same desktop tie-break as the accounts table's, and the more load-bearing of the two
+  // here: `Группы пользователей` is the longest heading either table carries, sitting beside
+  // what is now the wider of the two toolbars. The compact rules below 1200px are the other
+  // half of the answer, and the `page-card` class they key on is asserted with the other
+  // toolbar cards.
   check(
-    'the groups card pins its title to one line so the toolbar is what yields',
+    'the groups card pins its title to one line on the desktop so the toolbar is what yields',
     /<div[^>]*class="ant-card-head-title"[^>]*style="white-space:nowrap"/.test(groupsHtml),
     `head title: ${
       /<div[^>]*class="ant-card-head-title"[^>]*>/.exec(groupsHtml)?.[0] ?? 'not found'
@@ -1182,7 +1184,7 @@ async function main() {
       streamsHtml.includes('Any category') &&
       streamsHtml.includes('Any status') &&
       streamsHtml.includes('Any type') &&
-      streamsHtml.includes('Reset widths') &&
+      streamsHtml.includes('aria-label="Reset widths"') &&
       streamsHtml.includes('Add stream'),
     streamsHtml.includes('Add stream') ? `rendered ${streamsHtml.length} bytes` : 'the add button went missing',
   )
@@ -1436,7 +1438,7 @@ async function main() {
     'the visit-history toolbar offers the search, the account filter and the width reset',
     adminSessionsHtml.includes('Search by IP address or user agent') &&
       adminSessionsHtml.includes('Any user') &&
-      adminSessionsHtml.includes('Reset widths'),
+      adminSessionsHtml.includes('aria-label="Reset widths"'),
     `rendered ${adminSessionsHtml.length} bytes`,
   )
 
@@ -1503,6 +1505,31 @@ async function main() {
     adminSessionsArrivalHtml.includes('44444444-4444-4444-4444-444444444444')
       ? `the arriving account is on the filter of ${adminSessionsArrivalHtml.length} bytes`
       : 'THE ARRIVING ACCOUNT WAS DROPPED - the link would open an unfiltered list',
+  )
+
+  // The compact stylesheet keys every title-row and stacked-toolbar rule on `.page-card`,
+  // because those rules must not reach into a card that has no toolbar (the profile cards,
+  // the session cards, the auth card). A page that forgets the class keeps the desktop
+  // header on a phone, where the toolbar squeezes the title to width 0 - and nothing in
+  // `typecheck`, `lint` or `build` would say so. The breakpoints themselves are checked
+  // against `index.css` below, beside the rail rule; this is the half that proves the
+  // pages are the ones the stylesheet is looking for.
+  const toolbarCards = [
+    sessionsHtml,
+    activeSessionsHtml,
+    usersHtml,
+    groupsHtml,
+    categoriesHtml,
+    streamsHtml,
+    adminSessionsHtml,
+  ]
+  const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
+  check(
+    'every page with a toolbar card carries the class the compact stylesheet keys on',
+    cardWithoutClass === -1,
+    cardWithoutClass === -1
+      ? `${toolbarCards.length} toolbar cards carry page-card`
+      : `CARD ${cardWithoutClass + 1} HAS NO page-card CLASS`,
   )
 
   // The one thing on the accounts table a column `render` is the only place to write, and a
@@ -1840,13 +1867,15 @@ async function main() {
     'titles.clientArea',
     'titles.resellerArea',
     'titles.adminArea',
-    'header.settings',
+    'header.accountMenu',
     'header.collapseMenu',
     'header.expandMenu',
+    'header.openMenu',
     'header.themeLight',
     'header.themeDark',
     'header.themeSystem',
     'actions.backHome',
+    'actions.signOut',
     'messages.notFound',
     'messages.areaNotBuilt',
     'errors.title',
@@ -1976,12 +2005,13 @@ async function main() {
   setThemeChoice(ThemeChoice.System)
 
   check(
-    'the shell renders the logo, the area title, the name and the way out',
+    'the shell renders the logo, the area title, the name and one account-menu trigger',
     [
       'layout-shell__logo',
       'Client area',
       clientSession.username,
-      'Sign out',
+      'aria-label="Account menu: alice"',
+      'aria-haspopup="menu"',
       'layout-shell__header',
     ].every((needle) => clientShell.includes(needle)),
     `rendered ${clientShell.length} bytes`,
@@ -2045,6 +2075,24 @@ async function main() {
   // split: the rule in `index.css` exists, names the class antd uses, and says this theme's
   // own primary - the very blue the selected row underneath it is filled with.
   const railCss = readFileSync('src/index.css', 'utf8')
+
+  // The two halves of the compact card header, in the stylesheet that is the only thing that
+  // can express them. At 1200 the wrapper turns into a column so the title gets a row of its
+  // own; at 768 the toolbar's `Space` turns into a column too, so every control gets a full
+  // width row. Neither is visible to `typecheck`, `lint` or the static markup above, and
+  // removing either one restores the exact overflow the measurements named: a title of
+  // width 0 beside a toolbar that fills the row.
+  check(
+    'the compact stylesheet gives the page title its own row and stacks the toolbar on a phone',
+    /@media \(max-width: 1200px\)[\s\S]*?\.layout-shell \.page-card \.ant-card-head-wrapper \{[\s\S]*?flex-direction: column;/.test(
+      railCss,
+    ) &&
+      /@media \(max-width: 768px\)[\s\S]*?\.layout-shell \.page-card \.ant-card-extra \.ant-space \{[\s\S]*?flex-direction: column;/.test(
+        railCss,
+      ),
+    'the title row at 1200 and the stacked toolbar at 768 are both present',
+  )
+
   // The selector is pinned whole, colour included, and not merely the colour: the leading
   // `.layout-shell__sider-scroll` is the fourth class that puts this rule above antd's own
   // `-submenu-selected` rule, which is three classes once `:where()` is taken for what it

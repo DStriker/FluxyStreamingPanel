@@ -1,11 +1,11 @@
-import { Button, Card, Space, Tag } from 'antd'
+import { Card, Space, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SessionSortField } from '../../features/sessions/api'
 import { formatTimestamp } from '../../utils/dateFormat'
 import { tableResults } from '../../utils/tableResults'
 import { agentCell, countryCell, ipCell, networkCell } from '../../utils/tableCells'
-import { ServerTable, TableSearch } from '../../components/table'
+import { ResetColumnWidths, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps } from '../../components/table'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useSessionHistory } from '../../features/sessions/hooks/queries'
@@ -242,6 +242,7 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
 
   return (
     <Card
+      className="page-card"
       title={t(sectionKey)}
       extra={
         <Space wrap>
@@ -255,13 +256,13 @@ export default function SessionsPage({ sectionKey }: { sectionKey: string }) {
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
-              until somebody has actually dragged something. */}
-          <Button
+              until somebody has actually dragged something. The icon keeps the label out of
+              a toolbar that shares its row with the table's title. */}
+          <ResetColumnWidths
+            label={t('sessions.resetWidths')}
             disabled={atDefaults}
             onClick={() => reset()}
-          >
-            {t('sessions.resetWidths')}
-          </Button>
+          />
         </Space>
       }
     >

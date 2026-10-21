@@ -24,7 +24,7 @@ import { tableResults } from '../../utils/tableResults'
 import { idCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
 import { actionsColumnWidth } from '../../utils/tableWidths'
-import { RowActions, ServerTable, TableSearch } from '../../components/table'
+import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import {
   useBulkUserGroups,
@@ -534,6 +534,7 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
 
   return (
     <Card
+      className="page-card"
       title={t('userGroups.listTitle')}
       // The title pinned to one line, for the reason the accounts table pins its own - see
       // the comment there. This page needs it more than that one does: `Группы
@@ -548,9 +549,9 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
               shares the card header with a title that is already the longest on either
               page (`Группы пользователей`), so the count rides inside the button the count
               enables rather than beside it. Both states are drawn with nothing selected, for
-              the reason the "Reset widths" button below is drawn while disabled: a control
-              that appears and disappears reads as a broken one, and the count is what says
-              *why* the menu is greyed. */}
+              the reason the width reset below is drawn while disabled: a control that appears
+              and disappears reads as a broken one, and the count is what says *why* the menu
+              is greyed. */}
           <Dropdown menu={{ items: bulkItems, onClick: onBulkMenu }} disabled={!bulkEnabled}>
             <Button icon={<MoreOutlined />} loading={bulkBusy}>
               {selectedIds.length > 0
@@ -590,10 +591,13 @@ export default function UserGroupsPage(_props: UserGroupsPageProps) {
           />
           {/* Disabled rather than hidden when the widths are already the defaults: a control
               that appears and disappears reads as a broken one, and there is nothing to undo
-              until somebody has actually dragged something. */}
-          <Button disabled={atDefaults} onClick={() => reset()}>
-            {t('userGroups.resetWidths')}
-          </Button>
+              until somebody has actually dragged something. The icon keeps the label out of
+              a toolbar that shares its row with the table's title. */}
+          <ResetColumnWidths
+            label={t('userGroups.resetWidths')}
+            disabled={atDefaults}
+            onClick={() => reset()}
+          />
           {/* The same address the "add" route opens, offered here because this is the screen
               from which adding one is a decision. Its label comes from the form's own title
               rather than from `nav.items.userGroups`, which is the *list's* name - a button

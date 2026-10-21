@@ -164,9 +164,10 @@ const en = {
     },
   },
   header: {
-    settings: 'Settings',
+    accountMenu: 'Account menu',
     collapseMenu: 'Collapse the menu',
     expandMenu: 'Expand the menu',
+    openMenu: 'Open the menu',
     themeLight: 'Light theme',
     themeDark: 'Dark theme',
     themeSystem: 'Follow the system',
