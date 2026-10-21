@@ -11,16 +11,23 @@ namespace Fluxy.Core.Authentication.Utils
     ///
     /// The bounds are a rule about a read, not about a secret: a page larger than
     /// <see cref="MaxPageSize"/> is refused rather than clamped silently, because a caller who
-    /// asked for 500 rows deserves to be told it will not get them instead of quietly receiving
-    /// 100 and reporting a total that does not match the items it was handed.
+    /// asked for 5000 rows deserves to be told it will not get them instead of quietly receiving
+    /// 1000 and reporting a total that does not match the items it was handed.
     /// </remarks>
     public static class SessionHistoryLimits
     {
         /// <summary>Visits one page holds when the caller names no size.</summary>
         public const int DefaultPageSize = 20;
 
-        /// <summary>Most visits one page may hold.</summary>
-        public const int MaxPageSize = 100;
+        /// <summary>
+        /// Most visits one page may hold.
+        /// </summary>
+        /// <remarks>
+        /// The same ceiling as the other paged tables. A refresh row is small and the page is
+        /// read-only, so a thousand rows is a large read rather than a dangerous one, and the
+        /// pager offers it only as the last choice.
+        /// </remarks>
+        public const int MaxPageSize = 1000;
 
         /// <summary>
         /// Most characters one search may carry.

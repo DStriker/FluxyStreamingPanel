@@ -64,5 +64,12 @@ namespace Fluxy.API.Contracts.Common
         /// the problem. Null whenever nothing was rejected.
         /// </summary>
         public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+
+        /// <summary>
+        /// Things the operator should know about a row that <b>was</b> changed, or null when
+        /// there is nothing to add. A warning never appears on a row whose <see cref="Ok"/> is
+        /// false: nothing was written, so nothing was cleared or adjusted.
+        /// </summary>
+        public IReadOnlyList<BulkItemWarningResponse>? Warnings { get; init; }
     }
 }

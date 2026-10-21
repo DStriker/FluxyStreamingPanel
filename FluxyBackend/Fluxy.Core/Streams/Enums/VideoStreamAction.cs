@@ -26,6 +26,9 @@ namespace Fluxy.Core.Streams.Enums
         /// <summary>The stream was stopped.</summary>
         Stopped,
 
+        /// <summary>The stream was started again.</summary>
+        Restarted,
+
         /// <summary>No stream with that identifier.</summary>
         NotFound,
 

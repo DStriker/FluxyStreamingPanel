@@ -1,21 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Image, Select, Space, Tag } from 'antd'
-import type { TableColumnsType } from 'antd'
+import { App, Button, Card, Dropdown, Image, Input, InputNumber, Modal, Select, Space, Tag } from 'antd'
+import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CaretRightOutlined,
+  ClockCircleOutlined,
+  CloudSyncOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  MoreOutlined,
   PauseCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   StopOutlined,
+  SwapOutlined,
+  TagOutlined,
 } from '@ant-design/icons'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import { VIDEO_STREAMS_PAGE_SIZE } from '../../features/video-streams/api'
-import type { VideoStreamSortField } from '../../features/video-streams/api'
+import type {
+  BulkVideoStreamAction,
+  BulkVideoStreamsPayload,
+  BulkVideoStreamType,
+  VideoStreamSortField,
+} from '../../features/video-streams/api'
 import StreamStateCell from '../../features/video-streams/components/StreamStateCell'
 import type { VideoStream, VideoStreamStatus, VideoStreamType } from '../../features/video-streams/types'
 import { hinted } from '../../utils/hinted'
@@ -28,13 +39,16 @@ import { actionsColumnWidth } from '../../utils/tableWidths'
 import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useProfile } from '../../features/profile/hooks/queries'
 import {
+  useBulkVideoStreams,
   useDeleteVideoStream,
+  useRestartVideoStream,
   useStartVideoStream,
   useStopVideoStream,
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreams } from '../../features/video-streams/hooks/queries'
-import { useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
+import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000
@@ -64,12 +78,14 @@ const COLUMN_KEYS: readonly StreamsColumnKey[] = [
 /**
  * The width each column starts at, and the width it goes back to when asked to reset.
  *
- * Summed to **1230**, the same total the accounts and the groups tables add up to, and for
- * the same reason: all three sit under one sidebar, and a visitor who can see one whole
- * should be able to see the other. The two content columns are narrow *because* their cells
- * truncate into tooltips - the identifier prints eight characters with the full GUID on
- * hover, and the active source is whatever an address happens to be - while the name keeps
- * the room, because it is the one thing on this page nothing truncates a second time.
+ * Summed to **1190**, and the selection column `ServerTable` adds in front of them is the
+ * 40 that makes **1230** - the same total the accounts and the groups tables reach with
+ * their checkbox, and for the same reason: all three sit under one sidebar, and a visitor
+ * who can see one whole should be able to see the other. The two content columns are narrow
+ * *because* their cells truncate into tooltips - the identifier prints eight characters with
+ * the full GUID on hover, and the active source is whatever an address happens to be - while
+ * the name keeps the room, because it is the one thing on this page nothing truncates a
+ * second time.
  *
  * The state column is 150 because it carries two lines: the status, and the kind of stream
  * under it. The longest of the six kinds in Russian - "Перенаправление" - has to fit
@@ -78,7 +94,8 @@ const COLUMN_KEYS: readonly StreamsColumnKey[] = [
  *
  * The actions column is not one of these numbers: it is exactly as wide as the five buttons
  * a row draws (`actionsColumnWidth`), and the room that frees goes to the name - the one
- * thing on this page that nothing truncates a second time. The eight still add up to 1230.
+ * thing on this page that nothing truncates a second time. The eight plus the selection
+ * column still add up to 1230.
  */
 const FIXED_COLUMN_WIDTHS = {
   id: 100,
@@ -92,8 +109,8 @@ const FIXED_COLUMN_WIDTHS = {
 /** The width the five buttons of a row's cluster need, and nothing more. */
 const ACTIONS_WIDTH = actionsColumnWidth(5)
 
-/** The width the eight columns add up to. */
-const TABLE_WIDTH = 1230
+/** The width the eight columns add up to; the selection column takes the total to 1230. */
+const TABLE_WIDTH = 1190
 
 const DEFAULT_COLUMN_WIDTHS: Record<StreamsColumnKey, number> = {
   ...FIXED_COLUMN_WIDTHS,
@@ -108,6 +125,34 @@ const DEFAULT_COLUMN_WIDTHS: Record<StreamsColumnKey, number> = {
 
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.videoStreams.columnWidths'
+
+/** The five bulk edits that ask for a value; the transitions and deletion run from the menu. */
+type BulkDialog = 'move' | 'type' | 'delay' | 'archive' | 'restream'
+
+/** The four restream settings as the bulk dialog collects them; a blank string clears one. */
+interface BulkRestreamValues {
+  userAgent: string
+  proxy: string
+  cookies: string
+  headers: string
+}
+
+/** The dialog's starting point, and the state every close returns to. */
+const EMPTY_RESTREAM: BulkRestreamValues = {
+  userAgent: '',
+  proxy: '',
+  cookies: '',
+  headers: '',
+}
+
+/**
+ * The three kinds a bulk type change may choose.
+ *
+ * The other three need a payload only the single-row form can collect - a series identifier,
+ * a video-on-demand identifier or a list of files - so offering them here would be a menu
+ * whose every row is refused.
+ */
+const BULK_TYPES: BulkVideoStreamType[] = ['Permanent', 'OnDemand', 'Redirect']
 
 /** The two states and the six kinds, in the order the backend declares them. */
 const STATUSES: VideoStreamStatus[] = ['Stopped', 'Running']
@@ -155,13 +200,21 @@ interface VideoStreamsPageProps {
  * page that moves the row they were about to press - and a pause they cannot find is not a
  * pause.
  *
- * Start and stop are real actions and are the only two the row performs; restart and play
- * are drawn **disabled with the reason attached**, the same "tell the truth before the
- * click" rule the base-group buttons follow: the relaying process behind them does not
- * exist yet, and a button that answered with a 404 would say less than a greyed one.
+ * Start, stop and restart are real actions and are the transitions the row performs; play is
+ * drawn **disabled with the reason attached**, the same "tell the truth before the click"
+ * rule the base-group buttons follow: the relaying process behind it does not exist yet, and
+ * a button that answered with a 404 would say less than a greyed one.
+ *
+ * **A selection makes the same operations available over many rows**, behind the
+ * `editStreams` grant the list itself does not need: the toolbar's menu carries the three
+ * transitions, deletion, and the four edits whose value fits one dialog (category, type,
+ * delay, archive, restream). The per-row half stays exactly as it was - a bulk toolbar is a
+ * second way to reach the same writes, not a replacement for the buttons somebody already
+ * knows.
  */
 export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const { t } = useTranslation()
+  const { modal } = App.useApp()
   const navigate = useNavigate()
   const session = useSession()
 
@@ -241,6 +294,53 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const area = session ? areaForRole(session.role) : ''
 
   /**
+   * Whether this operator may change streams at all, read from the account's grants.
+   *
+   * The list itself needs `viewStreams`, so an account that can see this page may not
+   * necessarily edit anything on it. The bulk toolbar is the one control whose enablement is
+   * asked here rather than left to the server: it is a second way to reach writes the row
+   * buttons already gate on the same grant, and a live toolbar over rows whose own buttons
+   * do nothing would be a menu of refusals.
+   */
+  const profileQuery = useProfile()
+  const granted = profileQuery.data?.permissions ?? []
+  const canEdit = granted.includes('editStreams')
+
+  /**
+   * The selection and the run over it: the ids, the scope, the prune, the busy flag and the
+   * summary dialog are `useBulkAction`'s, which the accounts and groups tables call too.
+   * Warnings are reported by the same hook - a run where every row landed but one lost a
+   * setting still has something to say - and the dialog's lines are `bulkResultList`'s.
+   */
+  const { selectedIds, setSelectedIds, bulkBusy, applyBulk } = useBulkAction({
+    rows: streams?.items,
+    refetch: () => void streamsQuery.refetch(),
+    partialTitleKey: 'videoStreams.bulk.partialTitle',
+  })
+
+  /**
+   * Which edit dialog is open, and the values the five of them collect. One discriminator
+   * rather than five booleans: only one dialog can be open, and five flags would be five
+   * places to forget a reset. The values are cleared by `closeBulkDialog`, so opening a
+   * second dialog after closing the first never inherits what the first one held.
+   */
+  const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null)
+  const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null)
+  const [bulkType, setBulkType] = useState<BulkVideoStreamType | null>(null)
+  const [bulkDelay, setBulkDelay] = useState(0)
+  const [bulkArchive, setBulkArchive] = useState(0)
+  const [bulkRestream, setBulkRestream] = useState<BulkRestreamValues>(EMPTY_RESTREAM)
+
+  const closeBulkDialog = () => {
+    setBulkDialog(null)
+    setBulkCategoryId(null)
+    setBulkType(null)
+    setBulkDelay(0)
+    setBulkArchive(0)
+    setBulkRestream(EMPTY_RESTREAM)
+  }
+
+  /**
    * The timer that keeps the table honest about a fact about a *process*.
    *
    * The ref rather than the query in the dependency array is the whole point: `refetch` is
@@ -304,7 +404,9 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
    */
   const startStream = useStartVideoStream()
   const stopStream = useStopVideoStream()
+  const restartStream = useRestartVideoStream()
   const removeStream = useDeleteVideoStream()
+  const bulk = useBulkVideoStreams()
 
   const { busyId, runAction, confirmDelete: askDelete } = useRowAction<VideoStream>({
     refetch: () => void streamsQuery.refetch(),
@@ -335,6 +437,114 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       okKey: 'videoStreams.deleteConfirmOk',
       run: () => removeStream.mutateAsync({ id: stream.id }),
     })
+
+  /**
+   * Runs one operation over the selection: the ids, the reporting, the re-read and the
+   * clearance are `useBulkAction`'s, and the request itself is `useBulkVideoStreams`'s.
+   *
+   * `onSettled` closes a dialog the run came out of. A dialog closes on any answer, because
+   * once the answer has arrived there is nothing left to ask - the summary dialog that the
+   * hook may open on top of it is a *report*, not a second question.
+   */
+  const runBulk = (
+    payload: Omit<BulkVideoStreamsPayload, 'ids'>,
+    onSettled?: () => void,
+  ) =>
+    applyBulk(
+      () => bulk.mutateAsync({ payload: { ...payload, ids: selectedIds.map(String) } }),
+      onSettled,
+    )
+
+  /**
+   * Asks before deleting a selection, for the reason only deletion asks first on a single
+   * row: it is the one operation here that cannot be undone, and the question is about the
+   * whole selection at once - so the body names a count rather than a name, because there is
+   * no one row to name.
+   */
+  const confirmBulkDelete = () => {
+    modal.confirm({
+      title: t('videoStreams.bulk.deleteTitle', { count: selectedIds.length }),
+      content: t('videoStreams.bulk.deleteBody'),
+      okText: t('videoStreams.deleteConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('actions.cancel'),
+      onOk: () => runBulk({ action: 'delete' }),
+    })
+  }
+
+  /**
+   * What the toolbar's menu offers. The transitions and deletion run straight from the menu;
+   * the five edits open the dialog that collects their one value. The labels are the row
+   * actions' own where the operation is the same one, because a second name for one thing is
+   * a second name.
+   */
+  const onBulkMenu: MenuProps['onClick'] = ({ key }) => {
+    switch (key as BulkVideoStreamAction) {
+      case 'start':
+      case 'stop':
+      case 'restart':
+        void runBulk({ action: key as BulkVideoStreamAction })
+        break
+      case 'delete':
+        confirmBulkDelete()
+        break
+      case 'move-category':
+        setBulkDialog('move')
+        break
+      case 'change-type':
+        setBulkDialog('type')
+        break
+      case 'change-delay':
+        setBulkDialog('delay')
+        break
+      case 'change-archive':
+        setBulkDialog('archive')
+        break
+      case 'change-restream':
+        setBulkDialog('restream')
+        break
+    }
+  }
+
+  /** The nine entries, in the order the menu draws them. */
+  const bulkItems = useMemo<MenuProps['items']>(
+    () => [
+      { key: 'start', icon: <CaretRightOutlined />, label: t('videoStreams.bulk.start') },
+      { key: 'stop', icon: <StopOutlined />, label: t('videoStreams.bulk.stop') },
+      { key: 'restart', icon: <ReloadOutlined />, label: t('videoStreams.bulk.restart') },
+      { type: 'divider' },
+      { key: 'move-category', icon: <SwapOutlined />, label: t('videoStreams.bulk.move') },
+      { key: 'change-type', icon: <TagOutlined />, label: t('videoStreams.bulk.type') },
+      { key: 'change-delay', icon: <ClockCircleOutlined />, label: t('videoStreams.bulk.delay') },
+      { key: 'change-archive', icon: <DatabaseOutlined />, label: t('videoStreams.bulk.archive') },
+      {
+        key: 'change-restream',
+        icon: <CloudSyncOutlined />,
+        label: t('videoStreams.bulk.restream'),
+      },
+      { type: 'divider' },
+      {
+        key: 'delete',
+        icon: <DeleteOutlined />,
+        danger: true,
+        label: t('videoStreams.bulk.delete'),
+      },
+    ],
+    [t],
+  )
+
+  /**
+   * Whether the menu may be opened at all: something is selected, nothing else is running,
+   * and the operator holds `editStreams`.
+   *
+   * Which rows a particular edit can carry is answered per row by the server - a move that
+   * collides with a name already used in the destination refuses that row alone, and a delay
+   * on an on-demand stream is refused with `validation_failed` - and that refusal is exactly
+   * what the summary dialog reports. Greying entries here would mean deciding in the browser
+   * which of a hundred rows the server would have refused, against a page whose own filter
+   * may already have hidden half of them.
+   */
+  const bulkEnabled = canEdit && selectedIds.length > 0 && !bulkBusy
 
   const columns: TableColumnsType<VideoStream> = [
     {
@@ -466,12 +676,12 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       // name each one gets in the locale files is the only thing that says what pressing it
       // does.
       //
-      // Start and stop are the only two that do anything: they are the transition the row
-      // exists to make, and starting a stream that is already running is a success rather
-      // than a complaint, so a double click is not a failure. Restart and play are drawn
-      // **disabled with the reason still attached** - the relaying process behind them does
-      // not exist yet, and a greyed button with a sentence says that before the click,
-      // where a live button answering 404 would only say something failed after it.
+      // Start, stop and restart are the transitions the row can make: starting a stream that
+      // is already running is a success rather than a complaint, so a double click is not a
+      // failure. Play is drawn **disabled with the reason still attached** - the relaying
+      // process behind it does not exist yet, and a greyed button with a sentence says that
+      // before the click, where a live button answering 404 would only say something failed
+      // after it.
       title: t('videoStreams.columns.actions'),
       key: 'actions',
       width: widths.actions,
@@ -497,14 +707,17 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
                 disabled: busy,
                 onClick: () => runAction(() => startStream.mutateAsync({ id: stream.id }), stream),
               },
-          // The relaying process behind these two does not exist yet: a greyed button with a
+          // The relaying process behind play does not exist yet: a greyed button with a
           // sentence says that before the click, where a live button answering 404 would only
           // say something failed after it.
           {
             key: 'restart',
-            label: t('videoStreams.actions.notImplemented'),
+            label: t('videoStreams.actions.restart'),
             icon: <ReloadOutlined />,
-            disabled: true,
+            loading: busy,
+            disabled: busy,
+            onClick: () =>
+              runAction(() => restartStream.mutateAsync({ id: stream.id }), stream),
           },
           {
             key: 'play',
@@ -581,7 +794,9 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
           {/* Icon-only, with its whole sentence in the tooltip: see `refreshTip` for why
               the label itself left the row. Drawn either way rather than appearing once it
               is paused, for the reason the reset button below is drawn while disabled - a
-              control that comes and goes reads as a broken one. */}
+              control that comes and goes reads as a broken one. It leads the toolbar because
+              it describes the whole table, while the menu beside it acts on a selection that
+              is empty on first paint. */}
           {hinted(
             refreshTip,
             <Button
@@ -589,6 +804,23 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
               aria-label={refreshTip}
               onClick={() => setAutoRefresh((current) => !current)}
             />,
+          )}
+          {/* The selection's menu, beside the refresh and before the filters: it acts on the
+              rows, and as one button rather than a label beside one - the same shape the
+              accounts and groups tables draw. The count rides inside the button the count
+              enables, and both states are drawn with nothing selected so the count is what
+              says *why* the menu is greyed. The tooltip carries the permission sentence only
+              where there is none - with the grant in place it would repeat the button's own
+              label back at the visitor. */}
+          {hinted(
+            canEdit ? t('videoStreams.bulk.menu') : t('videoStreams.noPermission'),
+            <Dropdown menu={{ items: bulkItems, onClick: onBulkMenu }} disabled={!bulkEnabled}>
+              <Button icon={<MoreOutlined />} loading={bulkBusy}>
+                {selectedIds.length > 0
+                  ? t('videoStreams.bulk.menuWithCount', { count: selectedIds.length })
+                  : t('videoStreams.bulk.menu')}
+              </Button>
+            </Dropdown>,
           )}
           {/* Narrower than they might be, for the reason the other two tables' three are:
               this row has to fit beside the card's title on one Full HD screen. What each
@@ -662,7 +894,193 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
         tableWidth={tableWidth}
         emptyText={t(filtered ? 'videoStreams.noMatches' : 'videoStreams.empty')}
         showTotal={(total, [from, to]) => t('videoStreams.range', { from, to, total })}
+        selection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }}
       />
+
+      {/* The move, as a dialog rather than a control in the toolbar: where the selection goes
+          is one decision about all of it, and a select dropped into a menu that has already
+          closed could not ask at the right moment. The list is the same one the filter loads,
+          reused rather than asked for a second time. */}
+      <Modal
+        title={t('videoStreams.bulk.moveTitle')}
+        open={bulkDialog === 'move'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ disabled: !bulkCategoryId, loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() =>
+          runBulk(
+            { action: 'move-category', categoryId: bulkCategoryId ?? undefined },
+            closeBulkDialog,
+          )
+        }
+        onCancel={closeBulkDialog}
+      >
+        <Select
+          showSearch
+          allowClear
+          aria-label={t('videoStreams.bulk.movePlaceholder')}
+          style={{ width: '100%' }}
+          value={bulkCategoryId ?? undefined}
+          options={categoryOptions}
+          placeholder={t('videoStreams.bulk.movePlaceholder')}
+          optionFilterProp="label"
+          onChange={(value) => setBulkCategoryId(value ?? null)}
+        />
+      </Modal>
+
+      {/* The type, with the three kinds a bulk change can keep whole and the sentence that
+          says what happens to settings the new kind cannot carry. The server clears them and
+          reports each clearance as a warning on the row, which is why this is allowed at all
+          rather than refused. */}
+      <Modal
+        title={t('videoStreams.bulk.typeTitle')}
+        open={bulkDialog === 'type'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ disabled: !bulkType, loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() =>
+          runBulk({ action: 'change-type', type: bulkType ?? undefined }, closeBulkDialog)
+        }
+        onCancel={closeBulkDialog}
+      >
+        <Select
+          aria-label={t('videoStreams.bulk.typePlaceholder')}
+          style={{ width: '100%' }}
+          value={bulkType ?? undefined}
+          options={BULK_TYPES.map((type) => ({
+            value: type,
+            label: t(`videoStreams.types.${type}`),
+          }))}
+          placeholder={t('videoStreams.bulk.typePlaceholder')}
+          onChange={(value) => setBulkType(value ?? null)}
+        />
+        <p style={{ margin: '12px 0 0' }}>{t('videoStreams.bulk.typeHint')}</p>
+      </Modal>
+
+      {/* The two numbers. Zero is a value rather than an absence on both, matching the
+          single-row form: a permanent stream with a zero delay is a stream with no delay, and
+          zero days keeps no archive. */}
+      <Modal
+        title={t('videoStreams.bulk.delayTitle')}
+        open={bulkDialog === 'delay'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() => runBulk({ action: 'change-delay', delayMinutes: bulkDelay }, closeBulkDialog)}
+        onCancel={closeBulkDialog}
+      >
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.delayLabel')}
+          </span>
+          <InputNumber
+            min={0}
+            style={{ width: '100%' }}
+            value={bulkDelay}
+            onChange={(value) => setBulkDelay(value ?? 0)}
+          />
+        </label>
+        <p style={{ margin: '12px 0 0' }}>{t('videoStreams.bulk.delayHint')}</p>
+      </Modal>
+
+      <Modal
+        title={t('videoStreams.bulk.archiveTitle')}
+        open={bulkDialog === 'archive'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() =>
+          runBulk({ action: 'change-archive', archiveDays: bulkArchive }, closeBulkDialog)
+        }
+        onCancel={closeBulkDialog}
+      >
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.archiveLabel')}
+          </span>
+          <InputNumber
+            min={0}
+            style={{ width: '100%' }}
+            value={bulkArchive}
+            onChange={(value) => setBulkArchive(value ?? 0)}
+          />
+        </label>
+        <p style={{ margin: '12px 0 0' }}>{t('videoStreams.bulk.archiveHint')}</p>
+      </Modal>
+
+      {/* The four restream settings are replaced as a group, so the dialog says that once and
+          lets a blank field clear its setting - the same whole-list rule the single-row form
+          follows, in the same request shape. */}
+      <Modal
+        title={t('videoStreams.bulk.restreamTitle')}
+        open={bulkDialog === 'restream'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() =>
+          runBulk(
+            {
+              action: 'change-restream',
+              restreamUserAgent: bulkRestream.userAgent,
+              restreamProxy: bulkRestream.proxy,
+              restreamCookies: bulkRestream.cookies,
+              restreamHeaders: bulkRestream.headers,
+            },
+            closeBulkDialog,
+          )
+        }
+        onCancel={closeBulkDialog}
+      >
+        <p style={{ margin: '0 0 12px' }}>{t('videoStreams.bulk.restreamHint')}</p>
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.restreamUserAgent')}
+          </span>
+          <Input
+            value={bulkRestream.userAgent}
+            placeholder={t('videoStreamsForm.userAgentPlaceholder')}
+            onChange={(event) =>
+              setBulkRestream((current) => ({ ...current, userAgent: event.target.value }))
+            }
+          />
+        </label>
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.restreamProxy')}
+          </span>
+          <Input
+            value={bulkRestream.proxy}
+            placeholder={t('videoStreamsForm.proxyPlaceholder')}
+            onChange={(event) =>
+              setBulkRestream((current) => ({ ...current, proxy: event.target.value }))
+            }
+          />
+        </label>
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.restreamCookies')}
+          </span>
+          <Input
+            value={bulkRestream.cookies}
+            placeholder={t('videoStreamsForm.cookiesPlaceholder')}
+            onChange={(event) =>
+              setBulkRestream((current) => ({ ...current, cookies: event.target.value }))
+            }
+          />
+        </label>
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreams.bulk.restreamHeaders')}
+          </span>
+          <Input
+            value={bulkRestream.headers}
+            placeholder={t('videoStreamsForm.headersPlaceholder')}
+            onChange={(event) =>
+              setBulkRestream((current) => ({ ...current, headers: event.target.value }))
+            }
+          />
+        </label>
+      </Modal>
     </Card>
   )
 }

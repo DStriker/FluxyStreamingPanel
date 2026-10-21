@@ -1189,6 +1189,20 @@ async function main() {
     streamsHtml.includes('Add stream') ? `rendered ${streamsHtml.length} bytes` : 'the add button went missing',
   )
 
+  // The selection's control, greyed while nothing is selected for the reason the accounts
+  // and groups tables draw theirs that way: a control that appears and disappears reads as
+  // a broken one. This page also gates it on `editStreams`, and the probe has no profile
+  // answer, so the first paint is the *permission-less* one - the button is drawn and
+  // disabled, which is exactly what an operator who may read but not change streams sees.
+  const streamsBulkButtons = [...streamsHtml.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /<span[^>]*>Actions<\/span>/.test(tag))
+  check(
+    'the streams toolbar draws the bulk menu, greyed while nothing is selected',
+    streamsBulkButtons.length === 1 && streamsBulkButtons[0].includes('disabled'),
+    `${streamsBulkButtons.length} button(s) labelled "Actions": ${streamsBulkButtons[0]?.slice(0, 180) ?? 'none'}`,
+  )
+
   // The auto-refresh, as an icon carrying its sentence rather than a word in the toolbar.
   // Both halves matter: the state is still readable (through the accessible name, which
   // names the action *and* the interval), and the row is one glyph narrower for it. A
@@ -1215,23 +1229,34 @@ async function main() {
       : `button: ${streamsHtml.slice(refreshButtonAt, refreshButtonAt + 160)} (${refreshButtonTag.length} bytes to its close)`,
   )
 
+  // The order is a decision: the refresh describes the whole table, while the bulk menu acts
+  // on a selection that is empty on first paint, so the refresh leads the toolbar. Pinned here
+  // because both controls are present either way and no other checker can see their order.
+  const streamsBulkButtonAt = streamsHtml.indexOf(streamsBulkButtons[0] ?? '')
+  check(
+    'the auto-refresh sits before the bulk menu in the streams toolbar',
+    streamsBulkButtonAt !== -1 && refreshButtonAt !== -1 && refreshButtonAt < streamsBulkButtonAt,
+    `auto-refresh at ${refreshButtonAt}, bulk menu at ${streamsBulkButtonAt}`,
+  )
+
   const streamsCols = [...streamsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
   const streamsWidths = streamsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
   const streamsTotal = streamsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
-  // Eight columns and no selection column in front of them - this table has no bulk
-  // actions - so the eight alone are the 1230 the accounts and the groups tables reach
-  // only with their checkbox. `name` is 302 rather than the 170 beside it because it is the
-  // one column nothing truncates a second time, and because it is where the room the
-  // actions column gave up went; `icon` is 70 because a logo is drawn at a fixed 28px and a
-  // column sized by its widest image changes width when a logo is replaced. `status` is 150
-  // because it carries two lines - the state and the kind of stream under it - and the
-  // longest of the six kinds in Russian has to fit without being cut. The actions column is
-  // the one width that is not chosen: it is what the five buttons of a row need and not a
-  // pixel more (`actionsColumnWidth`).
+  // Nine columns: the 40px selection column the bulk toolbar acts through, then the eight
+  // this table has always had. The eight add up to 1190 and the checkbox takes them to the
+  // same 1230 the accounts and the groups tables reach, so all three fit beside the sidebar
+  // on one Full HD screen. `name` is 262 rather than the 170 beside it because it is the one
+  // column nothing truncates a second time, and because it is where the room the actions
+  // column gave up went; `icon` is 70 because a logo is drawn at a fixed 28px and a column
+  // sized by its widest image changes width when a logo is replaced. `status` is 150 because
+  // it carries two lines - the state and the kind of stream under it - and the longest of
+  // the six kinds in Russian has to fit without being cut. The actions column is the one
+  // width that is not chosen: it is what the five buttons of a row need and not a pixel more
+  // (`actionsColumnWidth`).
   check(
-    'the streams table is fixed-layout with its eight deliberate widths, in order',
+    'the streams table is fixed-layout with a selection column and its eight deliberate widths, in order',
     /table-layout:\s*fixed/.test(streamsHtml) &&
-      streamsWidths.join(',') === '100,70,302,170,180,150,90,168' &&
+      streamsWidths.join(',') === '40,100,70,262,170,180,150,90,168' &&
       streamsTotal === 1230,
     `${streamsCols.length} columns: [${streamsWidths.join(', ')}] = ${streamsTotal}px`,
   )
@@ -1256,7 +1281,7 @@ async function main() {
   const streamsHeaders = [...streamsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
   check(
     'a sortable streams header keeps its own access, and exactly three of the eight sort',
-    streamsHeaders.length === 8 &&
+    streamsHeaders.length === 9 &&
       streamsHeaders.filter((th) => th.includes('aria-description="sortable"')).length === 3 &&
       streamsHeaders.some((th) => th.includes('aria-label="Name"') && th.includes('tabindex="0"')),
     `${streamsHeaders.length} header cells, ${

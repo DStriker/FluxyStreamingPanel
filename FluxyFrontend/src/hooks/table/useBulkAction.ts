@@ -2,17 +2,18 @@ import { App } from 'antd'
 import { useEffect, useState } from 'react'
 import type { Key } from 'react'
 import { useTranslation } from 'react-i18next'
-import { bulkRefusalList } from '../../utils/bulkRefusalList'
+import { bulkResultList } from '../../utils/bulkResultList'
 import { messageForError, successTextFor } from '../../utils/http'
 import type { BulkOperationResponse } from '../../types'
 
 /**
  * The selection a bulk table acts on, and the one run that acts on it.
  *
- * What it owns is everything the two tables with checkboxes would otherwise state twice: the
- * ids the **current page** has marked, pruned on every answer to the ids the page still
- * holds; one run in flight at a time; the reading of the answer - a toast when every row
- * landed and a dialog naming the refusals when at least one did not - and the run itself,
+ * What it owns is everything the tables with checkboxes would otherwise state twice: the ids
+ * the **current page** has marked, pruned on every answer to the ids the page still holds; one
+ * run in flight at a time; the reading of the answer - a toast when every row landed and
+ * nothing had to be cleared, and a dialog naming the refusals (and the cleared settings) when
+ * at least one row did not land or a successful row carried a warning - and the run itself,
  * which re-reads the list afterwards rather than patching it and clears the selection because
  * the run is over, not because the rows are gone (only deletion guarantees that).
  *
@@ -32,6 +33,7 @@ export function useBulkAction<Row extends { id: string }>({
   rows,
   refetch,
   partialTitleKey,
+  warningsTitleKey = 'bulk.warningsTitle',
 }: {
   /** The page's current rows; the selection never outlives them. */
   rows: Row[] | undefined
@@ -39,6 +41,8 @@ export function useBulkAction<Row extends { id: string }>({
   refetch: () => void
   /** This table's own `…bulk.partialTitle`, because the sentence is translated per page. */
   partialTitleKey: string
+  /** The title of a dialog opened by warnings alone; the shared default unless a page overrides. */
+  warningsTitleKey?: string
 }) {
   const { t } = useTranslation()
   const { message, modal } = App.useApp()
@@ -63,8 +67,14 @@ export function useBulkAction<Row extends { id: string }>({
   }, [rows])
 
   /**
-   * Reads the answer to a bulk run out loud: a toast when every row landed, and a dialog
-   * listing the refusals when at least one did not.
+   * Reads the answer to a bulk run out loud.
+   *
+   * A toast is the answer only when every row landed **and** nothing was cleared: a run that
+   * changed all five streams but stripped an archive off one of them still has something to
+   * tell the operator, and a green toast would be the one place that fact never appeared. So
+   * the dialog opens when at least one row was refused or at least one row carries a warning,
+   * and its title names which of the two happened - a refusal count is not a reason, and a
+   * warning is not a refusal.
    *
    * The dialog exists because a count is not a reason. "Changed 4 of 5" tells the operator
    * that something was refused and nothing about what - and the reason the row buttons would
@@ -73,10 +83,13 @@ export function useBulkAction<Row extends { id: string }>({
    * already translated, so this summarises rather than invents: the same code in the same
    * words the single-row path would have shown. The lines themselves - one per code with a
    * count, because thirty rows refused for one reason are one sentence - are
-   * `bulkRefusalList`'s; this decides only that there is a dialog to draw.
+   * `bulkResultList`'s; this decides only that there is a dialog to draw.
    */
   const reportBulk = (result: BulkOperationResponse) => {
-    if (result.items.every((item) => item.ok)) {
+    const refused = result.items.some((item) => !item.ok)
+    const warned = result.items.some((item) => (item.warnings?.length ?? 0) > 0)
+
+    if (!refused && !warned) {
       message.success(
         successTextFor(result, { done: result.succeeded, total: result.items.length }),
       )
@@ -84,12 +97,17 @@ export function useBulkAction<Row extends { id: string }>({
     }
 
     modal.info({
-      title: t(partialTitleKey, {
-        done: result.succeeded,
-        total: result.items.length,
-      }),
+      title: refused
+        ? t(partialTitleKey, {
+            done: result.succeeded,
+            total: result.items.length,
+          })
+        : t(warningsTitleKey, {
+            done: result.succeeded,
+            total: result.items.length,
+          }),
       okText: t('actions.ok'),
-      content: bulkRefusalList(result.items),
+      content: bulkResultList(result.items),
     })
   }
 

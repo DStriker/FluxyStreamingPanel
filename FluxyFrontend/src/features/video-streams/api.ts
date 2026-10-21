@@ -1,5 +1,5 @@
 import { apiFetch, apiGet } from '../../utils/http'
-import type { MessageResponse } from '../../types'
+import type { BulkOperationResponse, MessageResponse } from '../../types'
 import type { VideoStreamDetail, VideoStreamList, VideoStreamStatus, VideoStreamType } from './types'
 
 /**
@@ -32,8 +32,9 @@ export type VideoStreamSortOrder = 'asc' | 'desc'
  *
  * Kept in step by hand because the two are one contract written twice - and because a page
  * size the pager draws from has to be known before the first answer arrives, or the pager
- * would show one row per page until it did. The server's ceiling is 100, which is why the
- * picker below offers no more than that: asking for 500 comes back `validation_failed`.
+ * would show one row per page until it did. The server's ceiling is 1000; the shared pager
+ * offers 500 and 1000 as its two largest choices, so a "select everything" selection can
+ * cover more than a hundred rows in one bulk request.
  */
 export const VIDEO_STREAMS_PAGE_SIZE = 20
 
@@ -230,6 +231,107 @@ export const stopVideoStream = ({
 }): Promise<MessageResponse> =>
   apiFetch(`/admin/video-streams/${encodeURIComponent(id)}/stop`, {
     method: 'POST',
+    csrfToken,
+  })
+
+/**
+ * Marks a stream as broadcasting again: `POST /admin/video-streams/{id}/restart`, answered
+ * with `200 video_stream_restarted`.
+ *
+ * A third transition rather than a stop followed by a start: the row is one request, the
+ * answer is one code, and a client that stopped first and failed to start second would leave
+ * a stream it was told nothing about. Like the two beside it, it writes `status` and nothing
+ * else - the relaying process reads the same row.
+ */
+export const restartVideoStream = ({
+  id,
+  csrfToken,
+}: {
+  id: string
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/admin/video-streams/${encodeURIComponent(id)}/restart`, {
+    method: 'POST',
+    csrfToken,
+  })
+
+/**
+ * The operations one bulk request may ask for, spelled the way the endpoint parses them.
+ *
+ * The list matches `BulkVideoStreamAction` on the server. `restart` sits beside start and
+ * stop because the row action and the bulk menu name the same transition; the other six are
+ * edits, and each one carries its own value in `BulkVideoStreamsPayload`.
+ */
+export type BulkVideoStreamAction =
+  | 'start'
+  | 'stop'
+  | 'restart'
+  | 'delete'
+  | 'move-category'
+  | 'change-type'
+  | 'change-delay'
+  | 'change-archive'
+  | 'change-restream'
+
+/**
+ * The only kinds a bulk type change may choose.
+ *
+ * A bulk change cannot invent the payload the other three kinds need - a series reference, an
+ * on-demand reference or a file list - so offering them would be a menu entry whose every row
+ * is refused. The single-row form still offers all six, because it can collect the payload.
+ */
+export type BulkVideoStreamType = Extract<
+  VideoStreamType,
+  'Permanent' | 'OnDemand' | 'Redirect'
+>
+
+/**
+ * The body of `POST /admin/video-streams/bulk`.
+ *
+ * One value beside the action rather than a patch of twenty rows: a bulk edit changes the one
+ * thing the operator chose and leaves every other field of every row alone. The server judges
+ * the value against each row's own kind and refuses only the rows it cannot carry - a
+ * category move that collides with a name already used there refuses that row alone, and a
+ * delay change on a non-permanent stream refuses that row with `validation_failed`.
+ *
+ * `restream*` is a whole-list replacement, not a diff: a blank string clears its setting, so
+ * "the restream settings are these now" and "clear them" are the same request shape.
+ */
+export interface BulkVideoStreamsPayload {
+  action: BulkVideoStreamAction
+  ids: string[]
+  categoryId?: string
+  type?: BulkVideoStreamType
+  delayMinutes?: number
+  archiveDays?: number
+  restreamUserAgent?: string
+  restreamProxy?: string
+  restreamCookies?: string
+  restreamHeaders?: string
+}
+
+/**
+ * Applies one operation to a selection: `POST /admin/video-streams/bulk`.
+ *
+ * **Always a `200`, and the per-row answers live in `items`** - the same decision the accounts
+ * and groups bulk endpoints make. A run that changed four rows and refused one is one request
+ * that was carried out, and folding the worst row's status into the response would make it
+ * indistinguishable from a run that changed nothing.
+ *
+ * A write, so the antiforgery token is minted at call time and never cached. No captcha for
+ * the reason every other admin write gives: the session, the `editStreams` permission and a
+ * fresh antiforgery pair are the gate.
+ */
+export const bulkVideoStreams = ({
+  payload,
+  csrfToken,
+}: {
+  payload: BulkVideoStreamsPayload
+  csrfToken: string | null
+}): Promise<BulkOperationResponse> =>
+  apiFetch('/admin/video-streams/bulk', {
+    method: 'POST',
+    body: payload,
     csrfToken,
   })
 

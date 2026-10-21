@@ -37,7 +37,11 @@ interface ServerTableOptions<SortField extends string> {
   sortFieldOf?: (columnKey: string) => SortField
   /** How many rows one page holds when the address does not say. */
   pageSize?: number
-  /** The sizes the pager offers, in the order it shows them. The server's ceiling is 100. */
+  /**
+   * The sizes the pager offers, in the order it shows them. The server's ceiling is 1000,
+   * and the two largest choices exist so the "select everything" checkbox can cover more
+   * than a hundred rows in one bulk request.
+   */
   pageSizeOptions?: number[]
 }
 
@@ -74,7 +78,7 @@ export function useServerTable<Row, SortField extends string>({
   sortFields,
   sortFieldOf,
   pageSize: initialPageSize = 20,
-  pageSizeOptions = [10, 20, 50, 100],
+  pageSizeOptions = [10, 20, 50, 100, 500, 1000],
 }: ServerTableOptions<SortField>) {
   const [searchParams, setSearchParams] = useSearchParams()
 

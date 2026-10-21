@@ -425,7 +425,13 @@ namespace Fluxy.Application.Streams.Services
             CancellationToken cancellationToken = default)
             => await SetStatusAsync(id, VideoStreamStatus.Stopped, VideoStreamAction.Stopped, cancellationToken);
 
-        /// <summary>Writes one status to one stream, which is all starting and stopping do.</summary>
+        /// <inheritdoc />
+        public async Task<VideoStreamOutcome> RestartAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+            => await SetStatusAsync(id, VideoStreamStatus.Running, VideoStreamAction.Restarted, cancellationToken);
+
+        /// <summary>Writes one status to one stream, which is all starting, stopping and restarting do.</summary>
         /// <remarks>
         /// Starting a stream that is already running is a success rather than a complaint: the
         /// row says what the operator asked it to say, and refusing would make a double click

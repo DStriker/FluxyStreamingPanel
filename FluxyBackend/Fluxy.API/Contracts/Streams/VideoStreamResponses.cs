@@ -35,6 +35,18 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Code reported once a stream has been stopped.</summary>
         public const string StoppedCode = "video_stream_stopped";
 
+        /// <summary>Code reported once a stream has been started again.</summary>
+        public const string RestartedCode = "video_stream_restarted";
+
+        /// <summary>Code reported when a bulk type change cleared a stream's delay.</summary>
+        public const string DelayClearedWarningCode = "video_stream_delay_cleared";
+
+        /// <summary>Code reported when a bulk type change cleared a stream's archive length.</summary>
+        public const string ArchiveClearedWarningCode = "video_stream_archive_cleared";
+
+        /// <summary>Code reported when a bulk type change cleared the restream settings.</summary>
+        public const string RestreamClearedWarningCode = "video_stream_restream_cleared";
+
         /// <summary>Code reported when no stream answers to that identifier.</summary>
         public const string NotFoundCode = "video_stream_not_found";
 
@@ -68,6 +80,9 @@ namespace Fluxy.API.Contracts.Streams
                 VideoStreamAction.Stopped =>
                     (StatusCodes.Status200OK, StoppedCode, "The stream has been stopped."),
 
+                VideoStreamAction.Restarted =>
+                    (StatusCodes.Status200OK, RestartedCode, "The stream has been restarted."),
+
                 VideoStreamAction.NotFound =>
                     (StatusCodes.Status404NotFound,
                         NotFoundCode,
@@ -100,5 +115,35 @@ namespace Fluxy.API.Contracts.Streams
                 Errors = FieldErrorKeys.FromPropertyNames(outcome.Errors)
             });
         }
+
+        /// <summary>
+        /// The code and sentence for a setting a bulk type change had to clear.
+        /// </summary>
+        /// <param name="warning">What was cleared.</param>
+        /// <returns>The pair a client receives for the row that carried the setting.</returns>
+        public static (string Code, string Message) DescribeWarning(
+            VideoStreamBulkWarning warning)
+            => warning switch
+            {
+                VideoStreamBulkWarning.DelayCleared =>
+                    (DelayClearedWarningCode,
+                        "The delay was cleared because this stream is no longer permanent."),
+
+                VideoStreamBulkWarning.ArchiveCleared =>
+                    (ArchiveClearedWarningCode,
+                        "The archive length was cleared because this stream is no longer permanent."),
+
+                VideoStreamBulkWarning.RestreamCleared =>
+                    (RestreamClearedWarningCode,
+                        "The restream settings were cleared because a redirect stream cannot use them."),
+
+                // Unreachable: the enum holds no other member. Thrown rather than answered with
+                // a code invented on the spot, because a warning a client has never seen is a
+                // silent mismatch somewhere above this line.
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(warning),
+                    warning,
+                    "Unknown video stream bulk warning.")
+            };
     }
 }

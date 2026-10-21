@@ -111,5 +111,18 @@ namespace Fluxy.Core.Streams.Interfaces
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>The outcome: stopped, or not found.</returns>
         Task<VideoStreamOutcome> StopAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Marks a stream as broadcasting again.
+        /// </summary>
+        /// <remarks>
+        /// A restart is the same state transition as a start, with its own outcome so the
+        /// client can say what the operator asked for. No process is signalled, for the reason
+        /// <see cref="StartAsync"/> gives: the relaying process does not exist here yet.
+        /// </remarks>
+        /// <param name="id">Identifier of the stream to restart.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>The outcome: restarted, or not found.</returns>
+        Task<VideoStreamOutcome> RestartAsync(Guid id, CancellationToken cancellationToken = default);
     }
 }

@@ -11,8 +11,8 @@ namespace Fluxy.Core.Users.Utils
     /// of carrying two copies that will eventually stop agreeing.
     ///
     /// The bounds are a rule about a read, not about a secret, and they are refused rather
-    /// than clamped. A caller who asked for 500 rows deserves to be told it will not get them
-    /// instead of quietly receiving 100 and reporting a <c>total</c> that does not match the
+    /// than clamped. A caller who asked for 5000 rows deserves to be told it will not get them
+    /// instead of quietly receiving 1000 and reporting a <c>total</c> that does not match the
     /// items it was handed.
     /// </remarks>
     public static class AdminUserListLimits
@@ -20,8 +20,16 @@ namespace Fluxy.Core.Users.Utils
         /// <summary>Accounts one page holds when the caller names no size.</summary>
         public const int DefaultPageSize = 20;
 
-        /// <summary>Most accounts one page may hold.</summary>
-        public const int MaxPageSize = 100;
+        /// <summary>
+        /// Most accounts one page may hold.
+        /// </summary>
+        /// <remarks>
+        /// A thousand rather than a hundred because the table offers a "select everything"
+        /// checkbox: a page of a thousand rows is the largest selection one bulk request can
+        /// name, and <c>BulkOperationLimits.MaxItems</c> follows this number rather than
+        /// carrying a ceiling of its own.
+        /// </remarks>
+        public const int MaxPageSize = 1000;
 
         /// <summary>
         /// Most characters one search may carry.

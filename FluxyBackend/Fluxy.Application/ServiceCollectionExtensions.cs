@@ -77,6 +77,12 @@ namespace Fluxy.Application
             // it reads and writes through the context, like every other service here.
             services.AddScoped<IVideoStreamService, VideoStreamService>();
 
+            // The collective operations over the same rows. Its own service for the reason
+            // IUserBulkService gives: a bulk request names a set and answers with an entry per
+            // row, and a client asking for that must not have to know which single-row method
+            // it is built on.
+            services.AddScoped<IVideoStreamBulkService, VideoStreamBulkService>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();

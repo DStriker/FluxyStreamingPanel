@@ -1,5 +1,8 @@
+using Fluxy.API.Contracts.Streams;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
+using Fluxy.Core.Streams.Enums;
+using Fluxy.Core.Streams.Outcomes;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Outcomes;
 
@@ -29,6 +32,9 @@ namespace Fluxy.API.Contracts.Common
 
         /// <summary>Code reported once a run over groups has been answered for.</summary>
         public const string GroupsCompletedCode = "user_groups_bulk_completed";
+
+        /// <summary>Code reported once a run over streams has been answered for.</summary>
+        public const string VideoStreamsCompletedCode = "video_streams_bulk_completed";
 
         /// <summary>Body for a run over accounts.</summary>
         /// <param name="outcome">What the service reported, one entry per identifier.</param>
@@ -72,17 +78,49 @@ namespace Fluxy.API.Contracts.Common
             return Answer(GroupsCompletedCode, Summary(outcome.Action, items), items);
         }
 
+        /// <summary>Body for a run over streams.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(BulkVideoStreamOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = VideoStreamResponses.Describe(new VideoStreamOutcome
+                    {
+                        Action = item.Action,
+                        StreamId = item.StreamId,
+                        Errors = item.Errors
+                    });
+
+                    var warnings = item.Warnings?
+                        .Select(warning => VideoStreamResponses.DescribeWarning(warning))
+                        .Select(warning => new BulkItemWarningResponse
+                        {
+                            Code = warning.Code,
+                            Message = warning.Message
+                        })
+                        .ToList();
+
+                    return ToItem(item.StreamId, status, body, warnings);
+                })
+                .ToList();
+
+            return Answer(VideoStreamsCompletedCode, Summary(outcome.Action, items), items);
+        }
+
         private static BulkItemResponse ToItem(
             Guid id,
             int status,
-            MessageResponse body)
+            MessageResponse body,
+            IReadOnlyList<BulkItemWarningResponse>? warnings = null)
             => new()
             {
                 Id = id.ToString(),
                 Ok = status < StatusCodes.Status400BadRequest,
                 Code = body.Code,
                 Message = body.Message,
-                Errors = body.Errors
+                Errors = body.Errors,
+                Warnings = warnings
             };
 
         private static BulkOperationResponse Answer(
@@ -139,6 +177,36 @@ namespace Fluxy.API.Contracts.Common
 
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} groups changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over streams landed.</summary>
+        private static string Summary(
+            BulkVideoStreamAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkVideoStreamAction.Start => $"{Landed(items)} of {items.Count} streams started.",
+                BulkVideoStreamAction.Stop => $"{Landed(items)} of {items.Count} streams stopped.",
+                BulkVideoStreamAction.Restart => $"{Landed(items)} of {items.Count} streams restarted.",
+                BulkVideoStreamAction.Delete => $"{Landed(items)} of {items.Count} streams deleted.",
+
+                BulkVideoStreamAction.MoveCategory =>
+                    $"{Landed(items)} of {items.Count} streams moved to that category.",
+
+                BulkVideoStreamAction.ChangeType =>
+                    $"{Landed(items)} of {items.Count} streams changed type.",
+
+                BulkVideoStreamAction.ChangeDelay =>
+                    $"{Landed(items)} of {items.Count} streams had their delay updated.",
+
+                BulkVideoStreamAction.ChangeArchive =>
+                    $"{Landed(items)} of {items.Count} streams had their archive length updated.",
+
+                BulkVideoStreamAction.ChangeRestream =>
+                    $"{Landed(items)} of {items.Count} streams had their restream settings updated.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} streams changed."
             };
 
         private static int Landed(IReadOnlyList<BulkItemResponse> items)

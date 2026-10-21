@@ -1,3 +1,4 @@
+import type { BulkItemWarning } from './BulkItemWarning'
 import type { FieldErrors } from './FieldErrors'
 
 /**
@@ -15,6 +16,12 @@ import type { FieldErrors } from './FieldErrors'
  * to be told - and a client never has to parse English to learn whether anything happened.
  *
  * `errors` is `null` whenever nothing was rejected, the same shape `MessageResponse` gives.
+ *
+ * `warnings` is the third answer beside success and refusal: the row changed, but something
+ * it used to carry had to be cleared to make the change possible. It is absent or null on
+ * every operation that cannot produce one, and it is **not** folded into `code`/`ok` -
+ * a warning on a written row is not a failure, and a client that treated it as one would
+ * count a successful change as refused.
  */
 export interface BulkItemResponse {
   /** The row this entry is about, as a uuid string. */
@@ -27,4 +34,6 @@ export interface BulkItemResponse {
   message: string
   /** Rejected fields when the input was the problem, or `null`. */
   errors: FieldErrors
+  /** Settings a successful change had to clear, or null/absent when nothing was cleared. */
+  warnings?: BulkItemWarning[] | null
 }

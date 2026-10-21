@@ -21,6 +21,17 @@ const en = {
   common: {
     loading: 'Loading',
   },
+  // The shared wording of a bulk run's summary. It belongs to no page because every bulk
+  // table reads its answer through the same hook: the title says how much landed, and the
+  // two headings below it separate what was refused from what was changed with a caveat.
+  // A warning is not a refusal - the row did what it was told and lost a setting it could
+  // no longer carry - so the two lists are drawn under their own headings rather than
+  // folded into one sentence about failure.
+  bulk: {
+    warningsTitle: 'Changed {{done}} of {{total}}. Some settings were cleared:',
+    refused: 'Refused',
+    warnings: 'Warnings',
+  },
   // The last-resort screen of an error boundary - a route that threw while rendering, or a
   // failure above the router. Its own section rather than a page's, because the page it
   // would have belonged to is the one that just failed to draw.
@@ -777,12 +788,13 @@ const en = {
     actions: {
       start: 'Start',
       stop: 'Stop',
+      restart: 'Restart',
       edit: 'Edit',
       delete: 'Delete',
-      // Why restart and play are greyed out. Both are operations on the relaying process,
-      // and that process does not exist yet - so the reason is stated before the click,
-      // which is the whole point of drawing the button disabled rather than live and
-      // letting a 404 explain it afterwards.
+      // Why play is greyed out. It is an operation on the relaying process, and that
+      // process does not exist yet - so the reason is stated before the click, which is
+      // the whole point of drawing the button disabled rather than live and letting a 404
+      // explain it afterwards.
       notImplemented: 'Not implemented yet.',
     },
     searchLabel: 'Search by name',
@@ -804,6 +816,68 @@ const en = {
     range: '{{from}}–{{to}} of {{total}}',
     empty: 'No streams yet.',
     noMatches: 'No streams match these filters.',
+    // Why the bulk toolbar is greyed for an operator whose group holds no `editStreams`
+    // grant. The server refuses the same run with 403 `permission_denied`, so this is the
+    // same fact told before the click - and it names the group rather than the visitor,
+    // because that is what the refusal is about.
+    noPermission: 'Your group does not allow this.',
+    // The bulk toolbar over the selection: one count and one menu, mirroring the accounts
+    // and groups tables. Both are drawn even with nothing selected, for the reason those
+    // two are: a control that appears and disappears reads as a broken one.
+    bulk: {
+      menu: 'Actions',
+      menuWithCount: 'Actions ({{count}})',
+      // The five transitions and the four edits, in one menu. The labels are the row
+      // actions' own names, because the operation is the same one over more than one row,
+      // and a second name would be a second name for one thing.
+      start: 'Start',
+      stop: 'Stop',
+      restart: 'Restart',
+      delete: 'Delete',
+      move: 'Move to category',
+      type: 'Change type',
+      delay: 'Change delay',
+      archive: 'Change archive length',
+      restream: 'Change restream settings',
+      // The move dialog. Its destination is a decision about the whole selection, so it is
+      // asked for in a dialog rather than in the toolbar: an inline control would be
+      // answering it for a menu that has already closed.
+      moveTitle: 'Move these streams to a category',
+      movePlaceholder: 'Choose a category',
+      apply: 'Apply',
+      // The type dialog. Only the three kinds a bulk change can keep whole are offered:
+      // the other three need a payload only the single-row form can collect.
+      typeTitle: 'Change the type of these streams',
+      typePlaceholder: 'Choose a type',
+      typeHint:
+        'Only permanent, on-demand and redirect streams can be chosen here. A stream whose current settings the new type cannot keep is changed anyway - the settings it loses are reported as warnings.',
+      // One number per dialog, and the same "zero means none" rule the single-row form
+      // states in its hint.
+      delayTitle: 'Change the delay of these streams',
+      delayLabel: 'Delay (minutes)',
+      delayHint: 'Zero removes the delay. Only permanent streams can carry one.',
+      archiveTitle: 'Change the archive length of these streams',
+      archiveLabel: 'Archive length (days)',
+      archiveHint: 'Zero keeps no archive. Only permanent streams keep one.',
+      // The four restream settings are replaced as a group, not patched field by field: a
+      // blank input clears its setting, so "these are the values now" and "clear them" are
+      // one request shape. The dialog says so once rather than beside each input.
+      restreamTitle: 'Change the restream settings of these streams',
+      restreamHint:
+        'The four values replace the current ones on every selected stream. Leave a field empty to clear it. Only permanent and on-demand streams can carry them.',
+      restreamUserAgent: 'User agent',
+      restreamProxy: 'Proxy',
+      restreamCookies: 'Cookies',
+      restreamHeaders: 'Extra headers',
+      // Shown instead of a toast the moment at least one row was refused. Every line is
+      // the server's own sentence for that row's code, already translated here, so the
+      // reason is read rather than guessed at from a count.
+      partialTitle: 'Changed {{done}} of {{total}}. The rest were refused:',
+      // Only deletion asks first, for the reason only deletion asks first on a single row.
+      deleteTitle: 'Delete these {{count}} streams?',
+      deleteBody:
+        'Each stream will be removed with its sources and files. This cannot be undone.',
+    },
     // The one action on the table that asks first. The body quotes the stream's own name,
     // because that is what the visitor is reading when they press it; what happens to the
     // *category* is the category's dialog to make - the server refuses to delete one a
@@ -1027,9 +1101,19 @@ const en = {
       video_stream_deleted: 'The stream has been deleted.',
       video_stream_started: 'The stream has been started.',
       video_stream_stopped: 'The stream has been stopped.',
+      video_stream_restarted: 'The stream has been restarted.',
       video_stream_not_found: 'There is no stream with that identifier.',
       video_stream_already_exists:
         'That stream name is already taken within this category.',
+      // The three warnings a bulk type change may attach to a row that nevertheless landed.
+      // They are not failures: the row did what it was told and lost a setting its new kind
+      // cannot carry, which the operator has to be told without being told it went wrong.
+      video_stream_delay_cleared:
+        'The delay was cleared because this stream is no longer permanent.',
+      video_stream_archive_cleared:
+        'The archive length was cleared because this stream is no longer permanent.',
+      video_stream_restream_cleared:
+        'The restream settings were cleared because a redirect stream cannot use them.',
       // A bulk run: one code for the run as a whole, because the run as a whole *was*
       // carried out - every identifier it named came back with a verdict, and those verdicts
       // are in `items` with the codes above rather than folded into one status. The counts
@@ -1037,6 +1121,7 @@ const en = {
       // a row-by-row refusal opens the summary dialog instead of this toast.
       users_bulk_completed: 'Changed {{done}} of {{total}} accounts.',
       user_groups_bulk_completed: 'Changed {{done}} of {{total}} groups.',
+      video_streams_bulk_completed: 'Changed {{done}} of {{total}} streams.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',

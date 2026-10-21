@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 171 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 75 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 246 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 180 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 86 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 266 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -321,8 +321,8 @@ about it follows from that.
   that still reads correctly — an unknown network is a fact to display, not a reason to fail.
   Depth is whatever `cleanup` leaves behind (the ~30 day window documented in `JwtTokenService`).
 - **The bounds are refused, not clamped.** `page < 1` or `pageSize` outside `1..SessionHistoryLimits.MaxPageSize`
-  (default 20, max 100) answer `400 validation_failed` with `errors.page` / `errors.pageSize`.
-  Silently turning 500 rows into 100 would answer with a page whose items do not match the size
+  (default 20, max 1000) answer `400 validation_failed` with `errors.page` / `errors.pageSize`.
+  Silently turning 500 rows into 1000 would answer with a page whose items do not match the size
   the caller was told it got. A non-numeric value never reaches the action — model binding
   produces the same `validation_failed` through `InvalidModelStateResponseFactory`.
 - **`search`, `sortBy` and `sortOrder` exist, and they are server side for one reason: `total`.**
@@ -387,7 +387,7 @@ addresses mirrored, with a null address last in each; `sortBy=IP` and `sortorder
 the parameter names are read case-insensitively; a search narrows the list, every returned row really
 matches, a search for nothing answers `total` 0 with an empty page, and pages of a filtered list sum
 to its `total` with the same `total` reported on each; `sortBy=organisation`, `sortOrder=downwards`,
-`sortBy=2` (a bare number that names no member), a 301-character `search`, `page=0` and `pageSize=500`
+`sortBy=2` (a bare number that names no member), a 301-character `search`, `page=0` and `pageSize=1001`
 are each refused with the field they broke named in `errors`; and all five parameters answer together
 on one request.
 
@@ -1183,7 +1183,8 @@ relay process plays; the playing itself is not in this API.
 | `GET /admin/video-streams/{id}` | `Permission.ViewStreams` | one stream with `sources` and `files`; `404 video_stream_not_found` |
 | `POST /admin/video-streams` | CSRF + `Permission.EditStreams` | `201 video_stream_created` + relative `Location` |
 | `PATCH /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_updated` |
-| `POST /admin/video-streams/{id}/start` / `…/stop` | CSRF + `Permission.EditStreams` | `video_stream_started` / `video_stream_stopped` |
+| `POST /admin/video-streams/{id}/start` / `…/stop` / `…/restart` | CSRF + `Permission.EditStreams` | `video_stream_started` / `video_stream_stopped` / `video_stream_restarted` |
+| `POST /admin/video-streams/bulk` | CSRF + `Permission.EditStreams` | `200 video_streams_bulk_completed`, one entry per identifier |
 | `DELETE /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_deleted`, `404` on a second |
 
 - **The type owns the fields only it can use, and the two halves are asymmetric on purpose.**
@@ -1199,12 +1200,12 @@ relay process plays; the playing itself is not in this API.
 - **A programme guide is two facts or none.** Exactly one of `epgSourceId`/`epgChannelKey` is
   refused with `validation_failed` naming **both** fields; both set or both empty are the only
   accepted answers. `hasEpg` on the read side is derived from the pair, never stored.
-- **`status` is absent from the body of both writes.** Only `start`/`stop` write it — an edit
-  form that could set it would make "this stream is running" a claim a form makes rather than
-  a fact about a process. `activeSource` is never written by the service at all: the relaying
-  process reports it and nothing else. `sortOrder` is never caller-supplied; a create reads
-  `max(sort_order)` of its category server-side, and a category change moves the stream to the
-  end of the new one (the old category keeps its gaps, the way a deletion does).
+- **`status` is absent from the body of both writes.** Only `start`/`stop`/`restart` write it —
+  an edit form that could set it would make "this stream is running" a claim a form makes
+  rather than a fact about a process. `activeSource` is never written by the service at all:
+  the relaying process reports it and nothing else. `sortOrder` is never caller-supplied; a
+  create reads `max(sort_order)` of its category server-side, and a category change moves the
+  stream to the end of the new one (the old category keeps its gaps, the way a deletion does).
 - **A name is unique within its category** (`UNIQUE(category_id, name)`), compared exactly and
   case sensitively like username and email. A lost race is caught and mapped to
   `409 video_stream_already_exists` naming `name`.
@@ -1219,19 +1220,71 @@ relay process plays; the playing itself is not in this API.
 - **The list is paged** (`total` counted before paging, the same "the pager must not lie" rule
   the accounts and session histories follow), `search` is a case-insensitive substring of the
   name, and the sort fields are the column keys — `name`, `category`, `status`, `type`,
-  `sortOrder` — parsed from plain text case-insensitively.
+  `sortOrder` — parsed from plain text case-insensitively. `pageSize` defaults to 20 and is
+  refused above **1000**, the same ceiling as every other paged table; that ceiling is also
+  what lets the table's "select everything" checkbox hand one whole page to the bulk endpoint.
+
+### Bulk operations over the streams
+
+`POST /admin/video-streams/bulk` applies one of nine operations to the streams one page
+holds: `start`, `stop`, `restart`, `delete`, `move-category`, `change-type`, `change-delay`,
+`change-archive` and `change-restream`. It has a controller of its own
+(`VideoStreamsBulkController`) because the request names a set the table assembled rather
+than one addressed row and the answer is a per-identifier report; the policy is the same
+`EditStreamsPolicy` the single-row writes carry.
+
+- **A well-formed run answers `200 video_streams_bulk_completed`**, with `succeeded`,
+  `failed` and one `items` entry per identifier. Each entry carries the very code the
+  single-row endpoint would answer (`video_stream_started`, `video_stream_not_found`, …),
+  `ok` read off the status that code maps to, and `errors` keyed by camelCase field name.
+  A category move that collides with a name already used there refuses **that row alone**
+  with `video_stream_already_exists`; the others still move. Partial success is the shape.
+- **The body is validated before any row is read.** The action is matched
+  case-insensitively and with hyphens (`Start`, `change-type`); identifiers must be 1..1000
+  uuids and duplicates collapse; the value an action needs must be present and usable. A
+  body that breaks any of those answers `400 validation_failed` naming every broken field at
+  once. `RejectsCsrfAsync()` runs **before** the body is parsed, so a stale pair is
+  `csrf_invalid` rather than a validation answer.
+- **Every operation delegates to the single-row service.** Start, stop, restart and delete
+  are the same writes the row buttons make; a move is `UpdateAsync` with only a
+  `categoryId`. That is why the category-scoped name collision, an unusable category and a
+  missing stream are all answered per row rather than aborting the run.
+- **Three collective rules live in the bulk service.** A delay or an archive may only be
+  written to `Permanent` streams, restream settings only to `Permanent`/`OnDemand`, and a
+  bulk type change may only choose `Permanent`, `OnDemand` or `Redirect`. Any other kind
+  answers `validation_failed` on that row (`delayMinutes`, `archiveDays`,
+  `restreamUserAgent`) while the rest of the selection continues.
+- **A bulk type change clears what the destination cannot carry instead of refusing the
+  row.** Moving to `OnDemand`/`Redirect` clears a non-zero delay and archive; moving to
+  `Redirect` also clears all four restream settings. The row still lands as
+  `video_stream_updated`, and each clearance is a warning: `video_stream_delay_cleared`,
+  `video_stream_archive_cleared`, `video_stream_restream_cleared`, each `{ code, message }`.
+  A successful change that cleared nothing answers `warnings: null`; a refused row never
+  carries a warning, because nothing was written.
+- **Restream is a whole-value replacement, not a patch of one field.** All four settings are
+  written on every run and a blank field clears its setting. Zero is a value for delay and
+  archive, not an absence.
+- **Restart is also a single-row action** (`POST /admin/video-streams/{id}/restart`): it
+  writes `Running` and answers `video_stream_restarted`. It is not a separate status and it
+  deliberately leaves `activeSource` alone, because that is the relaying process's report.
+- **No schema change.** A bulk operation is the existing writes applied in a loop — no table,
+  no queue, no background worker and no migration.
 
 Layering follows the usual split: `VideoStream` in `Fluxy.Core/Streams/Models/`,
 `VideoStreamPage` / `VideoStreamListItem` in `Fluxy.Core/Streams/ReadModels/`,
-`NewVideoStream` / `VideoStreamPatch` / `VideoStreamWrite` in `Fluxy.Core/Streams/Commands/`,
-`VideoStreamOutcome` / `VideoStreamAction` / `VideoStreamSortField` / `VideoStreamSortOrder` /
-`VideoStreamStatus` / `VideoStreamType` in `Fluxy.Core/Streams/Enums/`,
-`VideoStreamLimits` / `VideoStreamListLimits` / `VideoStreamEpg` in
-`Fluxy.Core/Streams/Utils/`, plus `IVideoStreamService` in `Fluxy.Core/Streams/Interfaces/`,
-`VideoStreamService` in `Fluxy.Application/Streams/Services/` (Scoped), the three entities and
-their configurations in `Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the
-contracts in `Fluxy.API/Contracts/Streams/`, and `VideoStreamsController` in
-`Fluxy.API/Controllers/Content/`.
+`NewVideoStream` / `VideoStreamPatch` / `VideoStreamWrite` / `BulkVideoStreamOperation` in
+`Fluxy.Core/Streams/Commands/`, `VideoStreamOutcome` / `BulkVideoStreamOutcome` /
+`BulkVideoStreamItemResult` in `Fluxy.Core/Streams/Outcomes/`, `VideoStreamAction` /
+`BulkVideoStreamAction` / `VideoStreamBulkWarning` / `VideoStreamSortField` /
+`VideoStreamSortOrder` / `VideoStreamStatus` / `VideoStreamType` in
+`Fluxy.Core/Streams/Enums/`, `VideoStreamLimits` / `VideoStreamListLimits` /
+`VideoStreamBulkLimits` / `VideoStreamEpg` in `Fluxy.Core/Streams/Utils/`, plus
+`IVideoStreamService` / `IVideoStreamBulkService` in `Fluxy.Core/Streams/Interfaces/`,
+`VideoStreamService` / `VideoStreamBulkService` in `Fluxy.Application/Streams/Services/`
+(both Scoped), the three entities and their configurations in `Fluxy.DataAccess/` (migration
+`20261014125324_AddVideoStreams`), the contracts in `Fluxy.API/Contracts/Streams/` plus
+`BulkItemWarningResponse` in `Fluxy.API/Contracts/Common/`, `VideoStreamsController` and
+`VideoStreamsBulkController` in `Fluxy.API/Controllers/Content/`.
 
 ### What running caught: a PATCH that failed on any stream with a list
 

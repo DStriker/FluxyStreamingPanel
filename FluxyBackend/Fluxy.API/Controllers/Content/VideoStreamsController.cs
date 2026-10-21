@@ -16,7 +16,7 @@ namespace Fluxy.API.Controllers.Content
 {
     /// <summary>
     /// Managing the configured streams: one page of the table, one stream in full, and the
-    /// writes that create, change, start, stop and delete them.
+    /// writes that create, change, start, stop, restart and delete them.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -475,6 +475,30 @@ namespace Fluxy.API.Controllers.Content
             => SetStatus(id, stream => stream.StopAsync(id, cancellationToken));
 
         /// <summary>
+        /// Marks a stream as broadcasting again.
+        /// </summary>
+        /// <param name="id">Identifier of the stream to restart.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 <c>video_stream_restarted</c>, 404 <c>video_stream_not_found</c>, 400
+        /// <c>csrf_invalid</c> without the antiforgery pair.
+        /// </returns>
+        /// <remarks>
+        /// A start with its own answer, so the operator can say which of the two they asked
+        /// for. No process is signalled, for the reason <see cref="StartStream"/> gives: the
+        /// relaying process does not exist here yet, and this transition is the row's state
+        /// rather than a command to a worker.
+        /// </remarks>
+        [HttpPost("{id:guid}/restart")]
+        [Authorize(Policy = AuthenticationExtensions.EditStreamsPolicy)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
+        public Task<IActionResult> RestartStream(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken)
+            => SetStatus(id, stream => stream.RestartAsync(id, cancellationToken));
+
+        /// <summary>
         /// Deletes a stream together with its sources and its files.
         /// </summary>
         /// <param name="id">Identifier of the stream to delete.</param>
@@ -506,13 +530,13 @@ namespace Fluxy.API.Controllers.Content
         }
 
         /// <summary>
-        /// The shared shape of the two state transitions: refuse an unauthenticated caller's
+        /// The shared shape of the three state transitions: refuse an unauthenticated caller's
         /// stale token first, then ask the service, then answer.
         /// </summary>
         /// <remarks>
-        /// Factored out because start and stop differ in exactly one call each, and a copy of
-        /// the CSRF check is free to be pasted into one action and forgotten in the other -
-        /// which would leave a state transition reachable by a request this application did
+        /// Factored out because start, stop and restart differ in exactly one call each, and a
+        /// copy of the CSRF check is free to be pasted into one action and forgotten in another
+        /// - which would leave a state transition reachable by a request this application did
         /// not make.
         /// </remarks>
         private async Task<IActionResult> SetStatus(

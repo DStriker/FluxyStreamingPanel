@@ -13,8 +13,8 @@ namespace Fluxy.Core.Users.Utils
     /// as a mystery 400.
     ///
     /// The bound is refused rather than truncated, the same decision the list endpoint makes:
-    /// a caller who asked for 500 identifiers deserves to be told it will not get them instead
-    /// of quietly receiving 100 and being answered about a subset it did not know it had sent.
+    /// a caller who asked for 5000 identifiers deserves to be told it will not get them instead
+    /// of quietly receiving 1000 and being answered about a subset it did not know it had sent.
     /// </remarks>
     public static class BulkOperationLimits
     {

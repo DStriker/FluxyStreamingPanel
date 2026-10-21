@@ -13,8 +13,8 @@ namespace Fluxy.Core.Streams.Utils
     /// agreeing.
     ///
     /// The bounds are a rule about a read, not about a secret, and they are refused rather than
-    /// clamped. A caller who asked for 500 rows deserves to be told it will not get them
-    /// instead of quietly receiving 100 and reporting a <c>total</c> that does not match the
+    /// clamped. A caller who asked for 5000 rows deserves to be told it will not get them
+    /// instead of quietly receiving 1000 and reporting a <c>total</c> that does not match the
     /// items it was handed.
     /// </remarks>
     public static class VideoStreamListLimits
@@ -22,8 +22,16 @@ namespace Fluxy.Core.Streams.Utils
         /// <summary>Streams one page holds when the caller names no size.</summary>
         public const int DefaultPageSize = 20;
 
-        /// <summary>Most streams one page may hold.</summary>
-        public const int MaxPageSize = 100;
+        /// <summary>
+        /// Most streams one page may hold.
+        /// </summary>
+        /// <remarks>
+        /// A thousand for the reason <c>AdminUserListLimits.MaxPageSize</c> gives: the table's
+        /// "select everything" checkbox hands its selection to the bulk endpoint, and
+        /// <c>VideoStreamBulkLimits.MaxItems</c> follows this number rather than carrying a
+        /// second ceiling.
+        /// </remarks>
+        public const int MaxPageSize = 1000;
 
         /// <summary>
         /// Most characters one search may carry.
