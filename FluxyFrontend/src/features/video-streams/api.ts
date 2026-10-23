@@ -1,15 +1,21 @@
 import { apiFetch, apiGet } from '../../utils/http'
 import type { BulkOperationResponse, MessageResponse } from '../../types'
-import type { VideoStreamDetail, VideoStreamList, VideoStreamStatus, VideoStreamType } from './types'
+import type {
+  VideoStreamDetail,
+  VideoStreamImportResponse,
+  VideoStreamList,
+  VideoStreamStatus,
+  VideoStreamType,
+} from './types'
 
 /**
  * The streams table: one page of it, one stream in full, the body both form submissions send,
  * the two transitions that start and stop a broadcast, and the delete that takes sources and
  * files with it.
  *
- * `status` is deliberately absent from the form's body - the two transitions write it, so
- * "this stream is broadcasting" stays a fact about a process rather than a field an edit can
- * set.
+ * `status` travels in both form bodies: the add form starts a new stream active, and the edit
+ * form can enable or disable an existing one. The start and stop actions remain the two
+ * transitions on the table.
  */
 
 /**
@@ -37,6 +43,18 @@ export type VideoStreamSortOrder = 'asc' | 'desc'
  * cover more than a hundred rows in one bulk request.
  */
 export const VIDEO_STREAMS_PAGE_SIZE = 20
+
+/**
+ * What one uploaded playlist may hold, mirroring `VideoStreamImportLimits` on the server.
+ *
+ * The size is checked in the browser before the request so a mistaken upload is refused
+ * without sending ten megabytes over the wire; the server checks it again, and its 413 is
+ * the answer that actually counts. The entry ceiling is shown in the field's hint for the
+ * same reason - it is a fact about the endpoint the operator should read before choosing a
+ * file, not after being refused one.
+ */
+export const VIDEO_STREAM_IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024
+export const VIDEO_STREAM_IMPORT_MAX_ENTRIES = 5000
 
 /** One page of the streams table: `GET /admin/video-streams`. */
 export const getVideoStreams = ({
@@ -99,18 +117,20 @@ export const getVideoStream = (id: string, signal?: AbortSignal): Promise<VideoS
  * them - the server drops what the type cannot carry rather than refusing it, which is
  * what makes a form that has just changed type safe to save.
  *
- * There is deliberately no `status` here. It belongs to the start and stop actions, and a
- * body that could set it would make "this stream is broadcasting" a claim an edit form
- * makes rather than a fact about a process. `sortOrder` is absent for the same reason the
- * add-category form has no position: where a new stream goes in its category is the
- * service's fact to read, and a caller naming one would be one stale screen away from
- * overwriting a neighbour an operator has just moved.
+ * `status` is the one field the start and stop buttons also write, and it belongs in the
+ * body because the add form chooses whether the stream opens active and the edit form can
+ * enable or disable it later. `sortOrder` is absent for the same reason the add-category
+ * form has no position: where a new stream goes in its category is the service's fact to
+ * read, and a caller naming one would be one stale screen away from overwriting a neighbour
+ * an operator has just moved.
  */
 export interface VideoStreamValues {
   /** Display name, unique within its category and compared case sensitively. */
   name: string
   /** The kind of stream, which decides which payload below is used. */
   type: VideoStreamType
+  /** Whether the stream is active or disabled, as the enum member. */
+  status: VideoStreamStatus
   /** Identifier of the category the stream is filed under, as text. */
   categoryId: string
   /** Address the icon is fetched from. */
@@ -180,7 +200,9 @@ export const createVideoStream = ({
  * one fact. An empty string clears a field - `null` would mean "leave it alone", and the
  * form never means that.
  *
- * `status` is absent and the server refuses it: only start and stop write it.
+ * `status` is sent like every other field: the form holds the state the operator chose, and
+ * leaving the field out would keep whatever the row already holds rather than saving the
+ * screen.
  */
 export const updateVideoStream = ({
   id,
@@ -353,3 +375,91 @@ export const deleteVideoStream = ({
   csrfToken: string | null
 }): Promise<MessageResponse> =>
   apiFetch(`/admin/video-streams/${encodeURIComponent(id)}`, { method: 'DELETE', csrfToken })
+
+/**
+ * The kinds an imported stream may be: the three that take their addresses from a list.
+ *
+ * The other three need a reference or a file list that a playlist cannot supply, so offering
+ * them on the import form would be a choice whose every entry the service has to invent a
+ * payload for. The server accepts exactly these three from the multipart field.
+ */
+export type VideoStreamImportType = Extract<
+  VideoStreamType,
+  'Permanent' | 'OnDemand' | 'Redirect'
+>
+
+/**
+ * The settings one import applies to every stream it creates.
+ *
+ * There is no name, no sources list and no identifier pair: each `#EXTINF` entry names its
+ * own stream and carries its own address, so those are read from the file rather than typed
+ * here. What remains is the frame every created row shares - where it is filed, whether it
+ * starts active, and the settings a kind may carry.
+ */
+export interface VideoStreamImportValues {
+  /** The kind every imported stream is created as. */
+  type: VideoStreamImportType
+  /** Whether the created streams start active or disabled. */
+  status: VideoStreamStatus
+  /** Identifier of the category the streams are filed under. */
+  categoryId: string
+  /** How far behind live the relay runs, in minutes. */
+  delayMinutes: number
+  /** Archive length in days, refused above zero on anything but `Permanent`. */
+  archiveDays: number
+  /** User agent the relayed requests carry. */
+  restreamUserAgent: string
+  /** Proxy the relay goes out through. */
+  restreamProxy: string
+  /** Cookies the relayed requests carry. */
+  restreamCookies: string
+  /** Extra headers the relayed requests carry, as typed. */
+  restreamHeaders: string
+  /** Append the entry's source to an existing stream's source list. */
+  appendSourceToExisting: boolean
+  /** Overwrite an existing stream's status, type, delay, archive and restream settings. */
+  overwriteExistingSettings: boolean
+}
+
+/**
+ * Imports streams from an uploaded M3U playlist:
+ * `POST /admin/video-streams/import`, multipart/form-data.
+ *
+ * One `#EXTINF` entry and the address under it become one stream. Existing names are skipped
+ * unless the operator opts in - `appendSourceToExisting` appends the entry's source to an
+ * existing stream's source list, and `overwriteExistingSettings` overwrites its status, type,
+ * delay, archive length and restream settings. Both may be used together.
+ *
+ * The body is `FormData` rather than JSON, which is why `http.ts` leaves the content type
+ * unset for it - the browser writes the multipart boundary itself.
+ */
+export const importVideoStreams = ({
+  values,
+  file,
+  csrfToken,
+}: {
+  values: VideoStreamImportValues
+  file: File
+  csrfToken: string | null
+}): Promise<VideoStreamImportResponse> => {
+  const body = new FormData()
+
+  body.set('type', values.type)
+  body.set('status', values.status)
+  body.set('categoryId', values.categoryId)
+  body.set('delayMinutes', String(values.delayMinutes))
+  body.set('archiveDays', String(values.archiveDays))
+  body.set('restreamUserAgent', values.restreamUserAgent)
+  body.set('restreamProxy', values.restreamProxy)
+  body.set('restreamCookies', values.restreamCookies)
+  body.set('restreamHeaders', values.restreamHeaders)
+  body.set('appendSourceToExisting', String(values.appendSourceToExisting))
+  body.set('overwriteExistingSettings', String(values.overwriteExistingSettings))
+  body.set('playlist', file)
+
+  return apiFetch('/admin/video-streams/import', {
+    method: 'POST',
+    body,
+    csrfToken,
+  })
+}

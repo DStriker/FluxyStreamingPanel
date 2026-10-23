@@ -2,6 +2,7 @@ using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
+using Fluxy.Core.Streams.Rows;
 
 namespace Fluxy.Core.Streams.Repositories
 {
@@ -77,6 +78,41 @@ namespace Fluxy.Core.Streams.Repositories
             Guid? exceptStream,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Reads every existing stream of one category whose name is in a proposed set, in one
+        /// query.
+        /// </summary>
+        /// <remarks>
+        /// One query rather than one probe per entry: a playlist holds thousands of entries.
+        /// The comparison is case sensitive, the same way the unique index is. The returned
+        /// rows carry just enough for the service to decide which entries create a stream and
+        /// which update one - the projection never reaches a response.
+        /// </remarks>
+        /// <param name="categoryId">Category the names are scoped to.</param>
+        /// <param name="names">Names to look for.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>Existing streams the category holds under any of <paramref name="names"/>.</returns>
+        Task<IReadOnlyList<VideoStreamImportRow>> GetImportRowsAsync(
+            Guid categoryId,
+            IReadOnlyCollection<string> names,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages changes on several existing streams at once, left for the caller's single
+        /// save.
+        /// </summary>
+        /// <remarks>
+        /// Each update touches only the fields an import may change: status, type, delay,
+        /// archive length, restream settings, and one optional source to append. Name, logo,
+        /// programme guide, Enigma2 service id, category and position are not touched.
+        /// Everything is staged on the context and committed by the service's single save.
+        /// </remarks>
+        /// <param name="updates">Changes to stage, one per existing stream.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task UpdateRangeAsync(
+            IReadOnlyList<VideoStreamBatchUpdate> updates,
+            CancellationToken cancellationToken = default);
+
         /// <summary>Reads the highest position of a category, or zero when it is empty.</summary>
         /// <param name="categoryId">Identifier of the category.</param>
         /// <param name="exceptStream">Stream whose own position is not counted, or null.</param>
@@ -94,6 +130,23 @@ namespace Fluxy.Core.Streams.Repositories
         Task<Guid> AddAsync(
             VideoStreamWrite stream,
             int sortOrder,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Stages a batch of new streams at the end of one category's list.
+        /// </summary>
+        /// <remarks>
+        /// The positions run from <paramref name="firstSortOrder"/> in the order the streams
+        /// are given, so the playlist order is the order the category will show. Everything is
+        /// staged on the context and left for the caller's single save, which is what makes an
+        /// import one transaction rather than one transaction per entry.
+        /// </remarks>
+        /// <param name="streams">Values the rows are written with, in playlist order.</param>
+        /// <param name="firstSortOrder">Position the first row must carry.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task AddRangeAsync(
+            IReadOnlyList<VideoStreamWrite> streams,
+            int firstSortOrder,
             CancellationToken cancellationToken = default);
 
         /// <summary>

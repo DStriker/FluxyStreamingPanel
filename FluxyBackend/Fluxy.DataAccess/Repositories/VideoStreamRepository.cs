@@ -5,6 +5,7 @@ using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
+using Fluxy.Core.Streams.Rows;
 using Fluxy.Core.Streams.Utils;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
@@ -177,6 +178,31 @@ namespace Fluxy.DataAccess.Repositories
                     cancellationToken);
 
         /// <inheritdoc />
+        public async Task<IReadOnlyList<VideoStreamImportRow>> GetImportRowsAsync(
+            Guid categoryId,
+            IReadOnlyCollection<string> names,
+            CancellationToken cancellationToken = default)
+        {
+            if (names.Count == 0)
+            {
+                return [];
+            }
+
+            var wanted = names.ToArray();
+
+            return await _context.VideoStreams
+                .AsNoTracking()
+                .Where(entry => entry.CategoryId == categoryId && wanted.Contains(entry.Name))
+                .Select(entry => new VideoStreamImportRow
+                {
+                    Id = entry.Id,
+                    Name = entry.Name,
+                    Type = entry.Type,
+                })
+                .ToListAsync(cancellationToken);
+        }
+
+        /// <inheritdoc />
         public async Task<int> GetLastSortOrderAsync(
             Guid categoryId,
             Guid? exceptStream,
@@ -192,10 +218,33 @@ namespace Fluxy.DataAccess.Repositories
             int sortOrder,
             CancellationToken cancellationToken = default)
         {
+            var entity = BuildEntity(stream, sortOrder);
+            _context.VideoStreams.Add(entity);
+
+            return Task.FromResult(entity.Id);
+        }
+
+        /// <inheritdoc />
+        public Task AddRangeAsync(
+            IReadOnlyList<VideoStreamWrite> streams,
+            int firstSortOrder,
+            CancellationToken cancellationToken = default)
+        {
+            for (var index = 0; index < streams.Count; index++)
+            {
+                _context.VideoStreams.Add(BuildEntity(streams[index], firstSortOrder + index));
+            }
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>Builds one tracked row, with both lists attached, at the position it must take.</summary>
+        private static VideoStreamEntity BuildEntity(VideoStreamWrite stream, int sortOrder)
+        {
             var entity = new VideoStreamEntity
             {
                 Name = stream.Name,
-                Status = VideoStreamStatus.Stopped,
+                Status = stream.Status,
                 Type = stream.Type,
                 CategoryId = stream.CategoryId,
                 LogoUrl = stream.LogoUrl,
@@ -216,9 +265,8 @@ namespace Fluxy.DataAccess.Repositories
 
             AppendSources(entity, stream.Sources);
             AppendFiles(entity, stream.Files);
-            _context.VideoStreams.Add(entity);
 
-            return Task.FromResult(entity.Id);
+            return entity;
         }
 
         /// <inheritdoc />
@@ -237,6 +285,7 @@ namespace Fluxy.DataAccess.Repositories
 
             entity.Name = stream.Name;
             entity.Type = stream.Type;
+            entity.Status = stream.Status;
             entity.CategoryId = stream.CategoryId;
             entity.LogoUrl = stream.LogoUrl;
             entity.Enigma2Sid = stream.Enigma2Sid;
@@ -261,6 +310,86 @@ namespace Fluxy.DataAccess.Repositories
 
             return true;
         }
+
+        /// <inheritdoc />
+        public async Task UpdateRangeAsync(
+            IReadOnlyList<VideoStreamBatchUpdate> updates,
+            CancellationToken cancellationToken = default)
+        {
+            if (updates.Count == 0)
+            {
+                return;
+            }
+
+            var ids = updates.Select(update => update.Id).ToArray();
+
+            var entities = await _context.VideoStreams
+                .Where(entry => ids.Contains(entry.Id))
+                .Include(entry => entry.StreamSources)
+                .Include(entry => entry.StreamFiles)
+                .ToDictionaryAsync(entry => entry.Id, cancellationToken);
+
+            foreach (var update in updates)
+            {
+                if (!entities.TryGetValue(update.Id, out var entity))
+                {
+                    continue;
+                }
+
+                if (update.OverwriteSettings)
+                {
+                    entity.Type = update.Type;
+                    entity.Status = update.Status;
+                    entity.DelayMinutes = update.DelayMinutes;
+                    entity.ArchiveDays = update.ArchiveDays;
+                    entity.RestreamUserAgent = update.RestreamUserAgent;
+                    entity.RestreamProxy = update.RestreamProxy;
+                    entity.RestreamCookies = update.RestreamCookies;
+                    entity.RestreamHeaders = update.RestreamHeaders;
+
+                    // A kind that does not relay from a source list keeps neither a series, a
+                    // video-playlist item, nor a stored file list - those payloads belong to
+                    // other kinds. A URL kind keeps its existing sources unless the import
+                    // appends to them below.
+                    entity.SeriesId = null;
+                    entity.VodId = null;
+                    ReplaceFiles(entity, []);
+
+                    // A converted stream that has no source yet takes the playlist's source,
+                    // so it can not end up as a URL kind with nothing to relay.
+                    if (IsUrlKind(update.Type) && entity.StreamSources.Count == 0 &&
+                        !string.IsNullOrWhiteSpace(update.SourceToAppend))
+                    {
+                        entity.StreamSources.Add(new VideoStreamSourceEntity
+                        {
+                            StreamId = entity.Id,
+                            Position = 0,
+                            Url = update.SourceToAppend
+                        });
+                    }
+                }
+
+                if (update.AppendSource && IsUrlKind(entity.Type) &&
+                    !string.IsNullOrWhiteSpace(update.SourceToAppend))
+                {
+                    var stored = entity.StreamSources
+                        .OrderBy(source => source.Position)
+                        .Select(source => source.Url)
+                        .ToList();
+
+                    if (!stored.Contains(update.SourceToAppend, StringComparer.Ordinal))
+                    {
+                        stored.Add(update.SourceToAppend);
+                        ReplaceSources(entity, stored);
+                    }
+                }
+            }
+        }
+
+        /// <summary>Whether a stream kind relays from a list of source addresses.</summary>
+        private static bool IsUrlKind(VideoStreamType type)
+            => type is VideoStreamType.Permanent or VideoStreamType.OnDemand
+                or VideoStreamType.Redirect;
 
         /// <inheritdoc />
         public async Task<bool> RemoveAsync(

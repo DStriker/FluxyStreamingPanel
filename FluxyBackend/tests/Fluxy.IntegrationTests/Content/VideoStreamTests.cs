@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
@@ -146,6 +148,55 @@ namespace Fluxy.IntegrationTests.Content
                 new { },
                 await GetCsrfTokenAsync());
             await AssertCodeAsync(stoppedAgain, HttpStatusCode.OK, "video_stream_stopped");
+        }
+
+        [Fact]
+        public async Task TheFormChoosesStatusOnCreateAndUpdateAndAnAbsentStatusKeepsIt()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Live", "VideoStream");
+
+            // The form sends the enum member's own name; the endpoint reads it case-insensitively.
+            using var created = await PostStreamAsync(new
+            {
+                name = "Active From Birth",
+                type = "permanent",
+                status = "Running",
+                categoryId,
+                sources = new[] { "https://example.test/source" }
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "video_stream_created");
+            var streamId = IdFromLocation(created);
+            Assert.Equal("Running", await StatusOfAsync(streamId));
+
+            var csrf = await GetCsrfTokenAsync();
+            using var disabled = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { status = "Stopped" },
+                csrf);
+            await AssertCodeAsync(disabled, HttpStatusCode.OK, "video_stream_updated");
+            Assert.Equal("Stopped", await StatusOfAsync(streamId));
+
+            // An absent status keeps the row, which is what lets the bulk service patch other
+            // fields without reviving or halting a stream.
+            csrf = await GetCsrfTokenAsync();
+            using var renamed = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { name = "Still Disabled" },
+                csrf);
+            await AssertCodeAsync(renamed, HttpStatusCode.OK, "video_stream_updated");
+            Assert.Equal("Stopped", await StatusOfAsync(streamId));
+
+            // A value that names no member is refused rather than replaced by the default.
+            csrf = await GetCsrfTokenAsync();
+            using var unknown = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { status = "paused" },
+                csrf);
+            await AssertCodeAsync(unknown, HttpStatusCode.BadRequest, "validation_failed");
+            using var unknownBody = await ReadJsonAsync(unknown);
+            Assert.True(unknownBody.RootElement.GetProperty("errors").TryGetProperty("status", out _));
+            Assert.Equal("Stopped", await StatusOfAsync(streamId));
         }
 
         [Fact]
@@ -689,6 +740,299 @@ namespace Fluxy.IntegrationTests.Content
             }
         }
 
+        [Fact]
+        public async Task APlaylistImportsValidEntriesAndReportsTheRest()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import", "VideoStream");
+            await CreateStreamAsync(categoryId, "Existing");
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Existing\n"
+                + "https://example.test/existing\n"
+                + "#EXTINF:-1 tvg-id=\"one\",New One\n"
+                + "https://example.test/one\n"
+                + "#EXTINF:-1,New One\n"
+                + "https://example.test/two\n"
+                + "#EXTINF:-1,Bad address\n"
+                + "not a url\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                delayMinutes: "5");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal("video_streams_import_completed", CodeOf(body));
+            Assert.Equal(4, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(2, body.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("failed").GetInt32());
+
+            var problems = body.RootElement.GetProperty("problems").EnumerateArray().ToArray();
+            Assert.Equal(3, problems.Length);
+            Assert.Equal(
+                new[] { 2, 6, 8 },
+                problems.Select(problem => problem.GetProperty("line").GetInt32()));
+            Assert.Equal(
+                new[]
+                {
+                    "video_stream_already_exists",
+                    "video_stream_already_exists",
+                    "validation_failed"
+                },
+                problems.Select(problem => problem.GetProperty("code").GetString()));
+            Assert.Equal(
+                new[] { true, true, false },
+                problems.Select(problem => problem.GetProperty("skipped").GetBoolean()));
+
+            using var page = await Client.GetAsync(
+                $"/admin/video-streams?categoryId={categoryId}&search=New%20One",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            using var pageBody = await ReadJsonAsync(page);
+            Assert.Equal(1, pageBody.RootElement.GetProperty("total").GetInt32());
+
+            var imported = pageBody.RootElement.GetProperty("items").EnumerateArray().Single();
+            var id = imported.GetProperty("id").GetString()!;
+            var detail = await DetailOfAsync(id);
+            Assert.Equal("New One", detail.GetProperty("name").GetString());
+            Assert.Equal("Permanent", detail.GetProperty("type").GetString());
+            Assert.Equal("Stopped", detail.GetProperty("status").GetString());
+            Assert.Equal(5, detail.GetProperty("delayMinutes").GetInt32());
+            Assert.Equal(
+                new[] { "https://example.test/one" },
+                detail.GetProperty("sources").EnumerateArray()
+                    .Select(source => source.GetString()));
+        }
+
+        [Fact]
+        public async Task AnImportAppendsSourceToExistingStream()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Append", "VideoStream");
+            var existingId = await CreateStreamAsync(categoryId, "Existing");
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Existing\n"
+                + "https://example.test/appended\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                appendSourceToExisting: true);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal("video_streams_import_completed", CodeOf(body));
+            Assert.Equal(1, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("updated").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("failed").GetInt32());
+
+            var detail = await DetailOfAsync(existingId);
+            Assert.Equal(
+                new[] { "https://example.test/source", "https://example.test/appended" },
+                detail.GetProperty("sources").EnumerateArray()
+                    .Select(source => source.GetString()));
+            // Settings are not touched when only appending.
+            Assert.Equal("Permanent", detail.GetProperty("type").GetString());
+            Assert.Equal("Stopped", detail.GetProperty("status").GetString());
+        }
+
+        [Fact]
+        public async Task AnImportOverwritesExistingStreamSettings()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Overwrite", "VideoStream");
+            var existingId = await CreateStreamAsync(categoryId, "Existing");
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Existing\n"
+                + "https://example.test/new-source\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                type: "permanent",
+                status: "running",
+                delayMinutes: "10",
+                archiveDays: "7",
+                overwriteExistingSettings: true);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(1, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("updated").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("failed").GetInt32());
+
+            var detail = await DetailOfAsync(existingId);
+            Assert.Equal("Running", detail.GetProperty("status").GetString());
+            Assert.Equal(10, detail.GetProperty("delayMinutes").GetInt32());
+            Assert.Equal(7, detail.GetProperty("archiveDays").GetInt32());
+            // Name, category, sources and logo are preserved.
+            Assert.Equal("Existing", detail.GetProperty("name").GetString());
+            Assert.Equal(
+                new[] { "https://example.test/source" },
+                detail.GetProperty("sources").EnumerateArray()
+                    .Select(source => source.GetString()));
+        }
+
+        [Fact]
+        public async Task AnImportStoresTvgLogoOnNewStreams()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Logo", "VideoStream");
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1 tvg-logo=\"https://example.test/logo.png\",Logoed\n"
+                + "https://example.test/logoed\n";
+
+            using var response = await ImportAsync(playlist, categoryId);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(1, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("updated").GetInt32());
+
+            using var page = await Client.GetAsync(
+                $"/admin/video-streams?categoryId={categoryId}&search=Logoed",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            using var pageBody = await ReadJsonAsync(page);
+            var created = pageBody.RootElement.GetProperty("items").EnumerateArray().Single();
+            var id = created.GetProperty("id").GetString()!;
+
+            var detail = await DetailOfAsync(id);
+            Assert.Equal("https://example.test/logo.png", detail.GetProperty("logoUrl").GetString());
+        }
+
+        [Fact]
+        public async Task AnImportAppendsSourceOnlyToUrlKinds()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Non Url", "VideoStream");
+
+            using var fileResponse = await PostStreamAsync(new
+            {
+                name = "Existing",
+                type = "fileplaylist",
+                categoryId,
+                files = new[] { "first.mp4" }
+            });
+            await AssertCodeAsync(fileResponse, HttpStatusCode.Created, "video_stream_created");
+            var existingId = IdFromLocation(fileResponse);
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Existing\n"
+                + "https://example.test/appended\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                appendSourceToExisting: true);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(1, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("updated").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("failed").GetInt32());
+
+            var detail = await DetailOfAsync(existingId);
+            Assert.Single(detail.GetProperty("files").EnumerateArray());
+            Assert.Empty(detail.GetProperty("sources").EnumerateArray());
+        }
+
+        [Fact]
+        public async Task AnImportCountsAddUp()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Counts", "VideoStream");
+            await CreateStreamAsync(categoryId, "Existing");
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Existing\n"
+                + "https://example.test/appended\n"
+                + "#EXTINF:-1,New One\n"
+                + "https://example.test/new-one\n"
+                + "#EXTINF:-1,Bad\n"
+                + "not a url\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                appendSourceToExisting: true);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(3, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("imported").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("updated").GetInt32());
+            Assert.Equal(0, body.RootElement.GetProperty("skipped").GetInt32());
+            Assert.Equal(1, body.RootElement.GetProperty("failed").GetInt32());
+        }
+
+        [Fact]
+        public async Task AnEmptyPlaylistAndAnHlsPlaylistAreRefused()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Bad playlists", "VideoStream");
+
+            using var empty = await ImportAsync(string.Empty, categoryId);
+            await AssertCodeAsync(empty, HttpStatusCode.BadRequest, "video_stream_import_empty");
+
+            using var hls = await ImportAsync(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://example.test/a.m3u8\n",
+                categoryId);
+            await AssertCodeAsync(hls, HttpStatusCode.BadRequest, "video_stream_import_hls");
+        }
+
+        [Fact]
+        public async Task AMissingFileAndATypeTheImportCannotUseAreRefused()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Refused import", "VideoStream");
+
+            using var missing = await ImportAsync(
+                string.Empty,
+                categoryId,
+                includeFile: false);
+            Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+            using var missingBody = await ReadJsonAsync(missing);
+            Assert.Equal("validation_failed", CodeOf(missingBody));
+            Assert.True(missingBody.RootElement.GetProperty("errors").TryGetProperty("playlist", out _));
+
+            using var wrongType = await ImportAsync(
+                "#EXTINF:-1,One\nhttps://example.test/one\n",
+                categoryId,
+                type: "fileplaylist");
+            Assert.Equal(HttpStatusCode.BadRequest, wrongType.StatusCode);
+            using var wrongTypeBody = await ReadJsonAsync(wrongType);
+            Assert.Equal("validation_failed", CodeOf(wrongTypeBody));
+            Assert.True(wrongTypeBody.RootElement.GetProperty("errors").TryGetProperty("type", out _));
+        }
+
+        [Fact]
+        public async Task AnImportWithoutAntiforgeryIsRefusedBeforeTheFileIsRead()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import csrf", "VideoStream");
+
+            using var response = await ImportAsync(
+                "#EXTINF:-1,One\nhttps://example.test/one\n",
+                categoryId,
+                withCsrf: false);
+
+            await AssertCodeAsync(response, HttpStatusCode.BadRequest, "csrf_invalid");
+        }
+
         private async Task AssertBulkRefusalAsync(object body, string field)
         {
             var csrf = await GetCsrfTokenAsync();
@@ -756,6 +1100,69 @@ namespace Fluxy.IntegrationTests.Content
             await AssertCodeAsync(response, HttpStatusCode.Created, "video_stream_created");
 
             return IdFromLocation(response);
+        }
+
+        private async Task<HttpResponseMessage> ImportAsync(
+            string playlist,
+            string categoryId,
+            string type = "permanent",
+            string? status = null,
+            string? delayMinutes = null,
+            string? archiveDays = null,
+            bool appendSourceToExisting = false,
+            bool overwriteExistingSettings = false,
+            bool includeFile = true,
+            bool withCsrf = true)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(type), "type");
+            form.Add(new StringContent(categoryId), "categoryId");
+
+            if (status is not null)
+            {
+                form.Add(new StringContent(status), "status");
+            }
+
+            if (delayMinutes is not null)
+            {
+                form.Add(new StringContent(delayMinutes), "delayMinutes");
+            }
+
+            if (archiveDays is not null)
+            {
+                form.Add(new StringContent(archiveDays), "archiveDays");
+            }
+
+            if (appendSourceToExisting)
+            {
+                form.Add(new StringContent("true"), "appendSourceToExisting");
+            }
+
+            if (overwriteExistingSettings)
+            {
+                form.Add(new StringContent("true"), "overwriteExistingSettings");
+            }
+
+            if (includeFile)
+            {
+                var file = new ByteArrayContent(Encoding.UTF8.GetBytes(playlist));
+                file.Headers.ContentType = new MediaTypeHeaderValue("audio/x-mpegurl");
+                form.Add(file, "playlist", "playlist.m3u");
+            }
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "/admin/video-streams/import")
+            {
+                Content = form
+            };
+
+            if (withCsrf)
+            {
+                request.Headers.Add("X-CSRF-Token", await GetCsrfTokenAsync());
+            }
+
+            return await Client.SendAsync(request, TestContext.Current.CancellationToken);
         }
 
         private async Task<HttpResponseMessage> PostStreamAsync(object body)

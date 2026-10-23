@@ -145,12 +145,13 @@ const en = {
       // the way the two above it do: the menu names how you got there, the card names what
       // you are looking at.
       adminSessions: 'User sessions',
-      // The three entries of each content section are one shape repeated four times. Unlike
-      // the labels around them, every `add`/`manage` entry names its object as well as its
-      // verb: a bare `Add` beside `Add user` read as a different kind of control, and the
-      // group header alone is easy to skip while scanning the rail. `Add`/`Manage` entries
-      // are placeholders today; `Categories` is the real page.
+      // Each content section repeats one shape: `add`, `manage` and `categories`, plus an
+      // `import` entry only where a playlist import has been built. Unlike the labels around
+      // them, every entry names its object as well as its verb: a bare `Add` beside
+      // `Add user` read as a different kind of control, and the group header alone is easy
+      // to skip while scanning the rail. Only the streams section has real pages today.
       videoStreamsAdd: 'Add video stream',
+      videoStreamsImport: 'Import video streams',
       videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
       audioStreamsAdd: 'Add audio stream',
@@ -768,10 +769,11 @@ const en = {
       type: 'Type',
     },
     // Two descriptions, not a ramp: `VideoStreamStatus` is not an ordered scale, so the
-    // words say what the state is rather than how much of it there is.
+    // words say what the state is rather than how much of it there is. The form and the
+    // table use the same pair: a stream is active or disabled.
     statuses: {
-      Stopped: 'Stopped',
-      Running: 'Running',
+      Stopped: 'Disabled',
+      Running: 'Active',
     },
     // The six kinds, keyed by the enum member the way every other enum in this file is.
     types: {
@@ -899,6 +901,11 @@ const en = {
     namePlaceholder: 'Morning news',
     typeRequired: 'Choose the kind of stream',
     categoryRequired: 'Choose a category',
+    // The state picker, which the add form starts at active. The hint says what the two
+    // words mean in relay terms, because "disabled" alone does not say whether the row is
+    // kept or removed.
+    statusRequired: 'Choose whether the stream is active',
+    statusHint: 'An active stream relays; a disabled one is kept without broadcasting.',
     // One sentence per kind, drawn under the type picker as the visitor changes it. This
     // is the whole of what the picker decides - which payload the fields below collect -
     // so it is stated at the moment the choice is made rather than by the fields quietly
@@ -989,6 +996,43 @@ const en = {
     headersLabel: 'Extra headers',
     headersPlaceholder: 'X-Forwarded-For: 1.2.3.4',
     maxLength: 'Up to {{max}} characters.',
+  },
+  // The playlist import. It reuses `videoStreamsForm` for every field it shares with the add
+  // form - the category, the state, the kind, the delay and archive pair and the restreaming
+  // group - and adds only what is new here: the file itself and the report afterwards.
+  videoStreamsImport: {
+    title: 'Import streams',
+    playlistLabel: 'M3U playlist',
+    playlistRequired: 'Choose an M3U playlist file.',
+    playlistHint:
+      'Each entry becomes a stream of its own. Up to {{entries}} entries; an HLS playlist cannot be imported.',
+    dropHint: 'Drop the playlist here',
+    chooseHint: 'or choose a file from disk. Only .m3u and .m3u8 are accepted.',
+    fileTooLarge: 'The playlist is larger than {{size}} MB.',
+    totalCount: 'Entries: {{total}}',
+    importedCount: 'Imported: {{imported}}',
+    updatedCount: 'Updated: {{updated}}',
+    skippedCount: 'Skipped: {{skipped}}',
+    failedCount: 'Failed: {{failed}}',
+    problemsTitle: 'Entries that were not imported',
+    problemsTotal: 'Not imported: {{total}}',
+    skippedTag: 'Skipped',
+    failedTag: 'Failed',
+    unnamed: 'No name',
+    submit: 'Import',
+    existingDivider: 'Existing streams',
+    appendSourceLabel: 'Append source to existing streams',
+    appendSourceHint:
+      'When a name is already taken in the category, add the entry’s address to that stream’s source list instead of skipping it.',
+    overwriteSettingsLabel: 'Overwrite existing stream settings',
+    overwriteSettingsHint:
+      'When a name is already taken in the category, replace that stream’s status, type, delay, archive length and restream settings.',
+    columns: {
+      line: 'Line',
+      name: 'Name',
+      outcome: 'Outcome',
+      reason: 'Reason',
+    },
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
@@ -1122,6 +1166,19 @@ const en = {
       users_bulk_completed: 'Changed {{done}} of {{total}} accounts.',
       user_groups_bulk_completed: 'Changed {{done}} of {{total}} groups.',
       video_streams_bulk_completed: 'Changed {{done}} of {{total}} streams.',
+      // A playlist import answers with counts rather than one row: the code names the run,
+      // and the page reads the numbers out of the body beside it.
+      video_streams_import_completed: 'The playlist has been imported.',
+      video_stream_import_empty: 'The uploaded file is empty.',
+      video_stream_import_hls:
+        'An HLS playlist cannot be imported; upload an M3U playlist of streams.',
+      video_stream_import_too_large: 'The uploaded file is too large.',
+      video_stream_import_too_many_entries:
+        'The playlist holds more entries than one import accepts.',
+      video_stream_import_unreadable:
+        'The uploaded file could not be read as an M3U playlist.',
+      video_stream_import_conflict:
+        'A name in the playlist was taken while the import was running. Nothing was imported; try again.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',
