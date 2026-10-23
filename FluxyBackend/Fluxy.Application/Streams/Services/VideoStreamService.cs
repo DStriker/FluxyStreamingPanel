@@ -8,6 +8,7 @@ using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Application.Streams.Utils;
 
 namespace Fluxy.Application.Streams.Services
 {
@@ -43,48 +44,6 @@ namespace Fluxy.Application.Streams.Services
     /// </remarks>
     public sealed class VideoStreamService : IVideoStreamService
     {
-        /// <summary>The sentence a name that is blank or too long gets.</summary>
-        private static readonly string[] NameRule =
-        [
-            "The name must be between 1 and "
-                + VideoStreamLimits.NameMaxLength
-                + " characters."
-        ];
-
-        /// <summary>The sentence a type that names no member of the enum gets.</summary>
-        private static readonly string[] TypeRule =
-        [
-            "The stream type must be one of: permanent, ondemand, redirect, " +
-                "onlineseries, vodplaylist, fileplaylist."
-        ];
-
-        /// <summary>The sentence a category that names no row of the right kind gets.</summary>
-        private static readonly string[] CategoryRule =
-        [
-            "The category must be an existing category of video streams."
-        ];
-
-        /// <summary>The sentence a delay that is not a whole number of minutes gets.</summary>
-        private static readonly string[] DelayRule = ["The delay must be zero or more minutes."];
-
-        /// <summary>The sentence an archive length that is not a whole number of days gets.</summary>
-        private static readonly string[] ArchiveDaysRule = ["The archive length must be zero or more days."];
-
-        /// <summary>The sentence an archive that only a permanent stream may keep gets.</summary>
-        private static readonly string[] PermanentArchiveRule =
-        [
-            "Only a permanent stream may keep an archive. Set the archive length to zero, " +
-                "or make the stream permanent."
-        ];
-
-        /// <summary>The sentence a URL list that holds nothing usable gets.</summary>
-        private static readonly string[] SourcesRule =
-        [
-            "Add at least one source address, and no more than "
-                + VideoStreamLimits.SourceUrlMaxLength
-                + " characters each."
-        ];
-
         /// <summary>The sentence a file list that holds nothing usable gets.</summary>
         private static readonly string[] FilesRule =
         [
@@ -168,6 +127,7 @@ namespace Fluxy.Application.Streams.Services
             var errors = ValidateShape(
                 input.Name,
                 input.Type,
+                input.Status,
                 input.CategoryId,
                 input.DelayMinutes,
                 input.ArchiveDays,
@@ -175,6 +135,8 @@ namespace Fluxy.Application.Streams.Services
                 input.VodId,
                 input.EpgSourceId,
                 input.EpgChannelKey,
+                input.RestreamUserAgent,
+                input.RestreamProxy,
                 input.Sources,
                 input.Files);
 
@@ -191,7 +153,7 @@ namespace Fluxy.Application.Streams.Services
             {
                 return Invalid(new Dictionary<string, string[]>(StringComparer.Ordinal)
                 {
-                    [nameof(NewVideoStream.CategoryId)] = CategoryRule
+                    [nameof(NewVideoStream.CategoryId)] = VideoStreamRules.CategoryRule
                 });
             }
 
@@ -216,6 +178,7 @@ namespace Fluxy.Application.Streams.Services
             var stream = BuildWrite(
                 input.Name.Trim(),
                 input.Type,
+                input.Status,
                 input.CategoryId,
                 input.LogoUrl,
                 input.Enigma2Sid,
@@ -241,7 +204,7 @@ namespace Fluxy.Application.Streams.Services
                 // index is what was refused; any other unique index is a bug in this service,
                 // and answering "that name is taken" for one would hide it behind a sentence
                 // about something else entirely.
-                return createFailure.IsConstraint(NameIndexName)
+                return createFailure.IsConstraint(VideoStreamRules.NameIndexName)
                     ? AlreadyExists(nameof(NewVideoStream.Name))
                     : throw createFailure;
             }
@@ -276,6 +239,7 @@ namespace Fluxy.Application.Streams.Services
             // the patch is resolved here, in one place.
             var name = patch.Name is null ? stream.Name : patch.Name.Trim();
             var type = patch.Type ?? stream.Type;
+            var status = patch.Status ?? stream.Status;
             var categoryId = patch.CategoryId ?? stream.CategoryId;
             var delayMinutes = patch.DelayMinutes ?? stream.DelayMinutes;
             var logoUrl = MergeText(patch.LogoUrl, stream.LogoUrl);
@@ -313,6 +277,7 @@ namespace Fluxy.Application.Streams.Services
             var errors = ValidateShape(
                 name,
                 type,
+                status,
                 categoryId,
                 delayMinutes,
                 archiveDays,
@@ -320,6 +285,8 @@ namespace Fluxy.Application.Streams.Services
                 vodId,
                 epgSourceId,
                 epgChannelKey,
+                restreamUserAgent,
+                restreamProxy,
                 sources,
                 files);
 
@@ -331,7 +298,7 @@ namespace Fluxy.Application.Streams.Services
             if (await _streams.CategoryIsUsableAsync(categoryId, cancellationToken) is false)
             {
                 return Invalid(
-                    Field(nameof(VideoStreamPatch.CategoryId), CategoryRule),
+                    Field(nameof(VideoStreamPatch.CategoryId), VideoStreamRules.CategoryRule),
                     id);
             }
 
@@ -353,6 +320,7 @@ namespace Fluxy.Application.Streams.Services
             var write = BuildWrite(
                 name,
                 type,
+                status,
                 categoryId,
                 logoUrl,
                 enigma2Sid,
@@ -378,7 +346,7 @@ namespace Fluxy.Application.Streams.Services
                 // is this service writing its own lists wrongly - reporting one as "that name
                 // is taken" is how the bug below stayed hidden for as long as it did, and it
                 // sent the search to the uniqueness rule instead of to the write.
-                return updateFailure.IsConstraint(NameIndexName)
+                return updateFailure.IsConstraint(VideoStreamRules.NameIndexName)
                     ? AlreadyExists(nameof(VideoStreamPatch.Name), id)
                     : throw updateFailure;
             }
@@ -471,6 +439,7 @@ namespace Fluxy.Application.Streams.Services
         private static Dictionary<string, string[]> ValidateShape(
             string name,
             VideoStreamType type,
+            VideoStreamStatus status,
             Guid categoryId,
             int delayMinutes,
             int archiveDays,
@@ -478,45 +447,23 @@ namespace Fluxy.Application.Streams.Services
             Guid? vodId,
             Guid? epgSourceId,
             string? epgChannelKey,
+            string? restreamUserAgent,
+            string? restreamProxy,
             IReadOnlyList<string> sources,
             IReadOnlyList<string> files)
         {
-            var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            var errors = VideoStreamRules.ValidateCommon(
+                type,
+                status,
+                categoryId,
+                delayMinutes,
+                archiveDays,
+                restreamUserAgent,
+                restreamProxy);
 
-            var trimmedName = name.Trim();
-            if (trimmedName.Length is < 1 or > VideoStreamLimits.NameMaxLength)
+            if (!VideoStreamRules.IsUsableName(name))
             {
-                errors[nameof(NewVideoStream.Name)] = NameRule;
-            }
-
-            // A number in the column outside the members would be a kind every reader has to
-            // guess about - refused rather than coerced.
-            if (!Enum.IsDefined(type))
-            {
-                errors[nameof(NewVideoStream.Type)] = TypeRule;
-            }
-
-            if (categoryId == Guid.Empty)
-            {
-                errors[nameof(NewVideoStream.CategoryId)] = CategoryRule;
-            }
-
-            if (delayMinutes < 0)
-            {
-                errors[nameof(NewVideoStream.DelayMinutes)] = DelayRule;
-            }
-
-            if (archiveDays < 0)
-            {
-                errors[nameof(NewVideoStream.ArchiveDays)] = ArchiveDaysRule;
-            }
-            else if (archiveDays > 0 && type is not VideoStreamType.Permanent)
-            {
-                // Not cleared silently, unlike the fields the type does not own: an archive
-                // is a number somebody chose, and storing zero instead of it would be the
-                // server disagreeing with an answer it was given rather than ignoring one it
-                // could not use.
-                errors[nameof(NewVideoStream.ArchiveDays)] = PermanentArchiveRule;
+                errors[nameof(NewVideoStream.Name)] = VideoStreamRules.NameRule;
             }
 
             // A guide is two facts, and a stream that names only one of them names neither -
@@ -533,9 +480,9 @@ namespace Fluxy.Application.Streams.Services
                 case VideoStreamType.Permanent:
                 case VideoStreamType.OnDemand:
                 case VideoStreamType.Redirect:
-                    if (!HasUsableEntries(sources, VideoStreamLimits.SourceUrlMaxLength))
+                    if (!VideoStreamRules.HasUsableEntries(sources, VideoStreamLimits.SourceUrlMaxLength))
                     {
-                        errors[nameof(NewVideoStream.Sources)] = SourcesRule;
+                        errors[nameof(NewVideoStream.Sources)] = VideoStreamRules.SourcesRule;
                     }
 
                     break;
@@ -557,7 +504,7 @@ namespace Fluxy.Application.Streams.Services
                     break;
 
                 case VideoStreamType.FilePlaylist:
-                    if (!HasUsableEntries(files, VideoStreamLimits.FilePathMaxLength))
+                    if (!VideoStreamRules.HasUsableEntries(files, VideoStreamLimits.FilePathMaxLength))
                     {
                         errors[nameof(NewVideoStream.Files)] = FilesRule;
                     }
@@ -567,18 +514,6 @@ namespace Fluxy.Application.Streams.Services
 
             return errors;
         }
-
-        /// <summary>
-        /// Whether a list holds at least one entry that is not blank and none that is too long.
-        /// </summary>
-        /// <remarks>
-        /// Both halves matter. A list of blanks is a list nobody filled in, and a single entry
-        /// over the column's length is a row the database would refuse - so both are the
-        /// caller's to hear about rather than the provider's exception to surface later.
-        /// </remarks>
-        private static bool HasUsableEntries(IReadOnlyList<string> entries, int maxLength)
-            => entries.Count > 0
-                && entries.All(entry => !string.IsNullOrWhiteSpace(entry) && entry.Trim().Length <= maxLength);
 
         /// <summary>
         /// Turns the request's lists and type into the values the repository writes.
@@ -592,6 +527,7 @@ namespace Fluxy.Application.Streams.Services
         private static VideoStreamWrite BuildWrite(
             string name,
             VideoStreamType type,
+            VideoStreamStatus status,
             Guid categoryId,
             string? logoUrl,
             string? enigma2Sid,
@@ -615,20 +551,21 @@ namespace Fluxy.Application.Streams.Services
             {
                 Name = name,
                 Type = type,
+                Status = status,
                 CategoryId = categoryId,
-                LogoUrl = NullIfBlank(logoUrl),
-                Enigma2Sid = NullIfBlank(enigma2Sid),
+                LogoUrl = VideoStreamRules.NullIfBlank(logoUrl),
+                Enigma2Sid = VideoStreamRules.NullIfBlank(enigma2Sid),
                 DelayMinutes = delayMinutes,
                 SeriesId = type is VideoStreamType.OnlineSeries ? seriesId : null,
                 VodId = type is VideoStreamType.VodPlaylist ? vodId : null,
                 EpgSourceId = hasEpg ? epgSourceId : null,
                 EpgChannelKey = hasEpg ? epgChannelKey!.Trim() : null,
                 ArchiveDays = type is VideoStreamType.Permanent ? archiveDays : 0,
-                RestreamUserAgent = NullIfBlank(restreamUserAgent),
-                RestreamProxy = NullIfBlank(restreamProxy),
-                RestreamCookies = NullIfBlank(restreamCookies),
-                RestreamHeaders = NullIfBlank(restreamHeaders),
-                Sources = IsUrlKind(type)
+                RestreamUserAgent = VideoStreamRules.NullIfBlank(restreamUserAgent),
+                RestreamProxy = VideoStreamRules.NullIfBlank(restreamProxy),
+                RestreamCookies = VideoStreamRules.NullIfBlank(restreamCookies),
+                RestreamHeaders = VideoStreamRules.NullIfBlank(restreamHeaders),
+                Sources = VideoStreamRules.IsUrlKind(type)
                     ? CleanList(sources)
                     : Array.Empty<string>(),
                 Files = type is VideoStreamType.FilePlaylist
@@ -648,30 +585,12 @@ namespace Fluxy.Application.Streams.Services
         /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>
         /// <remarks>
         /// Any unique violation is returned rather than thrown here, and the callers sort them:
-        /// only <see cref="NameIndexName"/> becomes a name conflict, everything else is
-        /// rethrown so a bug in the list writer cannot wear the sentence about a taken name.
+        /// Only <see cref="VideoStreamRules.NameIndexName"/> becomes a name conflict, everything
+        /// else is rethrown so a bug in the list writer cannot wear the sentence about a taken
+        /// name.
         /// </remarks>
         private async Task<UniqueViolationException?> SaveAsync(CancellationToken cancellationToken)
             => await _unitOfWork.TrySaveAsync(cancellationToken);
-
-        /// <summary>The unique index making a stream's name unique within its category.</summary>
-        /// <remarks>
-        /// The callers compare against this name to tell the one expected refusal from the two
-        /// unique indexes on the source and file position columns: a genuine race for a name is
-        /// answered <c>409</c>, while a violation of a position index is a bug in the list
-        /// writer and is left to surface as one.
-        /// </remarks>
-        private const string NameIndexName = "IX_video_streams_category_id_name";
-
-        /// <summary>The three kinds that relay from a list of URLs rather than from anything else.</summary>
-        private static bool IsUrlKind(VideoStreamType type)
-            => type is VideoStreamType.Permanent
-                or VideoStreamType.OnDemand
-                or VideoStreamType.Redirect;
-
-        /// <summary>Turns an empty string into null, so a blank field is stored as "none".</summary>
-        private static string? NullIfBlank(string? value)
-            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
         /// <summary>
         /// Resolves one nullable text field of a change: absent keeps, empty clears, anything

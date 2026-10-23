@@ -7,6 +7,7 @@ import {
   GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
+  ImportOutlined,
   LaptopOutlined,
   PlaySquareOutlined,
   PlusOutlined,
@@ -84,6 +85,11 @@ interface NavGroup {
  * this pass deliberately did not build. Their menu keys exist either way, so filling them in
  * later is one optional loader away rather than a re-reading of the rail.
  *
+ * `import` is a fourth entry only the streams section carries, and it sits immediately after
+ * `add`: reading a playlist is the other way to add streams, not a fourth thing to look at.
+ * It is optional for the same reason the other loaders are - the three sections without an
+ * import page must not grow a placeholder where this one has a real page.
+ *
  * The optional loaders are typed by an interface rather than inferred from `as const`,
  * because an array of objects where only one carries a field is a *union* of two shapes and
  * `section.addPage` would then not exist on three of its four members. Stating the optionality
@@ -101,6 +107,8 @@ interface ContentSection {
   categoriesPage: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
   /** The add form, present only where one has been built. */
   addPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /** The playlist import form, present only where one has been built. */
+  importPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
   /** The table, present only where one has been built. */
   managePage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
 }
@@ -113,6 +121,7 @@ const CONTENT_SECTIONS: ContentSection[] = [
     icon: VideoCameraOutlined,
     categoriesPage: () => import('../pages/admin/ContentCategoriesPage'),
     addPage: () => import('../pages/admin/VideoStreamFormPage'),
+    importPage: () => import('../pages/admin/VideoStreamImportPage'),
     managePage: () => import('../pages/admin/VideoStreamsPage'),
   },
   {
@@ -151,6 +160,17 @@ const contentGroups = (): NavGroup[] =>
         icon: PlusOutlined,
         page: section.addPage,
       },
+      ...(section.importPage
+        ? [
+            {
+              key: `${section.key}Import`,
+              path: `${section.path}/import`,
+              labelKey: `nav.items.${section.key}Import`,
+              icon: ImportOutlined,
+              page: section.importPage,
+            },
+          ]
+        : []),
       {
         key: `${section.key}Manage`,
         path: section.path,

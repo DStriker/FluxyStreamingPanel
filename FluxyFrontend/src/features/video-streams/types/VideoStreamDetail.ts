@@ -15,8 +15,9 @@ import type { VideoStream } from './VideoStream'
  * stream and write it back without carrying a value the row never held.
  *
  * `status` and `activeSource` come along for the same reason they are on the row - the
- * form shows them as facts - but neither is ever sent back: `status` belongs to the start
- * and stop actions, and `activeSource` belongs to no writer at all.
+ * form shows them as facts - and only one of them travels back: the form's own status
+ * picker sends the state the operator chose, while `activeSource` belongs to the relaying
+ * process and no request in this interface writes it.
  */
 export interface VideoStreamDetail extends VideoStream {
   /** Enigma2 service reference as text, or null. */

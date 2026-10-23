@@ -12,7 +12,6 @@ import {
   Select,
   Space,
   Spin,
-  Tag,
   Typography,
 } from 'antd'
 import { useTranslation } from 'react-i18next'
@@ -34,7 +33,7 @@ import {
   acceptsRestream,
 } from '../../features/video-streams/capabilities'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
-import type { VideoStreamType } from '../../features/video-streams/types'
+import type { VideoStreamStatus, VideoStreamType } from '../../features/video-streams/types'
 
 /**
  * The column widths the other side of these fields already fixed, written here rather than
@@ -71,6 +70,9 @@ const TYPES: VideoStreamType[] = [
   'FilePlaylist',
 ]
 
+/** The two states, in the order the picker offers them: active first, because that is the default. */
+const STATUSES: VideoStreamStatus[] = ['Running', 'Stopped']
+
 /**
  * The add form's starting content, and the shape the edit form is painted over once its
  * stream arrives.
@@ -79,6 +81,11 @@ const TYPES: VideoStreamType[] = [
  * address list and an archive - the three things this form is built to collect - so a
  * visitor who opens it and types gets a working stream without first discovering that the
  * kind picker decides which fields exist.
+ *
+ * `Running` rather than the server's own create default of `Stopped`: a stream an operator
+ * has just described is one they mean to relay, and the form is allowed to say so. The API
+ * keeps `Stopped` for a caller that sends no status at all, which is a contract older than
+ * this picker; the form always sends the value it holds.
  *
  * The two lists start as **one empty field** rather than an empty array, because that is
  * what the editor draws: a list with no rows in it would be a control with nothing on it
@@ -89,6 +96,7 @@ const TYPES: VideoStreamType[] = [
 const CREATE_VALUES: VideoStreamValues = {
   name: '',
   type: 'Permanent',
+  status: 'Running',
   categoryId: '',
   logoUrl: '',
   enigma2Sid: '',
@@ -119,6 +127,7 @@ const CREATE_VALUES: VideoStreamValues = {
 const FIELD_NAMES: readonly (keyof VideoStreamValues)[] = [
   'name',
   'type',
+  'status',
   'categoryId',
   'logoUrl',
   'enigma2Sid',
@@ -158,6 +167,7 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
   return {
     name: values.name ?? '',
     type,
+    status: values.status ?? CREATE_VALUES.status,
     categoryId: values.categoryId ?? '',
     logoUrl: values.logoUrl ?? '',
     enigma2Sid: values.enigma2Sid ?? '',
@@ -186,6 +196,7 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
 const detailToFormValues = (detail: {
   name: string
   type: VideoStreamType
+  status: VideoStreamStatus
   categoryId: string
   logoUrl: string | null
   enigma2Sid: string | null
@@ -207,6 +218,7 @@ const detailToFormValues = (detail: {
   return {
     name: detail.name,
     type: detail.type,
+    status: detail.status,
     categoryId: detail.categoryId,
     logoUrl: detail.logoUrl ?? '',
     enigma2Sid: detail.enigma2Sid ?? '',
@@ -277,11 +289,13 @@ interface VideoStreamFormPageProps {
  *   without the other is refused under *both* inputs with one sentence, because the server
  *   collects the same refusal into the same two keys: a half-configured pair would be
  *   stored as "no guide", which would tell the operator the form had not been saved.
- * - **`status` and `activeSource` are shown and never sent.** Neither is a field: the
- *   first belongs to the start and stop actions on the table, and the second is written by
- *   no one in this interface at all. They are labels with no `name`, so nothing here can
- *   collect them - which is the difference between "shown" and "collectable", the same
- *   one the account id's own `Form.Item` rests on.
+ * - **`status` is a field of the form.** An operator decides when adding a stream whether it
+ *   should be active straight away (the add form starts at `Running`), and can enable or
+ *   disable an existing one from the edit form. It is the same row fact the start and stop
+ *   buttons write; the form is simply another way of stating it. `activeSource` stays a
+ *   label with no `name`: it is written by no one in this interface at all, only reported by
+ *   the relaying process, so nothing here can collect it - which is the difference between
+ *   "shown" and "collectable", the same one the account id's own `Form.Item` rests on.
  *
  * One rule is the form's rather than the server's today: **a delay belongs to `Permanent`
  * and the HTTP restreaming settings to `Permanent` and `OnDemand`**. The endpoint accepts
@@ -432,6 +446,11 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
 
   const typeOptions = useMemo(
     () => TYPES.map((type) => ({ value: type, label: t(`videoStreams.types.${type}`) })),
+    [t],
+  )
+
+  const statusOptions = useMemo(
+    () => STATUSES.map((status) => ({ value: status, label: t(`videoStreams.statuses.${status}`) })),
     [t],
   )
 
@@ -605,6 +624,18 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             // lookup as a broken page.
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
           )}
+
+          <Form.Item
+            name="status"
+            label={t('videoStreams.columns.status')}
+            // Always one of the two states, and the add form starts at `Running`. The value
+            // travels in the same body as everything else; the start and stop buttons on the
+            // table write this same fact afterwards.
+            rules={[{ required: true, message: t('videoStreamsForm.statusRequired') }]}
+            extra={t('videoStreamsForm.statusHint')}
+          >
+            <Select options={statusOptions} />
+          </Form.Item>
 
           <Form.Item
             name="type"
@@ -857,33 +888,22 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             />
           </Form.Item>
 
-          {/* The two facts about this row that nothing here writes. Labels with no `name`,
-              so nothing is collected: `status` belongs to the start and stop actions on the
-              table, and `activeSource` belongs to no writer in this interface at all. Both
-              are shown because a form that opened on a running stream and said nothing
-              about it would be a form that hides the one fact most likely to matter before
-              a save. */}
+          {/* The one fact about this row that nothing here writes. A label with no `name`,
+              so nothing is collected: `activeSource` belongs to no writer in this interface
+              at all. It is shown because a form that opened on a stream and said nothing
+              about its current source would hide the fact most likely to matter before a
+              save. `status`, which used to sit beside it as a read-only tag, is now the
+              editable field above. */}
           {detail && (
-            <>
-              <Form.Item label={t('videoStreams.columns.status')}>
-                <Tag
-                  color={detail.status === 'Running' ? 'success' : 'default'}
-                  style={{ marginInlineEnd: 0 }}
-                >
-                  {t(`videoStreams.statuses.${detail.status}`)}
-                </Tag>
-              </Form.Item>
-
-              <Form.Item label={t('videoStreams.columns.activeSource')}>
-                {detail.activeSource ? (
-                  <Typography.Text copyable={{ text: detail.activeSource }}>
-                    {detail.activeSource}
-                  </Typography.Text>
-                ) : (
-                  <span>—</span>
-                )}
-              </Form.Item>
-            </>
+            <Form.Item label={t('videoStreams.columns.activeSource')}>
+              {detail.activeSource ? (
+                <Typography.Text copyable={{ text: detail.activeSource }}>
+                  {detail.activeSource}
+                </Typography.Text>
+              ) : (
+                <span>—</span>
+              )}
+            </Form.Item>
           )}
 
           <Form.Item style={{ marginTop: 24 }}>

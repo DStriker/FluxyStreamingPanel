@@ -12,7 +12,9 @@
 		"antd": {
 		  "type": "local",
 		  "enabled": true,
-		  "command": ["npx", "-y", "@ant-design/cli", "mcp"]
+		  "command": ["antd", "mcp"],
+		  "environment": { "NO_UPDATE_CHECK": "1" },
+  		  "timeout": { "startup": 120000 }
 		},
 		"playwright": {
 		  "type": "local",

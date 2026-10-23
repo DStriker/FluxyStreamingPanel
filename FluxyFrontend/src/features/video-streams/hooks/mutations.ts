@@ -2,6 +2,7 @@ import {
   bulkVideoStreams,
   createVideoStream,
   deleteVideoStream,
+  importVideoStreams,
   restartVideoStream,
   startVideoStream,
   stopVideoStream,
@@ -30,6 +31,15 @@ export const useStopVideoStream = () => useWrite(stopVideoStream)
 export const useRestartVideoStream = () => useWrite(restartVideoStream)
 
 export const useDeleteVideoStream = () => useWrite(deleteVideoStream)
+
+/**
+ * Creates the streams a playlist can supply.
+ *
+ * The one write of this feature whose answer is not a message: it carries the counts and the
+ * per-line problems, so the page draws what the import did rather than a toast that would
+ * have to reduce four numbers to one sentence.
+ */
+export const useImportVideoStreams = () => useWrite(importVideoStreams)
 
 /** Applies one operation to every stream the table has selected. */
 export const useBulkVideoStreams = () => useWrite(bulkVideoStreams)

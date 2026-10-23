@@ -365,3 +365,4 @@ FodyWeavers.xsd
 # OpenCode
 *.opencode/
 opencode.json
+/FluxyFrontend/opencode.json

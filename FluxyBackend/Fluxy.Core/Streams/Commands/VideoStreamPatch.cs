@@ -8,9 +8,9 @@ namespace Fluxy.Core.Streams.Commands
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Status is not here on purpose.</b> It belongs to the start and stop actions, which are
-    /// the two things that change it, and a body that could set it would make "the stream is
-    /// running" a claim an edit form makes rather than a fact about a process.
+    /// <b>Status is here so the edit form can enable or disable a stream.</b> It is the same
+    /// row fact the start and stop actions write; an absent value keeps whatever the row
+    /// holds, exactly as every other property of this patch does.
     /// </para>
     /// <para>
     /// <b>The three identifiers travel as text rather than as <see cref="Guid"/>s.</b> On a
@@ -36,6 +36,9 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>New kind of stream, or null to keep the one on the row.</summary>
         public VideoStreamType? Type { get; init; }
+
+        /// <summary>New status, or null to keep the one on the row.</summary>
+        public VideoStreamStatus? Status { get; init; }
 
         /// <summary>New category, or null to keep the one on the row.</summary>
         public Guid? CategoryId { get; init; }

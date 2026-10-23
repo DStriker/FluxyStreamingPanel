@@ -15,9 +15,11 @@ namespace Fluxy.Core.Streams.Commands
     /// an operator has just moved.
     /// </para>
     /// <para>
-    /// There is no <c>Status</c> either. Every stream starts stopped, and the only things that
-    /// ever change it are the start and stop actions - a create that could open with a stream
-    /// running would be a claim about a process that has not been told to relay anything yet.
+    /// <b>Status is a field of the create.</b> An operator decides when adding the stream
+    /// whether it should be active straight away; the API answers <see
+    /// cref="VideoStreamStatus.Stopped"/> when the body omits it, which keeps the contract for
+    /// callers that predate the selector. The status remains the same row fact the start and
+    /// stop actions write - a create is simply allowed to set it once.
     /// </para>
     /// <para>
     /// The three identifiers that name rows of a domain that does not exist here yet
@@ -34,6 +36,9 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>The kind of stream, which decides what it broadcasts.</summary>
         public required VideoStreamType Type { get; init; }
+
+        /// <summary>Whether the stream is active, or disabled and kept without broadcasting.</summary>
+        public required VideoStreamStatus Status { get; init; }
 
         /// <summary>Category the stream is filed under. Must be a category of video streams.</summary>
         public required Guid CategoryId { get; init; }

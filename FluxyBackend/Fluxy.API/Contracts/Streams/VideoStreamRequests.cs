@@ -8,11 +8,11 @@ namespace Fluxy.API.Contracts.Streams
     /// </summary>
     /// <remarks>
     /// <para>
-    /// There is deliberately no <c>sortOrder</c> and no <c>status</c> here, for the reason
-    /// <c>VideoStream</c> gives: a new stream joins the end of its category's list, and where
-    /// exactly that is is the service's fact to read from the database; and every stream
-    /// starts stopped, so a body that could open with it running would be a claim about a
-    /// process nothing has told to relay anything yet.
+    /// There is deliberately no <c>sortOrder</c> here, for the reason <c>VideoStream</c> gives:
+    /// a new stream joins the end of its category's list, and where exactly that is is the
+    /// service's fact to read from the database. <c>status</c> <i>is</i> a field: the form
+    /// chooses whether the stream starts active, and an absent value keeps the original
+    /// contract and starts it stopped.
     /// </para>
     /// <para>
     /// <b>Only the payload the chosen kind of stream uses should be filled in.</b> A permanent,
@@ -39,6 +39,12 @@ namespace Fluxy.API.Contracts.Streams
         /// <c>vodplaylist</c> or <c>fileplaylist</c>.
         /// </summary>
         public string? Type { get; init; }
+
+        /// <summary>
+        /// Whether the stream starts active or disabled, as the name of the enum member.
+        /// Absent means <c>stopped</c>, the state every stream had before this field existed.
+        /// </summary>
+        public string? Status { get; init; }
 
         /// <summary>Identifier of the category the stream is filed under, as text.</summary>
         public string? CategoryId { get; init; }
@@ -95,9 +101,10 @@ namespace Fluxy.API.Contracts.Streams
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Status is not here on purpose.</b> It belongs to the start and stop actions, and a
-    /// body that could set it would make "this stream is running" a claim an edit form makes
-    /// rather than a fact about a process.
+    /// <b>Status is here so the edit form can enable or disable a stream.</b> An absent value
+    /// keeps the stored status, the same way every other absent property keeps its field;
+    /// the start, stop and restart actions remain the transitions that change it on their
+    /// own.
     /// </para>
     /// <para>
     /// A nullable text field answers "keep" and "clear" without a second field to tell them
@@ -121,6 +128,11 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>New kind of stream, as the name of the enum member, or null to keep.</summary>
         public string? Type { get; init; }
+
+        /// <summary>
+        /// New status, as the name of the enum member, or null to keep the stored one.
+        /// </summary>
+        public string? Status { get; init; }
 
         /// <summary>New category, as text; null keeps.</summary>
         public string? CategoryId { get; init; }

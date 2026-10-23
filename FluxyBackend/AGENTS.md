@@ -68,7 +68,7 @@ Fluxy.Core/
   Users/             Models 5 · Rows 4 · ReadModels 8 · Commands 9 · Outcomes 9 · Enums 17 · Utils 8 · Interfaces 7 · Repositories 4
   Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1
   Content/           Models 1 · Commands 3 · Enums 3 · Utils 1 · Interfaces 1 · Repositories 1
-  Streams/           Models 1 · ReadModels 2 · Commands 3 · Enums 6 · Utils 3 · Interfaces 1 · Repositories 1
+  Streams/           Models 1 · ReadModels 2 · Commands 6 · Outcomes 6 · Enums 10 · Utils 6 · Interfaces 3 · Repositories 1
 ```
 
 **The domain is decided by what the type is about, not by who reads it.** `IGeoIpResolver` is GeoIP because it answers a question about an address; `ILoginGuardService` is Users because the allow lists belong to an account and GeoIP is only where the answer comes from; `ITokenRevocationStore` is Authentication because it ends a session, not because it is a "security" thing.
@@ -132,7 +132,7 @@ Fluxy.Application/
   Content/         Services 1
   Email/           Services 1 · Options 1
   Security/        Services 1 · Options 1
-  Streams/         Services 1
+  Streams/         Services 3 · Utils 1
   Users/           Services 9 · Utils 8 · Options 1
 ```
 
@@ -146,9 +146,9 @@ Fluxy.Application/
 | `Utils/` | the helpers the services share — a normalizer, a policy, a memo, the frame of a message | it is not a business operation: no contract, no outcome |
 | `Options/` | the configuration the services read | it is bound from a configuration section |
 
-**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `AuthenticationService`, `JwtTokenService` and the three session readers all implement an interface of `Fluxy.Core`; the API layer names that interface and never the class. `AccessChecker` is the one service without one of its own — it is a helper the authorization handlers call, not an operation a client asks for — and it sits beside them because it is a service in the ordinary sense.
+**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `VideoStreamBulkService`, `VideoStreamImportService`, `AuthenticationService`, `JwtTokenService` and the three session readers all implement an interface of `Fluxy.Core`; the API layer names that interface and never the class. `AccessChecker` is the one service without one of its own — it is a helper the authorization handlers call, not an operation a client asks for — and it sits beside them because it is a service in the ordinary sense.
 
-**A file that is not a service does not live in `Services/`.** That is the rule the kind column above encodes: `CodeMessage` (the frame of a message carrying a code), `DevelopmentGuardBypass` (the rule that lets a local address past the login guard in Development), `GeoIpMemo` (the lookups of one request, one per address), `OneTimeCode`, `EmailNormalizer`, `RegistrationPolicy`, `LoginGuardPolicy`, `LoginGuardNormalizer` and `TimeZonePolicy` are helpers, and a helper in `Services/` is a service that answers nothing.
+**A file that is not a service does not live in `Services/`.** That is the rule the kind column above encodes: `CodeMessage` (the frame of a message carrying a code), `DevelopmentGuardBypass` (the rule that lets a local address past the login guard in Development), `GeoIpMemo` (the lookups of one request, one per address), `OneTimeCode`, `EmailNormalizer`, `RegistrationPolicy`, `LoginGuardPolicy`, `LoginGuardNormalizer`, `TimeZonePolicy` and `VideoStreamRules` are helpers, and a helper in `Services/` is a service that answers nothing.
 
 **Two domains of Core have no folder here, and that is the point.** `GeoIp` — the reader of the `.mmdb` files is a mechanism, and a mechanism belongs to the layer that owns data sources (`Fluxy.DataAccess/Infrastructure/GeoIp/`); the Application layer knows only the `IGeoIpResolver` contract from Core. `Persistence` — the transaction and the database lifecycle are Core contracts implemented in DataAccess, and the Application layer calls `IUnitOfWork` without ever naming a `DbContext`. `Persistence` would also be the wrong word for what the layer does: a service does not persist, it asks for a change to be committed.
 
@@ -1185,6 +1185,7 @@ relay process plays; the playing itself is not in this API.
 | `PATCH /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_updated` |
 | `POST /admin/video-streams/{id}/start` / `…/stop` / `…/restart` | CSRF + `Permission.EditStreams` | `video_stream_started` / `video_stream_stopped` / `video_stream_restarted` |
 | `POST /admin/video-streams/bulk` | CSRF + `Permission.EditStreams` | `200 video_streams_bulk_completed`, one entry per identifier |
+| `POST /admin/video-streams/import` | CSRF + `Permission.EditStreams` | `200 video_streams_import_completed`, counts and per-line problems |
 | `DELETE /admin/video-streams/{id}` | CSRF + `Permission.EditStreams` | `200 video_stream_deleted`, `404` on a second |
 
 - **The type owns the fields only it can use, and the two halves are asymmetric on purpose.**
@@ -1200,10 +1201,13 @@ relay process plays; the playing itself is not in this API.
 - **A programme guide is two facts or none.** Exactly one of `epgSourceId`/`epgChannelKey` is
   refused with `validation_failed` naming **both** fields; both set or both empty are the only
   accepted answers. `hasEpg` on the read side is derived from the pair, never stored.
-- **`status` is absent from the body of both writes.** Only `start`/`stop`/`restart` write it —
-  an edit form that could set it would make "this stream is running" a claim a form makes
-  rather than a fact about a process. `activeSource` is never written by the service at all:
-  the relaying process reports it and nothing else. `sortOrder` is never caller-supplied; a
+- **`status` is a field of both writes.** An operator chooses it on the add form (which starts
+  at `Running`) and can enable or disable an existing stream on the edit form; the create
+  endpoint keeps `Stopped` only as the answer for a body that names no status, and `PATCH`
+  treats an absent value as "keep", which is what lets the bulk service patch other fields
+  without reviving or halting a stream. `start`/`stop`/`restart` remain the three table
+  transitions that write the same row fact. `activeSource` is never written by the service at
+  all: the relaying process reports it and nothing else. `sortOrder` is never caller-supplied; a
   create reads `max(sort_order)` of its category server-side, and a category change moves the
   stream to the end of the new one (the old category keeps its gaps, the way a deletion does).
 - **A name is unique within its category** (`UNIQUE(category_id, name)`), compared exactly and
@@ -1270,21 +1274,77 @@ than one addressed row and the answer is a per-identifier report; the policy is 
 - **No schema change.** A bulk operation is the existing writes applied in a loop — no table,
   no queue, no background worker and no migration.
 
+### The playlist import: `POST /admin/video-streams/import`
+
+The other way to add streams: one M3U file in, a category's worth of rows out. It has a
+controller of its own (`VideoStreamsImportController`) because the request is a file rather
+than a JSON row and the answer counts a batch rather than describing one stream — the same
+seam that gave the bulk endpoint its own controller.
+
+- **The form is the add form without the two fields the file supplies.** `multipart/form-data`
+  carries `playlist`, `type`, `status`, `categoryId`, `delayMinutes`, `archiveDays` and the
+  four restream fields; there is no `name` and no `sources`, because each entry's title names
+  its stream and each entry's address is its one source. `type` is limited to `Permanent`,
+  `OnDemand` and `Redirect` (the three kinds that relay from a list of addresses); an absent
+  `status` means `Stopped`, so a batch cannot start relaying by omission. `archiveDays` above
+  zero is still refused on a non-`Permanent` kind, the same rule the add form follows.
+- **`RejectsCsrfAsync()` runs before the form is read**, and the content type is checked
+  before the form reader can throw its own exception. A `Content-Length` greater than the file
+  limit plus a megabyte of multipart overhead is `413 video_stream_import_too_large` before
+  anything is buffered; the file length itself is checked again after the form is parsed. A
+  body that is not a form at all is `415 unsupported_media_type`; a URL-encoded body carries
+  no file and is refused as a validation error.
+- **The parser reads one `#EXTINF` and the absolute URL after it as one entry.** The name is
+  the title after the first unquoted comma, then `tvg-name`, then `Stream N`; a URL with no
+  directive still becomes an entry under the fallback name. BOM and CRLF are tolerated,
+  unknown directives are ignored, and quoted attributes may contain commas. What it refuses,
+  it refuses one line at a time: a dangling directive or an address that is not absolute
+  becomes a problem on its line and the rest of the file is still read. An HLS playlist is
+  refused whole — its `#EXT-X-` tags name variants of one stream, not separate channels.
+- **The batch is partial success by design.** `imported + skipped + failed == total`, and
+  every entry that did not land is in `problems` with its line, name, code and field errors.
+  A name already used in the category or repeated within the file is **skipped**
+  (`video_stream_already_exists`); an unusable title, source or parser line is **failed**
+  (`validation_failed`). Existing streams are never updated: the only names the service reads
+  are the ones it must refuse, and every surviving entry becomes a new row.
+- **One save writes the batch, in playlist order, at the end of the category.** The service
+  reads `max(sort_order)` once, stages every row through `AddRangeAsync` and calls
+  `TrySaveAsync` once. A name another request took between the check and the save is
+  `409 video_stream_import_conflict` and **nothing** from the batch is written; the check
+  matches `IX_video_streams_category_id_name` by name, so any other unique violation is
+  rethrown rather than announced as a taken name. No migration: the import writes the same
+  three tables the single create writes.
+- **Refusals are one code each**: `video_stream_import_empty`, `..._hls`,
+  `..._too_many_entries` and `..._unreadable` are `400`, the size refusal is `413`, and a
+  save-time name race is `409`; every other field problem is `400 validation_failed` with the
+  field named. The file limit is 10 MiB and one import accepts 5000 entries.
+
+The parser is covered by twelve unit tests; the endpoint by four integration tests — a mixed
+playlist (one imported, two skipped, one failed) with its counts and stored order, an empty
+playlist and an HLS one refused whole, a missing file and a type the import cannot use, and a
+request without the antiforgery pair refused before the file is read.
+
 Layering follows the usual split: `VideoStream` in `Fluxy.Core/Streams/Models/`,
 `VideoStreamPage` / `VideoStreamListItem` in `Fluxy.Core/Streams/ReadModels/`,
-`NewVideoStream` / `VideoStreamPatch` / `VideoStreamWrite` / `BulkVideoStreamOperation` in
-`Fluxy.Core/Streams/Commands/`, `VideoStreamOutcome` / `BulkVideoStreamOutcome` /
-`BulkVideoStreamItemResult` in `Fluxy.Core/Streams/Outcomes/`, `VideoStreamAction` /
+`NewVideoStream` / `VideoStreamPatch` / `VideoStreamWrite` / `BulkVideoStreamOperation` /
+`M3uPlaylistEntry` / `NewVideoStreamImport` in `Fluxy.Core/Streams/Commands/`,
+`VideoStreamOutcome` / `BulkVideoStreamOutcome` / `BulkVideoStreamItemResult` /
+`M3uPlaylistOutcome` / `M3uPlaylistProblem` / `VideoStreamImportOutcome` /
+`VideoStreamImportProblem` in `Fluxy.Core/Streams/Outcomes/`, `VideoStreamAction` /
 `BulkVideoStreamAction` / `VideoStreamBulkWarning` / `VideoStreamSortField` /
-`VideoStreamSortOrder` / `VideoStreamStatus` / `VideoStreamType` in
-`Fluxy.Core/Streams/Enums/`, `VideoStreamLimits` / `VideoStreamListLimits` /
-`VideoStreamBulkLimits` / `VideoStreamEpg` in `Fluxy.Core/Streams/Utils/`, plus
-`IVideoStreamService` / `IVideoStreamBulkService` in `Fluxy.Core/Streams/Interfaces/`,
-`VideoStreamService` / `VideoStreamBulkService` in `Fluxy.Application/Streams/Services/`
-(both Scoped), the three entities and their configurations in `Fluxy.DataAccess/` (migration
-`20261014125324_AddVideoStreams`), the contracts in `Fluxy.API/Contracts/Streams/` plus
-`BulkItemWarningResponse` in `Fluxy.API/Contracts/Common/`, `VideoStreamsController` and
-`VideoStreamsBulkController` in `Fluxy.API/Controllers/Content/`.
+`VideoStreamSortOrder` / `VideoStreamStatus` / `VideoStreamType` / `M3uPlaylistStatus` /
+`VideoStreamImportStatus` in `Fluxy.Core/Streams/Enums/`, `VideoStreamLimits` /
+`VideoStreamListLimits` / `VideoStreamBulkLimits` / `VideoStreamEpg` / `M3uPlaylistParser` /
+`VideoStreamImportLimits` in `Fluxy.Core/Streams/Utils/`, plus `IVideoStreamService` /
+`IVideoStreamBulkService` / `IVideoStreamImportService` in
+`Fluxy.Core/Streams/Interfaces/`, `VideoStreamService` / `VideoStreamBulkService` /
+`VideoStreamImportService` in `Fluxy.Application/Streams/Services/` and the
+`VideoStreamRules` helper in `Fluxy.Application/Streams/Utils/`, the three entities and their
+configurations in
+`Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the contracts in
+`Fluxy.API/Contracts/Streams/` plus `BulkItemWarningResponse` in
+`Fluxy.API/Contracts/Common/`, `VideoStreamsController`, `VideoStreamsBulkController` and
+`VideoStreamsImportController` in `Fluxy.API/Controllers/Content/`.
 
 ### What running caught: a PATCH that failed on any stream with a list
 

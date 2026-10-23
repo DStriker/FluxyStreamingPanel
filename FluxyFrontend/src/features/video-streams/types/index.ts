@@ -5,6 +5,8 @@
  */
 export type { VideoStream } from './VideoStream'
 export type { VideoStreamDetail } from './VideoStreamDetail'
+export type { VideoStreamImportProblem } from './VideoStreamImportProblem'
+export type { VideoStreamImportResponse } from './VideoStreamImportResponse'
 export type { VideoStreamList } from './VideoStreamList'
 export type { VideoStreamStatus } from './VideoStreamStatus'
 export type { VideoStreamType } from './VideoStreamType'

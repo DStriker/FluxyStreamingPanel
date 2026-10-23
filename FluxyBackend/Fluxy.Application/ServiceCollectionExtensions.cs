@@ -83,6 +83,12 @@ namespace Fluxy.Application
             // it is built on.
             services.AddScoped<IVideoStreamBulkService, VideoStreamBulkService>();
 
+            // A playlist import is collective in the same way - one request, one report with an
+            // entry per line - but its input is a file rather than a set of identifiers, so it
+            // is a service of its own beside the bulk one. It reuses the shared stream rules
+            // rather than restating them.
+            services.AddScoped<IVideoStreamImportService, VideoStreamImportService>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();

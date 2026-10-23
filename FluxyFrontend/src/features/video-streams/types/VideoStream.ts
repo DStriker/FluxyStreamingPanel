@@ -26,7 +26,7 @@ export interface VideoStream {
   id: string
   /** Display name, unique within its category and compared case sensitively. */
   name: string
-  /** Whether the stream is broadcasting right now, as the name of the enum member. */
+  /** Whether the stream is active or disabled, as the name of the enum member. */
   status: VideoStreamStatus
   /** The kind of stream, which decides what it broadcasts. */
   type: VideoStreamType

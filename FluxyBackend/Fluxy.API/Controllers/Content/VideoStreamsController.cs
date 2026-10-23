@@ -134,8 +134,8 @@ namespace Fluxy.API.Controllers.Content
 
             var field = ParseSortField(sortBy);
             var order = ParseSortOrder(sortOrder);
-            var wantedStatus = ParseStatusOrNull(status);
-            var wantedType = ParseTypeOrNull(type);
+            var wantedStatus = VideoStreamTextParser.ParseStatusOrNull(status);
+            var wantedType = VideoStreamTextParser.ParseTypeOrNull(type);
 
             // A filter that was not asked for and a filter that asked for nonsense are two
             // different answers, so the value and whether it was understood are read apart:
@@ -263,10 +263,27 @@ namespace Fluxy.API.Controllers.Content
 
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
-            var type = ParseTypeOrNull(request.Type);
+            var type = VideoStreamTextParser.ParseTypeOrNull(request.Type);
             if (type is null)
             {
                 errors[nameof(CreateVideoStreamRequest.Type)] = [TypeHint];
+            }
+
+            // An absent status keeps the contract every stream had before the form offered
+            // the choice: create it stopped. A value that names no member is refused rather
+            // than silently replaced by that default, because the caller plainly meant to
+            // choose one.
+            var status = VideoStreamTextParser.ParseStatusOrNull(request.Status);
+            if (status is null)
+            {
+                if (string.IsNullOrWhiteSpace(request.Status))
+                {
+                    status = VideoStreamStatus.Stopped;
+                }
+                else
+                {
+                    errors[nameof(CreateVideoStreamRequest.Status)] = [StatusHint];
+                }
             }
 
             Guid? categoryId = null;
@@ -300,6 +317,7 @@ namespace Fluxy.API.Controllers.Content
                 {
                     Name = request.Name?.Trim() ?? string.Empty,
                     Type = type!.Value,
+                    Status = status!.Value,
                     CategoryId = categoryId!.Value,
                     LogoUrl = request.LogoUrl,
                     Enigma2Sid = request.Enigma2Sid,
@@ -342,10 +360,10 @@ namespace Fluxy.API.Controllers.Content
         /// A body that names nothing is a success rather than a complaint, the convention every
         /// other PATCH on this API follows.
         ///
-        /// <b>Status is not a field here.</b> It belongs to the start and stop actions below,
-        /// which are the two things that change it, and a body that could set it would make
-        /// "this stream is running" a claim an edit form makes rather than a fact about a
-        /// process.
+        /// <b>Status is a field here.</b> The edit form chooses whether the stream is active,
+        /// and an absent value keeps the stored one. The start, stop and restart actions
+        /// below remain the transitions that change it on their own; this is the same row
+        /// fact written from the form that already edits every other field of the stream.
         ///
         /// The three references travel as text so that "keep" and "clear" are two different
         /// answers without a second field to tell them apart: <c>null</c> keeps whatever the
@@ -374,10 +392,20 @@ namespace Fluxy.API.Controllers.Content
             VideoStreamType? type = null;
             if (!string.IsNullOrWhiteSpace(request.Type))
             {
-                type = ParseTypeOrNull(request.Type);
+                type = VideoStreamTextParser.ParseTypeOrNull(request.Type);
                 if (type is null)
                 {
                     errors[nameof(UpdateVideoStreamRequest.Type)] = [TypeHint];
+                }
+            }
+
+            VideoStreamStatus? status = null;
+            if (!string.IsNullOrWhiteSpace(request.Status))
+            {
+                status = VideoStreamTextParser.ParseStatusOrNull(request.Status);
+                if (status is null)
+                {
+                    errors[nameof(UpdateVideoStreamRequest.Status)] = [StatusHint];
                 }
             }
 
@@ -405,6 +433,7 @@ namespace Fluxy.API.Controllers.Content
                 {
                     Name = request.Name,
                     Type = type,
+                    Status = status,
                     CategoryId = categoryId,
                     LogoUrl = request.LogoUrl,
                     Enigma2Sid = request.Enigma2Sid,
@@ -550,46 +579,6 @@ namespace Fluxy.API.Controllers.Content
 
             return Answer(await transition(_streams));
         }
-
-        /// <summary>
-        /// Turns the text of a query or a body field into the kind of stream it names, or
-        /// nothing at all.
-        /// </summary>
-        /// <remarks>
-        /// Matched member by member rather than with an ordered value, because
-        /// <see cref="VideoStreamType"/> is not ordered: the six members are six kinds of
-        /// stream, not six levels of anything. Compared after lowering, so <c>Permanent</c> is
-        /// the same request as <c>permanent</c>. Enum binding is deliberately not used, for
-        /// the reason the accounts controller gives: it takes a member name spelled in full and
-        /// would refuse the conventional lower-case one.
-        /// </remarks>
-        private static VideoStreamType? ParseTypeOrNull(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "permanent" => VideoStreamType.Permanent,
-                "ondemand" => VideoStreamType.OnDemand,
-                "redirect" => VideoStreamType.Redirect,
-                "onlineseries" => VideoStreamType.OnlineSeries,
-                "vodplaylist" => VideoStreamType.VodPlaylist,
-                "fileplaylist" => VideoStreamType.FilePlaylist,
-                _ => null
-            };
-
-        /// <summary>
-        /// Turns the text of a filter into the state it names, or null when it names none.
-        /// </summary>
-        /// <remarks>
-        /// Matched member by member for the same reason: two states of one stream are not two
-        /// levels of anything, and an ordered comparison on them would be a comparison of
-        /// their numbers.
-        /// </remarks>
-        private static VideoStreamStatus? ParseStatusOrNull(string? value) =>
-            value?.Trim().ToLowerInvariant() switch
-            {
-                "stopped" => VideoStreamStatus.Stopped,
-                "running" => VideoStreamStatus.Running,
-                _ => null
-            };
 
         /// <summary>Turns <c>asc</c> / <c>desc</c> into an order, or nothing at all.</summary>
         private static VideoStreamSortOrder? ParseSortOrder(string? value)

@@ -346,6 +346,12 @@ async function rawFetch<T>(
 ): Promise<T> {
   const isWrite = method !== 'GET'
 
+  // A `FormData` body is an encoded request already: the browser writes the multipart
+  // boundary itself, and serializing the object as JSON would send `{}`. The content type
+  // is therefore left off for it, so the browser can declare the boundary it actually used
+  // rather than one this file guessed.
+  const isFormData = body instanceof FormData
+
   let response: Response
 
   try {
@@ -358,14 +364,14 @@ async function rawFetch<T>(
       // without being asked, and a split deployment would need exactly this.
       credentials: 'include',
       headers: {
-        ...(isWrite ? { 'Content-Type': 'application/json' } : {}),
+        ...(isWrite && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         // Sent only when there is one. In dev the captcha is skipped and produces no
         // token, and an empty header would only invite the question of whether it means
         // "no captcha" or "a broken captcha".
         ...(captchaToken ? { 'X-Recaptcha-Token': captchaToken } : {}),
         ...(isWrite ? csrfHeader(csrfToken) : {}),
       },
-      ...(isWrite ? { body: JSON.stringify(body ?? {}) } : {}),
+      ...(isWrite ? { body: isFormData ? body : JSON.stringify(body ?? {}) } : {}),
     })
   } catch {
     // No response at all: the request never arrived. Worth telling apart from a refusal,

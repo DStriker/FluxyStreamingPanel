@@ -10,9 +10,10 @@ namespace Fluxy.Core.Streams.Commands
     /// <remarks>
     /// <para>
     /// Separate from <see cref="VideoStream"/> because a write does not name the facts the
-    /// storage owns - the identifier, the status, the source the relay reports and the
-    /// position in the category - and it does not carry the category's display name, which
-    /// belongs to the category rather than to this row.
+    /// storage owns - the identifier, the source the relay reports and the position in the
+    /// category - and it does not carry the category's display name, which belongs to the
+    /// category rather than to this row. The status <i>is</i> part of a write: the create
+    /// form and the edit form both choose whether the stream is active.
     /// </para>
     /// <para>
     /// The two lists have already been resolved by the service: a list the chosen type cannot
@@ -27,6 +28,9 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>The kind of stream, which decides which payload fields it uses.</summary>
         public required VideoStreamType Type { get; init; }
+
+        /// <summary>Whether the stream is active, or disabled and kept without broadcasting.</summary>
+        public required VideoStreamStatus Status { get; init; }
 
         /// <summary>Category the stream is filed under.</summary>
         public required Guid CategoryId { get; init; }

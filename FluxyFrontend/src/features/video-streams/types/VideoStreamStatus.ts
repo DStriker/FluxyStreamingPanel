@@ -6,9 +6,7 @@
  * running or it is not, and neither state is "more" of anything than the other, so nothing
  * here is ever ordered or compared.
  *
- * Only the start and stop actions write this. It is deliberately absent from the edit
- * body: a status a form could set would make "this stream is broadcasting" a claim an
- * operator types rather than a fact about a process, and the table would then draw a
- * verdict nobody asked a process for.
+ * The add and edit forms choose it, and the start, stop and restart actions change it. A
+ * disabled stream is kept without broadcasting; an active one is the state the relay plays.
  */
 export type VideoStreamStatus = 'Stopped' | 'Running'

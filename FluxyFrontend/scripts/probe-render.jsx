@@ -33,6 +33,7 @@ import AdminSessionsPage from '../src/pages/admin/AdminSessionsPage'
 import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
 import VideoStreamFormPage from '../src/pages/admin/VideoStreamFormPage'
+import VideoStreamImportPage from '../src/pages/admin/VideoStreamImportPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import { RowActions } from '../src/components/table'
@@ -1304,9 +1305,9 @@ async function main() {
   )
   check(
     'the state cell draws the status and the kind of stream under it',
-    streamStateHtml.includes('Running') &&
+    streamStateHtml.includes('Active') &&
       streamStateHtml.includes('Permanent') &&
-      streamStateHtml.indexOf('Running') < streamStateHtml.indexOf('Permanent'),
+      streamStateHtml.indexOf('Active') < streamStateHtml.indexOf('Permanent'),
     `rendered ${streamStateHtml.length} bytes: ${streamStateHtml.slice(0, 220)}`,
   )
 
@@ -1351,6 +1352,52 @@ async function main() {
     `category label at ${categoryLabelAt}, type label at ${typeLabelAt}`,
   )
 
+  // The state picker sits above the kind, and the add form opens at Active. That default is
+  // the form's rather than the endpoint's: the API keeps `Stopped` for a create that names
+  // no status, so a form that sent nothing would create a disabled stream. Rendered as the
+  // select's own selection item, which is the only place "Active" appears before the menu
+  // is opened.
+  const statusLabelAt = streamFormHtml.indexOf('title="Status"')
+  check(
+    'the stream add form draws the status picker above the type, starting at Active',
+    statusLabelAt !== -1 &&
+      typeLabelAt !== -1 &&
+      statusLabelAt < typeLabelAt &&
+      streamFormHtml.includes('>Active<'),
+    `status label at ${statusLabelAt}, type label at ${typeLabelAt}`,
+  )
+
+  // The import form. The playlist is the first field on it, because it is the one thing the
+  // page cannot work without and everything below describes what to do with the streams it
+  // names. The create form's payload half must not be here: the name and the source list are
+  // exactly what the playlist supplies, so a form that drew either would be asking the
+  // operator to type what it is about to read out of the file.
+  const streamImportHtml = renderToStaticMarkup(
+    withRouter('/admin/video-streams/import', withQuery(
+      <AntApp>
+        <VideoStreamImportPage sectionKey="nav.items.videoStreamsImport" />
+      </AntApp>,
+    )),
+  )
+  const playlistLabelAt = streamImportHtml.indexOf('title="M3U playlist"')
+  const importCategoryAt = streamImportHtml.indexOf('title="Category"')
+  check(
+    'the stream import form opens with the playlist and draws no name or source list',
+    streamImportHtml.includes('Import streams') &&
+      playlistLabelAt !== -1 &&
+      importCategoryAt !== -1 &&
+      playlistLabelAt < importCategoryAt &&
+      streamImportHtml.includes('title="Type"') &&
+      streamImportHtml.includes('Delay and archive') &&
+      streamImportHtml.includes('Restreaming') &&
+      streamImportHtml.includes('>Import<') &&
+      !streamImportHtml.includes('title="Name"') &&
+      !streamImportHtml.includes('Sources, in relay order') &&
+      !streamImportHtml.includes('Add a source') &&
+      !streamImportHtml.includes('What it plays'),
+    `playlist label at ${playlistLabelAt}, category label at ${importCategoryAt}, rendered ${streamImportHtml.length} bytes`,
+  )
+
   // The edit address, which waits. `useParams` needs a real route match, so the router is
   // handed the same `:id` route the two forms above use.
   const streamEditHtml = renderToStaticMarkup(
@@ -1373,21 +1420,43 @@ async function main() {
     `rendered ${streamEditHtml.length} bytes under the edit title with the spinner up`,
   )
 
-  // Both menu items have to open the real pages, and the other three sections must still
-  // open the placeholder - the rail deliberately offers real pages for this section alone,
-  // and a `managePage` added to `series` by accident would be a table of video streams at
-  // a series address, which every check above would stay green about.
-  const [streamsAddModule, streamsManageModule] = await Promise.all([
+  // All three stream items have to open the real pages, and the other three sections must
+  // still open the placeholder - the rail deliberately offers real pages for this section
+  // alone, and a `managePage` added to `series` by accident would be a table of video
+  // streams at a series address, which every check above would stay green about.
+  const [streamsAddModule, streamsImportModule, streamsManageModule] = await Promise.all([
     flatItems('Admin').find((item) => item.key === 'videoStreamsAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'videoStreamsImport')?.page?.(),
     flatItems('Admin').find((item) => item.key === 'videoStreamsManage')?.page?.(),
   ])
   check(
-    'the admin menu points its two stream items at the real pages rather than the placeholder',
+    'the admin menu points its three stream items at the real pages rather than the placeholder',
     streamsAddModule?.default === VideoStreamFormPage &&
+      streamsImportModule?.default === VideoStreamImportPage &&
       streamsManageModule?.default === VideoStreamsPage,
-    `videoStreamsAdd opens ${streamsAddModule?.default?.name ?? 'nothing'}, videoStreamsManage opens ${
-      streamsManageModule?.default?.name ?? 'nothing'
-    }`,
+    `videoStreamsAdd opens ${streamsAddModule?.default?.name ?? 'nothing'}, videoStreamsImport opens ${
+      streamsImportModule?.default?.name ?? 'nothing'
+    }, videoStreamsManage opens ${streamsManageModule?.default?.name ?? 'nothing'}`,
+  )
+
+  // Import is the other way to add streams, so it sits immediately after the add form. A
+  // rail that moved it below the table would describe it as a thing to look at rather than
+  // a thing to do. The other three sections must not grow an import item at all: their
+  // playlists have no importer, and one generated from the table would open a placeholder
+  // where this section has a real page.
+  const streamItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('videoStreams'))
+    .map((item) => item.key)
+    .join(',')
+  const otherSectionsHaveNoImport = ['audioStreams', 'videoOnDemand', 'series'].every(
+    (sectionKey) => !flatItems('Admin').some((item) => item.key === `${sectionKey}Import`),
+  )
+  check(
+    'the playlist import sits immediately after the add form and only in the streams section',
+    streamItemKeys ===
+      'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories' &&
+      otherSectionsHaveNoImport,
+    `${streamItemKeys}; other sections import: ${otherSectionsHaveNoImport ? 'no' : 'YES'}`,
   )
 
   // The other three sections keep their placeholders for `add` and `manage`: only
