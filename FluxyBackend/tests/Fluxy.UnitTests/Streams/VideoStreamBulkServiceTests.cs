@@ -299,7 +299,6 @@ namespace Fluxy.UnitTests.Streams
                 CategoryName = "Live",
                 DelayMinutes = delay,
                 ArchiveDays = archive,
-                SortOrder = 1,
                 RestreamUserAgent = userAgent,
                 Sources = ["https://example.test/source"],
                 Files = []

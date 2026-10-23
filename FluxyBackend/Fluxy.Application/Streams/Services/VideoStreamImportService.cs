@@ -26,9 +26,8 @@ namespace Fluxy.Application.Streams.Services
     /// </para>
     /// <para>
     /// The rules a row must satisfy are not restated here. The common half is
-    /// <see cref="VideoStreamRules"/>, the playlist reading is <see cref="M3uPlaylistParser"/>,
-    /// and the position is the highest of the category plus one, read from the repository. What
-    /// belongs to this service is the batch: which entries survive, which are skipped rather
+    /// <see cref="VideoStreamRules"/>, and the playlist reading is <see cref="M3uPlaylistParser"/>.
+    /// What belongs to this service is the batch: which entries survive, which are skipped rather
     /// than failed, and the one save that writes them all.
     /// </para>
     /// </remarks>
@@ -259,12 +258,7 @@ namespace Fluxy.Application.Streams.Services
 
             if (writes.Count > 0)
             {
-                var highest = await _streams.GetLastSortOrderAsync(
-                    input.CategoryId,
-                    exceptStream: null,
-                    cancellationToken);
-
-                await _streams.AddRangeAsync(writes, highest + 1, cancellationToken);
+                await _streams.AddRangeAsync(writes, cancellationToken);
             }
 
             if (updates.Count > 0)

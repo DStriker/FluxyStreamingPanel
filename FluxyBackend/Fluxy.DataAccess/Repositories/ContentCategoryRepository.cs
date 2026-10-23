@@ -150,11 +150,23 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public Task<int> CountStreamsAsync(
+        public async Task<int> CountStreamsAsync(
             Guid categoryId,
             CancellationToken cancellationToken = default)
-            => _context.VideoStreams
+        {
+            // Both media are filed under the same categories, so a category is only empty
+            // when neither table holds a row for it. Two counts rather than a union: the two
+            // tables share no column beyond the category identifier, and counting each is the
+            // query the planner already has an index for.
+            var videos = await _context.VideoStreams
                 .AsNoTracking()
                 .CountAsync(entry => entry.CategoryId == categoryId, cancellationToken);
+
+            var audio = await _context.AudioStreams
+                .AsNoTracking()
+                .CountAsync(entry => entry.CategoryId == categoryId, cancellationToken);
+
+            return videos + audio;
+        }
     }
 }

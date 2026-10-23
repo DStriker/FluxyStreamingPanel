@@ -87,8 +87,7 @@ namespace Fluxy.DataAccess.Repositories
                     LogoUrl = entry.LogoUrl,
                     ActiveSource = entry.ActiveSource,
                     EpgSourceId = entry.EpgSourceId,
-                    EpgChannelKey = entry.EpgChannelKey,
-                    SortOrder = entry.SortOrder
+                    EpgChannelKey = entry.EpgChannelKey
                 })
                 .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
                 .Take(pageSize)
@@ -203,22 +202,11 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public async Task<int> GetLastSortOrderAsync(
-            Guid categoryId,
-            Guid? exceptStream,
-            CancellationToken cancellationToken = default)
-            => await _context.VideoStreams
-                .Where(entry => entry.CategoryId == categoryId
-                    && (exceptStream == null || entry.Id != exceptStream))
-                .MaxAsync(entry => (int?)entry.SortOrder, cancellationToken) ?? 0;
-
-        /// <inheritdoc />
         public Task<Guid> AddAsync(
             VideoStreamWrite stream,
-            int sortOrder,
             CancellationToken cancellationToken = default)
         {
-            var entity = BuildEntity(stream, sortOrder);
+            var entity = BuildEntity(stream);
             _context.VideoStreams.Add(entity);
 
             return Task.FromResult(entity.Id);
@@ -227,19 +215,18 @@ namespace Fluxy.DataAccess.Repositories
         /// <inheritdoc />
         public Task AddRangeAsync(
             IReadOnlyList<VideoStreamWrite> streams,
-            int firstSortOrder,
             CancellationToken cancellationToken = default)
         {
-            for (var index = 0; index < streams.Count; index++)
+            foreach (var stream in streams)
             {
-                _context.VideoStreams.Add(BuildEntity(streams[index], firstSortOrder + index));
+                _context.VideoStreams.Add(BuildEntity(stream));
             }
 
             return Task.CompletedTask;
         }
 
-        /// <summary>Builds one tracked row, with both lists attached, at the position it must take.</summary>
-        private static VideoStreamEntity BuildEntity(VideoStreamWrite stream, int sortOrder)
+        /// <summary>Builds one tracked row, with both lists attached.</summary>
+        private static VideoStreamEntity BuildEntity(VideoStreamWrite stream)
         {
             var entity = new VideoStreamEntity
             {
@@ -256,7 +243,6 @@ namespace Fluxy.DataAccess.Repositories
                 EpgSourceId = stream.EpgSourceId,
                 EpgChannelKey = stream.EpgChannelKey,
                 ArchiveDays = stream.ArchiveDays,
-                SortOrder = sortOrder,
                 RestreamUserAgent = stream.RestreamUserAgent,
                 RestreamProxy = stream.RestreamProxy,
                 RestreamCookies = stream.RestreamCookies,
@@ -273,7 +259,6 @@ namespace Fluxy.DataAccess.Repositories
         public async Task<bool> UpdateAsync(
             Guid id,
             VideoStreamWrite stream,
-            int? sortOrder,
             CancellationToken cancellationToken = default)
         {
             var entity = await FindTrackedWithListsAsync(id, cancellationToken);
@@ -299,11 +284,6 @@ namespace Fluxy.DataAccess.Repositories
             entity.RestreamProxy = stream.RestreamProxy;
             entity.RestreamCookies = stream.RestreamCookies;
             entity.RestreamHeaders = stream.RestreamHeaders;
-
-            if (sortOrder is { } position)
-            {
-                entity.SortOrder = position;
-            }
 
             ReplaceSources(entity, stream.Sources);
             ReplaceFiles(entity, stream.Files);
@@ -578,9 +558,6 @@ namespace Fluxy.DataAccess.Repositories
                 VideoStreamSortField.Type => Chain(
                     query, entry => entry.Type, entry => entry.Name, descending),
 
-                VideoStreamSortField.SortOrder => Chain(
-                    query, entry => entry.SortOrder, entry => entry.Name, descending),
-
                 _ => Chain(query, entry => entry.Name, entry => entry.Id, descending)
             };
         }
@@ -610,8 +587,7 @@ namespace Fluxy.DataAccess.Repositories
             CategoryName = row.CategoryName,
             LogoUrl = row.LogoUrl,
             ActiveSource = row.ActiveSource,
-            HasEpg = VideoStreamEpg.Configured(row.EpgSourceId, row.EpgChannelKey),
-            SortOrder = row.SortOrder
+            HasEpg = VideoStreamEpg.Configured(row.EpgSourceId, row.EpgChannelKey)
         };
 
         /// <summary>The columns a page of the streams table draws, before the shape it returns.</summary>
@@ -627,7 +603,6 @@ namespace Fluxy.DataAccess.Repositories
             public string? ActiveSource { get; init; }
             public Guid? EpgSourceId { get; init; }
             public string? EpgChannelKey { get; init; }
-            public int SortOrder { get; init; }
         }
     }
 }

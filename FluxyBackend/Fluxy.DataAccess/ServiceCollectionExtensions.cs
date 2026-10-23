@@ -92,6 +92,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IUserGroupRepository, UserGroupRepository>();
             services.AddScoped<IContentCategoryRepository, ContentCategoryRepository>();
             services.AddScoped<IVideoStreamRepository, VideoStreamRepository>();
+            services.AddScoped<IAudioStreamRepository, AudioStreamRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

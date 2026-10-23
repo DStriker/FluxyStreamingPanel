@@ -68,8 +68,8 @@ namespace Fluxy.Core.Streams.Interfaces
         /// <returns>The stream, or null when there is no such one.</returns>
         Task<VideoStream?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
-        /// <summary>Creates a stream at the end of its category's list.</summary>
-        /// <param name="input">Everything the stream is, except its status and its position.</param>
+        /// <summary>Creates a stream in its category.</summary>
+        /// <param name="input">Everything the stream is, except its status.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>The outcome, carrying the identifier once the row exists.</returns>
         Task<VideoStreamOutcome> CreateAsync(

@@ -36,6 +36,9 @@ namespace Fluxy.API.Contracts.Common
         /// <summary>Code reported once a run over streams has been answered for.</summary>
         public const string VideoStreamsCompletedCode = "video_streams_bulk_completed";
 
+        /// <summary>Code reported once a run over audio streams has been answered for.</summary>
+        public const string AudioStreamsCompletedCode = "audio_streams_bulk_completed";
+
         /// <summary>Body for a run over accounts.</summary>
         /// <param name="outcome">What the service reported, one entry per identifier.</param>
         public static BulkOperationResponse Describe(BulkUserOutcome outcome)
@@ -106,6 +109,30 @@ namespace Fluxy.API.Contracts.Common
                 .ToList();
 
             return Answer(VideoStreamsCompletedCode, Summary(outcome.Action, items), items);
+        }
+
+        /// <summary>Body for a run over audio streams.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(BulkAudioStreamOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = AudioStreamResponses.Describe(new AudioStreamOutcome
+                    {
+                        Action = item.Action,
+                        StreamId = item.StreamId,
+                        Errors = item.Errors
+                    });
+
+                    // No warnings column: an audio stream has no field a kind of it can switch
+                    // off, so no bulk operation over audio streams can clear anything and
+                    // there is nothing for a warning to say.
+                    return ToItem(item.StreamId, status, body);
+                })
+                .ToList();
+
+            return Answer(AudioStreamsCompletedCode, Summary(outcome.Action, items), items);
         }
 
         private static BulkItemResponse ToItem(
@@ -203,6 +230,30 @@ namespace Fluxy.API.Contracts.Common
                     $"{Landed(items)} of {items.Count} streams had their archive length updated.",
 
                 BulkVideoStreamAction.ChangeRestream =>
+                    $"{Landed(items)} of {items.Count} streams had their restream settings updated.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} streams changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over audio streams landed.</summary>
+        private static string Summary(
+            BulkAudioStreamAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkAudioStreamAction.Start => $"{Landed(items)} of {items.Count} streams started.",
+                BulkAudioStreamAction.Stop => $"{Landed(items)} of {items.Count} streams stopped.",
+                BulkAudioStreamAction.Restart => $"{Landed(items)} of {items.Count} streams restarted.",
+                BulkAudioStreamAction.Delete => $"{Landed(items)} of {items.Count} streams deleted.",
+
+                BulkAudioStreamAction.MoveCategory =>
+                    $"{Landed(items)} of {items.Count} streams moved to that category.",
+
+                BulkAudioStreamAction.ChangeType =>
+                    $"{Landed(items)} of {items.Count} streams changed type.",
+
+                BulkAudioStreamAction.ChangeRestream =>
                     $"{Landed(items)} of {items.Count} streams had their restream settings updated.",
 
                 // Unreachable: the enum holds no other member.

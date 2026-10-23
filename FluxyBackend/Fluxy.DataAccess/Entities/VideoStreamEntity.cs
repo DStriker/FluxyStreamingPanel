@@ -87,12 +87,6 @@ namespace Fluxy.DataAccess.Entities
         /// </summary>
         public int ArchiveDays { get; set; }
 
-        /// <summary>
-        /// Position among the streams of the same category, lowest first. Assigned when the
-        /// stream is created and re-assigned to the end when it moves to another category.
-        /// </summary>
-        public int SortOrder { get; set; }
-
         /// <summary>User agent the relayed requests carry, or null to send none.</summary>
         public string? RestreamUserAgent { get; set; }
 
@@ -137,7 +131,6 @@ namespace Fluxy.DataAccess.Entities
             EpgSourceId = EpgSourceId,
             EpgChannelKey = EpgChannelKey,
             ArchiveDays = ArchiveDays,
-            SortOrder = SortOrder,
             RestreamUserAgent = RestreamUserAgent,
             RestreamProxy = RestreamProxy,
             RestreamCookies = RestreamCookies,

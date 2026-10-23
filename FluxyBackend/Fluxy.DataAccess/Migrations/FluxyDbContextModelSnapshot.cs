@@ -22,6 +22,119 @@ namespace Fluxy.DataAccess.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActiveSource")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("active_source");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Enigma2Sid")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("enigma2_sid");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("RestreamCookies")
+                        .HasColumnType("text")
+                        .HasColumnName("restream_cookies");
+
+                    b.Property<string>("RestreamHeaders")
+                        .HasColumnType("text")
+                        .HasColumnName("restream_headers");
+
+                    b.Property<string>("RestreamProxy")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("restream_proxy");
+
+                    b.Property<string>("RestreamUserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("restream_user_agent");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("stream_type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("CategoryId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("audio_streams", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamSourceEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stream_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StreamId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("audio_stream_sources", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.ContentCategoryEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -440,10 +553,6 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("series_id");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
                     b.Property<short>("Status")
                         .HasColumnType("smallint")
                         .HasColumnName("status");
@@ -468,8 +577,6 @@ namespace Fluxy.DataAccess.Migrations
 
                     b.HasIndex("CategoryId", "Name")
                         .IsUnique();
-
-                    b.HasIndex("CategoryId", "SortOrder");
 
                     b.ToTable("video_streams", (string)null);
                 });
@@ -546,22 +653,48 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("video_stream_sources", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamSourceEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.AudioStreamEntity", "Stream")
+                        .WithMany("StreamSources")
+                        .HasForeignKey("StreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Stream");
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>
                 {
-                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.RefreshTokenEntity", b =>
                 {
-                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
@@ -586,11 +719,13 @@ namespace Fluxy.DataAccess.Migrations
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLoginGuardRuleEntity", b =>
                 {
-                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.VideoStreamEntity", b =>
@@ -624,6 +759,11 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Stream");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
+                {
+                    b.Navigation("StreamSources");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>

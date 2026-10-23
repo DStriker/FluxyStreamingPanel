@@ -149,12 +149,13 @@ const en = {
       // `import` entry only where a playlist import has been built. Unlike the labels around
       // them, every entry names its object as well as its verb: a bare `Add` beside
       // `Add user` read as a different kind of control, and the group header alone is easy
-      // to skip while scanning the rail. Only the streams section has real pages today.
+      // to skip while scanning the rail. The two stream sections have real pages today.
       videoStreamsAdd: 'Add video stream',
       videoStreamsImport: 'Import video streams',
       videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
       audioStreamsAdd: 'Add audio stream',
+      audioStreamsImport: 'Import audio streams',
       audioStreamsManage: 'Manage audio streams',
       audioStreamsCategories: 'Categories',
       videoOnDemandAdd: 'Add video',
@@ -484,6 +485,10 @@ const en = {
     // domain instead - they belong to every kind of stream, not to one audience of them.
     viewStreams: 'View video streams',
     editStreams: 'Edit video streams',
+    // The audio pair is the same question asked about another medium, and it is deliberately
+    // a separate pair: a group that may read the video streams may not read the audio ones.
+    viewAudioStreams: 'View audio streams',
+    editAudioStreams: 'Edit audio streams',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -1034,6 +1039,241 @@ const en = {
       reason: 'Reason',
     },
   },
+  // The admin's audio streams table. Its own block rather than more keys under
+  // `videoStreams`, because the two are separate resources with separate permissions: a
+  // group that may read the video streams may not read the audio ones, and a page that
+  // answered 403 must be able to say which of the two it was asking for.
+  audioStreams: {
+    // The list page's heading. Deliberately *not* `nav.items.audioStreamsManage`, which
+    // names the action (`Manage audio streams`/`Управление`) - a card titled after the menu
+    // item would name neither the page nor its subject. The pair here is `Audio streams`
+    // beside `Manage audio streams`: one naming what is looked at, one naming how the
+    // visitor got there.
+    listTitle: 'Audio streams',
+    // The form's heading, and the label of the add button above the table. One component
+    // serves both addresses, so the title is chosen here rather than read from
+    // `sectionKey`: the same page is this at `audio-streams/add` and the edit title at
+    // `audio-streams/{id}`, and a key naming only the first would title the second a lie.
+    addTitle: 'Add stream',
+    editTitle: 'Edit stream',
+    create: 'Create',
+    backToList: 'Back to the list',
+    // The seven columns of the table, and one more name. `type` has no column of its own -
+    // it rides in the state column, under the status - but it is named here because the sort
+    // field shares its name and the filter's own accessible label comes from this block too.
+    columns: {
+      id: 'ID',
+      icon: 'Icon',
+      name: 'Name',
+      category: 'Category',
+      activeSource: 'Active source',
+      status: 'Status',
+      actions: 'Actions',
+      type: 'Type',
+    },
+    // Two descriptions, not a ramp: `AudioStreamStatus` is not an ordered scale, so the
+    // words say what the state is rather than how much of it there is. The form and the
+    // table use the same pair: a stream is active or disabled.
+    statuses: {
+      Stopped: 'Disabled',
+      Running: 'Active',
+    },
+    // The two kinds, keyed by the enum member the way every other enum in this file is.
+    types: {
+      OnDemand: 'On demand',
+      Redirect: 'Redirect',
+    },
+    actions: {
+      start: 'Start',
+      stop: 'Stop',
+      restart: 'Restart',
+      edit: 'Edit',
+      delete: 'Delete',
+      // Why play is greyed out. It is an operation on the relaying process, and that
+      // process does not exist yet - so the reason is stated before the click, which is
+      // the whole point of drawing the button disabled rather than live and letting a 404
+      // explain it afterwards.
+      notImplemented: 'Not implemented yet.',
+    },
+    searchLabel: 'Search by name',
+    searchPlaceholder: 'Search by name',
+    filterAnyCategory: 'Any category',
+    filterAnyStatus: 'Any status',
+    filterAnyType: 'Any type',
+    resetWidths: 'Reset widths',
+    // The auto-refresh, which is on by default and has a visible pause beside the search.
+    // A page that silently re-reads under a visitor's cursor moves the row they were about
+    // to press, and a pause they cannot find is not a pause.
+    pauseRefresh: 'Pause auto-refresh',
+    resumeRefresh: 'Resume auto-refresh',
+    autoRefreshHint: 're-reads the table every {{seconds}} seconds',
+    // The resize handle's own name, the only text it carries for a keyboard or a screen
+    // reader: the column's own label lives in `columns`, and the handle says what it is
+    // resizing rather than what the column is called.
+    resizeColumn: 'Resize the {{column}} column',
+    range: '{{from}}–{{to}} of {{total}}',
+    empty: 'No audio streams yet.',
+    noMatches: 'No audio streams match these filters.',
+    // Why the bulk toolbar is greyed for an operator whose group holds no
+    // `editAudioStreams` grant. The server refuses the same run with 403
+    // `permission_denied`, so this is the same fact told before the click - and it names
+    // the group rather than the visitor, because that is what the refusal is about.
+    noPermission: 'Your group does not allow this.',
+    // The bulk toolbar over the selection: one count and one menu, mirroring the accounts,
+    // the groups and the video streams tables. Both are drawn even with nothing selected,
+    // for the reason those three are: a control that appears and disappears reads as a
+    // broken one.
+    bulk: {
+      menu: 'Actions',
+      menuWithCount: 'Actions ({{count}})',
+      // The three transitions and the three edits, in one menu. The labels are the row
+      // actions' own names, because the operation is the same one over more than one row,
+      // and a second name would be a second name for one thing.
+      start: 'Start',
+      stop: 'Stop',
+      restart: 'Restart',
+      delete: 'Delete',
+      move: 'Move to category',
+      type: 'Change type',
+      restream: 'Change restream settings',
+      // The move dialog. Its destination is a decision about the whole selection, so it is
+      // asked for in a dialog rather than in the toolbar: an inline control would be
+      // answering it for a menu that has already closed.
+      moveTitle: 'Move these streams to a category',
+      movePlaceholder: 'Choose a category',
+      apply: 'Apply',
+      // The type dialog. Both kinds are offered, because both carry the same payload and
+      // there is nothing a change of kind would have to clear.
+      typeTitle: 'Change the type of these streams',
+      typePlaceholder: 'Choose a type',
+      typeHint:
+        'Both on-demand and redirect streams can be chosen here. Neither of them loses a setting when the kind changes.',
+      // The four restream settings are replaced as a group, not patched field by field: a
+      // blank input clears its setting, so "these are the values now" and "clear them" are
+      // one request shape. The dialog says so once rather than beside each input.
+      restreamTitle: 'Change the restream settings of these streams',
+      restreamHint:
+        'The four values replace the current ones on every selected stream. Leave a field empty to clear it.',
+      restreamUserAgent: 'User agent',
+      restreamProxy: 'Proxy',
+      restreamCookies: 'Cookies',
+      restreamHeaders: 'Extra headers',
+      // Shown instead of a toast the moment at least one row was refused. Every line is
+      // the server's own sentence for that row's code, already translated here, so the
+      // reason is read rather than guessed at from a count.
+      partialTitle: 'Changed {{done}} of {{total}}. The rest were refused:',
+      // Only deletion asks first, for the reason only deletion asks first on a single row.
+      deleteTitle: 'Delete these {{count}} streams?',
+      deleteBody: 'Each stream will be removed with its sources. This cannot be undone.',
+    },
+    // The one action on the table that asks first. The body quotes the stream's own name,
+    // because that is what the visitor is reading when they press it; what happens to the
+    // *category* is the category's dialog to make - the server refuses to delete one a
+    // stream still files under, and that is a question about the row's category.
+    deleteConfirmTitle: 'Delete this stream?',
+    deleteConfirmBody:
+      'The stream "{{name}}" will be removed with its sources. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form for one audio stream. Its own block rather than more keys under
+  // `audioStreams`, because the two are not the same copy: the table names what a row
+  // *is*, and the form names what an operator is being asked to *type*.
+  audioStreamsForm: {
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a stream name',
+    // What the field asks for before anything is typed. `maxLength` is the only other hint
+    // the name carries, and it appears once the visitor is already over the limit - so the
+    // shape of a good name is stated up front, in the field itself.
+    namePlaceholder: 'Morning radio',
+    typeRequired: 'Choose the kind of stream',
+    categoryRequired: 'Choose a category',
+    // The state picker, which the add form starts at active. The hint says what the two
+    // words mean in relay terms, because "disabled" alone does not say whether the row is
+    // kept or removed.
+    statusRequired: 'Choose whether the stream is active',
+    statusHint: 'An active stream relays; a disabled one is kept without broadcasting.',
+    // One sentence per kind, drawn under the type picker as the visitor changes it. This
+    // is the whole of what the picker decides - how the stream is played - so it is stated
+    // at the moment the choice is made rather than by the fields quietly appearing and
+    // disappearing.
+    hints: {
+      OnDemand: 'Relays from a list of addresses, but only when a listener asks for it.',
+      Redirect: 'Sends listeners on to another address rather than relaying a list.',
+    },
+    // The three dividers. Each names the section it opens rather than a field inside it, so
+    // the visitor can find the group they came for without reading every label.
+    payloadDivider: 'What it plays',
+    identityDivider: 'Identity',
+    restreamDivider: 'Restreaming',
+    // The ordered list of addresses, which is the one control every audio kind shares.
+    sourcesLabel: 'Sources, in relay order',
+    sourcesPlaceholder: 'https://example.com/stream.aac',
+    // The three buttons of one entry, plus the one that adds another entry underneath. The
+    // labels name the list's own noun - a source - because the same component draws the
+    // video form's list too and "row" would describe the control rather than its contents.
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    removeSource: 'Remove this source',
+    addSource: 'Add a source',
+    // The whole-list rule: at least one entry has to be filled in. The sentence names its
+    // list rather than any one entry, because no particular entry is at fault - they are
+    // all blank.
+    sourcesRequired: 'Add at least one source.',
+    logoUrlLabel: 'Icon address',
+    urlPlaceholder: 'https://example.com/logo.png',
+    enigma2SidLabel: 'Enigma2 service id',
+    sidPlaceholder: '1:0:1:0:0:0:0:0:0:0',
+    userAgentLabel: 'User agent',
+    userAgentPlaceholder: 'Mozilla/5.0 ...',
+    proxyLabel: 'Proxy',
+    proxyPlaceholder: 'http://proxy.example:8080',
+    // Cookies and headers are free text with no length bound on either side: what they
+    // hold is a request line the relay copies verbatim, and a placeholder that invented a
+    // format would be teaching a shape the server never asked for.
+    cookiesLabel: 'Cookies',
+    cookiesPlaceholder: 'session=abc; token=def',
+    headersLabel: 'Extra headers',
+    headersPlaceholder: 'X-Forwarded-For: 1.2.3.4',
+    maxLength: 'Up to {{max}} characters.',
+  },
+  // The playlist import. It reuses `audioStreamsForm` for every field it shares with the
+  // add form - the category, the state, the kind and the restreaming group - and adds only
+  // what is new here: the file itself and the report afterwards.
+  audioStreamsImport: {
+    title: 'Import audio streams',
+    playlistLabel: 'M3U playlist',
+    playlistRequired: 'Choose an M3U playlist file.',
+    playlistHint:
+      'Each entry becomes an audio stream of its own. Up to {{entries}} entries; an HLS playlist cannot be imported.',
+    dropHint: 'Drop the playlist here',
+    chooseHint: 'or choose a file from disk. Only .m3u and .m3u8 are accepted.',
+    fileTooLarge: 'The playlist is larger than {{size}} MB.',
+    totalCount: 'Entries: {{total}}',
+    importedCount: 'Imported: {{imported}}',
+    updatedCount: 'Updated: {{updated}}',
+    skippedCount: 'Skipped: {{skipped}}',
+    failedCount: 'Failed: {{failed}}',
+    problemsTitle: 'Entries that were not imported',
+    problemsTotal: 'Not imported: {{total}}',
+    skippedTag: 'Skipped',
+    failedTag: 'Failed',
+    unnamed: 'No name',
+    submit: 'Import',
+    existingDivider: 'Existing streams',
+    appendSourceLabel: 'Append source to existing streams',
+    appendSourceHint:
+      'When a name is already taken in the category, add the entry’s address to that stream’s source list instead of skipping it.',
+    overwriteSettingsLabel: 'Overwrite existing stream settings',
+    overwriteSettingsHint:
+      'When a name is already taken in the category, replace that stream’s status, type and restream settings.',
+    columns: {
+      line: 'Line',
+      name: 'Name',
+      outcome: 'Outcome',
+      reason: 'Reason',
+    },
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -1178,6 +1418,35 @@ const en = {
       video_stream_import_unreadable:
         'The uploaded file could not be read as an M3U playlist.',
       video_stream_import_conflict:
+        'A name in the playlist was taken while the import was running. Nothing was imported; try again.',
+      // The audio stream resource: the same shapes as the video one above, named apart
+      // because they are a different resource behind a different permission - a group that
+      // may change the video streams may not change the audio ones.
+      audio_stream_created: 'The audio stream has been created.',
+      audio_stream_updated: 'The audio stream has been updated.',
+      audio_stream_deleted: 'The audio stream has been deleted.',
+      audio_stream_started: 'The audio stream has been started.',
+      audio_stream_stopped: 'The audio stream has been stopped.',
+      audio_stream_restarted: 'The audio stream has been restarted.',
+      audio_stream_not_found: 'There is no audio stream with that identifier.',
+      audio_stream_already_exists:
+        'That audio stream name is already taken within this category.',
+      // An audio bulk run: one code for the run as a whole, for the reason the video one
+      // above gives. There are no warning codes beside it: both audio kinds carry the same
+      // payload, so a change of kind never costs a row a setting.
+      audio_streams_bulk_completed: 'Changed {{done}} of {{total}} audio streams.',
+      // An audio playlist import answers with counts rather than one row, exactly as the
+      // video one does.
+      audio_streams_import_completed: 'The playlist has been imported.',
+      audio_stream_import_empty: 'The uploaded file is empty.',
+      audio_stream_import_hls:
+        'An HLS playlist cannot be imported; upload an M3U playlist of streams.',
+      audio_stream_import_too_large: 'The uploaded file is too large.',
+      audio_stream_import_too_many_entries:
+        'The playlist holds more entries than one import accepts.',
+      audio_stream_import_unreadable:
+        'The uploaded file could not be read as an M3U playlist.',
+      audio_stream_import_conflict:
         'A name in the playlist was taken while the import was running. Nothing was imported; try again.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',

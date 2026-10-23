@@ -8,11 +8,9 @@ namespace Fluxy.Core.Streams.Commands
     /// </summary>
     /// <remarks>
     /// <para>
-    /// There is deliberately no <c>SortOrder</c> here. A new stream joins the end of its
-    /// category's list, and where exactly "the end" is (the highest position of that category,
-    /// plus one) is the service's fact to read from the database, not the caller's to claim -
-    /// a caller naming a position would be one stale screen away from overwriting a neighbour
-    /// an operator has just moved.
+    /// There is deliberately no <c>SortOrder</c> here. The order a stream is shown in belongs to
+    /// the list that shows it, not to the stream row itself, so a caller has no position to
+    /// claim and the service has none to read.
     /// </para>
     /// <para>
     /// <b>Status is a field of the create.</b> An operator decides when adding the stream

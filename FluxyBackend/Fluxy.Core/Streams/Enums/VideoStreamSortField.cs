@@ -38,9 +38,6 @@ namespace Fluxy.Core.Streams.Enums
         /// <summary>
         /// Kind of stream. The members are not ordered either, and the same applies.
         /// </summary>
-        Type,
-
-        /// <summary>Position within the category, which is the order a category page is shown in.</summary>
-        SortOrder
+        Type
     }
 }

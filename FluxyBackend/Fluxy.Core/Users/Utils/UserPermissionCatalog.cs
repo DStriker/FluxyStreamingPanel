@@ -19,7 +19,7 @@ namespace Fluxy.Core.Users.Utils
     /// coincidence, and what stops an operator from granting <see cref="EditAdmins"/> to a
     /// group of clients: the member would be accepted and then mean nothing, because the role
     /// gate ahead of it already refused. A permission whose owner role changes is therefore a
-    /// change to this table and nothing else - the storage does not care. All eight are owned
+    /// change to this table and nothing else - the storage does not care. All twelve are owned
     /// by <see cref="UserRole.Admin"/> today, which says nothing about whether some future
     /// permission could belong to <see cref="UserRole.Reseller"/> instead.
     /// </para>
@@ -49,7 +49,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewUserGroups,
             UserPermission.EditUserGroups,
             UserPermission.ViewStreams,
-            UserPermission.EditStreams
+            UserPermission.EditStreams,
+            UserPermission.ViewAudioStreams,
+            UserPermission.EditAudioStreams
         ];
 
         /// <summary>
@@ -91,7 +93,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewUserGroups] = UserRole.Admin,
                 [UserPermission.EditUserGroups] = UserRole.Admin,
                 [UserPermission.ViewStreams] = UserRole.Admin,
-                [UserPermission.EditStreams] = UserRole.Admin
+                [UserPermission.EditStreams] = UserRole.Admin,
+                [UserPermission.ViewAudioStreams] = UserRole.Admin,
+                [UserPermission.EditAudioStreams] = UserRole.Admin
             };
 
         /// <summary>

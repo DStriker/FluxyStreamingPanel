@@ -98,6 +98,14 @@ namespace Fluxy.Core.Content.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>Counts the streams still filed under a category.</summary>
+        /// <remarks>
+        /// **Both media.** The count is over the video streams *and* the audio streams filed
+        /// under the category, because the question the caller is asking is "may this
+        /// category go?", and a category holding an audio stream is just as much in use as
+        /// one holding a video stream. Counting only one of the two would let the category
+        /// be deleted while rows still pointed at it, and the foreign key would refuse the
+        /// delete with an error the caller cannot explain.
+        /// </remarks>
         /// <param name="categoryId">Identifier of the category.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<int> CountStreamsAsync(

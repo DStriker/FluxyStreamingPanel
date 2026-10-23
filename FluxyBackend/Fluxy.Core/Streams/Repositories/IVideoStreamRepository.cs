@@ -10,10 +10,9 @@ namespace Fluxy.Core.Streams.Repositories
     /// Reads and writes the configured streams and the two ordered lists stored beside them.
     /// </summary>
     /// <remarks>
-    /// The repository owns the page query, the category-scoped name probe, the position a stream
-    /// takes and the replacement of the two lists. The service owns what a stream may contain:
-    /// which fields its type uses, when an archive or a guide is valid, and which refusal an
-    /// outcome deserves.
+    /// The repository owns the page query, the category-scoped name probe and the replacement
+    /// of the two lists. The service owns what a stream may contain: which fields its type
+    /// uses, when an archive or a guide is valid, and which refusal an outcome deserves.
     /// </remarks>
     public interface IVideoStreamRepository
     {
@@ -104,7 +103,7 @@ namespace Fluxy.Core.Streams.Repositories
         /// <remarks>
         /// Each update touches only the fields an import may change: status, type, delay,
         /// archive length, restream settings, and one optional source to append. Name, logo,
-        /// programme guide, Enigma2 service id, category and position are not touched.
+        /// programme guide, Enigma2 service id and category are not touched.
         /// Everything is staged on the context and committed by the service's single save.
         /// </remarks>
         /// <param name="updates">Changes to stage, one per existing stream.</param>
@@ -113,40 +112,26 @@ namespace Fluxy.Core.Streams.Repositories
             IReadOnlyList<VideoStreamBatchUpdate> updates,
             CancellationToken cancellationToken = default);
 
-        /// <summary>Reads the highest position of a category, or zero when it is empty.</summary>
-        /// <param name="categoryId">Identifier of the category.</param>
-        /// <param name="exceptStream">Stream whose own position is not counted, or null.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        Task<int> GetLastSortOrderAsync(
-            Guid categoryId,
-            Guid? exceptStream,
-            CancellationToken cancellationToken = default);
-
-        /// <summary>Stages a new stream at the end of its category's list.</summary>
+        /// <summary>Stages a new stream in its category.</summary>
         /// <param name="stream">Values the row is written with.</param>
-        /// <param name="sortOrder">Position the row must carry.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>Identifier the new row carries.</returns>
         Task<Guid> AddAsync(
             VideoStreamWrite stream,
-            int sortOrder,
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Stages a batch of new streams at the end of one category's list.
+        /// Stages a batch of new streams in one category.
         /// </summary>
         /// <remarks>
-        /// The positions run from <paramref name="firstSortOrder"/> in the order the streams
-        /// are given, so the playlist order is the order the category will show. Everything is
-        /// staged on the context and left for the caller's single save, which is what makes an
-        /// import one transaction rather than one transaction per entry.
+        /// The rows are staged in the order the streams are given, and everything is left for
+        /// the caller's single save, which is what makes an import one transaction rather than
+        /// one transaction per entry.
         /// </remarks>
         /// <param name="streams">Values the rows are written with, in playlist order.</param>
-        /// <param name="firstSortOrder">Position the first row must carry.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task AddRangeAsync(
             IReadOnlyList<VideoStreamWrite> streams,
-            int firstSortOrder,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -154,15 +139,11 @@ namespace Fluxy.Core.Streams.Repositories
         /// </summary>
         /// <param name="id">Identifier of the stream read for update.</param>
         /// <param name="stream">Values the row must carry after the change.</param>
-        /// <param name="sortOrder">
-        /// Position to write when the stream moved category, or null to keep the current one.
-        /// </param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>False when no row carries the identifier.</returns>
         Task<bool> UpdateAsync(
             Guid id,
             VideoStreamWrite stream,
-            int? sortOrder,
             CancellationToken cancellationToken = default);
 
         /// <summary>Stages the removal of a stream read for update.</summary>

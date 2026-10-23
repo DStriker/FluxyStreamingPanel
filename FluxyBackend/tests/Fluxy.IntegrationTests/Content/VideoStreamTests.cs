@@ -42,7 +42,7 @@ namespace Fluxy.IntegrationTests.Content
             Assert.Equal("Permanent", root.GetProperty("type").GetString());
             Assert.Equal("Stopped", root.GetProperty("status").GetString());
             Assert.Equal("Live", root.GetProperty("categoryName").GetString());
-            Assert.Equal(1, root.GetProperty("sortOrder").GetInt32());
+            Assert.False(root.TryGetProperty("sortOrder", out _));
             Assert.Equal(
                 new[] { "https://example.test/one", "https://example.test/two" },
                 root.GetProperty("sources").EnumerateArray().Select(value => value.GetString()).ToArray());
@@ -288,6 +288,9 @@ namespace Fluxy.IntegrationTests.Content
             using var pageBody = await ReadJsonAsync(page);
             Assert.Equal(3, pageBody.RootElement.GetProperty("total").GetInt32());
             Assert.Equal(2, pageBody.RootElement.GetProperty("items").GetArrayLength());
+            Assert.All(
+                pageBody.RootElement.GetProperty("items").EnumerateArray(),
+                item => Assert.False(item.TryGetProperty("sortOrder", out _)));
 
             using var searched = await Client.GetAsync("/admin/video-streams?search=Two", TestContext.Current.CancellationToken);
             using var searchedBody = await ReadJsonAsync(searched);
@@ -301,6 +304,9 @@ namespace Fluxy.IntegrationTests.Content
 
             using var invalidSort = await Client.GetAsync("/admin/video-streams?sortBy=sources", TestContext.Current.CancellationToken);
             await AssertCodeAsync(invalidSort, HttpStatusCode.BadRequest, "validation_failed");
+
+            using var removedSort = await Client.GetAsync("/admin/video-streams?sortBy=sortOrder", TestContext.Current.CancellationToken);
+            await AssertCodeAsync(removedSort, HttpStatusCode.BadRequest, "validation_failed");
 
             using var invalidFilter = await Client.GetAsync("/admin/video-streams?type=podcast", TestContext.Current.CancellationToken);
             await AssertCodeAsync(invalidFilter, HttpStatusCode.BadRequest, "validation_failed");

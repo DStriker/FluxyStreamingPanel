@@ -67,11 +67,17 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the groups.</summary>
         public const string EditUserGroupsPolicy = "Permission.EditUserGroups";
 
-        /// <summary>Policy that accepts an operator who may read the configured streams.</summary>
+        /// <summary>Policy that accepts an operator who may read the configured video streams.</summary>
         public const string ViewStreamsPolicy = "Permission.ViewStreams";
 
-        /// <summary>Policy that accepts an operator who may change the configured streams.</summary>
+        /// <summary>Policy that accepts an operator who may change the configured video streams.</summary>
         public const string EditStreamsPolicy = "Permission.EditStreams";
+
+        /// <summary>Policy that accepts an operator who may read the configured audio streams.</summary>
+        public const string ViewAudioStreamsPolicy = "Permission.ViewAudioStreams";
+
+        /// <summary>Policy that accepts an operator who may change the configured audio streams.</summary>
+        public const string EditAudioStreamsPolicy = "Permission.EditAudioStreams";
 
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
@@ -189,12 +195,14 @@ namespace Fluxy.API.Extensions
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditUserGroups)))
 
-                // The two stream policies are single-key rather than "any of", the way the
-                // group ones are: there is one list of streams and one screen that draws it,
-                // so unlike the accounts there is no second axis to be coarse about. The role
-                // requirement is still on top of the permission for the same reason it is on
-                // the group policies - a permission only means anything once the role gate
-                // ahead of it has already let the caller into the admin area.
+                // The stream policies are single-key rather than "any of", the way the group
+                // ones are: there is one list per medium and one screen that draws it, so
+                // unlike the accounts there is no second axis to be coarse about. Video and
+                // audio are separate pairs because they are separate screens and an operator
+                // may run one without the other. The role requirement is still on top of the
+                // permission for the same reason it is on the group policies - a permission
+                // only means anything once the role gate ahead of it has already let the
+                // caller into the admin area.
                 .AddPolicy(ViewStreamsPolicy, policy => policy
                     .RequireAuthenticatedUser()
                     .AddRequirements(
@@ -204,7 +212,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditStreams)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditStreams)))
+                .AddPolicy(ViewAudioStreamsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewAudioStreams)))
+                .AddPolicy(EditAudioStreamsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditAudioStreams)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

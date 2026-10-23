@@ -35,9 +35,11 @@ namespace Fluxy.IntegrationTests.Admin
                 .Select(value => value.GetString())
                 .ToArray();
 
-            Assert.Equal(10, adminPermissions.Length);
+            Assert.Equal(12, adminPermissions.Length);
             Assert.Contains("viewClients", adminPermissions);
             Assert.Contains("editStreams", adminPermissions);
+            Assert.Contains("viewAudioStreams", adminPermissions);
+            Assert.Contains("editAudioStreams", adminPermissions);
             Assert.Equal(1, adminBody.RootElement.GetProperty("members").GetInt32());
 
             using var clientDetail = await Client.GetAsync(

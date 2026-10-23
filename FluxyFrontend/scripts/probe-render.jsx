@@ -34,8 +34,12 @@ import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
 import VideoStreamFormPage from '../src/pages/admin/VideoStreamFormPage'
 import VideoStreamImportPage from '../src/pages/admin/VideoStreamImportPage'
+import AudioStreamsPage from '../src/pages/admin/AudioStreamsPage'
+import AudioStreamFormPage from '../src/pages/admin/AudioStreamFormPage'
+import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
+import AudioStreamStateCell from '../src/features/audio-streams/components/StreamStateCell'
 import { RowActions } from '../src/components/table'
 import TimeZoneCard from '../src/features/profile/components/TimeZoneCard'
 import LoginGuardCard from '../src/features/profile/components/LoginGuardCard'
@@ -1162,7 +1166,7 @@ async function main() {
   // - all eight columns keep their own width *in order*, summing to the same 1230 the
   //   other two tables hold beside the sidebar;
   // - every column carries a keyboard-reachable resize handle, and exactly three headers
-  //   sort - `type` and `sortOrder` are sort fields the endpoint honours but this table
+  //   sort - `type` is a sort field the endpoint honours but this table
   //   draws no column for, and the rest are never fields it orders by.
   const streamsHtml = renderToStaticMarkup(
     withRouter('/admin/video-streams', withQuery(
@@ -1420,6 +1424,276 @@ async function main() {
     `rendered ${streamEditHtml.length} bytes under the edit title with the spinner up`,
   )
 
+  // --- The audio streams ---------------------------------------------------------
+  //
+  // The second medium's own pages, asserted over the same facts the video ones are. The
+  // audio resource is deliberately a **separate** one - separate tables, separate
+  // permissions, separate routes - and the only way to keep two resources from quietly
+  // becoming one is to assert the differences rather than to trust them.
+  //
+  // The state cell first, for the same reason the video one is rendered directly: a
+  // column's `render` runs only once a row exists, and every table render below lands
+  // before the first answer arrives, so nothing else in this repository would notice the
+  // cell rendering nothing at all. The two words are the state and the kind, and the
+  // order is pinned - the state is the line a visitor scans for, the kind is the quieter
+  // line under it.
+  const audioStateHtml = renderToStaticMarkup(
+    <AntApp>
+      <AudioStreamStateCell status="Running" type="Redirect" />
+    </AntApp>,
+  )
+  check(
+    'the audio state cell draws the status and the kind of stream under it',
+    audioStateHtml.includes('Active') &&
+      audioStateHtml.includes('Redirect') &&
+      audioStateHtml.indexOf('Active') < audioStateHtml.indexOf('Redirect'),
+    `rendered ${audioStateHtml.length} bytes: ${audioStateHtml.slice(0, 220)}`,
+  )
+
+  // The audio table, which is the video table with one column fewer and a shorter bulk
+  // menu. The heading is its own rather than the menu item's, for the same reason the
+  // video one is: the menu says "Manage audio streams" and the card says "Audio streams",
+  // one naming how the visitor got there and one naming what is looked at.
+  const audioStreamsHtml = renderToStaticMarkup(
+    withRouter('/admin/audio-streams', withQuery(
+      <AntApp>
+        <AudioStreamsPage sectionKey="nav.items.audioStreamsManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the audio streams table draws its own heading, its toolbar and its table before any rows arrive',
+    audioStreamsHtml.includes('>Audio streams<') &&
+      audioStreamsHtml.includes('ant-table') &&
+      !audioStreamsHtml.includes('nav.items.audioStreamsManage'),
+    `rendered ${audioStreamsHtml.length} bytes with the list still being fetched`,
+  )
+
+  check(
+    'the audio streams toolbar offers the search, all three filters, the width reset and the way to add',
+    audioStreamsHtml.includes('Search by name') &&
+      audioStreamsHtml.includes('Any category') &&
+      audioStreamsHtml.includes('Any status') &&
+      audioStreamsHtml.includes('Any type') &&
+      audioStreamsHtml.includes('aria-label="Reset widths"') &&
+      audioStreamsHtml.includes('Add stream'),
+    audioStreamsHtml.includes('Add stream')
+      ? `rendered ${audioStreamsHtml.length} bytes`
+      : 'the add button went missing',
+  )
+
+  // The bulk menu, greyed while nothing is selected - and greyed for a second reason here:
+  // the probe has no profile answer, so the first paint is the *permission-less* one, which
+  // is exactly what an operator whose group holds no `editAudioStreams` sees.
+  const audioBulkButtons = [...audioStreamsHtml.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)]
+    .map((m) => m[0])
+    .filter((tag) => /<span[^>]*>Actions<\/span>/.test(tag))
+  check(
+    'the audio streams toolbar draws the bulk menu, greyed while nothing is selected',
+    audioBulkButtons.length === 1 && audioBulkButtons[0].includes('disabled'),
+    `${audioBulkButtons.length} button(s) labelled "Actions": ${
+      audioBulkButtons[0]?.slice(0, 180) ?? 'none'
+    }`,
+  )
+
+  // The auto-refresh, as an icon carrying its sentence rather than a word in the toolbar -
+  // the same decision as the video table's, and pinned for the same reason: a button that
+  // put the label back would push the table sideways in Russian.
+  const audioRefreshNameAt = audioStreamsHtml.indexOf('aria-label="Pause auto-refresh')
+  const audioRefreshButtonAt = audioStreamsHtml.lastIndexOf('<button', audioRefreshNameAt)
+  check(
+    'the audio auto-refresh is an icon whose accessible name carries the state and the interval',
+    audioRefreshNameAt !== -1 &&
+      audioRefreshNameAt > audioRefreshButtonAt &&
+      audioStreamsHtml.includes('30 seconds') &&
+      !audioStreamsHtml.includes('>Pause auto-refresh<'),
+    audioRefreshNameAt === -1
+      ? 'THE AUTO-REFRESH BUTTON HAS NO ACCESSIBLE NAME'
+      : `button at ${audioRefreshButtonAt}, name at ${audioRefreshNameAt}`,
+  )
+
+  // Eight columns: the 40px selection column the bulk toolbar acts through, then the seven
+  // this table has. The seven add up to 1190 and the checkbox takes them to the same 1230
+  // the accounts, the groups and the video streams tables reach, so all four fit beside the
+  // sidebar on one Full HD screen. `name` is 352 rather than the video table's 262 because
+  // the audio table has one column fewer and the room the EPG column gave up went to the
+  // one column nothing truncates a second time. The actions column is the one width that is
+  // not chosen: it is what the five buttons of a row need and not a pixel more.
+  const audioCols = [...audioStreamsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const audioWidths = audioCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const audioTotal = audioWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the audio streams table is fixed-layout with a selection column and its seven deliberate widths, in order',
+    /table-layout:\s*fixed/.test(audioStreamsHtml) &&
+      audioWidths.join(',') === '40,100,70,352,170,180,150,168' &&
+      audioTotal === 1230,
+    `${audioCols.length} columns: [${audioWidths.join(', ')}] = ${audioTotal}px`,
+  )
+
+  const audioHandles = [...audioStreamsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  check(
+    'every audio streams column carries a keyboard-reachable resize handle, named for resizing',
+    audioHandles.length === 7 &&
+      audioHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('tabindex="0"') &&
+          handle.includes('aria-label="Resize the '),
+      ),
+    `${audioHandles.length} handles: ${
+      audioHandles.map((h) => /aria-label="[^"]*"/.exec(h)?.[0]).join(' ') || 'none'
+    }`,
+  )
+
+  const audioHeaders = [...audioStreamsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'a sortable audio streams header keeps its own access, and exactly three of the seven sort',
+    audioHeaders.length === 8 &&
+      audioHeaders.filter((th) => th.includes('aria-description="sortable"')).length === 3 &&
+      audioHeaders.some((th) => th.includes('aria-label="Name"') && th.includes('tabindex="0"')),
+    `${audioHeaders.length} header cells, ${
+      audioHeaders.filter((th) => th.includes('aria-description="sortable"')).length
+    } sortable`,
+  )
+
+  // The audio form. The differences from the video form are the point of the assertion:
+  // an audio stream has no delay, no archive, no programme guide and no reference to a
+  // stored item - and a form that drew any of them would be asking the operator for
+  // something the server refuses, which is the one kind of wrong a field can be.
+  const audioFormHtml = renderToStaticMarkup(
+    withRouter('/admin/audio-streams/add', withQuery(
+      <AntApp>
+        <AudioStreamFormPage sectionKey="nav.items.audioStreamsAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the audio stream add form draws its own fields and none of the video-only ones',
+    audioFormHtml.includes('Add stream') &&
+      audioFormHtml.includes('Create') &&
+      audioFormHtml.includes('What it plays') &&
+      audioFormHtml.includes('Sources, in relay order') &&
+      audioFormHtml.includes('Add a source') &&
+      audioFormHtml.includes('Identity') &&
+      audioFormHtml.includes('Restreaming') &&
+      audioFormHtml.includes('Icon address') &&
+      audioFormHtml.includes('Enigma2 service id') &&
+      !audioFormHtml.includes('Delay (minutes)') &&
+      !audioFormHtml.includes('Delay and archive') &&
+      !audioFormHtml.includes('Programme guide') &&
+      !audioFormHtml.includes('EPG') &&
+      !audioFormHtml.includes('Archive') &&
+      !audioFormHtml.includes('Edit stream') &&
+      // No id field: the identifier does not exist until the row does, and the copy
+      // affordance is the one thing on this form that would give it away.
+      !audioFormHtml.includes('anticon-copy'),
+    `rendered ${audioFormHtml.length} bytes of the audio add form`,
+  )
+
+  // The category is the broader fact and the kind the narrower one, and the state sits
+  // between them - the same order as the video form (name, category, state, kind), asserted
+  // by the labels' own `title` attributes because that is the markup antd puts on a field
+  // label. A plain text search would match the hint or a placeholder as well.
+  const audioCategoryLabelAt = audioFormHtml.indexOf('title="Category"')
+  const audioTypeLabelAt = audioFormHtml.indexOf('title="Type"')
+  const audioStatusLabelAt = audioFormHtml.indexOf('title="Status"')
+  check(
+    'the audio form draws the category above the type, and the state above the type too',
+    audioCategoryLabelAt !== -1 &&
+      audioTypeLabelAt !== -1 &&
+      audioStatusLabelAt !== -1 &&
+      audioCategoryLabelAt < audioTypeLabelAt &&
+      audioStatusLabelAt < audioTypeLabelAt &&
+      audioFormHtml.includes('>Active<'),
+    `status label at ${audioStatusLabelAt}, category label at ${audioCategoryLabelAt}, type label at ${audioTypeLabelAt}`,
+  )
+
+  // The two kinds and their sentences. An audio stream has exactly two, and the form opens
+  // on the on-demand one - the kind that has a name and an address list, which is what this
+  // form exists to collect. The closed picker shows the chosen kind and the hint under it
+  // says what the choice means, so those two are what the render can see; the menu itself
+  // opens on a click, which no render here performs.
+  check(
+    'the audio form opens on the on-demand kind and draws its sentence, and none of the four video kinds',
+    audioFormHtml.includes('>On demand<') &&
+      audioFormHtml.includes('Relays from a list of addresses') &&
+      !audioFormHtml.includes('Permanent') &&
+      !audioFormHtml.includes('Video on demand') &&
+      !audioFormHtml.includes('Series') &&
+      !audioFormHtml.includes('File playlist'),
+    'the kind picker was checked for the two audio kinds and the absence of the four video ones',
+  )
+
+  // The import form. The playlist is the first field on it, for the same reason the video
+  // import's is: it is the one thing the page cannot work without. The create form's
+  // payload half must not be here - the name and the source list are exactly what the
+  // playlist supplies.
+  const audioImportHtml = renderToStaticMarkup(
+    withRouter('/admin/audio-streams/import', withQuery(
+      <AntApp>
+        <AudioStreamImportPage sectionKey="nav.items.audioStreamsImport" />
+      </AntApp>,
+    )),
+  )
+  const audioPlaylistLabelAt = audioImportHtml.indexOf('title="M3U playlist"')
+  const audioImportCategoryAt = audioImportHtml.indexOf('title="Category"')
+  check(
+    'the audio stream import form opens with the playlist and draws no name or source list',
+    audioImportHtml.includes('Import audio streams') &&
+      audioPlaylistLabelAt !== -1 &&
+      audioImportCategoryAt !== -1 &&
+      audioPlaylistLabelAt < audioImportCategoryAt &&
+      audioImportHtml.includes('title="Type"') &&
+      audioImportHtml.includes('Restreaming') &&
+      audioImportHtml.includes('>Import<') &&
+      !audioImportHtml.includes('title="Name"') &&
+      !audioImportHtml.includes('Sources, in relay order') &&
+      !audioImportHtml.includes('Add a source') &&
+      !audioImportHtml.includes('What it plays') &&
+      !audioImportHtml.includes('Delay and archive') &&
+      !audioImportHtml.includes('Permanent'),
+    `playlist label at ${audioPlaylistLabelAt}, category label at ${audioImportCategoryAt}, rendered ${audioImportHtml.length} bytes`,
+  )
+
+  // The edit address, which waits - the same rule as the video form: a form painted from
+  // whatever the previous screen happened to hold would edit the wrong row after a reload.
+  const audioEditHtml = renderToStaticMarkup(
+    withRoutes('/admin/audio-streams/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/audio-streams/:id',
+        element: withQuery(
+          <AntApp>
+            <AudioStreamFormPage sectionKey="nav.items.audioStreamsAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+  check(
+    'the audio stream edit address waits for the stream instead of drawing fields against nothing',
+    audioEditHtml.includes('Edit stream') &&
+      audioEditHtml.includes('ant-spin') &&
+      !audioEditHtml.includes('Create'),
+    `rendered ${audioEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // The raw-key failure, over the audio form this time. A key missing from **both** locale
+  // files is invisible to `tsc` - `en.ts` is what `Translation` is built from, so a key
+  // absent from it is absent from the type, and `ru.ts` being typed `: Translation` cannot
+  // complain either. A raw key is unmistakable in markup, so the check is a substring.
+  const audioNamePlaceholder = /<input[^>]*placeholder="([^"]*)"[^>]*>/.exec(audioFormHtml)?.[1]
+  check(
+    'the audio stream add form draws translated text rather than raw locale keys',
+    !audioFormHtml.includes('audioStreamsForm.') &&
+      !audioFormHtml.includes('audioStreams.') &&
+      Boolean(audioNamePlaceholder),
+    audioNamePlaceholder
+      ? `the name field asks for "${audioNamePlaceholder}" in ${audioFormHtml.length} bytes`
+      : 'NO PLACEHOLDER ON THE NAME FIELD - a key is being drawn instead',
+  )
+
   // All three stream items have to open the real pages, and the other three sections must
   // still open the placeholder - the rail deliberately offers real pages for this section
   // alone, and a `managePage` added to `series` by accident would be a table of video
@@ -1439,44 +1713,68 @@ async function main() {
     }, videoStreamsManage opens ${streamsManageModule?.default?.name ?? 'nothing'}`,
   )
 
+  // The audio section's own three items, and the same question asked of them: do they open
+  // the audio pages rather than the video ones? A loader copied from the video section by
+  // accident would open a video-streams table at an audio-streams address, and every check
+  // above would stay green about it - the rail would look right and the page would be
+  // somebody else's.
+  const [audioAddModule, audioImportModule, audioManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'audioStreamsAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'audioStreamsImport')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'audioStreamsManage')?.page?.(),
+  ])
+  check(
+    'the admin menu points its three audio stream items at the audio pages rather than the placeholder',
+    audioAddModule?.default === AudioStreamFormPage &&
+      audioImportModule?.default === AudioStreamImportPage &&
+      audioManageModule?.default === AudioStreamsPage,
+    `audioStreamsAdd opens ${audioAddModule?.default?.name ?? 'nothing'}, audioStreamsImport opens ${
+      audioImportModule?.default?.name ?? 'nothing'
+    }, audioStreamsManage opens ${audioManageModule?.default?.name ?? 'nothing'}`,
+  )
+
   // Import is the other way to add streams, so it sits immediately after the add form. A
   // rail that moved it below the table would describe it as a thing to look at rather than
-  // a thing to do. The other three sections must not grow an import item at all: their
-  // playlists have no importer, and one generated from the table would open a placeholder
-  // where this section has a real page.
+  // a thing to do. The two sections that have an importer carry it in the same place; the
+  // other two must not grow an import item at all: their playlists have no importer, and
+  // one generated from the table would open a placeholder where these have a real page.
   const streamItemKeys = flatItems('Admin')
     .filter((item) => item.key.startsWith('videoStreams'))
     .map((item) => item.key)
     .join(',')
-  const otherSectionsHaveNoImport = ['audioStreams', 'videoOnDemand', 'series'].every(
+  const audioStreamItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('audioStreams'))
+    .map((item) => item.key)
+    .join(',')
+  const otherSectionsHaveNoImport = ['videoOnDemand', 'series'].every(
     (sectionKey) => !flatItems('Admin').some((item) => item.key === `${sectionKey}Import`),
   )
   check(
-    'the playlist import sits immediately after the add form and only in the streams section',
+    'the playlist import sits immediately after the add form in both stream sections and nowhere else',
     streamItemKeys ===
       'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories' &&
+      audioStreamItemKeys ===
+        'audioStreamsAdd,audioStreamsImport,audioStreamsManage,audioStreamsCategories' &&
       otherSectionsHaveNoImport,
-    `${streamItemKeys}; other sections import: ${otherSectionsHaveNoImport ? 'no' : 'YES'}`,
+    `${streamItemKeys}; ${audioStreamItemKeys}; other sections import: ${
+      otherSectionsHaveNoImport ? 'no' : 'YES'
+    }`,
   )
 
-  // The other three sections keep their placeholders for `add` and `manage`: only
-  // `categories` is a real page for all four. Asserted because a loader added to any of
-  // them would render a video-streams table at an audio-streams address, and nothing else
-  // in this file would notice.
-  const otherSectionsStillPlaceholders = [
-    'audioStreams',
-    'videoOnDemand',
-    'series',
-  ].every((sectionKey) => {
+  // The other two sections keep their placeholders for `add` and `manage`: only
+  // `categories` is a real page for all four, and only the two stream sections have been
+  // built. Asserted because a loader added to either of them would render a table of
+  // streams at an address that is not theirs, and nothing else in this file would notice.
+  const otherSectionsStillPlaceholders = ['videoOnDemand', 'series'].every((sectionKey) => {
     const add = flatItems('Admin').find((item) => item.key === `${sectionKey}Add`)
     const manage = flatItems('Admin').find((item) => item.key === `${sectionKey}Manage`)
     return add?.page === undefined && manage?.page === undefined
   })
   check(
-    'the other three content sections still open the placeholder for add and manage',
+    'the two unbuilt content sections still open the placeholder for add and manage',
     otherSectionsStillPlaceholders,
     otherSectionsStillPlaceholders
-      ? 'audio, video-on-demand and series offer no add or manage page'
+      ? 'video-on-demand and series offer no add or manage page'
       : 'A SECTION OFFERS A REAL ADD OR MANAGE PAGE IT WAS NOT BUILT FOR',
   )
 
@@ -1615,6 +1913,7 @@ async function main() {
     groupsHtml,
     categoriesHtml,
     streamsHtml,
+    audioStreamsHtml,
     adminSessionsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))

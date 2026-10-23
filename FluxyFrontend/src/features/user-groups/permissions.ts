@@ -28,11 +28,13 @@ import type { Role, UserPermission } from '../../types'
  * - **`ALL_PERMISSIONS` has a stable order**, so the checkboxes appear in the same sequence
  *   the server, the seeder and the migration list them in. Sorting them differently here
  *   would be a second opinion about an order that was decided once, on purpose.
- * - **The last pair is not about accounts at all.** `viewStreams`/`editStreams` name the
- *   configured streams, so they sit in `ALL_PERMISSIONS` (a group form has to offer them)
- *   but in neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account
- *   being acted on, and a stream has no such role). `canView` and `canEdit` therefore stay
- *   a lookup over two three-entry maps rather than becoming a scan over the set.
+ * - **The last two pairs are not about accounts at all.** `viewStreams`/`editStreams` and
+ *   `viewAudioStreams`/`editAudioStreams` name the configured streams of one medium, so they
+ *   sit in `ALL_PERMISSIONS` (a group form has to offer them) but in neither `VIEW_FOR` nor
+ *   `EDIT_FOR` (those are keyed by the role of the account being acted on, and a stream has
+ *   no such role). `canView` and `canEdit` therefore stay a lookup over two three-entry maps
+ *   rather than becoming a scan over the set. The audio pair is deliberately not the video
+ *   pair: a group that may read the video streams may not read the audio ones.
  * - **Unknown is not a case.** Every value is a member of the union, so there is no branch
  *   for a name that means nothing - the server answers `validation_failed` with the list that
  *   does exist if a body ever carries one, and that is where the refusal belongs.
@@ -50,6 +52,8 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editUserGroups',
   'viewStreams',
   'editStreams',
+  'viewAudioStreams',
+  'editAudioStreams',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -64,6 +68,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editUserGroups: 'Admin',
   viewStreams: 'Admin',
   editStreams: 'Admin',
+  viewAudioStreams: 'Admin',
+  editAudioStreams: 'Admin',
 }
 
 /**

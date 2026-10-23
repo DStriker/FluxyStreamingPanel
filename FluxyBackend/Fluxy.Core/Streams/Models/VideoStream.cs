@@ -10,7 +10,7 @@ namespace Fluxy.Core.Streams.Models
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A stream is named, typed, filed under a category and ordered within it. Everything
+    /// A stream is named, typed and filed under a category. Everything
     /// else is either the answer to "what does it broadcast" (<see cref="Sources"/>,
     /// <see cref="Files"/>, <see cref="SeriesId"/>, <see cref="VodId"/> - exactly one of the
     /// four is used, decided by <see cref="Type"/>), or the answer to "how does it relay it"
@@ -117,13 +117,6 @@ namespace Fluxy.Core.Streams.Models
         /// can answer. Zero means no archive, which is the value every new stream starts with.
         /// </summary>
         public required int ArchiveDays { get; init; }
-
-        /// <summary>
-        /// Position among the streams of the same category, lowest first. Assigned when the
-        /// stream is created (after the current last one of the category) and re-assigned to the
-        /// end when the stream moves to another category.
-        /// </summary>
-        public required int SortOrder { get; init; }
 
         /// <summary>User agent the relayed requests carry, or null to send none.</summary>
         public string? RestreamUserAgent { get; init; }

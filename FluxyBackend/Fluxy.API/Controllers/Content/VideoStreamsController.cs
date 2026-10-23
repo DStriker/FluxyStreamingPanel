@@ -63,7 +63,7 @@ namespace Fluxy.API.Controllers.Content
 
         /// <summary>Sentence a column that names nothing gets.</summary>
         private const string SortByHint =
-            "The sort field must be one of: name, category, status, type, sortorder.";
+            "The sort field must be one of: name, category, status, type.";
 
         /// <summary>Sentence a direction that names nothing gets.</summary>
         private const string SortOrderHint = "The sort order must be either asc or desc.";
@@ -222,7 +222,7 @@ namespace Fluxy.API.Controllers.Content
         }
 
         /// <summary>
-        /// Creates a stream at the end of its category's list.
+        /// Creates a stream in its category.
         /// </summary>
         /// <param name="request">The stream to create.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -237,11 +237,9 @@ namespace Fluxy.API.Controllers.Content
         /// serves the address it names, and no mailed code stands between creation and
         /// addressability.
         ///
-        /// There is deliberately no <c>sortOrder</c> in the body. A new stream joins the end of
-        /// its category's list, and where the end is (the highest position of that category,
-        /// plus one) is the service's fact to read from the database - a caller naming a
-        /// position would be one stale screen away from overwriting a neighbour an operator
-        /// has just moved.
+        /// There is deliberately no <c>sortOrder</c> in the body. The order a stream is shown in
+        /// belongs to the list that shows it rather than to the row, so the request has no
+        /// position to name and the service has none to read.
         ///
         /// The body's other fields are judged by the service, not here: which of them a stream
         /// may carry at all is decided by its kind, and that rule belongs where every endpoint
@@ -589,10 +587,10 @@ namespace Fluxy.API.Controllers.Content
 
         /// <summary>Turns the name of a column into the field to order by, or nothing at all.</summary>
         /// <remarks>
-        /// Compared after lowering, so <c>SortOrder</c> and <c>sortorder</c> are the same
-        /// request. The accepted values are the only columns the table can honestly order by:
-        /// everything else it might want to show (which source is answering, for one) is a fact
-        /// a process reports and is not in the row at all.
+        /// Compared after lowering, so <c>Name</c> and <c>name</c> are the same request. The
+        /// accepted values are the only columns the table can honestly order by: everything
+        /// else it might want to show (which source is answering, for one) is a fact a process
+        /// reports and is not in the row at all.
         /// </remarks>
         private static VideoStreamSortField? ParseSortField(string? value) =>
             value?.Trim().ToLowerInvariant() switch
@@ -601,7 +599,6 @@ namespace Fluxy.API.Controllers.Content
                 "category" => VideoStreamSortField.Category,
                 "status" => VideoStreamSortField.Status,
                 "type" => VideoStreamSortField.Type,
-                "sortorder" => VideoStreamSortField.SortOrder,
                 _ => null
             };
 
@@ -708,8 +705,7 @@ namespace Fluxy.API.Controllers.Content
             CategoryName = item.CategoryName,
             LogoUrl = item.LogoUrl,
             ActiveSource = item.ActiveSource,
-            HasEpg = item.HasEpg,
-            SortOrder = item.SortOrder
+            HasEpg = item.HasEpg
         };
 
         private static AdminVideoStreamDetailResponse ToDetail(VideoStream stream) => new()
@@ -730,7 +726,6 @@ namespace Fluxy.API.Controllers.Content
             EpgChannelKey = stream.EpgChannelKey,
             HasEpg = stream.HasEpg,
             ArchiveDays = stream.ArchiveDays,
-            SortOrder = stream.SortOrder,
             RestreamUserAgent = stream.RestreamUserAgent,
             RestreamProxy = stream.RestreamProxy,
             RestreamCookies = stream.RestreamCookies,

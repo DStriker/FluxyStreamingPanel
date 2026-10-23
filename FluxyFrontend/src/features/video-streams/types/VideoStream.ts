@@ -2,7 +2,7 @@ import type { VideoStreamStatus } from './VideoStreamStatus'
 import type { VideoStreamType } from './VideoStreamType'
 
 /**
- * One row of the streams table: the ten things a line of it draws, and nothing else.
+ * One row of the streams table: the nine things a line of it draws, and nothing else.
  *
  * `GET /admin/video-streams` answers with these. Kind and state travel as the name of the
  * enum member - `Permanent`, `Running` - the same spelling the accounts table spells its
@@ -40,6 +40,4 @@ export interface VideoStream {
   activeSource: string | null
   /** Whether the stream carries a programme guide at all. */
   hasEpg: boolean
-  /** Position among the streams of the same category, lowest first. */
-  sortOrder: number
 }

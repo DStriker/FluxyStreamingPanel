@@ -78,17 +78,18 @@ interface NavGroup {
  * drifting: a fifth kind is one entry here plus its labels in the locale files, not a
  * hand-written fourth of a rail.
  *
- * `categories` is a real page for all four. `add` and `manage` are real pages for
- * **`videoStreams` alone** - this pass built the streams table and its form - and carry no
- * `page` for the other three, so the router renders `SectionPage` for them: the placeholder
- * that says the section is still under construction, which is the honest answer for entries
- * this pass deliberately did not build. Their menu keys exist either way, so filling them in
- * later is one optional loader away rather than a re-reading of the rail.
+ * `categories` is a real page for all four. `add` and `manage` are real pages for the
+ * **streams and the audio streams** sections - this pass built the video streams table and
+ * its form, then the audio ones - and carry no `page` for the other two, so the router
+ * renders `SectionPage` for them: the placeholder that says the section is still under
+ * construction, which is the honest answer for entries this pass deliberately did not build.
+ * Their menu keys exist either way, so filling them in later is one optional loader away
+ * rather than a re-reading of the rail.
  *
- * `import` is a fourth entry only the streams section carries, and it sits immediately after
- * `add`: reading a playlist is the other way to add streams, not a fourth thing to look at.
- * It is optional for the same reason the other loaders are - the three sections without an
- * import page must not grow a placeholder where this one has a real page.
+ * `import` is a fourth entry only the two stream sections carry, and it sits immediately
+ * after `add`: reading a playlist is the other way to add streams, not a fourth thing to
+ * look at. It is optional for the same reason the other loaders are - the two sections
+ * without an import page must not grow a placeholder where these have a real page.
  *
  * The optional loaders are typed by an interface rather than inferred from `as const`,
  * because an array of objects where only one carries a field is a *union* of two shapes and
@@ -130,6 +131,9 @@ const CONTENT_SECTIONS: ContentSection[] = [
     labelKey: 'nav.groups.audioStreams',
     icon: CustomerServiceOutlined,
     categoriesPage: () => import('../pages/admin/ContentCategoriesPage'),
+    addPage: () => import('../pages/admin/AudioStreamFormPage'),
+    importPage: () => import('../pages/admin/AudioStreamImportPage'),
+    managePage: () => import('../pages/admin/AudioStreamsPage'),
   },
   {
     key: 'videoOnDemand',

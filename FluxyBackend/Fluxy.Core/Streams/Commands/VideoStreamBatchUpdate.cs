@@ -8,7 +8,7 @@ namespace Fluxy.Core.Streams.Commands
     /// <remarks>
     /// Only the fields an import may change travel here: status, type, delay, archive length,
     /// restream settings, and one optional source to append. Name, logo, programme guide,
-    /// Enigma2 service id, category and the position all stay as they are.
+    /// Enigma2 service id and category all stay as they are.
     /// </remarks>
     public sealed record VideoStreamBatchUpdate
     {

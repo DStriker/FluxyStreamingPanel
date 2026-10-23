@@ -26,6 +26,12 @@
  * particular account - which is why they are a pair of their own rather than three. The
  * backend keeps them at 1024 and 2048, the first free values above the account pair.
  *
+ * **The audio pair is the same question asked about another medium.**
+ * `viewAudioStreams`/`editAudioStreams` gate the audio streams table, its form and its
+ * import, and they are deliberately *not* the video pair: a group that may watch the video
+ * streams may not touch the audio ones, and one that may edit the audio ones may not touch
+ * the video ones. The backend keeps them at 4096 and 8192.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -41,3 +47,5 @@ export type UserPermission =
   | 'editUserGroups'
   | 'viewStreams'
   | 'editStreams'
+  | 'viewAudioStreams'
+  | 'editAudioStreams'

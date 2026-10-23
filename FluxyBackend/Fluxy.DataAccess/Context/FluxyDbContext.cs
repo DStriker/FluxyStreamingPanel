@@ -79,6 +79,18 @@ namespace Fluxy.DataAccess.Context
         /// <summary>One file a stream plays, in the order it plays them.</summary>
         public DbSet<VideoStreamFileEntity> VideoStreamFiles => Set<VideoStreamFileEntity>();
 
+        /// <summary>
+        /// Configured audio streams. Each names the category it is filed under and the kind of
+        /// stream it is, and carries its source list as rows of their own.
+        /// </summary>
+        public DbSet<AudioStreamEntity> AudioStreams => Set<AudioStreamEntity>();
+
+        /// <summary>
+        /// One address an audio stream relays from, in the order the stream uses them. The set
+        /// of rows a stream has is its whole failover chain.
+        /// </summary>
+        public DbSet<AudioStreamSourceEntity> AudioStreamSources => Set<AudioStreamSourceEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

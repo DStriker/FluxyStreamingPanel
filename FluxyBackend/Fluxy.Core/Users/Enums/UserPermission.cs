@@ -27,11 +27,13 @@ namespace Fluxy.Core.Users.Enums
     /// </para>
     /// <para>
     /// <b>The stream permissions are not split that way, because a stream is not an account.</b>
-    /// There is one <see cref="ViewStreams"/> and one <see cref="EditStreams"/> and nothing
-    /// narrower, for the same reason the content categories carry no permission at all: there
-    /// is one installation-wide list of streams and one screen that draws it, so there is no
-    /// second axis to split along. They are a pair rather than a single key so that a group
-    /// which may watch the streams and a group which may run them stay two grants.
+    /// There is one <see cref="ViewStreams"/> and one <see cref="EditStreams"/> for video
+    /// streams, and one <see cref="ViewAudioStreams"/> and one <see cref="EditAudioStreams"/>
+    /// for audio streams, with nothing narrower. The two media are separate pairs because they
+    /// are separate screens and an operator may run one without the other; within a media there
+    /// is one installation-wide list and one screen that draws it, so there is no second axis
+    /// to split along. Each pair keeps the read and write grants apart so that a group which
+    /// may watch a list and a group which may run it stay two grants.
     /// </para>
     /// <para>
     /// The numeric values are powers of two and are stored in <c>user_group_permissions</c>,
@@ -92,15 +94,27 @@ namespace Fluxy.Core.Users.Enums
         EditAdmins = 512,
 
         /// <summary>
-        /// May read the configured streams: the streams table and one stream in full.
+        /// May read the configured video streams: the streams table and one stream in full.
         /// </summary>
         ViewStreams = 1024,
 
         /// <summary>
-        /// May change the configured streams: create, edit, start, stop and delete them.
+        /// May change the configured video streams: create, edit, start, stop and delete them.
         /// Separate from <see cref="ViewStreams"/> so that a group which may watch the streams
         /// and a group which may run them are two different grants rather than one.
         /// </summary>
-        EditStreams = 2048
+        EditStreams = 2048,
+
+        /// <summary>
+        /// May read the configured audio streams: the streams table and one stream in full.
+        /// </summary>
+        ViewAudioStreams = 4096,
+
+        /// <summary>
+        /// May change the configured audio streams: create, edit, start, stop and delete them.
+        /// Separate from <see cref="ViewAudioStreams"/> for the reason <see cref="EditStreams"/>
+        /// gives.
+        /// </summary>
+        EditAudioStreams = 8192
     }
 }

@@ -20,7 +20,7 @@ import type { VideoStreamValues } from '../../features/video-streams/api'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
-import SourceListEditor from '../../features/video-streams/components/SourceListEditor'
+import SourceListEditor from '../../components/SourceListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import {
   useCreateVideoStream,

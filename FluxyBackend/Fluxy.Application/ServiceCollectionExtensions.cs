@@ -89,6 +89,15 @@ namespace Fluxy.Application
             // rather than restating them.
             services.AddScoped<IVideoStreamImportService, VideoStreamImportService>();
 
+            // Audio streams are their own aggregate with the same three services and the same
+            // shape. They are separate types rather than a generic stream service because the
+            // two resources differ in their payload: a video stream's kind decides which list
+            // it carries, while an audio stream has one list whatever its kind. A shared
+            // abstraction would have to be told which of those two rules it is following.
+            services.AddScoped<IAudioStreamService, AudioStreamService>();
+            services.AddScoped<IAudioStreamBulkService, AudioStreamBulkService>();
+            services.AddScoped<IAudioStreamImportService, AudioStreamImportService>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();

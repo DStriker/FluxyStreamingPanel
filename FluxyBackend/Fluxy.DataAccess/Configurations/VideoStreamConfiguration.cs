@@ -117,10 +117,6 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("archive_days")
                 .IsRequired();
 
-            builder.Property(stream => stream.SortOrder)
-                .HasColumnName("sort_order")
-                .IsRequired();
-
             builder.Property(stream => stream.RestreamUserAgent)
                 .HasColumnName("restream_user_agent")
                 .HasMaxLength(RestreamUserAgentMaxLength);
@@ -174,10 +170,6 @@ namespace Fluxy.DataAccess.Configurations
             // forbidding the second because the first exists would be a rule about nothing.
             builder.HasIndex(stream => new { stream.CategoryId, stream.Name })
                 .IsUnique();
-
-            // The read this table exists for: one category's streams, in the order the table
-            // shows them. The category leads so the index answers it as a range scan.
-            builder.HasIndex(stream => new { stream.CategoryId, stream.SortOrder });
 
             // The two filters the table offers, each narrow on its own.
             builder.HasIndex(stream => stream.Status);

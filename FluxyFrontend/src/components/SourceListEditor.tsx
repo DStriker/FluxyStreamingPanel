@@ -5,7 +5,7 @@ import {
   DeleteOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
-import { hinted } from '../../../utils/hinted'
+import { hinted } from '../utils/hinted'
 
 /**
  * The three per-entry buttons as one strip, so the entry beside them reads as the thing
@@ -76,13 +76,19 @@ const EntryActions = ({
  * The `Form.List` carries the **whole-list rule** - at least one entry has to be filled in
  * - because that is a question about the list and not about any one of its entries, so the
  * entries themselves stay free to be blank while the visitor is still filling them out. The
- * server asks the same question with the same answer (`VideoStreamService.HasUsableEntries`),
- * so this is the same rule told before the request rather than explained after one.
+ * server asks the same question with the same answer (`VideoStreamService.HasUsableEntries`
+ * and its audio twin), so this is the same rule told before the request rather than
+ * explained after one.
  *
  * Blank entries are dropped rather than sent: an entry nobody filled in is not a source,
  * and the server refuses a list containing *any* blank entry rather than silently ignoring
  * it. What is left is then either empty - which is exactly the refusal the rule above gives,
  * with the list named - or a clean list the columns can hold.
+ *
+ * It lives in `src/components/` rather than in either stream feature because it knows
+ * nothing about streams: it is a list of text fields with three buttons and a whole-list
+ * rule, and both the video and the audio forms draw it. A feature may not import another
+ * feature, so the one control they share belongs to the shared tree.
  */
 interface SourceListEditorProps {
   /** Where the list lives in the form: `['sources']` or `['files']`. */

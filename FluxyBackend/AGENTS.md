@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 180 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 86 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 266 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 210 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 116 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 326 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -68,7 +68,7 @@ Fluxy.Core/
   Users/             Models 5 · Rows 4 · ReadModels 8 · Commands 9 · Outcomes 9 · Enums 17 · Utils 8 · Interfaces 7 · Repositories 4
   Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1
   Content/           Models 1 · Commands 3 · Enums 3 · Utils 1 · Interfaces 1 · Repositories 1
-  Streams/           Models 1 · ReadModels 2 · Commands 6 · Outcomes 6 · Enums 10 · Utils 6 · Interfaces 3 · Repositories 1
+  Streams/           Models 2 · Rows 2 · ReadModels 4 · Commands 13 · Outcomes 11 · Enums 17 · Utils 10 · Interfaces 6 · Repositories 2
 ```
 
 **The domain is decided by what the type is about, not by who reads it.** `IGeoIpResolver` is GeoIP because it answers a question about an address; `ILoginGuardService` is Users because the allow lists belong to an account and GeoIP is only where the answer comes from; `ITokenRevocationStore` is Authentication because it ends a session, not because it is a "security" thing.
@@ -90,7 +90,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else.** It has **nine** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream` (Streams), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
+**`Models/` holds the business model and nothing else.** It has **ten** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
 
 **One type per file.** Twelve files used to hold two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -110,10 +110,10 @@ Fluxy.API/
     Support/                  stateless helpers plus the scoped AttemptLimiter and CaptchaGuard
     Auth/                     guest, profile and session controllers; AuthControllerBase adds ClientAddress
     Admin/                    accounts, groups, admin sessions
-    Content/                  content categories, video streams
+    Content/                  content categories, video streams, audio streams
 ```
 
-**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds only `ClientAddress` for the `Auth` controllers, and the two guest checks are composed as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset and profile). `SessionsController`, `Admin` and `Content` therefore never inject a throttle they would not use. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
+**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions` in `Admin/`, `admin/content-categories|video-streams|audio-streams` in `Content/` — and its namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). A file is split by a **seam** (a separate resource or a separate request shape), not by length: `ProfileController` gave the session history to `SessionsController`, `UsersController` and `UserGroupsController` gave their bulk endpoints their own controllers, while one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery and `NoStore`); `AuthControllerBase` adds only `ClientAddress` for the `Auth` controllers, and the two guest checks are composed as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset and profile). `SessionsController`, `Admin` and `Content` therefore never inject a throttle they would not use. Contracts follow the same split and live in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
 
 **The envelope is API-owned, including the framework's own refusals.** Every action answers with `{ code, message }`, and the two paths that never reach an action are covered by the same shape: an unhandled exception is `500 server_error` through `ApiExceptionHandler`, and a bodyless 404/405/415 is `not_found` / `method_not_allowed` / `unsupported_media_type` through `UseFluxyStatusCodePages()`. Both write `Cache-Control: no-store`; the exception itself is logged and never sent to the client. Development keeps `UseDeveloperExceptionPage` for 500s, and the handler is placed only on the other branch.
 
@@ -132,7 +132,7 @@ Fluxy.Application/
   Content/         Services 1
   Email/           Services 1 · Options 1
   Security/        Services 1 · Options 1
-  Streams/         Services 3 · Utils 1
+  Streams/         Services 6 · Utils 2
   Users/           Services 9 · Utils 8 · Options 1
 ```
 
@@ -1027,11 +1027,14 @@ from a `PATCH`.
   *valid* permission the chosen role does not own (`viewClients` on a Client group) is **dropped**
   — that is a client describing a group, and the server already knows what a Client group may
   hold. The catalog is `[Flags]` powers of two stored as `smallint` in
-  `user_group_permissions`, and it now has **ten** members in three groups: the two
+  `user_group_permissions`, and it now has **twelve** members in three groups: the two
   **group-management** keys (`ViewUserGroups=4`, `EditUserGroups=8`), the six **account** keys
   split by the role of the account they act on (`ViewClients=16, ViewResellers=32,
-  ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), and the two **stream**
-  keys (`ViewStreams=1024`, `EditStreams=2048`). All ten are owned by `Admin`, so
+  ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), and the four **stream**
+  keys — the video pair (`ViewStreams=1024`, `EditStreams=2048`) and the audio pair
+  (`ViewAudioStreams=4096`, `EditAudioStreams=8192`), which are deliberately **not** the same
+  pair: a group that may watch the video streams may not watch the audio ones. All twelve are
+  owned by `Admin`, so
   `permissionsForRole` on the frontend answers an empty set for Client and Reseller and their
   form shows a note instead of boxes.
   - **The account keys start at 16, not at 1.** The values `1` and `2` were the retired
@@ -1044,6 +1047,10 @@ from a `PATCH`.
     content categories carry no permission at all: one installation-wide list of streams, one
     screen that draws it, no second axis to split along. They are a pair rather than one key so
     that a group which may watch the streams and a group which may run them stay two grants.
+    The audio pair is a **second** such pair rather than a widening of the first: the two
+    media are two resources with two tables and two routes, and a grant that named both would
+    be a grant to a thing nobody can administer — the group form would then offer one box for
+    two screens and neither screen could be locked away on its own.
   - **Adding a permission needs no migration.** The catalog is code; the base groups are
     reconciled with it at startup (the bullet below), so a new member appears on the
     Administrators row on the next boot. It does need a line in `UserPermissionCatalog.Owner`
@@ -1174,8 +1181,8 @@ two `UPDATE`s and the create reads `max(sort_order)` in its own query.
 
 ## The video streams API: `admin/video-streams`
 
-The first piece of the relaying domain. A stream is a named, typed, ordered entry that the
-relay process plays; the playing itself is not in this API.
+The first piece of the relaying domain. A stream is a named, typed entry that the relay
+process plays; the playing itself is not in this API. A stream has no position of its own.
 
 | Endpoint | Auth | Answer |
 | --- | --- | --- |
@@ -1207,9 +1214,7 @@ relay process plays; the playing itself is not in this API.
   treats an absent value as "keep", which is what lets the bulk service patch other fields
   without reviving or halting a stream. `start`/`stop`/`restart` remain the three table
   transitions that write the same row fact. `activeSource` is never written by the service at
-  all: the relaying process reports it and nothing else. `sortOrder` is never caller-supplied; a
-  create reads `max(sort_order)` of its category server-side, and a category change moves the
-  stream to the end of the new one (the old category keeps its gaps, the way a deletion does).
+  all: the relaying process reports it and nothing else.
 - **A name is unique within its category** (`UNIQUE(category_id, name)`), compared exactly and
   case sensitively like username and email. A lost race is caught and mapped to
   `409 video_stream_already_exists` naming `name`.
@@ -1221,10 +1226,19 @@ relay process plays; the playing itself is not in this API.
 - **No captcha, no attempt window** — the recorded admin-area departure: every write is behind
   an `AdminOnly` session plus the `EditStreams` permission and a fresh antiforgery pair, and
   `RejectsCsrfAsync()` runs before any body is read.
+- **There is no stream position, in the schema or in a write.** `video_streams.sort_order`
+  was dropped by `20261023121109_DropVideoStreamSortOrder`; the order a stream is shown in
+  belongs to the list that shows it, and when bouquets arrive it belongs to the membership
+  rather than to the stream row. A create therefore appends nothing, a category change moves
+  nothing, and a playlist's order is not a display order — the list is ordered by the query.
+  The migration drops `IX_video_streams_category_id_sort_order` with the column; the unique
+  `IX_video_streams_category_id_name` already answers the category filter, so no replacement
+  index is needed. `Down` recreates the column at `0` and the index, but cannot restore the
+  positions that were there.
 - **The list is paged** (`total` counted before paging, the same "the pager must not lie" rule
   the accounts and session histories follow), `search` is a case-insensitive substring of the
-  name, and the sort fields are the column keys — `name`, `category`, `status`, `type`,
-  `sortOrder` — parsed from plain text case-insensitively. `pageSize` defaults to 20 and is
+  name, and the sort fields are the column keys — `name`, `category`, `status` and `type` —
+  parsed from plain text case-insensitively. `pageSize` defaults to 20 and is
   refused above **1000**, the same ceiling as every other paged table; that ceiling is also
   what lets the table's "select everything" checkbox hand one whole page to the bulk endpoint.
 
@@ -1307,9 +1321,8 @@ seam that gave the bulk endpoint its own controller.
   (`video_stream_already_exists`); an unusable title, source or parser line is **failed**
   (`validation_failed`). Existing streams are never updated: the only names the service reads
   are the ones it must refuse, and every surviving entry becomes a new row.
-- **One save writes the batch, in playlist order, at the end of the category.** The service
-  reads `max(sort_order)` once, stages every row through `AddRangeAsync` and calls
-  `TrySaveAsync` once. A name another request took between the check and the save is
+- **One save writes the batch.** The service stages every row through `AddRangeAsync` and
+  calls `TrySaveAsync` once. A name another request took between the check and the save is
   `409 video_stream_import_conflict` and **nothing** from the batch is written; the check
   matches `IX_video_streams_category_id_name` by name, so any other unique violation is
   rethrown rather than announced as a taken name. No migration: the import writes the same
@@ -1320,7 +1333,7 @@ seam that gave the bulk endpoint its own controller.
   field named. The file limit is 10 MiB and one import accepts 5000 entries.
 
 The parser is covered by twelve unit tests; the endpoint by four integration tests — a mixed
-playlist (one imported, two skipped, one failed) with its counts and stored order, an empty
+playlist (one imported, two skipped, one failed) with its counts and stored rows, an empty
 playlist and an HLS one refused whole, a missing file and a type the import cannot use, and a
 request without the antiforgery pair refused before the file is read.
 
@@ -1341,7 +1354,8 @@ Layering follows the usual split: `VideoStream` in `Fluxy.Core/Streams/Models/`,
 `VideoStreamImportService` in `Fluxy.Application/Streams/Services/` and the
 `VideoStreamRules` helper in `Fluxy.Application/Streams/Utils/`, the three entities and their
 configurations in
-`Fluxy.DataAccess/` (migration `20261014125324_AddVideoStreams`), the contracts in
+`Fluxy.DataAccess/` (migrations `20261014125324_AddVideoStreams` and
+`20261023121109_DropVideoStreamSortOrder`), the contracts in
 `Fluxy.API/Contracts/Streams/` plus `BulkItemWarningResponse` in
 `Fluxy.API/Contracts/Common/`, `VideoStreamsController`, `VideoStreamsBulkController` and
 `VideoStreamsImportController` in `Fluxy.API/Controllers/Content/`.
@@ -1384,6 +1398,168 @@ intact; a same-name `PATCH` → `200` (the exclusion that lets a rename keep its
 rename to a free name → `200`; `start` twice → `200` both times; `archiveDays` on a
 non-Permanent kind → `400` naming it; a half guide → `400` naming both fields; `delete` →
 `200`, `delete` again → `404`.
+
+## The audio streams API: `admin/audio-streams`
+
+The second medium's streams, built as a **separate resource** rather than as a third kind of
+the video one. The route is `admin/audio-streams`, the tables are `audio_streams` and
+`audio_stream_sources`, and the permissions are `ViewAudioStreams` / `EditAudioStreams` —
+deliberately **not** the video pair. A group that may read the video streams may not read the
+audio ones, and the table's `editAudioStreams` gate is the only thing standing between "may
+watch" and "may change".
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/audio-streams` | `Permission.ViewAudioStreams` | page: `page`, `pageSize`, `search`, `categoryId`, `status`, `type`, `sortBy`, `sortOrder` |
+| `GET /admin/audio-streams/{id}` | `Permission.ViewAudioStreams` | one stream with its `sources`; `404 audio_stream_not_found` |
+| `POST /admin/audio-streams` | CSRF + `Permission.EditAudioStreams` | `201 audio_stream_created` + relative `Location` |
+| `PATCH /admin/audio-streams/{id}` | CSRF + `Permission.EditAudioStreams` | `200 audio_stream_updated` |
+| `POST /admin/audio-streams/{id}/start` / `…/stop` / `…/restart` | CSRF + `Permission.EditAudioStreams` | `audio_stream_started` / `audio_stream_stopped` / `audio_stream_restarted` |
+| `POST /admin/audio-streams/bulk` | CSRF + `Permission.EditAudioStreams` | `200 audio_streams_bulk_completed`, one entry per identifier |
+| `POST /admin/audio-streams/import` | CSRF + `Permission.EditAudioStreams` | `200 audio_streams_import_completed`, counts and per-line problems |
+| `DELETE /admin/audio-streams/{id}` | CSRF + `Permission.EditAudioStreams` | `200 audio_stream_deleted`, `404` on a second |
+
+### Two kinds, and the payload they share
+
+`AudioStreamType` is **exactly two members**: `OnDemand = 1` and `Redirect = 2`. Both are
+**URL kinds** — both relay from the same ordered `sources` list, so the type decides *how* the
+stream runs and never *what* it carries. That single fact is what makes the audio resource
+simpler than the video one, and every difference below follows from it:
+
+- **There is no kind whose payload another kind can switch off.** So there is no delay, no
+  archive, no VOD id, no series id and no EPG pair — and therefore **no bulk warning
+  vocabulary** either. A video bulk run may answer `video_stream_delay_cleared` or
+  `video_stream_archive_cleared` beside its refusals; an audio bulk answer carries **no
+  warnings at all**, and the frontend's `useBulkAction` is given only a `partialTitleKey`.
+- **A bulk type change may choose either kind** and clears nothing. The video menu had to
+  leave three kinds out because their payload could not be invented; the audio menu offers
+  both.
+- **The source list is replaced wholesale, in the order sent**, exactly as the video one is —
+  absent keeps, empty clears, a list replaces. An empty list is **refused** for a URL kind
+  ("add at least one source address"), because a stream with no source could never play.
+- **`LogoUrl`, `Enigma2Sid` and all four `Restream*` fields are kept**, and both kinds carry
+  them, so nothing on the form is ever greyed out for a kind that cannot hold it.
+
+`AudioStreamStatus` is `Stopped = 0` / `Running = 1`, and like `UserStatus` it is **not
+ordered** — a check is for the exact member, never a comparison.
+
+### What else is the same, and what is not
+
+- **A name is unique within its category**, compared exactly and case sensitively like
+  username and email: `UNIQUE(category_id, name)`, index `IX_audio_streams_category_id_name`.
+  The lost race is caught and mapped to `409 audio_stream_already_exists` naming `name` —
+  and, as with the video streams, **only that exact constraint name** counts. A violation of
+  `IX_audio_stream_sources_stream_id_position` is a bug in the list writer and is rethrown,
+  never dressed up as a taken name.
+- **The update loads the sources collection** before replacing it
+  (`.Include(entry => entry.StreamSources)`), for the reason the video `UpdateAsync` had to be
+  fixed for: an unloaded `ICollection` navigation reads as **empty**, so the comparison always
+  differed, nothing was removed and the fresh rows collided with the ones still in the table.
+- **The category must exist and must be `ContentType.AudioStream`.** A category of another
+  kind is refused — the audio streams are filed under audio categories, and the same table
+  holds video categories.
+- **`activeSource` is read-only.** No service writes it; the relaying process reports it.
+- **The list is paged** (`total` counted before paging, the same "the pager must not lie"
+  rule), `search` is a case-insensitive substring of the name, `pageSize` defaults to 20 and
+  is refused above **1000**, and the search string is refused above **200**. The sort fields
+  are `name`, `category`, `status` and `type`, parsed from plain text case-insensitively.
+- **There is no `sort_order` column.** A stream has no position of its own — the order a
+  stream is shown in belongs to the list that shows it, and a playlist's order is the order
+  the relay plays in, not a display order.
+- **No captcha and no attempt window** — the recorded admin-area departure: every write is
+  behind an admin session, the `EditAudioStreams` permission and a fresh antiforgery pair,
+  and `RejectsCsrfAsync()` runs before any body is read.
+
+### The bulk menu: seven operations, not nine
+
+`BulkAudioStreamAction` is `Start`, `Stop`, `Restart`, `Delete`, `MoveCategory`, `ChangeType`
+and `ChangeRestream`. The video endpoint's five extra operations (`change-delay`,
+`change-archive`, and the file-list and series/vod edits) have no audio counterpart, because
+an audio stream has no such field to write. The restream operation replaces all four
+settings as a group — a blank value clears its setting — which is the same whole-list rule the
+single-row form follows, in the same request shape.
+
+The body is validated **before any row is read**: the action is matched case-insensitively and
+with hyphens, the identifiers must be 1..1000 uuids and duplicates collapse, and the value an
+action needs must be present and usable. A body that breaks any of those answers
+`400 validation_failed` naming every broken field at once. `RejectsCsrfAsync()` runs **before**
+the body is parsed, so a stale pair is `csrf_invalid` rather than a validation answer.
+
+A well-formed run answers `200 audio_streams_bulk_completed` with `succeeded`, `failed` and one
+`items` entry per identifier; each entry carries the very code the single-row endpoint would
+answer, `ok` read off the status that code maps to, and `errors` keyed by camelCase field
+name. A category move that collides with a name already used there refuses **that row alone**
+with `audio_stream_already_exists`; the others still move. Partial success is the shape.
+
+### The playlist import
+
+`POST /admin/audio-streams/import` is a multipart form with the file in `playlist` and the
+settings beside it: `type`, `status`, `categoryId`, the four `restream*` fields,
+`appendSourceToExisting` and `overwriteExistingSettings`. **The parser is shared with the
+video import** (`M3uPlaylistParser`) and the entry limit is passed to it explicitly
+(`AudioStreamImportLimits.MaxEntries` = 5000) rather than relying on its default; the file
+limit is 10 MiB.
+
+- **The kind offers only `OnDemand` and `Redirect`** — both relay from a list of addresses,
+  which is exactly what a playlist supplies, so there is no kind the service would refuse.
+- **Status starts at `Stopped`**, the endpoint's own default and the safe state for a batch of
+  thousands.
+- **There is no delay and no archive** on the form, for the same reason the kind menu is
+  short.
+- **The batch is partial success by design**: `imported + skipped + failed == total`, and
+  every entry that did not land is in `problems` with its line, name, code and field errors. A
+  name already used in the category or repeated within the file is **skipped**
+  (`audio_stream_already_exists`); an unusable title, source or parser line is **failed**
+  (`validation_failed`). Existing streams are never updated unless the operator opts in.
+- **One save writes the batch.** The service stages every row through `AddRangeAsync` and calls
+  `TrySaveAsync` once. A name another request took between the check and the save is
+  `409 audio_stream_import_conflict` and **nothing** from the batch is written; the check
+  matches `IX_audio_streams_category_id_name` by name, so any other unique violation is
+  rethrown.
+
+### The two permissions, and what they do not migrate
+
+`UserPermission` grew `ViewAudioStreams = 4096` and `EditAudioStreams = 8192` — the two free
+values above the stream pair at 1024 and 2048. **Adding a permission needs no migration**: the
+catalog is code, and the base groups are reconciled with it at startup. The Administrators row
+gains the two grants on the next boot; **an existing custom administrator group has to be
+granted them by hand**, because the seeder only reconciles the three base groups. The values
+`1` and `2` remain retired and unused.
+
+`ContentCategoryRepository.CountStreamsAsync` now counts **both** media: the question the
+caller is asking is "may this category go?", and a category holding an audio stream is as
+much in use as one holding a video stream.
+
+### Layering
+
+`AudioStream` in `Fluxy.Core/Streams/Models/`, `AudioStreamListItem` / `AudioStreamPage` in
+`ReadModels/`, `NewAudioStream` / `AudioStreamPatch` / `AudioStreamWrite` /
+`BulkAudioStreamOperation` / `NewAudioStreamImport` / `AudioStreamBatchUpdate` in `Commands/`,
+`AudioStreamType` / `AudioStreamStatus` / `AudioStreamAction` / `AudioStreamSortField` /
+`AudioStreamSortOrder` / `BulkAudioStreamAction` / `AudioStreamImportStatus` in `Enums/`,
+`AudioStreamOutcome` / `BulkAudioStreamItemResult` / `BulkAudioStreamOutcome` /
+`AudioStreamImportOutcome` / `AudioStreamImportProblem` in `Outcomes/`, the four limits
+classes in `Utils/`, and `IAudioStreamService` / `IAudioStreamBulkService` /
+`IAudioStreamImportService` / `IAudioStreamRepository` in `Interfaces/` and `Repositories/`.
+`AudioStreamService`, `AudioStreamBulkService` and `AudioStreamImportService` live in
+`Fluxy.Application/Streams/Services/` beside the video ones, the two entities and their
+configurations in `Fluxy.DataAccess/` (migration `20261023172343_AddAudioStreams`), the
+contracts in `Fluxy.API/Contracts/Streams/`, and the three controllers in
+`Fluxy.API/Controllers/Content/`.
+
+**`AudioStreamOutcome` lives in `Outcomes/`, not in `Enums/`** — the one place the two media
+disagree about where a thing sits. The video outcome is an enum in `Enums/`; the audio one is
+a record carrying the action, the row identifier and the field errors, because the audio
+service answers a refusal with the field names the form draws beside the inputs. Follow the
+folder the type actually belongs to rather than the video one's precedent.
+
+**`AudioStreamTextParser`** lives in `Fluxy.API/Controllers/Support/` beside
+`VideoStreamTextParser`: the transport parses the form fields it can parse and refuses a value
+that names no member, while whether the category is an audio category and whether each line can
+become a stream are rules of the service.
+
+Verified: `dotnet build` clean, **210** unit tests and **116** integration tests green, and
+`dotnet ef migrations has-pending-model-changes` reports no changes.
 
 ## Conventions
 

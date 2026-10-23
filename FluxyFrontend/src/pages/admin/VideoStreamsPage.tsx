@@ -188,10 +188,10 @@ interface VideoStreamsPageProps {
  * table's are: `total`. A category filter applied in the browser would narrow the page on
  * screen while the pager still counted everything, so every change goes back to
  * `GET /admin/video-streams` and any change that is not a page turn resets to page 1. Three
- * of the eight headers are controlled - the server can order by three of the five sort
- * fields (`type` and `sortOrder` have no column to offer a header for), and the other five
- * are never fields the endpoint orders by, so a header that flipped its arrow over rows it
- * had not re-fetched would be describing a table that does not exist.
+ * of the eight headers are controlled - the server can order by four fields (`type` has no
+ * column to offer a header for), and the other five are never fields the endpoint orders
+ * by, so a header that flipped its arrow over rows it had not re-fetched would be
+ * describing a table that does not exist.
  *
  * It is also the only table here that re-reads **on a timer**: whether a stream is running
  * is a fact about a process, and a table that only learned it when somebody clicked would
@@ -222,15 +222,14 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
    * The five request parameters, the pager and the three sortable headers - all of that is
    * `useServerTable`, which the other server-paged tables call too. The mapping needs no
    * help here: the sortable columns are keyed by the server's own field names, so a click
-   * hands its own key over as the field. `type` and `sortOrder` are fields the endpoint
-   * honours but no header can offer, and the rest of the columns never produce an event at
-   * all.
+   * hands its own key over as the field. `type` is a field the endpoint honours but no
+   * header can offer, and the rest of the columns never produce an event at all.
    */
   const table = useServerTable<VideoStream, VideoStreamSortField>({
     defaultSort: { by: 'name', order: 'asc' },
-    // Every field the endpoint orders by, not only the three headers below it: `type` and
-    // `sortOrder` have no sorter on this table, but an address may legitimately name them.
-    sortFields: ['name', 'category', 'status', 'type', 'sortOrder'],
+    // Every field the endpoint orders by, not only the three headers below it: `type` has
+    // no sorter on this table, but an address may legitimately name it.
+    sortFields: ['name', 'category', 'status', 'type'],
     // The one page that names its own size rather than taking the shared default:
     // `VIDEO_STREAMS_PAGE_SIZE` is what the endpoint documents, and the two are 20 only
     // because two files currently agree.

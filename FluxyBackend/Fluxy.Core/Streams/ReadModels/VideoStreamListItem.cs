@@ -54,8 +54,5 @@ namespace Fluxy.Core.Streams.ReadModels
         /// query using the rule in <see cref="VideoStreamEpg"/>.
         /// </summary>
         public bool HasEpg { get; init; }
-
-        /// <summary>Position among the streams of the same category, lowest first.</summary>
-        public required int SortOrder { get; init; }
     }
 }

@@ -3,7 +3,7 @@ using Fluxy.Core.Users.Models;
 namespace Fluxy.API.Contracts.Streams
 {
     /// <summary>
-    /// One row of the admin streams table: the ten things a line of it draws.
+    /// One row of the admin streams table: the nine things a line of it draws.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -56,9 +56,6 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>Whether the stream carries a programme guide at all.</summary>
         public required bool HasEpg { get; init; }
-
-        /// <summary>Position among the streams of the same category, lowest first.</summary>
-        public required int SortOrder { get; init; }
     }
 
     /// <summary>
@@ -144,9 +141,6 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>How many days of archive are kept. Zero for a stream that keeps none.</summary>
         public required int ArchiveDays { get; init; }
-
-        /// <summary>Position among the streams of the same category, lowest first.</summary>
-        public required int SortOrder { get; init; }
 
         /// <summary>User agent the relayed requests carry, or null.</summary>
         public string? RestreamUserAgent { get; init; }

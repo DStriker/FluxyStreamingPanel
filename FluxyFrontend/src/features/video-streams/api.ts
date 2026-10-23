@@ -21,15 +21,12 @@ import type {
 /**
  * The column the streams table may be ordered by, as the query-string spelling.
  *
- * These five *are* the endpoint's sort fields, so the column keys of the table are these
+ * These four *are* the endpoint's sort fields, so the column keys of the table are these
  * values and no mapping table exists to get wrong - the same trick the accounts table uses
  * with `lastSeenAt`. `id` and `actions` deliberately have no member: the server has no
  * order for either, and a header that offered one would answer `validation_failed`.
- *
- * `sortOrder` rather than `sortorder`: the server lower-cases before matching, so the
- * conventional camelCase spelling and the enum member's own name are the same request.
  */
-export type VideoStreamSortField = 'name' | 'category' | 'status' | 'type' | 'sortOrder'
+export type VideoStreamSortField = 'name' | 'category' | 'status' | 'type'
 
 export type VideoStreamSortOrder = 'asc' | 'desc'
 
@@ -119,10 +116,8 @@ export const getVideoStream = (id: string, signal?: AbortSignal): Promise<VideoS
  *
  * `status` is the one field the start and stop buttons also write, and it belongs in the
  * body because the add form chooses whether the stream opens active and the edit form can
- * enable or disable it later. `sortOrder` is absent for the same reason the add-category
- * form has no position: where a new stream goes in its category is the service's fact to
- * read, and a caller naming one would be one stale screen away from overwriting a neighbour
- * an operator has just moved.
+ * enable or disable it later. There is no position here: the order a stream is shown in
+ * belongs to the list that shows it, not to the stream row itself.
  */
 export interface VideoStreamValues {
   /** Display name, unique within its category and compared case sensitively. */
@@ -177,9 +172,8 @@ export interface VideoStreamValues {
  * over a *different* category is a different stream and is accepted - two sections of two
  * different screens may each be called "News".
  *
- * There is no `sortOrder` in the body: a new stream joins the end of its category's list,
- * and where "the end" is (the highest position of that category, plus one) is the server's
- * fact to read.
+ * There is no `sortOrder` in the body: the order a stream is shown in belongs to the list
+ * that shows it rather than to the row, so the request has no position to name.
  */
 export const createVideoStream = ({
   values,

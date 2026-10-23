@@ -9,10 +9,9 @@ namespace Fluxy.API.Contracts.Streams
     /// <remarks>
     /// <para>
     /// There is deliberately no <c>sortOrder</c> here, for the reason <c>VideoStream</c> gives:
-    /// a new stream joins the end of its category's list, and where exactly that is is the
-    /// service's fact to read from the database. <c>status</c> <i>is</i> a field: the form
-    /// chooses whether the stream starts active, and an absent value keeps the original
-    /// contract and starts it stopped.
+    /// the order a stream is shown in belongs to the list that shows it, not to the row.
+    /// <c>status</c> <i>is</i> a field: the form chooses whether the stream starts active, and
+    /// an absent value keeps the original contract and starts it stopped.
     /// </para>
     /// <para>
     /// <b>Only the payload the chosen kind of stream uses should be filled in.</b> A permanent,

@@ -33,9 +33,7 @@ namespace Fluxy.Application.Streams.Services
     /// Two further rules sit beside it. A name is unique <i>within its category</i>, the same
     /// way a category name is unique within its kind of content - two categories are two
     /// sections of a channel list, and "News" under general and "News" under sports are two
-    /// channels on two different screens. And a position is never a field anybody types: it is
-    /// the highest position of the category plus one on creation, and the end of the category
-    /// again when the stream is moved into another one.
+    /// channels on two different screens.
     /// </para>
     /// <para>
     /// Nothing here knows about HTTP. Which <see cref="VideoStreamAction"/> becomes a 201 and
@@ -166,15 +164,6 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(NewVideoStream.Name));
             }
 
-            // The end of the category's list is the highest position that category holds, plus
-            // one - read by the repository rather than claimed by the caller, because the
-            // caller's screen can be one move behind the database and the end is a fact about
-            // the rows, not about what anybody saw. An empty category reads zero and starts at 1.
-            var highest = await _streams.GetLastSortOrderAsync(
-                input.CategoryId,
-                exceptStream: null,
-                cancellationToken);
-
             var stream = BuildWrite(
                 input.Name.Trim(),
                 input.Type,
@@ -195,7 +184,7 @@ namespace Fluxy.Application.Streams.Services
                 input.Sources,
                 input.Files);
 
-            var streamId = await _streams.AddAsync(stream, highest + 1, cancellationToken);
+            var streamId = await _streams.AddAsync(stream, cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } createFailure)
             {
@@ -307,16 +296,6 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(VideoStreamPatch.Name), id);
             }
 
-            // Moving to another category moves the stream to the end of that category's list.
-            // The old category keeps its own gaps, the same way a deletion does: renumbering
-            // the survivors would be a second source for a fact a reorder already owns.
-            int? sortOrder = null;
-            if (categoryId != stream.CategoryId)
-            {
-                var highest = await _streams.GetLastSortOrderAsync(categoryId, id, cancellationToken);
-                sortOrder = highest + 1;
-            }
-
             var write = BuildWrite(
                 name,
                 type,
@@ -337,7 +316,7 @@ namespace Fluxy.Application.Streams.Services
                 sources,
                 files);
 
-            await _streams.UpdateAsync(id, write, sortOrder, cancellationToken);
+            await _streams.UpdateAsync(id, write, cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } updateFailure)
             {

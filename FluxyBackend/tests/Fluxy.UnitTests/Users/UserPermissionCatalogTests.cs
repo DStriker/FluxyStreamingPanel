@@ -45,6 +45,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(512, (int)UserPermission.EditAdmins);
             Assert.Equal(1024, (int)UserPermission.ViewStreams);
             Assert.Equal(2048, (int)UserPermission.EditStreams);
+            Assert.Equal(4096, (int)UserPermission.ViewAudioStreams);
+            Assert.Equal(8192, (int)UserPermission.EditAudioStreams);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }

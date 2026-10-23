@@ -21,7 +21,7 @@ interface ServerTableOptions<SortField extends string> {
    * The table's state travels in the address now, so this is what an incoming `?sortBy=` is
    * judged against: one of these is honoured, anything else falls back to the default rather
    * than reaching an endpoint that would answer `validation_failed`. The endpoint's own
-   * union is the list, which is why a field no header offers (`createdAt`, `sortOrder`)
+   * union is the list, which is why a field no header offers (`createdAt`)
    * still belongs here - an address may legitimately name it.
    */
   sortFields: readonly SortField[]

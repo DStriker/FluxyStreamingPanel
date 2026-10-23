@@ -29,6 +29,8 @@ describe('ALL_PERMISSIONS', () => {
       'editUserGroups',
       'viewStreams',
       'editStreams',
+      'viewAudioStreams',
+      'editAudioStreams',
     ])
   })
 })
@@ -74,15 +76,18 @@ describe('canViewAny / canEditAny', () => {
     expect(canEditAny([...ALL_PERMISSIONS])).toBe(true)
   })
 
-  it('is false when nothing covers an account - including the streams pair', () => {
-    // `viewStreams`/`editStreams` sit in the catalog (a group form has to offer them) but
-    // name configured streams, not accounts, so they must not satisfy these gates.
+  it('is false when nothing covers an account - including the two stream pairs', () => {
+    // `viewStreams`/`editStreams` and `viewAudioStreams`/`editAudioStreams` sit in the
+    // catalog (a group form has to offer them) but name configured streams, not accounts,
+    // so they must not satisfy these gates.
     expect(canViewAny([])).toBe(false)
     expect(canEditAny([])).toBe(false)
     expect(canViewAny(['editAdmins'])).toBe(false)
     expect(canEditAny(['viewAdmins'])).toBe(false)
     expect(canViewAny(['viewStreams', 'editStreams'])).toBe(false)
     expect(canEditAny(['viewStreams', 'editStreams'])).toBe(false)
+    expect(canViewAny(['viewAudioStreams', 'editAudioStreams'])).toBe(false)
+    expect(canEditAny(['viewAudioStreams', 'editAudioStreams'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {
