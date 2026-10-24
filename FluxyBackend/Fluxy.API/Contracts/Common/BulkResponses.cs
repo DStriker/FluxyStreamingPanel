@@ -1,10 +1,13 @@
 using Fluxy.API.Contracts.Streams;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
+using Fluxy.API.Contracts.Vod;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Outcomes;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Outcomes;
+using Fluxy.Core.Vod.Enums;
+using Fluxy.Core.Vod.Outcomes;
 
 namespace Fluxy.API.Contracts.Common
 {
@@ -38,6 +41,9 @@ namespace Fluxy.API.Contracts.Common
 
         /// <summary>Code reported once a run over audio streams has been answered for.</summary>
         public const string AudioStreamsCompletedCode = "audio_streams_bulk_completed";
+
+        /// <summary>Code reported once a run over on-demand videos has been answered for.</summary>
+        public const string VideoOnDemandCompletedCode = "video_on_demand_bulk_completed";
 
         /// <summary>Body for a run over accounts.</summary>
         /// <param name="outcome">What the service reported, one entry per identifier.</param>
@@ -133,6 +139,27 @@ namespace Fluxy.API.Contracts.Common
                 .ToList();
 
             return Answer(AudioStreamsCompletedCode, Summary(outcome.Action, items), items);
+        }
+
+        /// <summary>Body for a run over on-demand videos.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(BulkVodOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = VodResponses.Describe(new VodOutcome
+                    {
+                        Action = item.Action,
+                        VodId = item.VodId,
+                        Errors = item.Errors
+                    });
+
+                    return ToItem(item.VodId, status, body);
+                })
+                .ToList();
+
+            return Answer(VideoOnDemandCompletedCode, Summary(outcome.Action, items), items);
         }
 
         private static BulkItemResponse ToItem(
@@ -258,6 +285,28 @@ namespace Fluxy.API.Contracts.Common
 
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} streams changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over on-demand videos landed.</summary>
+        private static string Summary(
+            BulkVodAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkVodAction.ChangeStatus =>
+                    $"{Landed(items)} of {items.Count} videos changed state.",
+
+                BulkVodAction.MoveCategory =>
+                    $"{Landed(items)} of {items.Count} videos moved to that category.",
+
+                BulkVodAction.ChangeType =>
+                    $"{Landed(items)} of {items.Count} videos changed type.",
+
+                BulkVodAction.Delete =>
+                    $"{Landed(items)} of {items.Count} videos deleted.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} videos changed."
             };
 
         private static int Landed(IReadOnlyList<BulkItemResponse> items)

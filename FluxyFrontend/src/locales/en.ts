@@ -159,6 +159,7 @@ const en = {
       audioStreamsManage: 'Manage audio streams',
       audioStreamsCategories: 'Categories',
       videoOnDemandAdd: 'Add video',
+      videoOnDemandImport: 'Import videos',
       videoOnDemandManage: 'Manage videos',
       videoOnDemandCategories: 'Categories',
       seriesAdd: 'Add series',
@@ -489,6 +490,11 @@ const en = {
     // a separate pair: a group that may read the video streams may not read the audio ones.
     viewAudioStreams: 'View audio streams',
     editAudioStreams: 'Edit audio streams',
+    // The on-demand pair asks about the video catalogue: its table, its form, its import and
+    // the transcode request. It is a separate pair from the two stream pairs above because
+    // it is a separate resource behind a separate screen.
+    viewVideoOnDemand: 'View on-demand videos',
+    editVideoOnDemand: 'Edit on-demand videos',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -740,6 +746,126 @@ const en = {
     deleteConfirmTitle: 'Delete this category?',
     deleteConfirmBody: 'The category "{{name}}" will be removed. This cannot be undone.',
     deleteConfirmOk: 'Delete',
+  },
+  // The admin's on-demand catalogue: its own block rather than more keys under
+  // `videoStreams`, because the two are separate resources behind separate permissions. The
+  // page adds the two actions the stream table cannot offer: play, which goes through the
+  // endpoint that owns the delivery rule, and transcode, whose menu states that this
+  // installation has no encoder yet.
+  videoOnDemand: {
+    listTitle: 'On-demand videos',
+    addTitle: 'Add video',
+    editTitle: 'Edit video',
+    create: 'Create',
+    save: 'Save',
+    backToList: 'Back to the list',
+    columns: {
+      id: 'ID',
+      poster: 'Cover',
+      name: 'Name',
+      category: 'Category',
+      status: 'Status',
+      releaseDate: 'Released',
+      rating: 'Rating',
+      actions: 'Actions',
+      type: 'Type',
+    },
+    // Two descriptions, not a ramp: `VodStatus` is not an ordered scale.
+    statuses: {
+      Active: 'Published',
+      Inactive: 'Hidden',
+    },
+    // Two answers to "who carries the bytes", not two kinds of file.
+    types: {
+      Relay: 'Relay',
+      Redirect: 'Redirect',
+    },
+    actions: {
+      publish: 'Publish',
+      hide: 'Hide',
+      play: 'Play',
+      transcode: 'Transcode',
+      transcodeUnavailable: 'This server has no transcoder configured.',
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by name',
+    searchPlaceholder: 'Search by name',
+    filterAnyCategory: 'Any category',
+    filterAnyStatus: 'Any status',
+    filterAnyType: 'Any type',
+    pauseRefresh: 'Pause auto-refresh',
+    resumeRefresh: 'Resume auto-refresh',
+    autoRefreshHint: 're-reads the table every {{seconds}} seconds',
+    empty: 'No videos yet.',
+    noMatches: 'No videos match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The one action on the table that asks first, because it cannot be undone.
+    deleteConfirmTitle: 'Delete this video?',
+    deleteConfirmBody: 'The video "{{name}}" will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+    bulk: {
+      menu: 'Actions',
+      menuWithCount: 'Actions ({{count}})',
+      publish: 'Publish',
+      hide: 'Hide',
+      move: 'Move to category',
+      type: 'Change type',
+      delete: 'Delete',
+      apply: 'Apply',
+      moveTitle: 'Move the selected videos',
+      movePlaceholder: 'Choose a category',
+      typeTitle: 'Change the type of the selected videos',
+      partialTitle: 'Changed {{done}} of {{total}}. The rest were refused:',
+      deleteTitle: 'Delete these {{count}} videos?',
+      deleteBody: 'Each video will be removed. This cannot be undone.',
+    },
+    transcode: {
+      title: 'Transcode "{{name}}"',
+      unavailable:
+        'This server has no transcoder configured, so no format can be produced yet.',
+    },
+  },
+  // The add and edit form for one on-demand video. Its own block rather than more keys under
+  // `videoOnDemand`, because the table names what a row is and the form names what an
+  // operator is being asked to type.
+  videoOnDemandForm: {
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a video name',
+    namePlaceholder: 'Dune',
+    categoryRequired: 'Choose a category',
+    statusRequired: 'Choose whether the video is published',
+    statusHint: 'A published video is offered to clients; a hidden one is kept without being listed.',
+    typeRequired: 'Choose how the video is delivered',
+    typeHint:
+      'Relay is served by this installation (a local file or a proxied address); redirect sends the client to the source.',
+    mediaDivider: 'Where it plays from',
+    metadataDivider: 'Metadata',
+    sourceLabel: 'Source',
+    sourceRequired: 'Enter a URL or a path to a file',
+    sourcePlaceholder: 'https://example.com/film.mp4 or /media/film.mp4',
+    sourceHint: 'One address: a URL or a path to a file on this server.',
+    subtitleLabel: 'Subtitles address',
+    urlPlaceholder: 'https://example.com/file',
+    imdbLabel: 'IMDb identifier',
+    posterLabel: 'Cover address',
+    backdropLabel: 'Backdrop address',
+    plotLabel: 'Synopsis',
+    castLabel: 'Cast',
+    directorLabel: 'Director',
+    genresLabel: 'Genres',
+    tagsHint: 'Press Enter after each entry. Up to {{max}}.',
+    releaseDateLabel: 'Release date',
+    releaseDatePlaceholder: 'Choose a date',
+    ratingLabel: 'Rating',
+    ratingInvalid: 'Enter a rating between 0 and 10.',
+    countryLabel: 'Country',
+    countryPlaceholder: 'Choose a country',
+    maxLength: 'Up to {{max}} characters.',
   },
   // The admin's streams table: the first page behind the content rail, and the first of
   // the four content sections whose `add` and `manage` entries actually open something.
@@ -1032,6 +1158,34 @@ const en = {
     overwriteSettingsLabel: 'Overwrite existing stream settings',
     overwriteSettingsHint:
       'When a name is already taken in the category, replace that stream’s status, type, delay, archive length and restream settings.',
+    columns: {
+      line: 'Line',
+      name: 'Name',
+      outcome: 'Outcome',
+      reason: 'Reason',
+    },
+  },
+  // The on-demand playlist import. It reuses `videoOnDemandForm` for the category, the state
+  // and the kind, and adds only the file and the report afterwards.
+  videoOnDemandImport: {
+    title: 'Import on-demand videos',
+    playlistLabel: 'M3U playlist',
+    playlistRequired: 'Choose an M3U playlist file.',
+    playlistHint:
+      'Each entry becomes a video of its own. Up to {{entries}} entries; an HLS playlist cannot be imported.',
+    dropHint: 'Drop the playlist here',
+    chooseHint: 'or choose a file from disk. Only .m3u and .m3u8 are accepted.',
+    fileTooLarge: 'The playlist is larger than {{size}} MB.',
+    totalCount: 'Entries: {{total}}',
+    importedCount: 'Imported: {{imported}}',
+    skippedCount: 'Skipped: {{skipped}}',
+    failedCount: 'Failed: {{failed}}',
+    problemsTitle: 'Entries that were not imported',
+    problemsTotal: 'Not imported: {{total}}',
+    skippedTag: 'Skipped',
+    failedTag: 'Failed',
+    unnamed: 'No name',
+    submit: 'Import',
     columns: {
       line: 'Line',
       name: 'Name',
@@ -1448,6 +1602,35 @@ const en = {
         'The uploaded file could not be read as an M3U playlist.',
       audio_stream_import_conflict:
         'A name in the playlist was taken while the import was running. Nothing was imported; try again.',
+      // The on-demand resource: three shapes like the stream resources, plus the two
+      // delivery refusals only its play endpoint can produce. `not_playable` is a source that
+      // is neither an absolute URL nor a file the server can read; `unavailable` is a relay
+      // that could not reach its origin.
+      video_on_demand_created: 'The video has been created.',
+      video_on_demand_updated: 'The video has been updated.',
+      video_on_demand_deleted: 'The video has been deleted.',
+      video_on_demand_not_found: 'There is no video with that identifier.',
+      video_on_demand_already_exists:
+        'That video name is already taken within this category.',
+      video_on_demand_not_playable:
+        'The source is neither an absolute URL nor a file this server can read.',
+      video_on_demand_unavailable: 'The source could not be reached.',
+      video_on_demand_bulk_completed: 'Changed {{done}} of {{total}} videos.',
+      video_on_demand_import_completed: 'The playlist has been imported.',
+      video_on_demand_import_empty: 'The uploaded file is empty.',
+      video_on_demand_import_hls:
+        'An HLS playlist cannot be imported; upload an M3U playlist of videos.',
+      video_on_demand_import_too_large: 'The uploaded file is too large.',
+      video_on_demand_import_too_many_entries:
+        'The playlist holds more entries than one import accepts.',
+      video_on_demand_import_unreadable:
+        'The uploaded file could not be read as an M3U playlist.',
+      video_on_demand_import_conflict:
+        'A name in the playlist was taken while the import was running. Nothing was imported; try again.',
+      // No encoder is configured in this pass, so a transcode request is refused with a
+      // sentence that names the fact rather than the request.
+      transcode_not_configured:
+        'This server has no transcoder configured, so the video cannot be converted yet.',
       // Never produced by the server - both mean the request did not reach it.
       network_error: 'Server unavailable. Check that the backend is running.',
       server_error: 'Server error ({{status}}).',

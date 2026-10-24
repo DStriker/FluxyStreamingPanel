@@ -36,6 +36,13 @@ namespace Fluxy.Core.Users.Enums
     /// may watch a list and a group which may run it stay two grants.
     /// </para>
     /// <para>
+    /// <b>The on-demand pair is the same question asked about the catalogue.</b> A video
+    /// available on demand is neither a live stream nor an account, so it has its own read and
+    /// write keys (<see cref="ViewVideoOnDemand"/> and <see cref="EditVideoOnDemand"/>), and a
+    /// group that may watch the streams may not change the catalogue. The pair is separate for
+    /// the reason the audio one is: the screen, the table and the form are their own.
+    /// </para>
+    /// <para>
     /// The numeric values are powers of two and are stored in <c>user_group_permissions</c>,
     /// so they are part of the schema: adding a member means adding a value nobody has used
     /// yet, and renumbering the existing ones would silently reinterpret rows already
@@ -115,6 +122,18 @@ namespace Fluxy.Core.Users.Enums
         /// Separate from <see cref="ViewAudioStreams"/> for the reason <see cref="EditStreams"/>
         /// gives.
         /// </summary>
-        EditAudioStreams = 8192
+        EditAudioStreams = 8192,
+
+        /// <summary>
+        /// May read the on-demand catalogue: the videos table and one video in full.
+        /// </summary>
+        ViewVideoOnDemand = 16384,
+
+        /// <summary>
+        /// May change the on-demand catalogue: create, edit, import and delete videos, and ask
+        /// for them to be converted. Separate from <see cref="ViewVideoOnDemand"/> for the
+        /// reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditVideoOnDemand = 32768
     }
 }

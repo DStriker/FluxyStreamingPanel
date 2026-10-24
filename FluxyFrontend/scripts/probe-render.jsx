@@ -35,6 +35,9 @@ import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
 import VideoStreamFormPage from '../src/pages/admin/VideoStreamFormPage'
 import VideoStreamImportPage from '../src/pages/admin/VideoStreamImportPage'
 import AudioStreamsPage from '../src/pages/admin/AudioStreamsPage'
+import VideoOnDemandPage from '../src/pages/admin/VideoOnDemandPage'
+import VideoOnDemandFormPage from '../src/pages/admin/VideoOnDemandFormPage'
+import VideoOnDemandImportPage from '../src/pages/admin/VideoOnDemandImportPage'
 import AudioStreamFormPage from '../src/pages/admin/AudioStreamFormPage'
 import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
@@ -1746,35 +1749,41 @@ async function main() {
     .filter((item) => item.key.startsWith('audioStreams'))
     .map((item) => item.key)
     .join(',')
-  const otherSectionsHaveNoImport = ['videoOnDemand', 'series'].every(
+  const vodItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('videoOnDemand'))
+    .map((item) => item.key)
+    .join(',')
+  const otherSectionsHaveNoImport = ['series'].every(
     (sectionKey) => !flatItems('Admin').some((item) => item.key === `${sectionKey}Import`),
   )
   check(
-    'the playlist import sits immediately after the add form in both stream sections and nowhere else',
+    'the playlist import sits immediately after the add form in every built content section and nowhere else',
     streamItemKeys ===
       'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories' &&
       audioStreamItemKeys ===
         'audioStreamsAdd,audioStreamsImport,audioStreamsManage,audioStreamsCategories' &&
+      vodItemKeys ===
+        'videoOnDemandAdd,videoOnDemandImport,videoOnDemandManage,videoOnDemandCategories' &&
       otherSectionsHaveNoImport,
-    `${streamItemKeys}; ${audioStreamItemKeys}; other sections import: ${
+    `${streamItemKeys}; ${audioStreamItemKeys}; ${vodItemKeys}; other sections import: ${
       otherSectionsHaveNoImport ? 'no' : 'YES'
     }`,
   )
 
-  // The other two sections keep their placeholders for `add` and `manage`: only
-  // `categories` is a real page for all four, and only the two stream sections have been
-  // built. Asserted because a loader added to either of them would render a table of
-  // streams at an address that is not theirs, and nothing else in this file would notice.
-  const otherSectionsStillPlaceholders = ['videoOnDemand', 'series'].every((sectionKey) => {
+  // The series section keeps its placeholders for `add` and `manage`: only `categories` is a
+  // real page there, and only the three stream and on-demand sections have been built.
+  // Asserted because a loader added to it would render a table at an address that is not
+  // theirs, and nothing else in this file would notice.
+  const otherSectionsStillPlaceholders = ['series'].every((sectionKey) => {
     const add = flatItems('Admin').find((item) => item.key === `${sectionKey}Add`)
     const manage = flatItems('Admin').find((item) => item.key === `${sectionKey}Manage`)
     return add?.page === undefined && manage?.page === undefined
   })
   check(
-    'the two unbuilt content sections still open the placeholder for add and manage',
+    'the unbuilt content section still opens the placeholder for add and manage',
     otherSectionsStillPlaceholders,
     otherSectionsStillPlaceholders
-      ? 'video-on-demand and series offer no add or manage page'
+      ? 'series offers no add or manage page'
       : 'A SECTION OFFERS A REAL ADD OR MANAGE PAGE IT WAS NOT BUILT FOR',
   )
 
@@ -1906,6 +1915,66 @@ async function main() {
   // `typecheck`, `lint` or `build` would say so. The breakpoints themselves are checked
   // against `index.css` below, beside the rail rule; this is the half that proves the
   // pages are the ones the stylesheet is looking for.
+  const videoOnDemandHtml = renderToStaticMarkup(
+    withRouter('/admin/video-on-demand', withQuery(
+      <AntApp>
+        <VideoOnDemandPage sectionKey="nav.items.videoOnDemandManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the on-demand table draws its own heading, its toolbar and its table before any rows arrive',
+    videoOnDemandHtml.includes('>On-demand videos<') &&
+      videoOnDemandHtml.includes('ant-table') &&
+      !videoOnDemandHtml.includes('nav.items.videoOnDemandManage'),
+    `rendered ${videoOnDemandHtml.length} bytes with the list still being fetched`,
+  )
+  check(
+    'the on-demand table draws the cover, release and rating columns and its own filters',
+    videoOnDemandHtml.includes('>Cover<') &&
+      videoOnDemandHtml.includes('>Released<') &&
+      videoOnDemandHtml.includes('>Rating<') &&
+      videoOnDemandHtml.includes('Search by name') &&
+      videoOnDemandHtml.includes('Any category') &&
+      videoOnDemandHtml.includes('Any status') &&
+      videoOnDemandHtml.includes('Any type'),
+    `rendered ${videoOnDemandHtml.length} bytes`,
+  )
+
+  const videoOnDemandFormHtml = renderToStaticMarkup(
+    withRouter('/admin/video-on-demand/add', withQuery(
+      <AntApp>
+        <VideoOnDemandFormPage sectionKey="nav.items.videoOnDemandAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the on-demand add form draws the media and metadata sections',
+    videoOnDemandFormHtml.includes('Add video') &&
+      videoOnDemandFormHtml.includes('Where it plays from') &&
+      videoOnDemandFormHtml.includes('Metadata') &&
+      videoOnDemandFormHtml.includes('Source') &&
+      videoOnDemandFormHtml.includes('IMDb identifier') &&
+      videoOnDemandFormHtml.includes('Cast'),
+    `rendered ${videoOnDemandFormHtml.length} bytes`,
+  )
+
+  const videoOnDemandImportHtml = renderToStaticMarkup(
+    withRouter('/admin/video-on-demand/import', withQuery(
+      <AntApp>
+        <VideoOnDemandImportPage sectionKey="nav.items.videoOnDemandImport" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the on-demand import opens with the playlist and draws no name or source field',
+    videoOnDemandImportHtml.includes('Import on-demand videos') &&
+      videoOnDemandImportHtml.includes('M3U playlist') &&
+      !videoOnDemandImportHtml.includes('title="Name"') &&
+      !videoOnDemandImportHtml.includes('title="Source"'),
+    `rendered ${videoOnDemandImportHtml.length} bytes`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -1914,6 +1983,7 @@ async function main() {
     categoriesHtml,
     streamsHtml,
     audioStreamsHtml,
+    videoOnDemandHtml,
     adminSessionsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))

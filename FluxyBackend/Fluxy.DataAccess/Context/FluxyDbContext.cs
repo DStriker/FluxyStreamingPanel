@@ -91,6 +91,12 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<AudioStreamSourceEntity> AudioStreamSources => Set<AudioStreamSourceEntity>();
 
+        /// <summary>
+        /// Videos available on demand. Each names the category it is filed under, the address
+        /// it is played from, and the metadata the catalogue shows around it.
+        /// </summary>
+        public DbSet<VodItemEntity> VodItems => Set<VodItemEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

@@ -100,6 +100,21 @@ const VideoStreamFormPage = lazy(() => import('../pages/admin/VideoStreamFormPag
 const AudioStreamFormPage = lazy(() => import('../pages/admin/AudioStreamFormPage'))
 
 /**
+ * The on-demand video form, for the same reason and with the same two-address shape as the
+ * stream forms above.
+ *
+ * `/admin/video-on-demand/add` is a menu item, while `/admin/video-on-demand/{id}` is an
+ * `extra` route with no menu item beside it - it is only ever reached by choosing a row to
+ * edit, and a third entry saying "edit" would be a page that is empty until you tell it
+ * *which*.
+ *
+ * A second `lazy()` over the same module as the `add` item, so a move between the two
+ * addresses remounts the form instead of carrying a half-filled one across - which is what
+ * you want when the id underneath it just changed.
+ */
+const VideoOnDemandFormPage = lazy(() => import('../pages/admin/VideoOnDemandFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -306,6 +321,14 @@ export const routes: RouteObject[] = [
       {
         path: 'audio-streams/:id',
         element: <AudioStreamFormPage sectionKey="nav.items.audioStreamsAdd" />,
+      },
+      // The on-demand video form's edit address. `video-on-demand/add` is a menu item and
+      // is a static segment, so react-router ranks it above `:id` - the same reason
+      // `video-streams/add` can be a menu item while `video-streams/:id` is not. This one
+      // has no menu item: it is reached only by choosing a row of the on-demand table.
+      {
+        path: 'video-on-demand/:id',
+        element: <VideoOnDemandFormPage sectionKey="nav.items.videoOnDemandAdd" />,
       },
     ]),
   ),

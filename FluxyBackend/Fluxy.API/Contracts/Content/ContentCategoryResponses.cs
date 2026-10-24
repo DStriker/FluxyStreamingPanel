@@ -81,8 +81,8 @@ namespace Fluxy.API.Contracts.Content
                     (StatusCodes.Status409Conflict,
                         InUseCode,
                         outcome.UsedCount == 1
-                            ? "1 stream is still filed under this category."
-                            : outcome.UsedCount + " streams are still filed under this category."),
+                            ? "1 item is still filed under this category."
+                            : outcome.UsedCount + " items are still filed under this category."),
 
                 ContentCategoryAction.Invalid =>
                     (StatusCodes.Status400BadRequest,

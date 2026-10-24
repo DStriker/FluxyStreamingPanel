@@ -1026,17 +1026,23 @@ from a `PATCH`.
   `validation_failed` and the list that does — a client wrong about the contract is told so. A
   *valid* permission the chosen role does not own (`viewClients` on a Client group) is **dropped**
   — that is a client describing a group, and the server already knows what a Client group may
-  hold. The catalog is `[Flags]` powers of two stored as `smallint` in
-  `user_group_permissions`, and it now has **twelve** members in three groups: the two
+  hold. The catalog is `[Flags]` powers of two stored as `integer` in
+  `user_group_permissions`, and it now has **fourteen** members in four groups: the two
   **group-management** keys (`ViewUserGroups=4`, `EditUserGroups=8`), the six **account** keys
   split by the role of the account they act on (`ViewClients=16, ViewResellers=32,
-  ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), and the four **stream**
+  ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), the four **stream**
   keys — the video pair (`ViewStreams=1024`, `EditStreams=2048`) and the audio pair
   (`ViewAudioStreams=4096`, `EditAudioStreams=8192`), which are deliberately **not** the same
-  pair: a group that may watch the video streams may not watch the audio ones. All twelve are
+  pair: a group that may watch the video streams may not watch the audio ones — and the
+  **on-demand** pair (`ViewVideoOnDemand=16384`, `EditVideoOnDemand=32768`). All fourteen are
   owned by `Admin`, so
   `permissionsForRole` on the frontend answers an empty set for Client and Reseller and their
   form shows a note instead of boxes.
+  - **The column is `integer`, not `smallint`.** The on-demand write key is `32768`, one more
+    than a `smallint` can hold; the first scaffold therefore wrapped it and the base group
+    stored a negative grant. `WidenUserGroupPermission` widens the column, which is lossless
+    for every value that was already there. The enum's values are still the schema, and a new
+    member is still a value nobody has used yet.
   - **The account keys start at 16, not at 1.** The values `1` and `2` were the retired
     `viewUsers`/`editUsers` of the first version — one pair for accounts in general, replaced
     by the per-target split above — and the numbers are schema, so renumbering the live ones
@@ -1560,6 +1566,107 @@ become a stream are rules of the service.
 
 Verified: `dotnet build` clean, **210** unit tests and **116** integration tests green, and
 `dotnet ef migrations has-pending-model-changes` reports no changes.
+
+## The video-on-demand API: `admin/video-on-demand`
+
+The on-demand catalogue, built as its own domain (`Fluxy.Core/Vod`, `Fluxy.Application/Vod`)
+rather than as a third kind of stream. A video on demand has one address and a body of
+metadata a live stream has no place for, and its screen answers a different question: not
+"what is broadcasting" but "what is published, and can I play or convert it".
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/video-on-demand` | `Permission.ViewVideoOnDemand` | page: `page`, `pageSize`, `search`, `categoryId`, `status`, `type`, `sortBy`, `sortOrder` |
+| `GET /admin/video-on-demand/{id}` | View | one video with its media and metadata; `404 video_on_demand_not_found` |
+| `POST /admin/video-on-demand` | CSRF + `Permission.EditVideoOnDemand` | `201 video_on_demand_created` + relative `Location` |
+| `PATCH /admin/video-on-demand/{id}` | CSRF + Edit | `200 video_on_demand_updated` |
+| `DELETE /admin/video-on-demand/{id}` | CSRF + Edit | `200 video_on_demand_deleted`, `404` on a second |
+| `POST /admin/video-on-demand/bulk` | CSRF + Edit | `200 video_on_demand_bulk_completed`, one entry per identifier |
+| `POST /admin/video-on-demand/import` | CSRF + Edit | `200 video_on_demand_import_completed`, counts and per-line problems |
+| `GET /admin/video-on-demand/{id}/play` | View | `302` for a redirect, the bytes for a relay |
+| `GET /admin/video-on-demand/transcode-formats` | View | `{ available, formats }` |
+| `POST /admin/video-on-demand/{id}/transcodes` | CSRF + Edit | `503 transcode_not_configured` in this pass |
+
+- **`VodType` is two answers to "who carries the bytes".** `Relay` is served by this
+  installation: a local path through `PhysicalFile` with range processing, or an absolute
+  `http(s)` address streamed through the API with the `Range` header forwarded. `Redirect`
+  answers `302` to the source and lets the browser fetch it. A redirect whose source is a
+  local path, and a relay whose source is neither a URL nor a readable file, answer
+  `409 video_on_demand_not_playable` rather than inventing a destination. The list response
+  deliberately omits the source: the play button uses the endpoint, so a page of twenty rows
+  does not carry twenty long paths.
+- **The status is a row fact, not a process fact.** `Active`/`Inactive` controls what clients
+  are offered; the play endpoint serves an inactive item too, because an operator previewing
+  a file before publishing it is exactly who it serves. There is no start/stop action.
+- **The metadata is a body of optional fields**, not a second resource: `imdbId`,
+  `posterUrl`, `backdropUrl`, `plot`, `cast`, `director`, `genres`, `releaseDate`, `rating`
+  and `countryCode`. `cast` and `genres` are PostgreSQL `text[]` columns because they are read
+  with the row and never queried by position; a child table would buy a join and the
+  "unloaded collection reads as empty" bug for an order the array already keeps. The date is
+  a `date` (no time of day); the rating is `numeric(3,1)` validated to 0–10 with one decimal;
+  the country is an upper-case ISO alpha-2, validated against the same runtime regions the
+  login guard uses (the catalog now lives in `Core/GeoIp/Utils/CountryCodes.cs`).
+- **A name is unique within its category** (`UNIQUE(category_id, name)`, index
+  `IX_vod_items_category_id_name`), compared case sensitively like every other name here. A
+  lost race is mapped to `409 video_on_demand_already_exists` only when that exact index was
+  the one refused; any other unique violation is rethrown.
+- **PATCH keeps and clears without a second field.** An absent text property keeps, an empty
+  string clears; `cast`/`genres` follow the list rule (absent keeps, `[]` clears, a list
+  replaces). `releaseDate` and `rating` travel as **text** on PATCH so that "keep" and
+  "clear" are distinguishable; the create endpoint takes the date as text and the rating as a
+  number. The form converts the rating to text only on the update call.
+- **The list is paged, filtered and sorted server side**, for the same `total` reason every
+  other table here is. Sort fields: `name`, `category`, `status`, `type`, `releaseDate`,
+  `rating`; the two nullable ones group their nulls last in both directions. The response
+  includes the category name and omits the source and metadata; the detail endpoint carries
+  the rest.
+- **Bulk operations are the single-row writes applied in a loop**: `change-status`,
+  `move-category`, `change-type` and `delete`. A move that collides with a name already used
+  in the destination refuses that row alone and the others still move.
+- **The import reuses the M3U reader the streams use** (`M3uPlaylistParser`, with the
+  on-demand entry limit passed explicitly). Each entry becomes one video: the title names it,
+  its address is the source, `tvg-logo` is the poster when it fits. A name already in the
+  category or repeated in the file is **skipped**; a line that cannot become a video is
+  **failed**; the counts add up to `total`. One save writes the batch, and a name taken
+  between the check and the save is `409 video_on_demand_import_conflict` with nothing
+  written.
+- **Transcoding is a stub in this pass, and the stub does not lie.** No encoder is
+  configured; `GET /transcode-formats` says `available: false` with the five names,
+  and `POST /{id}/transcodes` answers `503 transcode_not_configured` without writing a job.
+  The screen draws the action disabled with that reason. A queued job no worker would ever
+  pick up would be a worse answer than the refusal.
+- **No captcha and no attempt window**, for the recorded admin-area departure: every write is
+  behind an admin session, the edit permission and a fresh antiforgery pair, and
+  `RejectsCsrfAsync()` runs before any body is read.
+- **The permissions are `ViewVideoOnDemand = 16384` and `EditVideoOnDemand = 32768`.** The
+  write key is one above `smallint`, which is why `user_group_permissions.permission` was
+  widened to `integer` by `WidenUserGroupPermission`; before that the base group stored a
+  wrapped negative grant and every endpoint answered 403. The startup seeder grants the pair
+  to the base Administrators group; **an existing custom administrator group has to be
+  granted them by hand**, the same note the audio pair carries.
+- **A category cannot be deleted while a video is filed under it.**
+  `ContentCategoryRepository.CountContentAsync` counts video streams, audio streams and
+  on-demand videos, and the refusal says "item(s)" rather than "stream(s)".
+- **Migrations**: `AddVideoOnDemand` creates `vod_items` (the arrays, the date, the numeric
+  rating, the FK to `content_categories` with `RESTRICT`, the unique name index and the
+  filter/sort indexes). No permission migration: the catalog is code.
+- **Verified by running**: `dotnet build` clean, **210** unit tests and **126** integration
+  tests green (10 of them for this resource: CRUD/metadata, name scope, field refusals,
+  list/filter/sort/paging, bulk partial success, mixed import, category in-use, the
+  transcode stub, play redirect and unplayable source, CSRF and permission), and
+  `dotnet ef migrations has-pending-model-changes` reports no changes.
+
+Layering follows the usual split: `VodItem` in `Fluxy.Core/Vod/Models/`,
+`VodListItem`/`VodPage`/`VodTranscodeAvailability` in `ReadModels/`, the commands
+(`NewVodItem`, `VodItemPatch`, `VodItemWrite`, `BulkVodOperation`, `NewVodImport`), outcomes,
+enums (`VodStatus`, `VodType`, `VodAction`, `BulkVodAction`, the sort pair, the import status
+and the transcode pair), limits in `Utils/`, and `IVodService`/`IVodBulkService`/
+`IVodImportService`/`IVodTranscodeService`/`IVodRepository` in `Interfaces/` and
+`Repositories/`; `VodService`/`VodBulkService`/`VodImportService`/`VodTranscodeService` and
+`VodRules` in `Fluxy.Application/Vod/`; the entity, configuration and repository in
+`Fluxy.DataAccess`; the contracts in `Fluxy.API/Contracts/Vod/`, and
+`VideoOnDemandController` / `VideoOnDemandBulkController` / `VideoOnDemandImportController` /
+`VideoOnDemandTranscodesController` in `Fluxy.API/Controllers/Content/`.
 
 ## Conventions
 

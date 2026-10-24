@@ -32,11 +32,13 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("user_group_id")
                 .IsRequired();
 
-            // Stored as smallint, like every other enum here: the flags are powers of two
-            // from a fixed catalog, and a short holds every value the catalog can grow to.
+            // Stored as integer rather than smallint: the flags are powers of two from a
+            // fixed catalog, and the catalog has grown past 32767 - the largest value a
+            // smallint can hold. Widening is lossless for every value already stored, and a
+            // wrap-around would silently turn a grant into a different one.
             builder.Property(grant => grant.Permission)
                 .HasColumnName("permission")
-                .HasConversion<short>()
+                .HasConversion<int>()
                 .IsRequired();
 
             builder.Property(nameof(AuditableEntity.CreatedAt))

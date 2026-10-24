@@ -54,6 +54,8 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editStreams',
   'viewAudioStreams',
   'editAudioStreams',
+  'viewVideoOnDemand',
+  'editVideoOnDemand',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -70,6 +72,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editStreams: 'Admin',
   viewAudioStreams: 'Admin',
   editAudioStreams: 'Admin',
+  viewVideoOnDemand: 'Admin',
+  editVideoOnDemand: 'Admin',
 }
 
 /**

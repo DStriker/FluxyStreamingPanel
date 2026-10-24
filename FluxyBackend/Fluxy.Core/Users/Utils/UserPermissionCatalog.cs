@@ -19,7 +19,7 @@ namespace Fluxy.Core.Users.Utils
     /// coincidence, and what stops an operator from granting <see cref="EditAdmins"/> to a
     /// group of clients: the member would be accepted and then mean nothing, because the role
     /// gate ahead of it already refused. A permission whose owner role changes is therefore a
-    /// change to this table and nothing else - the storage does not care. All twelve are owned
+    /// change to this table and nothing else - the storage does not care. All fourteen are owned
     /// by <see cref="UserRole.Admin"/> today, which says nothing about whether some future
     /// permission could belong to <see cref="UserRole.Reseller"/> instead.
     /// </para>
@@ -35,8 +35,9 @@ namespace Fluxy.Core.Users.Utils
         /// <summary>
         /// The whole catalog, in a stable order so a form, a log line and a migration can
         /// agree on how the permissions are listed. Grouped by subject - the accounts, then
-        /// the groups, then the streams - and inside each subject as a read beside its write,
-        /// which is the shape the first two permissions had.
+        /// the groups, then the streams, then the on-demand catalogue - and inside each
+        /// subject as a read beside its write, which is the shape the first two permissions
+        /// had.
         /// </summary>
         public static IReadOnlyList<UserPermission> All { get; } =
         [
@@ -51,7 +52,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewStreams,
             UserPermission.EditStreams,
             UserPermission.ViewAudioStreams,
-            UserPermission.EditAudioStreams
+            UserPermission.EditAudioStreams,
+            UserPermission.ViewVideoOnDemand,
+            UserPermission.EditVideoOnDemand
         ];
 
         /// <summary>
@@ -95,7 +98,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewStreams] = UserRole.Admin,
                 [UserPermission.EditStreams] = UserRole.Admin,
                 [UserPermission.ViewAudioStreams] = UserRole.Admin,
-                [UserPermission.EditAudioStreams] = UserRole.Admin
+                [UserPermission.EditAudioStreams] = UserRole.Admin,
+                [UserPermission.ViewVideoOnDemand] = UserRole.Admin,
+                [UserPermission.EditVideoOnDemand] = UserRole.Admin
             };
 
         /// <summary>

@@ -79,6 +79,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the configured audio streams.</summary>
         public const string EditAudioStreamsPolicy = "Permission.EditAudioStreams";
 
+        /// <summary>Policy that accepts an operator who may read the on-demand catalogue.</summary>
+        public const string ViewVideoOnDemandPolicy = "Permission.ViewVideoOnDemand";
+
+        /// <summary>Policy that accepts an operator who may change the on-demand catalogue.</summary>
+        public const string EditVideoOnDemandPolicy = "Permission.EditVideoOnDemand";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -222,7 +228,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditAudioStreams)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditAudioStreams)))
+                .AddPolicy(ViewVideoOnDemandPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewVideoOnDemand)))
+                .AddPolicy(EditVideoOnDemandPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditVideoOnDemand)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

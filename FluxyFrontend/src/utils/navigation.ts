@@ -141,6 +141,9 @@ const CONTENT_SECTIONS: ContentSection[] = [
     labelKey: 'nav.groups.videoOnDemand',
     icon: PlaySquareOutlined,
     categoriesPage: () => import('../pages/admin/ContentCategoriesPage'),
+    addPage: () => import('../pages/admin/VideoOnDemandFormPage'),
+    importPage: () => import('../pages/admin/VideoOnDemandImportPage'),
+    managePage: () => import('../pages/admin/VideoOnDemandPage'),
   },
   {
     key: 'series',

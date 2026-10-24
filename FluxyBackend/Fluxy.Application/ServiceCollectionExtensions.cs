@@ -8,6 +8,7 @@ using Fluxy.Application.Security.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Users.Options;
 using Fluxy.Application.Users.Services;
+using Fluxy.Application.Vod.Services;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Content.Interfaces;
@@ -15,6 +16,7 @@ using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Users.Interfaces;
+using Fluxy.Core.Vod.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -97,6 +99,18 @@ namespace Fluxy.Application
             services.AddScoped<IAudioStreamService, AudioStreamService>();
             services.AddScoped<IAudioStreamBulkService, AudioStreamBulkService>();
             services.AddScoped<IAudioStreamImportService, AudioStreamImportService>();
+
+            // The on-demand catalogue is its own aggregate: an item shares no field and no
+            // rule with a live stream, and it carries metadata a stream has no place for.
+            // The import is collective and reuses the playlist reader, but keeps its own
+            // service for the reason the stream import does - one file, one report.
+            services.AddScoped<IVodService, VodService>();
+            services.AddScoped<IVodBulkService, VodBulkService>();
+            services.AddScoped<IVodImportService, VodImportService>();
+
+            // The transcoding surface is stateless: it answers the same five formats and the
+            // same "not configured" until an encoder arrives, so one instance is enough.
+            services.AddSingleton<IVodTranscodeService, VodTranscodeService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

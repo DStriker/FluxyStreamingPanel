@@ -207,7 +207,7 @@ namespace Fluxy.Application.Content.Services
             // "this many streams still point at it", the other is a provider's exception
             // wearing a 500. The key below would refuse the row anyway; this is what turns
             // that refusal into a sentence.
-            var inUse = await _categories.CountStreamsAsync(id, cancellationToken);
+            var inUse = await _categories.CountContentAsync(id, cancellationToken);
 
             if (inUse > 0)
             {

@@ -49,3 +49,5 @@ export type UserPermission =
   | 'editStreams'
   | 'viewAudioStreams'
   | 'editAudioStreams'
+  | 'viewVideoOnDemand'
+  | 'editVideoOnDemand'

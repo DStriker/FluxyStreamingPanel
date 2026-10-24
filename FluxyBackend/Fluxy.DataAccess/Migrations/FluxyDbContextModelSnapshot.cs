@@ -421,8 +421,8 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<short>("Permission")
-                        .HasColumnType("smallint")
+                    b.Property<int>("Permission")
+                        .HasColumnType("integer")
                         .HasColumnName("permission");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -653,6 +653,112 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("video_stream_sources", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.VodItemEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BackdropUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("backdrop_url");
+
+                    b.PrimitiveCollection<string[]>("Cast")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("cast");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("country_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Director")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("director");
+
+                    b.PrimitiveCollection<string[]>("Genres")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("genres");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("imdb_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Plot")
+                        .HasColumnType("text")
+                        .HasColumnName("plot");
+
+                    b.Property<string>("PosterUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("poster_url");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(3,1)")
+                        .HasColumnName("rating");
+
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("date")
+                        .HasColumnName("release_date");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("source");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SubtitleUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("subtitle_url");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("vod_type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Rating");
+
+                    b.HasIndex("ReleaseDate");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Type");
+
+                    b.HasIndex("CategoryId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("vod_items", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
@@ -759,6 +865,17 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Stream");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.VodItemEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>

@@ -1,4 +1,5 @@
 using Fluxy.Core.GeoIp.ReadModels;
+using Fluxy.Core.GeoIp.Utils;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -18,12 +19,6 @@ namespace Fluxy.Application.Users.Utils
     {
         /// <summary>Longest allow list: how many networks one account may keep.</summary>
         public const int MaxAllowedIps = 5;
-
-        /// <summary>
-        /// Every ISO 3166-1 alpha-2 code this installation knows, upper case. Built from the
-        /// runtime's own regions so the list cannot drift from what the platform recognizes.
-        /// </summary>
-        private static readonly HashSet<string> CountryCodes = BuildCountryCodes();
 
         /// <summary>
         /// Whether two recorded addresses name the same peer. Parsed rather than compared as
@@ -136,15 +131,7 @@ namespace Fluxy.Application.Users.Utils
         /// not a code this installation knows.
         /// </summary>
         public static string? NormalizeCountry(string? country)
-        {
-            var trimmed = country?.Trim().ToUpperInvariant();
-            if (trimmed is null || !CountryCodes.Contains(trimmed))
-            {
-                return null;
-            }
-
-            return trimmed;
-        }
+            => CountryCodes.Normalize(country);
 
         /// <summary>Whether the value is a usable autonomous system number.</summary>
         public static bool IsAutonomousSystemNumber(int value) => value > 0;
@@ -201,23 +188,5 @@ namespace Fluxy.Application.Users.Utils
             return where.AutonomousSystemNumber is { } asn && systems.Contains(asn);
         }
 
-        private static HashSet<string> BuildCountryCodes()
-        {
-            var codes = new HashSet<string>(StringComparer.Ordinal);
-
-            foreach (var culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
-            {
-                try
-                {
-                    codes.Add(new RegionInfo(culture.Name).TwoLetterISORegionName);
-                }
-                catch (ArgumentException)
-                {
-                    // A culture without a region is not a country and contributes nothing.
-                }
-            }
-
-            return codes;
-        }
     }
 }
