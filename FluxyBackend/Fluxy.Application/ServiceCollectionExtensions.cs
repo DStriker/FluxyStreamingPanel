@@ -5,6 +5,7 @@ using Fluxy.Application.Email.Options;
 using Fluxy.Application.Email.Services;
 using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
+using Fluxy.Application.Series.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Users.Options;
 using Fluxy.Application.Users.Services;
@@ -14,6 +15,7 @@ using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Vod.Interfaces;
@@ -111,6 +113,20 @@ namespace Fluxy.Application
             // The transcoding surface is stateless: it answers the same five formats and the
             // same "not configured" until an encoder arrives, so one instance is enough.
             services.AddSingleton<IVodTranscodeService, VodTranscodeService>();
+
+            // The series catalogue is its own aggregate again: a series carries a body of
+            // metadata no stream has, and its episodes are a second resource filed under it.
+            // The season service is separate from the episode one because its request is a
+            // folder rather than one row, and the bulk services follow the same split every
+            // other resource here uses.
+            services.AddScoped<ISeriesService, SeriesService>();
+            services.AddScoped<ISeriesBulkService, SeriesBulkService>();
+            services.AddScoped<IEpisodeService, EpisodeService>();
+            services.AddScoped<IEpisodeBulkService, EpisodeBulkService>();
+            services.AddScoped<ISeasonService, SeasonService>();
+
+            // The episode transcoder is stateless for the same reason the on-demand one is.
+            services.AddSingleton<IEpisodeTranscodeService, EpisodeTranscodeService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

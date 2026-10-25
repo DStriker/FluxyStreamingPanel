@@ -115,6 +115,16 @@ const AudioStreamFormPage = lazy(() => import('../pages/admin/AudioStreamFormPag
 const VideoOnDemandFormPage = lazy(() => import('../pages/admin/VideoOnDemandFormPage'))
 
 /**
+ * The series pages. The add form and the table are menu items; the series edit form, the
+ * episode table and the two episode/season forms are reached only from those pages, so they
+ * are `extra` routes with no menu item beside them.
+ */
+const SeriesFormPage = lazy(() => import('../pages/admin/SeriesFormPage'))
+const SeriesEpisodesPage = lazy(() => import('../pages/admin/SeriesEpisodesPage'))
+const EpisodeFormPage = lazy(() => import('../pages/admin/EpisodeFormPage'))
+const SeasonFormPage = lazy(() => import('../pages/admin/SeasonFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -329,6 +339,30 @@ export const routes: RouteObject[] = [
       {
         path: 'video-on-demand/:id',
         element: <VideoOnDemandFormPage sectionKey="nav.items.videoOnDemandAdd" />,
+      },
+      // The series edit form, episode table and the two forms that add an episode or a
+      // season. `series/add` is a menu item and is a static segment, so react-router ranks
+      // it above `:id`; the remaining addresses have no menu item because each is reached
+      // by choosing a row or a button on the series pages.
+      {
+        path: 'series/:id',
+        element: <SeriesFormPage sectionKey="nav.items.seriesAdd" />,
+      },
+      {
+        path: 'series/:id/episodes',
+        element: <SeriesEpisodesPage sectionKey="nav.items.seriesManage" />,
+      },
+      {
+        path: 'series/:id/episodes/add',
+        element: <EpisodeFormPage sectionKey="nav.items.seriesAdd" />,
+      },
+      {
+        path: 'series/:id/episodes/:episodeId',
+        element: <EpisodeFormPage sectionKey="nav.items.seriesAdd" />,
+      },
+      {
+        path: 'series/:id/seasons/add',
+        element: <SeasonFormPage sectionKey="nav.items.seriesAdd" />,
       },
     ]),
   ),

@@ -97,6 +97,17 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<VodItemEntity> VodItems => Set<VodItemEntity>();
 
+        /// <summary>
+        /// Series. Each names the category it is filed under and carries the metadata the
+        /// catalogue shows around it; its episodes are rows of their own.
+        /// </summary>
+        public DbSet<SeriesEntity> Series => Set<SeriesEntity>();
+
+        /// <summary>
+        /// Episodes of a series, one row per season-and-number pair.
+        /// </summary>
+        public DbSet<EpisodeEntity> Episodes => Set<EpisodeEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

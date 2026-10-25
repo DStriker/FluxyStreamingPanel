@@ -85,6 +85,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the on-demand catalogue.</summary>
         public const string EditVideoOnDemandPolicy = "Permission.EditVideoOnDemand";
 
+        /// <summary>Policy that accepts an operator who may read the series catalogue.</summary>
+        public const string ViewSeriesPolicy = "Permission.ViewSeries";
+
+        /// <summary>Policy that accepts an operator who may change the series catalogue.</summary>
+        public const string EditSeriesPolicy = "Permission.EditSeries";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -238,7 +244,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditVideoOnDemand)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditVideoOnDemand)))
+                .AddPolicy(ViewSeriesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewSeries)))
+                .AddPolicy(EditSeriesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditSeries)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

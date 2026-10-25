@@ -155,7 +155,7 @@ namespace Fluxy.DataAccess.Repositories
             CancellationToken cancellationToken = default)
         {
             // Every medium is filed under the same categories, so a category is only empty
-            // when none of the three tables holds a row for it. Separate counts rather than a
+            // when none of the four tables holds a row for it. Separate counts rather than a
             // union: the tables share no column beyond the category identifier, and counting
             // each is the query the planner already has an index for.
             var videos = await _context.VideoStreams
@@ -170,7 +170,11 @@ namespace Fluxy.DataAccess.Repositories
                 .AsNoTracking()
                 .CountAsync(entry => entry.CategoryId == categoryId, cancellationToken);
 
-            return videos + audio + onDemand;
+            var series = await _context.Series
+                .AsNoTracking()
+                .CountAsync(entry => entry.CategoryId == categoryId, cancellationToken);
+
+            return videos + audio + onDemand + series;
         }
     }
 }

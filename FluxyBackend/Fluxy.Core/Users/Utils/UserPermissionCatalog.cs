@@ -54,7 +54,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewAudioStreams,
             UserPermission.EditAudioStreams,
             UserPermission.ViewVideoOnDemand,
-            UserPermission.EditVideoOnDemand
+            UserPermission.EditVideoOnDemand,
+            UserPermission.ViewSeries,
+            UserPermission.EditSeries
         ];
 
         /// <summary>
@@ -100,7 +102,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewAudioStreams] = UserRole.Admin,
                 [UserPermission.EditAudioStreams] = UserRole.Admin,
                 [UserPermission.ViewVideoOnDemand] = UserRole.Admin,
-                [UserPermission.EditVideoOnDemand] = UserRole.Admin
+                [UserPermission.EditVideoOnDemand] = UserRole.Admin,
+                [UserPermission.ViewSeries] = UserRole.Admin,
+                [UserPermission.EditSeries] = UserRole.Admin
             };
 
         /// <summary>

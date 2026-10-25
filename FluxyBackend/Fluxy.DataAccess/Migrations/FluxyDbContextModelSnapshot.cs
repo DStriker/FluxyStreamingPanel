@@ -173,6 +173,89 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("content_categories", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.EpisodeEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("EpisodeNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("episode_number");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("image_url");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("imdb_id");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Plot")
+                        .HasColumnType("text")
+                        .HasColumnName("plot");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(3,1)")
+                        .HasColumnName("rating");
+
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("date")
+                        .HasColumnName("release_date");
+
+                    b.Property<int>("SeasonNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("season_number");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("source");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("episode_type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeriesId", "Rating");
+
+                    b.HasIndex("SeriesId", "ReleaseDate");
+
+                    b.HasIndex("SeriesId", "Status");
+
+                    b.HasIndex("SeriesId", "Type");
+
+                    b.HasIndex("SeriesId", "SeasonNumber", "EpisodeNumber")
+                        .IsUnique();
+
+                    b.ToTable("series_episodes", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -289,6 +372,90 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("refresh_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SeriesEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BackdropUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("backdrop_url");
+
+                    b.PrimitiveCollection<string[]>("Cast")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("cast");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Director")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("director");
+
+                    b.PrimitiveCollection<string[]>("Genres")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("genres");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("imdb_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Plot")
+                        .HasColumnType("text")
+                        .HasColumnName("plot");
+
+                    b.Property<string>("PosterUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("poster_url");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("numeric(3,1)")
+                        .HasColumnName("rating");
+
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("date")
+                        .HasColumnName("release_date");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Rating");
+
+                    b.HasIndex("ReleaseDate");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("CategoryId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("series", (string)null);
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
@@ -781,6 +948,17 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("Stream");
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.EpisodeEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.SeriesEntity", "Series")
+                        .WithMany("Episodes")
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Series");
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.UserEntity", "User")
@@ -801,6 +979,17 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SeriesEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
@@ -881,6 +1070,11 @@ namespace Fluxy.DataAccess.Migrations
             modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
                 {
                     b.Navigation("StreamSources");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SeriesEntity", b =>
+                {
+                    b.Navigation("Episodes");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>

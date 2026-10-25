@@ -1,7 +1,10 @@
 using Fluxy.API.Contracts.Streams;
+using Fluxy.API.Contracts.Series;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
 using Fluxy.API.Contracts.Vod;
+using Fluxy.Core.Series.Enums;
+using Fluxy.Core.Series.Outcomes;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Outcomes;
 using Fluxy.Core.Users.Enums;
@@ -44,6 +47,12 @@ namespace Fluxy.API.Contracts.Common
 
         /// <summary>Code reported once a run over on-demand videos has been answered for.</summary>
         public const string VideoOnDemandCompletedCode = "video_on_demand_bulk_completed";
+
+        /// <summary>Code reported once a run over series has been answered for.</summary>
+        public const string SeriesCompletedCode = "series_bulk_completed";
+
+        /// <summary>Code reported once a run over episodes has been answered for.</summary>
+        public const string EpisodesCompletedCode = "series_episodes_bulk_completed";
 
         /// <summary>Body for a run over accounts.</summary>
         /// <param name="outcome">What the service reported, one entry per identifier.</param>
@@ -160,6 +169,49 @@ namespace Fluxy.API.Contracts.Common
                 .ToList();
 
             return Answer(VideoOnDemandCompletedCode, Summary(outcome.Action, items), items);
+        }
+
+        /// <summary>Body for a run over series.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(SeriesBulkOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = SeriesResponses.Describe(new SeriesOutcome
+                    {
+                        Action = item.Action,
+                        SeriesId = item.SeriesId,
+                        Errors = item.Errors
+                    });
+
+                    return ToItem(item.SeriesId, status, body);
+                })
+                .ToList();
+
+            return Answer(SeriesCompletedCode, Summary(outcome.Action, items), items);
+        }
+
+        /// <summary>Body for a run over episodes.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(EpisodeBulkOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = SeriesResponses.Describe(new EpisodeOutcome
+                    {
+                        Action = item.Action,
+                        SeriesId = Guid.Empty,
+                        EpisodeId = item.EpisodeId,
+                        Errors = item.Errors
+                    });
+
+                    return ToItem(item.EpisodeId, status, body);
+                })
+                .ToList();
+
+            return Answer(EpisodesCompletedCode, Summary(outcome.Action, items), items);
         }
 
         private static BulkItemResponse ToItem(
@@ -307,6 +359,44 @@ namespace Fluxy.API.Contracts.Common
 
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} videos changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over series landed.</summary>
+        private static string Summary(
+            BulkSeriesAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkSeriesAction.ChangeStatus =>
+                    $"{Landed(items)} of {items.Count} series changed state.",
+
+                BulkSeriesAction.MoveCategory =>
+                    $"{Landed(items)} of {items.Count} series moved to that category.",
+
+                BulkSeriesAction.Delete =>
+                    $"{Landed(items)} of {items.Count} series deleted.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} series changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over episodes landed.</summary>
+        private static string Summary(
+            BulkEpisodeAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkEpisodeAction.ChangeStatus =>
+                    $"{Landed(items)} of {items.Count} episodes changed state.",
+
+                BulkEpisodeAction.ChangeType =>
+                    $"{Landed(items)} of {items.Count} episodes changed type.",
+
+                BulkEpisodeAction.Delete =>
+                    $"{Landed(items)} of {items.Count} episodes deleted.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} episodes changed."
             };
 
         private static int Landed(IReadOnlyList<BulkItemResponse> items)

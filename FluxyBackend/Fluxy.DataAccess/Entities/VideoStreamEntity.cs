@@ -62,7 +62,9 @@ namespace Fluxy.DataAccess.Entities
 
         /// <summary>
         /// Series this stream plays, for <see cref="VideoStreamType.OnlineSeries"/> and nothing
-        /// else. Not a foreign key: no table of series exists in this database yet.
+        /// else. Deliberately not a foreign key: existing stream rows may name a series that
+        /// was never recorded, and the delivery process resolves the reference rather than this
+        /// table's constraint.
         /// </summary>
         public Guid? SeriesId { get; set; }
 

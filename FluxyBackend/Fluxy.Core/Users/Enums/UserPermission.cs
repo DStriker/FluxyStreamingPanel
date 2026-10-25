@@ -134,6 +134,18 @@ namespace Fluxy.Core.Users.Enums
         /// for them to be converted. Separate from <see cref="ViewVideoOnDemand"/> for the
         /// reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditVideoOnDemand = 32768
+        EditVideoOnDemand = 32768,
+
+        /// <summary>
+        /// May read the series catalogue: the series table and one series with its episodes.
+        /// </summary>
+        ViewSeries = 65536,
+
+        /// <summary>
+        /// May change the series catalogue: create, edit, delete and bulk-edit series, and
+        /// create, edit, delete and bulk-edit their episodes and seasons. Separate from
+        /// <see cref="ViewSeries"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditSeries = 131072
     }
 }

@@ -38,6 +38,11 @@ import AudioStreamsPage from '../src/pages/admin/AudioStreamsPage'
 import VideoOnDemandPage from '../src/pages/admin/VideoOnDemandPage'
 import VideoOnDemandFormPage from '../src/pages/admin/VideoOnDemandFormPage'
 import VideoOnDemandImportPage from '../src/pages/admin/VideoOnDemandImportPage'
+import SeriesPage from '../src/pages/admin/SeriesPage'
+import SeriesFormPage from '../src/pages/admin/SeriesFormPage'
+import SeriesEpisodesPage from '../src/pages/admin/SeriesEpisodesPage'
+import EpisodeFormPage from '../src/pages/admin/EpisodeFormPage'
+import SeasonFormPage from '../src/pages/admin/SeasonFormPage'
 import AudioStreamFormPage from '../src/pages/admin/AudioStreamFormPage'
 import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
@@ -1770,21 +1775,21 @@ async function main() {
     }`,
   )
 
-  // The series section keeps its placeholders for `add` and `manage`: only `categories` is a
-  // real page there, and only the three stream and on-demand sections have been built.
-  // Asserted because a loader added to it would render a table at an address that is not
-  // theirs, and nothing else in this file would notice.
-  const otherSectionsStillPlaceholders = ['series'].every((sectionKey) => {
-    const add = flatItems('Admin').find((item) => item.key === `${sectionKey}Add`)
-    const manage = flatItems('Admin').find((item) => item.key === `${sectionKey}Manage`)
-    return add?.page === undefined && manage?.page === undefined
-  })
+  // The series section is now built: its add form and table have to resolve to the series
+  // pages rather than to the placeholder. Asserted the way the other three sections are,
+  // because a loader copied from the on-demand section would open a video table at a series
+  // address and every check above would stay green about it.
+  const [seriesAddModule, seriesManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'seriesAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'seriesManage')?.page?.(),
+  ])
   check(
-    'the unbuilt content section still opens the placeholder for add and manage',
-    otherSectionsStillPlaceholders,
-    otherSectionsStillPlaceholders
-      ? 'series offers no add or manage page'
-      : 'A SECTION OFFERS A REAL ADD OR MANAGE PAGE IT WAS NOT BUILT FOR',
+    'the series section opens its own add form and table rather than the placeholder',
+    seriesAddModule?.default === SeriesFormPage &&
+      seriesManageModule?.default === SeriesPage,
+    `seriesAdd opens ${seriesAddModule?.default?.name ?? 'nothing'}, seriesManage opens ${
+      seriesManageModule?.default?.name ?? 'nothing'
+    }`,
   )
 
   // The failure this whole script exists for, reached from the other end: a key missing from
@@ -1975,6 +1980,111 @@ async function main() {
     `rendered ${videoOnDemandImportHtml.length} bytes`,
   )
 
+  // --- The series pages --------------------------------------------------------
+  //
+  // The catalogue's own table, its form, the episode table and the two forms that add an
+  // episode or a season. The episode and season addresses are `extra` routes with no menu
+  // item, so each render uses the same parameterised route the application declares.
+  const seriesHtml = renderToStaticMarkup(
+    withRouter('/admin/series', withQuery(
+      <AntApp>
+        <SeriesPage sectionKey="nav.items.seriesManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the series table draws its heading, its counts and its filters before any rows arrive',
+    seriesHtml.includes('>Series<') &&
+      seriesHtml.includes('>Seasons<') &&
+      seriesHtml.includes('>Episodes<') &&
+      seriesHtml.includes('Any category') &&
+      seriesHtml.includes('Any status') &&
+      seriesHtml.includes('ant-table'),
+    `rendered ${seriesHtml.length} bytes with the list still being fetched`,
+  )
+
+  const seriesFormHtml = renderToStaticMarkup(
+    withRouter('/admin/series/add', withQuery(
+      <AntApp>
+        <SeriesFormPage sectionKey="nav.items.seriesAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the series add form draws its metadata section and no computed-count field',
+    seriesFormHtml.includes('Add series') &&
+      seriesFormHtml.includes('Metadata') &&
+      seriesFormHtml.includes('IMDb identifier') &&
+      seriesFormHtml.includes('Cast') &&
+      !seriesFormHtml.includes('name="seasonsCount"'),
+    `rendered ${seriesFormHtml.length} bytes`,
+  )
+
+  const seriesEpisodesHtml = renderToStaticMarkup(
+    withRoutes('/admin/series/11111111-1111-1111-1111-111111111111/episodes', [
+      {
+        path: '/admin/series/:id/episodes',
+        element: withQuery(
+          <AntApp>
+            <SeriesEpisodesPage sectionKey="nav.items.seriesManage" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+  check(
+    'the episode table draws its series heading, its toolbar and its season filter',
+    seriesEpisodesHtml.includes('>Episodes<') &&
+      seriesEpisodesHtml.includes('Back to series') &&
+      seriesEpisodesHtml.includes('Add season') &&
+      seriesEpisodesHtml.includes('Any season') &&
+      seriesEpisodesHtml.includes('ant-table'),
+    `rendered ${seriesEpisodesHtml.length} bytes`,
+  )
+
+  const episodeFormHtml = renderToStaticMarkup(
+    withRoutes(
+      '/admin/series/11111111-1111-1111-1111-111111111111/episodes/22222222-2222-2222-2222-222222222222',
+      [
+        {
+          path: '/admin/series/:id/episodes/:episodeId',
+          element: withQuery(
+            <AntApp>
+              <EpisodeFormPage sectionKey="nav.items.seriesAdd" />
+            </AntApp>,
+          ),
+        },
+      ],
+    ),
+  )
+  check(
+    'the episode edit address waits for the episode instead of drawing fields against nothing',
+    episodeFormHtml.includes('Edit episode') &&
+      episodeFormHtml.includes('ant-spin') &&
+      !episodeFormHtml.includes('Create'),
+    `rendered ${episodeFormHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  const seasonFormHtml = renderToStaticMarkup(
+    withRoutes('/admin/series/11111111-1111-1111-1111-111111111111/seasons/add', [
+      {
+        path: '/admin/series/:id/seasons/add',
+        element: withQuery(
+          <AntApp>
+            <SeasonFormPage sectionKey="nav.items.seriesAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+  check(
+    'the add-season form waits for the series before drawing the folder field',
+    seasonFormHtml.includes('Add a season') &&
+      seasonFormHtml.includes('ant-spin') &&
+      !seasonFormHtml.includes('Folder with the episodes'),
+    `rendered ${seasonFormHtml.length} bytes with the spinner up`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -1984,6 +2094,8 @@ async function main() {
     streamsHtml,
     audioStreamsHtml,
     videoOnDemandHtml,
+    seriesHtml,
+    seriesEpisodesHtml,
     adminSessionsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
@@ -2251,6 +2363,11 @@ async function main() {
     `/admin/user-groups/add`,
     `/admin/user-groups/11111111-1111-1111-1111-111111111111`,
     `/admin/video-streams/11111111-1111-1111-1111-111111111111`,
+    `/admin/series/11111111-1111-1111-1111-111111111111`,
+    `/admin/series/11111111-1111-1111-1111-111111111111/episodes`,
+    `/admin/series/11111111-1111-1111-1111-111111111111/episodes/add`,
+    `/admin/series/11111111-1111-1111-1111-111111111111/episodes/22222222-2222-2222-2222-222222222222`,
+    `/admin/series/11111111-1111-1111-1111-111111111111/seasons/add`,
   ]
   const extraLandedOnNotFound = EXTRA_ADMIN_ADDRESSES.filter((address) => {
     const matched = matchRoutes(routeTable, address)?.[0]?.route

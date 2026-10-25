@@ -4,6 +4,7 @@ using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Series.Repositories;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Vod.Repositories;
@@ -95,6 +96,8 @@ namespace Fluxy.DataAccess
             services.AddScoped<IVideoStreamRepository, VideoStreamRepository>();
             services.AddScoped<IAudioStreamRepository, AudioStreamRepository>();
             services.AddScoped<IVodRepository, VodRepository>();
+            services.AddScoped<ISeriesRepository, SeriesRepository>();
+            services.AddScoped<IEpisodeRepository, EpisodeRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

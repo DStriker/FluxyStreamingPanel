@@ -55,7 +55,7 @@ jobs:
         run: >
           dotnet test --project tests/Fluxy.UnitTests
           -c Release --no-build
-          --minimum-expected-tests 210
+          --minimum-expected-tests 227
           --coverage
           --coverage-output unit.coverage.xml
           --coverage-output-format cobertura
@@ -66,7 +66,7 @@ jobs:
         run: >
           dotnet test --project tests/Fluxy.IntegrationTests
           -c Release --no-build
-          --minimum-expected-tests 116
+          --minimum-expected-tests 136
           --coverage
           --coverage-output integration.coverage.xml
           --coverage-output-format cobertura

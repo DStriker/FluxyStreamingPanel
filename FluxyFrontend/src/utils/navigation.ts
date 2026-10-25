@@ -78,13 +78,12 @@ interface NavGroup {
  * drifting: a fifth kind is one entry here plus its labels in the locale files, not a
  * hand-written fourth of a rail.
  *
- * `categories` is a real page for all four. `add` and `manage` are real pages for the
- * **streams and the audio streams** sections - this pass built the video streams table and
- * its form, then the audio ones - and carry no `page` for the other two, so the router
- * renders `SectionPage` for them: the placeholder that says the section is still under
- * construction, which is the honest answer for entries this pass deliberately did not build.
- * Their menu keys exist either way, so filling them in later is one optional loader away
- * rather than a re-reading of the rail.
+ * `categories` is a real page for all four. `add` and `manage` are real pages for all four
+ * sections: the video streams, the audio streams, the on-demand catalogue and the series.
+ * The optional loaders are still optional rather than required because `import` is a fourth
+ * entry only the two stream sections carry - reading a playlist is the other way to add
+ * streams, not a fourth thing to look at - and a section without one must not grow a
+ * placeholder where these have a real page.
  *
  * `import` is a fourth entry only the two stream sections carry, and it sits immediately
  * after `add`: reading a playlist is the other way to add streams, not a fourth thing to
@@ -151,6 +150,8 @@ const CONTENT_SECTIONS: ContentSection[] = [
     labelKey: 'nav.groups.series',
     icon: UnorderedListOutlined,
     categoriesPage: () => import('../pages/admin/ContentCategoriesPage'),
+    addPage: () => import('../pages/admin/SeriesFormPage'),
+    managePage: () => import('../pages/admin/SeriesPage'),
   },
 ]
 

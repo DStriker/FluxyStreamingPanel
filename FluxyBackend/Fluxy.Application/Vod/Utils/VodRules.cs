@@ -1,4 +1,4 @@
-using System.Globalization;
+using Fluxy.Application.Content.Utils;
 using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Vod.Commands;
 using Fluxy.Core.Vod.Enums;
@@ -118,32 +118,12 @@ namespace Fluxy.Application.Vod.Utils
         /// </remarks>
         /// <param name="entries">Entries as the request sent them, possibly null.</param>
         public static IReadOnlyList<string> NormalizeList(IEnumerable<string>? entries)
-        {
-            if (entries is null)
-            {
-                return [];
-            }
-
-            var result = new List<string>();
-
-            foreach (var entry in entries)
-            {
-                var trimmed = entry?.Trim();
-
-                if (!string.IsNullOrEmpty(trimmed)
-                    && !result.Contains(trimmed, StringComparer.Ordinal))
-                {
-                    result.Add(trimmed);
-                }
-            }
-
-            return result;
-        }
+            => ContentMetadataRules.NormalizeList(entries);
 
         /// <summary>Turns an empty string into null, so a blank field is stored as "none".</summary>
         /// <param name="value">Text a request sent, or null.</param>
         public static string? NullIfBlank(string? value)
-            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            => ContentMetadataRules.NullIfBlank(value);
 
         /// <summary>
         /// Reads a release date: blank means "none", anything else must be <c>yyyy-MM-dd</c>.
@@ -152,27 +132,7 @@ namespace Fluxy.Application.Vod.Utils
         /// <param name="value">The date, or null for a blank value.</param>
         /// <returns>False when the text is neither blank nor a date in that form.</returns>
         public static bool TryParseReleaseDate(string? text, out DateOnly? value)
-        {
-            value = null;
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return true;
-            }
-
-            if (DateOnly.TryParseExact(
-                text.Trim(),
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var parsed))
-            {
-                value = parsed;
-                return true;
-            }
-
-            return false;
-        }
+            => ContentMetadataRules.TryParseReleaseDate(text, out value);
 
         /// <summary>
         /// Reads a rating: blank means "none", anything else must be 0..10 with at most one
@@ -182,33 +142,7 @@ namespace Fluxy.Application.Vod.Utils
         /// <param name="value">The rating, or null for a blank value.</param>
         /// <returns>False when the text is neither blank nor a rating in that range.</returns>
         public static bool TryParseRating(string? text, out decimal? value)
-        {
-            value = null;
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return true;
-            }
-
-            if (!decimal.TryParse(
-                text.Trim(),
-                NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
-                CultureInfo.InvariantCulture,
-                out var parsed))
-            {
-                return false;
-            }
-
-            if (parsed < VodLimits.RatingMin
-                || parsed > VodLimits.RatingMax
-                || decimal.Round(parsed, 1) != parsed)
-            {
-                return false;
-            }
-
-            value = parsed;
-            return true;
-        }
+            => ContentMetadataRules.TryParseRating(text, out value);
 
         /// <summary>
         /// Checks everything about an item that can be judged without asking the database.
@@ -267,23 +201,23 @@ namespace Fluxy.Application.Vod.Utils
                 errors[nameof(NewVodItem.Source)] = SourceRule;
             }
 
-            if (!Fits(subtitleUrl, VodLimits.SubtitleUrlMaxLength))
+            if (!ContentMetadataRules.Fits(subtitleUrl, VodLimits.SubtitleUrlMaxLength))
             {
                 errors[nameof(NewVodItem.SubtitleUrl)] = SubtitleRule;
             }
 
             if (!string.IsNullOrWhiteSpace(imdbId)
-                && (imdbId.Trim().Length > VodLimits.ImdbIdMaxLength || !IsImdbId(imdbId.Trim())))
+                && (imdbId.Trim().Length > VodLimits.ImdbIdMaxLength || !ContentMetadataRules.IsImdbId(imdbId.Trim())))
             {
                 errors[nameof(NewVodItem.ImdbId)] = ImdbRule;
             }
 
-            if (!Fits(posterUrl, VodLimits.ImageUrlMaxLength))
+            if (!ContentMetadataRules.Fits(posterUrl, VodLimits.ImageUrlMaxLength))
             {
                 errors[nameof(NewVodItem.PosterUrl)] = ImageRule;
             }
 
-            if (!Fits(backdropUrl, VodLimits.ImageUrlMaxLength))
+            if (!ContentMetadataRules.Fits(backdropUrl, VodLimits.ImageUrlMaxLength))
             {
                 errors[nameof(NewVodItem.BackdropUrl)] = ImageRule;
             }
@@ -300,7 +234,7 @@ namespace Fluxy.Application.Vod.Utils
                 errors[nameof(NewVodItem.Cast)] = CastRule;
             }
 
-            if (!Fits(director, VodLimits.DirectorMaxLength))
+            if (!ContentMetadataRules.Fits(director, VodLimits.DirectorMaxLength))
             {
                 errors[nameof(NewVodItem.Director)] = DirectorRule;
             }
@@ -336,15 +270,5 @@ namespace Fluxy.Application.Vod.Utils
 
             return errors;
         }
-
-        /// <summary>Whether an optional text is short enough to store.</summary>
-        private static bool Fits(string? value, int maxLength)
-            => string.IsNullOrWhiteSpace(value) || value.Trim().Length <= maxLength;
-
-        /// <summary>Whether a value is <c>tt</c> followed by 5 to 10 digits.</summary>
-        private static bool IsImdbId(string value)
-            => value.Length is >= 7 and <= 12
-                && value.StartsWith("tt", StringComparison.Ordinal)
-                && value[2..].All(char.IsAsciiDigit);
     }
 }

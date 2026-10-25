@@ -33,6 +33,8 @@ describe('ALL_PERMISSIONS', () => {
       'editAudioStreams',
       'viewVideoOnDemand',
       'editVideoOnDemand',
+      'viewSeries',
+      'editSeries',
     ])
   })
 })
