@@ -366,3 +366,4 @@ FodyWeavers.xsd
 *.opencode/
 opencode.json
 /FluxyFrontend/opencode.json
+/FluxyBackend/.commandcode
