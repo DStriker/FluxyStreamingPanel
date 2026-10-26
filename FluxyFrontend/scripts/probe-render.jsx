@@ -45,6 +45,9 @@ import EpisodeFormPage from '../src/pages/admin/EpisodeFormPage'
 import SeasonFormPage from '../src/pages/admin/SeasonFormPage'
 import AudioStreamFormPage from '../src/pages/admin/AudioStreamFormPage'
 import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
+import EpgSourcesPage from '../src/pages/admin/EpgSourcesPage'
+import EpgSourceFormPage from '../src/pages/admin/EpgSourceFormPage'
+import EpgSourceChannelsPage from '../src/pages/admin/EpgSourceChannelsPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import AudioStreamStateCell from '../src/features/audio-streams/components/StreamStateCell'
@@ -1792,6 +1795,96 @@ async function main() {
     }`,
   )
 
+  // --- The programme guide sources -------------------------------------------
+  //
+  // The section the owner asked for: two menu entries under one heading, a table with no
+  // selection column, a form of three fields and a read-only channels page reached only from
+  // a row. The "Reload EPG" button is a deliberate stub, so what is asserted is that it is
+  // drawn *and disabled* rather than missing - a button that vanished would look like the
+  // feature had been dropped.
+  const epgSourcesHtml = renderToStaticMarkup(
+    withRouter('/admin/epg-sources', withQuery(
+      <AntApp>
+        <EpgSourcesPage sectionKey="nav.items.epgManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the guide source table draws its own heading and its table before any rows arrive',
+    epgSourcesHtml.includes('>Guide sources<') &&
+      epgSourcesHtml.includes('ant-table') &&
+      !epgSourcesHtml.includes('nav.items.epgManage'),
+    `rendered ${epgSourcesHtml.length} bytes with the sources still being fetched`,
+  )
+
+  check(
+    'the guide source table offers its columns, the search and the disabled reload stub',
+    epgSourcesHtml.includes('>Days to keep<') &&
+      epgSourcesHtml.includes('>Last refreshed<') &&
+      epgSourcesHtml.includes('Search by name or address') &&
+      epgSourcesHtml.includes('Reload EPG') &&
+      epgSourcesHtml.includes('disabled'),
+    `rendered ${epgSourcesHtml.length} bytes`,
+  )
+
+  check(
+    'the guide source table carries no selection column, because it has no bulk actions',
+    !epgSourcesHtml.includes('ant-table-selection-column'),
+    `rendered ${epgSourcesHtml.length} bytes`,
+  )
+
+  const epgSourceFormHtml = renderToStaticMarkup(
+    withRouter('/admin/epg-sources/add', withQuery(
+      <AntApp>
+        <EpgSourceFormPage sectionKey="nav.items.epgAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the guide source form asks for the three fields an operator owns and nothing else',
+    epgSourceFormHtml.includes('Add source') &&
+      epgSourceFormHtml.includes('Address') &&
+      epgSourceFormHtml.includes('Days to keep') &&
+      !epgSourceFormHtml.includes('Raw data') &&
+      !epgSourceFormHtml.includes('epgSourcesForm.'),
+    `rendered ${epgSourceFormHtml.length} bytes`,
+  )
+
+  const epgSourceChannelsHtml = renderToStaticMarkup(
+    withRouter('/admin/epg-sources/00000000-0000-0000-0000-000000000001/channels', withQuery(
+      <AntApp>
+        <EpgSourceChannelsPage sectionKey="nav.items.epgManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the channels page is a read-only table of the stream and its guide key',
+    epgSourceChannelsHtml.includes('Channels of the guide source') &&
+      epgSourceChannelsHtml.includes('>Stream<') &&
+      epgSourceChannelsHtml.includes('>Channel key<') &&
+      !epgSourceChannelsHtml.includes('ant-table-selection-column') &&
+      !epgSourceChannelsHtml.includes('epgSourceChannels.'),
+    `rendered ${epgSourceChannelsHtml.length} bytes`,
+  )
+
+  const epgItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('epg'))
+    .map((item) => item.key)
+    .join(',')
+  const [epgAddModule, epgManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'epgAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'epgManage')?.page?.(),
+  ])
+  check(
+    'the programme guide section has two entries, in that order, and each opens its own page',
+    epgItemKeys === 'epgAdd,epgManage' &&
+      epgAddModule?.default === EpgSourceFormPage &&
+      epgManageModule?.default === EpgSourcesPage,
+    `${epgItemKeys}; epgAdd opens ${epgAddModule?.default?.name ?? 'nothing'}, epgManage opens ${
+      epgManageModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
   // The failure this whole script exists for, reached from the other end: a key missing from
   // **both** locale files is invisible to `tsc`, because `en.ts` is what `Translation` is
   // built from - a key absent from it is absent from the type, so `ru.ts` being typed
@@ -2097,6 +2190,8 @@ async function main() {
     seriesHtml,
     seriesEpisodesHtml,
     adminSessionsHtml,
+    epgSourcesHtml,
+    epgSourceChannelsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

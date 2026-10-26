@@ -35,6 +35,8 @@ describe('ALL_PERMISSIONS', () => {
       'editVideoOnDemand',
       'viewSeries',
       'editSeries',
+      'viewEpgSources',
+      'editEpgSources',
     ])
   })
 })
@@ -94,6 +96,8 @@ describe('canViewAny / canEditAny', () => {
     expect(canEditAny(['viewAudioStreams', 'editAudioStreams'])).toBe(false)
     expect(canViewAny(['viewVideoOnDemand', 'editVideoOnDemand'])).toBe(false)
     expect(canEditAny(['viewVideoOnDemand', 'editVideoOnDemand'])).toBe(false)
+    expect(canViewAny(['viewEpgSources', 'editEpgSources'])).toBe(false)
+    expect(canEditAny(['viewEpgSources', 'editEpgSources'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

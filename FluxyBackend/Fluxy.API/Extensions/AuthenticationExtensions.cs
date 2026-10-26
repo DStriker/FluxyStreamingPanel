@@ -91,6 +91,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the series catalogue.</summary>
         public const string EditSeriesPolicy = "Permission.EditSeries";
 
+        /// <summary>Policy that accepts an operator who may read the programme guide sources.</summary>
+        public const string ViewEpgSourcesPolicy = "Permission.ViewEpgSources";
+
+        /// <summary>Policy that accepts an operator who may change the programme guide sources.</summary>
+        public const string EditEpgSourcesPolicy = "Permission.EditEpgSources";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -254,7 +260,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditSeries)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditSeries)))
+                .AddPolicy(ViewEpgSourcesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewEpgSources)))
+                .AddPolicy(EditEpgSourcesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditEpgSources)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

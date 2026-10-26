@@ -1,3 +1,4 @@
+using Fluxy.Core.Epg.Repositories;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
@@ -73,19 +74,31 @@ namespace Fluxy.Application.Streams.Services
                 "if the stream carries no guide."
         ];
 
+        /// <summary>The sentence a guide source that names no existing source gets.</summary>
+        private static readonly string[] EpgSourceRule =
+        [
+            "There is no programme guide source with that identifier."
+        ];
+
         private readonly IVideoStreamRepository _streams;
+        private readonly IEpgSourceRepository _epgSources;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VideoStreamService"/> class.
         /// </summary>
         /// <param name="streams">Repository holding the streams and their two lists.</param>
+        /// <param name="epgSources">
+        /// Repository that answers whether the guide source a stream names exists.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public VideoStreamService(
             IVideoStreamRepository streams,
+            IEpgSourceRepository epgSources,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
+            _epgSources = epgSources;
             _unitOfWork = unitOfWork;
         }
 
@@ -141,6 +154,15 @@ namespace Fluxy.Application.Streams.Services
             if (errors.Count > 0)
             {
                 return Invalid(errors);
+            }
+
+            // A guide source is a row of this database, so a stream may only name one that
+            // exists - the foreign key would refuse it anyway, and a refusal here names the
+            // field instead of failing at the write.
+            if (VideoStreamEpg.Configured(input.EpgSourceId, input.EpgChannelKey)
+                && await _epgSources.ExistsAsync(input.EpgSourceId!.Value, cancellationToken) is false)
+            {
+                return Invalid(Field(nameof(NewVideoStream.EpgSourceId), EpgSourceRule));
             }
 
             // The category is checked after the shape rather than before it, because a body
@@ -282,6 +304,16 @@ namespace Fluxy.Application.Streams.Services
             if (errors.Count > 0)
             {
                 return Invalid(errors, id);
+            }
+
+            // The merged pair is checked against the source table for the reason the create is:
+            // a guide whose source does not exist is a key nothing will ever look up.
+            if (VideoStreamEpg.Configured(epgSourceId, epgChannelKey)
+                && await _epgSources.ExistsAsync(epgSourceId!.Value, cancellationToken) is false)
+            {
+                return Invalid(
+                    Field(nameof(VideoStreamPatch.EpgSourceId), EpgSourceRule),
+                    id);
             }
 
             if (await _streams.CategoryIsUsableAsync(categoryId, cancellationToken) is false)

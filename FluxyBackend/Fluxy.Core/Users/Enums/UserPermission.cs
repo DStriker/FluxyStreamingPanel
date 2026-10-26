@@ -43,6 +43,13 @@ namespace Fluxy.Core.Users.Enums
     /// the reason the audio one is: the screen, the table and the form are their own.
     /// </para>
     /// <para>
+    /// <b>The guide pair guards the sources a programme schedule is read from.</b>
+    /// <see cref="ViewEpgSources"/> is the sources table and the channels that use a source;
+    /// <see cref="EditEpgSources"/> is creating, changing and deleting a source. They are
+    /// separate from the stream pair because a guide source is its own resource: a group may
+    /// run the streams and have no business pointing them at a different guide.
+    /// </para>
+    /// <para>
     /// The numeric values are powers of two and are stored in <c>user_group_permissions</c>,
     /// so they are part of the schema: adding a member means adding a value nobody has used
     /// yet, and renumbering the existing ones would silently reinterpret rows already
@@ -146,6 +153,18 @@ namespace Fluxy.Core.Users.Enums
         /// create, edit, delete and bulk-edit their episodes and seasons. Separate from
         /// <see cref="ViewSeries"/> for the reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditSeries = 131072
+        EditSeries = 131072,
+
+        /// <summary>
+        /// May read the programme guide sources: the sources table, one source in full, and
+        /// the streams that read their guide from a source.
+        /// </summary>
+        ViewEpgSources = 262144,
+
+        /// <summary>
+        /// May change the programme guide sources: create, edit and delete them. Separate from
+        /// <see cref="ViewEpgSources"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditEpgSources = 524288
     }
 }

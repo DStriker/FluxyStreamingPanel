@@ -51,6 +51,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(32768, (int)UserPermission.EditVideoOnDemand);
             Assert.Equal(65536, (int)UserPermission.ViewSeries);
             Assert.Equal(131072, (int)UserPermission.EditSeries);
+            Assert.Equal(262144, (int)UserPermission.ViewEpgSources);
+            Assert.Equal(524288, (int)UserPermission.EditEpgSources);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }

@@ -1,6 +1,7 @@
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Repositories;
 using Fluxy.Core.Content.Repositories;
+using Fluxy.Core.Epg.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Security.Interfaces;
@@ -98,6 +99,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IVodRepository, VodRepository>();
             services.AddScoped<ISeriesRepository, SeriesRepository>();
             services.AddScoped<IEpisodeRepository, EpisodeRepository>();
+            services.AddScoped<IEpgSourceRepository, EpgSourceRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

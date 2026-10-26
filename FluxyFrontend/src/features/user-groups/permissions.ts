@@ -15,7 +15,7 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all sixteen belong to
+ * - **A permission belongs to exactly one role.** On this installation all eighteen belong to
  *   `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
@@ -28,9 +28,10 @@ import type { Role, UserPermission } from '../../types'
  * - **`ALL_PERMISSIONS` has a stable order**, so the checkboxes appear in the same sequence
  *   the server, the seeder and the migration list them in. Sorting them differently here
  *   would be a second opinion about an order that was decided once, on purpose.
- * - **The last two pairs are not about accounts at all.** `viewStreams`/`editStreams`,
- *   `viewAudioStreams`/`editAudioStreams` and `viewSeries`/`editSeries` name content
- *   catalogues, so they sit in `ALL_PERMISSIONS` (a group form has to offer them) but in
+ * - **The last pairs are not about accounts at all.** `viewStreams`/`editStreams`,
+ *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries` and
+ *   `viewEpgSources`/`editEpgSources` name content catalogues and guide sources, so they sit
+ *   in `ALL_PERMISSIONS` (a group form has to offer them) but in
  *   neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account being acted
  *   on, and a stream, a video or a series has no such role). `canView` and `canEdit` therefore
  *   stay a lookup over two three-entry maps rather than becoming a scan over the set. The
@@ -58,6 +59,8 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editVideoOnDemand',
   'viewSeries',
   'editSeries',
+  'viewEpgSources',
+  'editEpgSources',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -78,6 +81,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editVideoOnDemand: 'Admin',
   viewSeries: 'Admin',
   editSeries: 'Admin',
+  viewEpgSources: 'Admin',
+  editEpgSources: 'Admin',
 }
 
 /**

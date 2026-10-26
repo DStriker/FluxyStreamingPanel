@@ -96,16 +96,19 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("delay_minutes")
                 .IsRequired();
 
-            // Three references to rows of domains that do not exist in this database yet, so
-            // they are plain uuids rather than foreign keys. There is nothing for a constraint
-            // to point at, and inventing a table to point at would be inventing a domain that
-            // nobody asked for. The relaying process resolves them.
+            // Two references the relaying process resolves rather than a constraint: a stream
+            // may name a series or an on-demand item, and whether either still exists is not a
+            // question this table answers - a row that named one before it was recorded stays
+            // readable rather than being refused by a key.
             builder.Property(stream => stream.SeriesId)
                 .HasColumnName("series_id");
 
             builder.Property(stream => stream.VodId)
                 .HasColumnName("vod_id");
 
+            // The third reference *is* a foreign key, because a guide is fetched from this
+            // installation: a dangling source is a schedule nothing can ever look up, which is
+            // a different fact from a series nobody has recorded yet. See the constraint below.
             builder.Property(stream => stream.EpgSourceId)
                 .HasColumnName("epg_source_id");
 
@@ -158,6 +161,17 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasOne(stream => stream.Category)
                 .WithMany()
                 .HasForeignKey(stream => stream.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A stream reads its schedule from a real guide source, so the identifier has to
+            // name one. Restrict rather than cascade for the reason the category uses it: a
+            // source a screenful of channels depends on must not vanish under them, and the
+            // guide service answers the refusal with a code and a count instead of letting the
+            // database produce a failure. The navigation is written without a property because
+            // the stream model has no reason to carry the source around - the id is the fact.
+            builder.HasOne<EpgSourceEntity>()
+                .WithMany()
+                .HasForeignKey(stream => stream.EpgSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // One name per category, compared case sensitively for the same reason username

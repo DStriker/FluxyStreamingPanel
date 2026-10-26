@@ -22,6 +22,7 @@ import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import SourceListEditor from '../../components/SourceListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useAllEpgSources } from '../../features/epg/hooks/queries'
 import {
   useCreateVideoStream,
   useUpdateVideoStream,
@@ -363,6 +364,22 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.VideoStream)
   const categories = categoriesQuery.data?.items ?? []
   const categoriesError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
+
+  /**
+   * The guide sources the picker offers. A source is a row of this installation now, so the
+   * field chooses one instead of accepting a uuid nobody can look up - the server refuses a
+   * source that does not exist, and a list of names is how an operator picks one it will
+   * accept. A failed read leaves the picker empty and says why; the rest of the form still
+   * saves, and a guide is not a required field.
+   */
+  const epgSourcesQuery = useAllEpgSources()
+  const epgSourceOptions = (epgSourcesQuery.data?.items ?? []).map((source) => ({
+    value: source.id,
+    label: source.name,
+  }))
+  const epgSourcesError = epgSourcesQuery.isError
+    ? messageForError(epgSourcesQuery.error)
+    : null
 
   // The area this page hangs from, for both buttons below. `null` only under the probes,
   // which render no provider: `RequireAuth` publishes one for every visitor this page can
@@ -785,7 +802,10 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
 
           {/* The guide pair, refused together when only one half is present - which is what
               `dependencies` below buys: filling in either side re-checks the other, so the
-              red under the untouched input clears the moment the pair becomes complete. */}
+              red under the untouched input clears the moment the pair becomes complete. The
+              source is chosen from the ones that exist rather than typed as a uuid: the
+              server refuses a source nothing answers to, and the list is the only way an
+              operator can pick one it will accept. */}
           <Form.Item
             name="epgSourceId"
             dependencies={['epgChannelKey']}
@@ -793,8 +813,18 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             rules={[optionalIdRule('epgSourceId'), epgPairRule('epgSourceId')]}
             extra={t('videoStreamsForm.epgPairHint')}
           >
-            <Input placeholder={t('videoStreamsForm.idPlaceholder')} />
+            <Select
+              showSearch
+              allowClear
+              options={epgSourceOptions}
+              optionFilterProp="label"
+              placeholder={t('videoStreamsForm.epgSourcePlaceholder')}
+            />
           </Form.Item>
+
+          {epgSourcesError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={epgSourcesError} />
+          )}
 
           <Form.Item
             name="epgChannelKey"

@@ -44,6 +44,8 @@ namespace Fluxy.IntegrationTests.Admin
             Assert.Contains("editVideoOnDemand", adminPermissions);
             Assert.Contains("viewSeries", adminPermissions);
             Assert.Contains("editSeries", adminPermissions);
+            Assert.Contains("viewEpgSources", adminPermissions);
+            Assert.Contains("editEpgSources", adminPermissions);
             Assert.Equal(1, adminBody.RootElement.GetProperty("members").GetInt32());
 
             using var clientDetail = await Client.GetAsync(

@@ -173,6 +173,114 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("content_categories", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgDataEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChannelId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("channel_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset>("EndDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_date");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)")
+                        .HasColumnName("language");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
+
+                    b.Property<DateTimeOffset>("StartDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_date");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelId");
+
+                    b.HasIndex("EndDate");
+
+                    b.HasIndex("Language");
+
+                    b.HasIndex("SourceId");
+
+                    b.HasIndex("StartDate");
+
+                    b.ToTable("epg_data", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgSourceEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DaysKeep")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_keep");
+
+                    b.Property<DateTimeOffset?>("LastEpgUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_epg_updated_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("RawData")
+                        .HasColumnType("text")
+                        .HasColumnName("raw_data");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("epg_sources", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.EpisodeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -738,6 +846,8 @@ namespace Fluxy.DataAccess.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EpgSourceId");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("Type");
@@ -948,6 +1058,15 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("Stream");
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgDataEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.EpgSourceEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.EpisodeEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.SeriesEntity", "Series")
@@ -1030,6 +1149,11 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.EpgSourceEntity", null)
+                        .WithMany()
+                        .HasForeignKey("EpgSourceId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");
                 });

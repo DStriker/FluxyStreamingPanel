@@ -118,6 +118,10 @@ const en = {
       audioStreams: 'Audio streams',
       videoOnDemand: 'Video on demand',
       series: 'Series',
+      // The programme guide: the sources a schedule is fetched from. It follows the four
+      // content sections because a guide is what the streams are filed against rather than a
+      // fifth catalogue of content.
+      epg: 'Programme guide',
       account: 'Account',
     },
     items: {
@@ -165,6 +169,11 @@ const en = {
       seriesAdd: 'Add series',
       seriesManage: 'Manage series',
       seriesCategories: 'Categories',
+      // The guide section has two entries and no more: a source has no categories, and a
+      // playlist import would be a second way to add one file rather than a second thing to
+      // look at. The owner asked for these two words, so they are what the rail says.
+      epgAdd: 'Add',
+      epgManage: 'Manage',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -500,6 +509,11 @@ const en = {
     // separate from the video one: the screens and the rows are their own.
     viewSeries: 'View series',
     editSeries: 'Edit series',
+    // The guide pair guards the sources a programme schedule is read from: the sources
+    // table and the channels that use one source, or the writes that create, change and
+    // delete a source. A guide source is its own resource, not a kind of stream.
+    viewEpgSources: 'View guide sources',
+    editEpgSources: 'Edit guide sources',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -966,6 +980,87 @@ const en = {
     ratingInvalid: 'Enter a rating between 0 and 10.',
     maxLength: 'Up to {{max}} characters.',
   },
+  // The admin's programme guide sources: where a schedule is fetched from and how much of it
+  // is kept. Its own block rather than more keys under `series`, because a guide is a
+  // separate resource behind its own permission pair. The table reads and the form writes;
+  // the raw guide and the programmes parsed out of it belong to the updater, which does not
+  // exist yet - which is why "Reload EPG" is drawn disabled.
+  epgSources: {
+    listTitle: 'Guide sources',
+    addTitle: 'Add source',
+    editTitle: 'Edit source',
+    create: 'Create',
+    save: 'Save',
+    backToList: 'Back to the list',
+    columns: {
+      id: 'ID',
+      name: 'Name',
+      url: 'Address',
+      daysKeep: 'Days to keep',
+      lastEpgUpdatedAt: 'Last refreshed',
+      actions: 'Actions',
+    },
+    actions: {
+      // The row action that reads rather than writes: which streams file their schedule
+      // under this source. It opens the channels page, which has no menu item.
+      channels: 'Channels',
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    // A stub on purpose: the updater is a later pass, so the button is drawn with its reason
+    // attached rather than wired to an endpoint that would do nothing.
+    reload: 'Reload EPG',
+    reloadUnavailable: 'The guide updater is not built yet, so no guide is fetched.',
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by name or address',
+    searchPlaceholder: 'Search by name or address',
+    empty: 'No guide sources yet.',
+    noMatches: 'No guide source matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    deleteConfirmTitle: 'Delete this guide source?',
+    // The programmes go with it through the cascade, so the sentence says so rather than
+    // leaving the visitor to discover it afterwards.
+    deleteConfirmBody:
+      'The source "{{name}}" and every programme parsed from it will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form for one guide source. Its own block because the table names what a
+  // row is and the form names what an operator is being asked to type.
+  epgSourcesForm: {
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a source name',
+    namePlaceholder: 'Main guide',
+    urlLabel: 'Address',
+    urlRequired: 'Enter the address the guide is fetched from',
+    urlInvalid: 'The address must be an absolute http or https URL.',
+    urlPlaceholder: 'https://example.com/guide.xml',
+    urlHint: 'The absolute http(s) address of the guide file.',
+    daysKeepLabel: 'Days to keep',
+    daysKeepRequired: 'Enter how many days of programmes to keep.',
+    daysKeepHint: 'How many days of programmes are kept, between {{min}} and {{max}}.',
+    maxLength: 'Up to {{max}} characters.',
+  },
+  // The streams that read their guide from one source: read-only, reached from a row of the
+  // sources table and from nowhere else.
+  epgSourceChannels: {
+    title: 'Channels of "{{name}}"',
+    titlePlain: 'Channels of the guide source',
+    back: 'Back to the sources',
+    columns: {
+      streamName: 'Stream',
+      channelKey: 'Channel key',
+    },
+    searchLabel: 'Search by stream or channel key',
+    searchPlaceholder: 'Search by stream or channel key',
+    empty: 'No stream reads its guide from this source.',
+    noMatches: 'No channel matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+  },
   // The episodes of one series, reached from a row of the series table.
   seriesEpisodes: {
     title: 'Episodes of "{{name}}"',
@@ -1308,7 +1403,10 @@ const en = {
     // one is missing.
     seriesId: 'Series identifier',
     vodId: 'Video-on-demand identifier',
-    epgSourceId: 'EPG source identifier',
+    epgSourceId: 'EPG source',
+    // The guide source is chosen from the ones that exist; the placeholder is the prompt
+    // rather than a uuid to imitate, because a source is a row of this installation now.
+    epgSourcePlaceholder: 'Choose a guide source',
     idPlaceholder: '00000000-0000-0000-0000-000000000000',
     idHint: 'Leave empty if this stream has none.',
     idInvalid: '{{field}} must be an identifier.',
@@ -1857,6 +1955,16 @@ const en = {
       series_season_already_exists: 'This season already has episodes.',
       series_bulk_completed: 'Changed {{done}} of {{total}} series.',
       series_episodes_bulk_completed: 'Changed {{done}} of {{total}} episodes.',
+      // The guide source resource: three shapes like the catalogues above, plus the refusal
+      // only a source a stream depends on can produce. The count is in the server's sentence
+      // rather than in this one, because the delete dialog is not the place a number travels.
+      epg_source_created: 'The guide source has been created.',
+      epg_source_updated: 'The guide source has been updated.',
+      epg_source_deleted: 'The guide source has been deleted.',
+      epg_source_not_found: 'There is no guide source with that identifier.',
+      epg_source_already_exists: 'That guide source name is already taken.',
+      epg_source_in_use:
+        'Streams still read their guide from this source. Clear the programme guide on those streams first.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

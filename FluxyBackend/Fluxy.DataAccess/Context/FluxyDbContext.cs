@@ -108,6 +108,18 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<EpisodeEntity> Episodes => Set<EpisodeEntity>();
 
+        /// <summary>
+        /// Programme guide sources: where a schedule is fetched from and how much of it is
+        /// kept. A source carries the raw file it last received; the programmes parsed out of
+        /// it are rows of their own.
+        /// </summary>
+        public DbSet<EpgSourceEntity> EpgSources => Set<EpgSourceEntity>();
+
+        /// <summary>
+        /// One programme of one guide source, written and deleted by the updater alone.
+        /// </summary>
+        public DbSet<EpgDataEntity> EpgData => Set<EpgDataEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

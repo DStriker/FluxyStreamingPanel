@@ -2,6 +2,7 @@ using Fluxy.Application.Authentication.Services;
 using Fluxy.Application.Authentication.Utils;
 using Fluxy.Application.Content.Services;
 using Fluxy.Application.Email.Options;
+using Fluxy.Application.Epg.Services;
 using Fluxy.Application.Email.Services;
 using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
@@ -14,6 +15,7 @@ using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Email.Interfaces;
+using Fluxy.Core.Epg.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
@@ -127,6 +129,12 @@ namespace Fluxy.Application
 
             // The episode transcoder is stateless for the same reason the on-demand one is.
             services.AddSingleton<IEpisodeTranscodeService, EpisodeTranscodeService>();
+
+            // The guide sources are the operator's side of the programme guide: where a
+            // schedule is fetched from and how much of it is kept. Neither the raw guide nor
+            // the programme rows are written here - that machinery arrives with the updater -
+            // so this service is scoped only because it reads and writes through the context.
+            services.AddScoped<IEpgSourceService, EpgSourceService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

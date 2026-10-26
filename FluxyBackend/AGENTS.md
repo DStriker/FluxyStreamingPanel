@@ -71,6 +71,7 @@ Fluxy.Core/
   Streams/           Models 2 · Rows 2 · ReadModels 4 · Commands 13 · Outcomes 11 · Enums 17 · Utils 10 · Interfaces 6 · Repositories 2
   Vod/               Models 1 · Rows 1 · ReadModels 3 · Commands 5 · Outcomes 6 · Enums 9 · Utils 4 · Interfaces 4 · Repositories 1
   Series/            Models 2 · ReadModels 7 · Commands 9 · Outcomes 8 · Enums 12 · Utils 7 · Interfaces 6 · Repositories 2
+  Epg/               Models 2 · ReadModels 4 · Commands 3 · Outcomes 1 · Enums 5 · Utils 3 · Interfaces 1 · Repositories 1
 ```
 
 **The domain is decided by what the type is about, not by who reads it.** `IGeoIpResolver` is GeoIP because it answers a question about an address; `ILoginGuardService` is Users because the allow lists belong to an account and GeoIP is only where the answer comes from; `ITokenRevocationStore` is Authentication because it ends a session, not because it is a "security" thing.
@@ -92,7 +93,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else.** It has **twelve** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
+**`Models/` holds the business model and nothing else.** It has **fourteen** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
 
 **One type per file.** Twelve files used to hold two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -1029,14 +1030,16 @@ from a `PATCH`.
   *valid* permission the chosen role does not own (`viewClients` on a Client group) is **dropped**
   — that is a client describing a group, and the server already knows what a Client group may
   hold. The catalog is `[Flags]` powers of two stored as `integer` in
-  `user_group_permissions`, and it now has **fourteen** members in four groups: the two
+  `user_group_permissions`, and it now has **eighteen** members in five groups: the two
   **group-management** keys (`ViewUserGroups=4`, `EditUserGroups=8`), the six **account** keys
   split by the role of the account they act on (`ViewClients=16, ViewResellers=32,
   ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), the four **stream**
   keys — the video pair (`ViewStreams=1024`, `EditStreams=2048`) and the audio pair
   (`ViewAudioStreams=4096`, `EditAudioStreams=8192`), which are deliberately **not** the same
-  pair: a group that may watch the video streams may not watch the audio ones — and the
-  **on-demand** pair (`ViewVideoOnDemand=16384`, `EditVideoOnDemand=32768`). All fourteen are
+  pair: a group that may watch the video streams may not watch the audio ones — the
+  **on-demand** pair (`ViewVideoOnDemand=16384`, `EditVideoOnDemand=32768`), the **series**
+  pair (`ViewSeries=65536`, `EditSeries=131072`) and the **guide** pair
+  (`ViewEpgSources=262144`, `EditEpgSources=524288`). All eighteen are
   owned by `Admin`, so
   `permissionsForRole` on the frontend answers an empty set for Client and Reseller and their
   form shows a note instead of boxes.
@@ -1736,6 +1739,86 @@ services, `SeriesRules`, `EpisodeRules` and `EpisodeFolderScanner` in `Fluxy.App
 the entities, configurations and repositories in `Fluxy.DataAccess` (migration `AddSeries`); the
 contracts in `Fluxy.API/Contracts/Series/`; and the six controllers in
 `Fluxy.API/Controllers/Content/Series*.cs`.
+
+## The programme guide API: `admin/epg-sources`
+
+The first piece of the `Epg` domain: the sources a schedule is fetched from, and the table that
+shows them. The guide **updater does not exist yet** — nothing in this pass fetches a file,
+parses it or writes a programme — so the domain is modelled, the source is managed, and the two
+columns the updater owns are stored but never written by an endpoint.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/epg-sources` | `ViewEpgSourcesPolicy` | page: `page`, `pageSize`, `search`, `sortBy`, `sortOrder` |
+| `GET /admin/epg-sources/{id}` | View | one source; `404 epg_source_not_found` |
+| `GET /admin/epg-sources/{id}/channels` | View | page of the streams that use the source; `404` on an unknown id |
+| `POST /admin/epg-sources` | CSRF + `EditEpgSourcesPolicy` | `201 epg_source_created` + relative `Location` |
+| `PATCH /admin/epg-sources/{id}` | CSRF + Edit | `200 epg_source_updated` |
+| `DELETE /admin/epg-sources/{id}` | CSRF + Edit | `200 epg_source_deleted`, `409 epg_source_in_use` |
+
+- **A source is three facts an operator owns plus two the updater owns.**
+  `epg_sources`: `id, name varchar(200) UNIQUE, url varchar(2048), days_keep integer,
+  last_epg_updated_at timestamptz NULL, raw_data text NULL, created_at, updated_at`. `name` is
+  unique across the installation (case sensitive like every other name here); `url` must be an
+  absolute http(s) address; `days_keep` is 1..365 and defaults to **7 in the service** — no
+  database default, per the project rule. `last_epg_updated_at` and `raw_data` are returned by
+  no response: the raw guide can be megabytes and only the updater parses it, so every read
+  projects it away.
+- **`epg_data` is modelled now and written later.** `id, source_id FK → epg_sources ON DELETE
+  CASCADE, channel_id varchar(200), title varchar(500), language varchar(35) NULL,
+  start_date timestamptz, end_date timestamptz, description text, created_at, updated_at`,
+  with the five indexes the domain asks for (`source_id`, `channel_id`, `language`,
+  `start_date`, `end_date`). There is no repository, service or endpoint for it in this pass:
+  rows are created and deleted by the updater alone, and a contract nobody calls would be a
+  second place to keep in step with it. `EpgData` in `Fluxy.Core/Epg/Models/` is the shape that
+  updater will write.
+- **`channel_id` is the guide's own key, not a row of this database.** A stream names a source
+  plus `epg_channel_key`, and `GET .../channels` is the join that answers "which streams read
+  their schedule from here" - a derived, read-only projection of `video_streams`, not a second
+  list that could disagree with it.
+- **`video_streams.epg_source_id` is now a real foreign key (`RESTRICT`).** The other two
+  cross-domain references (`series_id`, `vod_id`) stay opaque, because a stream may name a row
+  that was never recorded; a guide source, by contrast, is fetched from this installation, so a
+  dangling one is a schedule nothing can ever look up. `VideoStreamService` therefore checks
+  `IEpgSourceRepository.ExistsAsync` on create and on patch and refuses with
+  `validation_failed` on `epgSourceId` before the write. Deleting a source a stream still uses is
+  `409 epg_source_in_use` (with the count in the server sentence); the service checks first so
+  the answer is a code rather than a database failure, and `ON DELETE RESTRICT` is the backstop.
+- **The migration `AddEpgSources` is hand-edited in one place.** It creates both tables, then
+  clears dangling pairs before adding the foreign key:
+  `UPDATE video_streams SET epg_source_id = NULL, epg_channel_key = NULL WHERE epg_source_id IS
+  NOT NULL AND NOT EXISTS (…)`. Both halves are cleared because the pair rule says a guide is a
+  source *and* a key — a key left behind would be a name nothing can look up. The index
+  `IX_video_streams_epg_source_id` is EF's own, created for the foreign key.
+- **"Reload EPG" is a UI stub and has no endpoint.** The owner asked for the button now and the
+  updater later, so the toolbar draws it disabled with the reason attached (the `hinted`
+  wrapper), the same "tell the truth before the click" rule the streams' play button follows.
+  A stub endpoint answering 503 was considered and rejected: an action that would do nothing is
+  better withdrawn than answered.
+- **No captcha, no attempt window** — the recorded admin-area departure: every write is behind
+  an `AdminOnly` session, the `EditEpgSources` permission and a fresh antiforgery pair, and
+  `RejectsCsrfAsync()` runs before any body is read.
+- **The table has no selection column and no bulk menu**, on the owner's call. It is paged,
+  searched and sorted server side for the usual `total` reason; `search` covers the name and
+  the address, and the sort fields are `name`, `url`, `daysKeep`, `lastEpgUpdatedAt` (the last
+  grouping its nulls last in both directions, so "never refreshed" never opens the page).
+- **The channel list is paged and read-only**: sort fields `streamName` and `channelKey`,
+  `search` over both, `404 epg_source_not_found` on an unknown source — and an empty page is a
+  different answer from a missing source.
+
+Layering follows the usual split: `EpgSource` / `EpgData` in `Fluxy.Core/Epg/Models/`,
+`EpgSourceView` / `EpgSourcePage` / `EpgSourceChannel` / `EpgSourceChannelPage` in
+`ReadModels/`, `NewEpgSource` / `EpgSourcePatch` / `EpgSourceWrite` in `Commands/`,
+`EpgSourceOutcome` in `Outcomes/`, the action/sort enums in `Enums/`, `EpgSourceLimits` /
+`EpgSourceListLimits` / `EpgDataLimits` in `Utils/`, `IEpgSourceService` and
+`IEpgSourceRepository`; `EpgSourceService` and `EpgSourceRules` in `Fluxy.Application/Epg/`;
+the two entities, their configurations and `EpgSourceRepository` in `Fluxy.DataAccess`
+(migration `AddEpgSources`); the contracts in `Fluxy.API/Contracts/Epg/`; and
+`EpgSourcesController` in `Fluxy.API/Controllers/Content/`.
+
+Verified: `dotnet build` clean, **232** unit tests and **143** integration tests green,
+`dotnet ef migrations has-pending-model-changes` reports no changes, and the frontend passes
+`typecheck`, `lint`, `test`, `build`, `probe:render`, `probe:i18n` and `probe:paths`.
 
 ## Conventions
 

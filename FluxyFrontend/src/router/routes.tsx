@@ -125,6 +125,18 @@ const EpisodeFormPage = lazy(() => import('../pages/admin/EpisodeFormPage'))
 const SeasonFormPage = lazy(() => import('../pages/admin/SeasonFormPage'))
 
 /**
+ * The guide source form's edit address and the channels of one source. Both are reached only
+ * from a row of the sources table, so neither has a menu item; `epg-sources/add` is a menu
+ * item and a static segment, which react-router ranks above `:id`.
+ *
+ * The form is a second `lazy()` over the same module as the `epg-sources/add` item, for the
+ * reason every other edit form is: a move between the two addresses must remount the form
+ * rather than carry a half-filled one across.
+ */
+const EpgSourceFormPage = lazy(() => import('../pages/admin/EpgSourceFormPage'))
+const EpgSourceChannelsPage = lazy(() => import('../pages/admin/EpgSourceChannelsPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -363,6 +375,17 @@ export const routes: RouteObject[] = [
       {
         path: 'series/:id/seasons/add',
         element: <SeasonFormPage sectionKey="nav.items.seriesAdd" />,
+      },
+      // The guide source form's edit address and the channels of one source. Neither has a
+      // menu item: the first is reached by choosing a row to edit, the second by choosing a
+      // row's "channels" action.
+      {
+        path: 'epg-sources/:id',
+        element: <EpgSourceFormPage sectionKey="nav.items.epgAdd" />,
+      },
+      {
+        path: 'epg-sources/:id/channels',
+        element: <EpgSourceChannelsPage sectionKey="nav.items.epgManage" />,
       },
     ]),
   ),

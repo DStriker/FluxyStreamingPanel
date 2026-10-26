@@ -1,7 +1,7 @@
 /**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These sixteen strings are the whole catalog at the time of writing. They are a union rather
+ * These eighteen strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,9 +16,9 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all sixteen - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
+ * `Admin` for all eighteen - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all sixteen comes
+ * dropped on the way in rather than refused, which is why a Client group sent all eighteen comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
  *
  * **The two stream permissions are the first pair that is not about accounts.**
@@ -36,6 +36,12 @@
  * `viewSeries`/`editSeries` gate the series table, its form, the episodes and the season
  * form. They are deliberately not the on-demand pair: the screens, the rows and the
  * permissions are their own. The backend keeps them at 65536 and 131072.
+ *
+ * **The guide pair is the same question asked about the programme guide sources.**
+ * `viewEpgSources`/`editEpgSources` gate the sources table, the channels that read a source
+ * and the source form. A guide source is its own resource behind its own pair - a group may
+ * run the streams and have no business pointing them at a different guide. The backend keeps
+ * them at 262144 and 524288.
  *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
@@ -58,3 +64,5 @@ export type UserPermission =
   | 'editVideoOnDemand'
   | 'viewSeries'
   | 'editSeries'
+  | 'viewEpgSources'
+  | 'editEpgSources'

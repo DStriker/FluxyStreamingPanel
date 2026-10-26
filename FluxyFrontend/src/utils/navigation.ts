@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   ApartmentOutlined,
   AppstoreOutlined,
+  CalendarOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
   GlobalOutlined,
@@ -409,6 +410,37 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     ...contentGroups(),
+    {
+      // The programme guide: where a schedule is fetched from, and the table of the sources
+      // that exist. It sits after the four content sections because a guide is what the
+      // streams are filed against rather than a fifth catalogue of content, and it carries
+      // two entries rather than the sections' four: a source has no categories and no
+      // playlist import - one file is the source itself.
+      //
+      // The add form is a menu item and the table is the other, in that order, for the
+      // reason the accounts section gives: a visitor scanning the rail decides by the verb
+      // first. The edit form and the channels of one source are addresses with no menu item
+      // of their own - each is only reached from a row of the table.
+      key: 'epg',
+      labelKey: 'nav.groups.epg',
+      icon: CalendarOutlined,
+      items: [
+        {
+          key: 'epgAdd',
+          path: 'epg-sources/add',
+          labelKey: 'nav.items.epgAdd',
+          icon: PlusOutlined,
+          page: () => import('../pages/admin/EpgSourceFormPage'),
+        },
+        {
+          key: 'epgManage',
+          path: 'epg-sources',
+          labelKey: 'nav.items.epgManage',
+          icon: TableOutlined,
+          page: () => import('../pages/admin/EpgSourcesPage'),
+        },
+      ],
+    },
     {
       key: 'account',
       labelKey: 'nav.groups.account',
