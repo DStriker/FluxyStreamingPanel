@@ -159,5 +159,15 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>Files to play, in order. Empty for every kind but the file playlist.</summary>
         public required IReadOnlyList<string> Files { get; init; }
+
+        /// <summary>
+        /// Bouquets the stream belongs to, as text, in the bouquets' own order.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b>: it answers "which packages is this stream in" for the picker on the
+        /// edit form, and says nothing about where the stream sits inside one. Empty for a
+        /// stream in no bouquet.
+        /// </remarks>
+        public required IReadOnlyList<string> BouquetIds { get; init; }
     }
 }

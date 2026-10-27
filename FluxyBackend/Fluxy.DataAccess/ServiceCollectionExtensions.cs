@@ -100,6 +100,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<ISeriesRepository, SeriesRepository>();
             services.AddScoped<IEpisodeRepository, EpisodeRepository>();
             services.AddScoped<IEpgSourceRepository, EpgSourceRepository>();
+            services.AddScoped<IBouquetRepository, BouquetRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

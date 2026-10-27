@@ -76,6 +76,13 @@ namespace Fluxy.Application
             // service rather than extra methods on either of the two above.
             services.AddScoped<IContentCategoryService, ContentCategoryService>();
 
+            // Bouquets package all four kinds of content, so they belong beside the categories
+            // rather than inside any one of the four content services: their rules are about
+            // packages (a name unique for the installation without regard to case, an order per
+            // kind, a delete refused while anything is inside) and no content service could own
+            // them without answering "which kind?" on every call.
+            services.AddScoped<IBouquetService, BouquetService>();
+
             // The streams filed under those categories are their own resource again, for the
             // same reason three times over: a stream has rules no category has - the type
             // owns the payload it may carry, a position is read rather than claimed - and a

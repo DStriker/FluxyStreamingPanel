@@ -29,13 +29,16 @@ import type { Role, UserPermission } from '../../types'
  *   the server, the seeder and the migration list them in. Sorting them differently here
  *   would be a second opinion about an order that was decided once, on purpose.
  * - **The last pairs are not about accounts at all.** `viewStreams`/`editStreams`,
- *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries` and
- *   `viewEpgSources`/`editEpgSources` name content catalogues and guide sources, so they sit
+ *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries`,
+ *   `viewEpgSources`/`editEpgSources` and `viewBouquets`/`editBouquets` name content
+ *   catalogues, guide sources and the packages content is delivered in, so they sit
  *   in `ALL_PERMISSIONS` (a group form has to offer them) but in
  *   neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account being acted
  *   on, and a stream, a video or a series has no such role). `canView` and `canEdit` therefore
  *   stay a lookup over two three-entry maps rather than becoming a scan over the set. The
- *   audio pair is deliberately not the video pair, and neither is the series pair.
+ *   audio pair is deliberately not the video pair, and neither is the series pair; the
+ *   bouquet pair is a package *of* them rather than a fifth content kind, which is why it is
+ *   its own grant rather than a reuse of any of the four.
  * - **Unknown is not a case.** Every value is a member of the union, so there is no branch
  *   for a name that means nothing - the server answers `validation_failed` with the list that
  *   does exist if a body ever carries one, and that is where the refusal belongs.
@@ -61,6 +64,8 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editSeries',
   'viewEpgSources',
   'editEpgSources',
+  'viewBouquets',
+  'editBouquets',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -83,6 +88,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editSeries: 'Admin',
   viewEpgSources: 'Admin',
   editEpgSources: 'Admin',
+  viewBouquets: 'Admin',
+  editBouquets: 'Admin',
 }
 
 /**

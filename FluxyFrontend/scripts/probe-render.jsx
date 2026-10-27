@@ -48,6 +48,8 @@ import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import EpgSourcesPage from '../src/pages/admin/EpgSourcesPage'
 import EpgSourceFormPage from '../src/pages/admin/EpgSourceFormPage'
 import EpgSourceChannelsPage from '../src/pages/admin/EpgSourceChannelsPage'
+import BouquetsPage from '../src/pages/admin/BouquetsPage'
+import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import AudioStreamStateCell from '../src/features/audio-streams/components/StreamStateCell'
@@ -1885,6 +1887,71 @@ async function main() {
     }`,
   )
 
+  // The bouquets section: one entry under its own heading, a table whose rows carry the
+  // counts the delete rule reads, and a content manager behind a row. The manager is the
+  // screen that carries the domain's one order rule - what the operator arranges is what is
+  // saved - so what is asserted here is that both screens draw before any answer arrives and
+  // that neither leaks a raw locale key.
+  const bouquetsHtml = renderToStaticMarkup(
+    withRouter('/admin/bouquets', withQuery(
+      <AntApp>
+        <BouquetsPage sectionKey="nav.items.bouquetsManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the bouquets table draws its own heading, its toolbar and its table before any rows arrive',
+    bouquetsHtml.includes('>Bouquets<') &&
+      bouquetsHtml.includes('>Add bouquet<') &&
+      bouquetsHtml.includes('Save order') &&
+      bouquetsHtml.includes('Discard changes') &&
+      bouquetsHtml.includes('ant-table') &&
+      !bouquetsHtml.includes('nav.items.bouquetsManage') &&
+      !/\bbouquets\.[a-zA-Z]/.test(bouquetsHtml),
+    `rendered ${bouquetsHtml.length} bytes with the bouquets still being fetched`,
+  )
+
+  check(
+    'the bouquets table offers the four content counts, so its delete button can tell the truth',
+    bouquetsHtml.includes('>Video streams<') &&
+      bouquetsHtml.includes('>Audio streams<') &&
+      bouquetsHtml.includes('>On demand<') &&
+      bouquetsHtml.includes('>Series<'),
+    `rendered ${bouquetsHtml.length} bytes`,
+  )
+
+  const bouquetContentHtml = renderToStaticMarkup(
+    withRouter('/admin/bouquets/00000000-0000-0000-0000-000000000001/content', withQuery(
+      <AntApp>
+        <BouquetContentPage sectionKey="nav.items.bouquetsManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the bouquet content manager draws its four tabs and its save pair before any answer arrives',
+    bouquetContentHtml.includes('Video streams') &&
+      bouquetContentHtml.includes('Audio streams') &&
+      bouquetContentHtml.includes('>On demand<') &&
+      bouquetContentHtml.includes('>Series<') &&
+      bouquetContentHtml.includes('Back to the list') &&
+      bouquetContentHtml.includes('Save') &&
+      !/\bbouquets\.[a-zA-Z]/.test(bouquetContentHtml),
+    `rendered ${bouquetContentHtml.length} bytes with the content still being fetched`,
+  )
+
+  const bouquetsItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('bouquets'))
+    .map((item) => item.key)
+    .join(',')
+  const bouquetsModule = await flatItems('Admin')
+    .find((item) => item.key === 'bouquetsManage')
+    ?.page?.()
+  check(
+    'the bouquets section has one entry, and it opens the real page',
+    bouquetsItemKeys === 'bouquetsManage' && bouquetsModule?.default === BouquetsPage,
+    `${bouquetsItemKeys}; bouquetsManage opens ${bouquetsModule?.default?.name ?? 'nothing'}`,
+  )
+
   // The failure this whole script exists for, reached from the other end: a key missing from
   // **both** locale files is invisible to `tsc`, because `en.ts` is what `Translation` is
   // built from - a key absent from it is absent from the type, so `ru.ts` being typed
@@ -2192,6 +2259,8 @@ async function main() {
     adminSessionsHtml,
     epgSourcesHtml,
     epgSourceChannelsHtml,
+    bouquetsHtml,
+    bouquetContentHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

@@ -165,6 +165,26 @@ namespace Fluxy.Core.Users.Enums
         /// May change the programme guide sources: create, edit and delete them. Separate from
         /// <see cref="ViewEpgSources"/> for the reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditEpgSources = 524288
+        EditEpgSources = 524288,
+
+        /// <summary>
+        /// May read the bouquets: the bouquets table, one bouquet's content and the bouquet
+        /// picker on a content form.
+        /// </summary>
+        /// <remarks>
+        /// A bouquet cuts across all four content kinds - it is a package of streams, videos
+        /// and series rather than a catalogue of one of them - so this grant is about the
+        /// packages themselves and not about their contents: an operator who may read the
+        /// bouquets still needs <see cref="ViewStreams"/> and its siblings to see what a
+        /// bouquet holds beyond its name.
+        /// </remarks>
+        ViewBouquets = 1048576,
+
+        /// <summary>
+        /// May change the bouquets: create, rename, re-order and delete them, and change which
+        /// content each one holds and in what order. Separate from
+        /// <see cref="ViewBouquets"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditBouquets = 2097152
     }
 }

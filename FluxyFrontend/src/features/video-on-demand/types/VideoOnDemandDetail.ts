@@ -26,4 +26,9 @@ export interface VideoOnDemandDetail extends VideoOnDemand {
   genres: string[]
   /** Upper case ISO 3166-1 alpha-2 country code, or null. */
   countryCode: string | null
+  /**
+   * Bouquets the video belongs to, in the bouquets' own order. A **set**: it fills the
+   * picker on the form and says nothing about the video's position inside one.
+   */
+  bouquetIds: string[]
 }

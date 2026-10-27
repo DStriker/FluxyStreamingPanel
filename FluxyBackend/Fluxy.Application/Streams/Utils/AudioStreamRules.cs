@@ -48,6 +48,12 @@ namespace Fluxy.Application.Streams.Utils
             "The category must be an existing category of audio streams."
         ];
 
+        /// <summary>The sentence a bouquet that names no row gets.</summary>
+        public static readonly string[] BouquetsRule =
+        [
+            "Every bouquet must be an existing bouquet."
+        ];
+
         /// <summary>The sentence a user agent longer than its column gets.</summary>
         public static readonly string[] RestreamUserAgentRule =
         [

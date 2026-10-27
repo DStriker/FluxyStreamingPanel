@@ -121,5 +121,11 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>Sources to relay from, in order, first as the primary.</summary>
         public required IReadOnlyList<string> Sources { get; init; }
+
+        /// <summary>
+        /// Bouquets the stream belongs to, as text, in the bouquets' own order. A <b>set</b>:
+        /// it answers "which packages is this stream in" for the form's picker.
+        /// </summary>
+        public required IReadOnlyList<string> BouquetIds { get; init; }
     }
 }

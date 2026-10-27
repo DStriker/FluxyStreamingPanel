@@ -60,5 +60,11 @@ namespace Fluxy.Core.Vod.Commands
 
         /// <summary>Upper case ISO 3166-1 alpha-2 country code, or null.</summary>
         public string? CountryCode { get; init; }
+
+        /// <summary>
+        /// Bouquets the new video joins, or null for none. A <b>set</b> rather than an order:
+        /// the video is appended to the end of every bouquet it joins.
+        /// </summary>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

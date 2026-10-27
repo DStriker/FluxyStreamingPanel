@@ -55,5 +55,15 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>New source list; null keeps, a list replaces. An empty list is refused.</summary>
         public IReadOnlyList<string>? Sources { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the stream belongs to; null keeps, empty leaves every bouquet.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than a list: the field answers "which packages is this stream
+        /// in" and says nothing about where it sits inside one. A bouquet the stream joins
+        /// takes it at the end of that bouquet's list.
+        /// </remarks>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

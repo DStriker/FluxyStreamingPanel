@@ -53,6 +53,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(131072, (int)UserPermission.EditSeries);
             Assert.Equal(262144, (int)UserPermission.ViewEpgSources);
             Assert.Equal(524288, (int)UserPermission.EditEpgSources);
+            Assert.Equal(1048576, (int)UserPermission.ViewBouquets);
+            Assert.Equal(2097152, (int)UserPermission.EditBouquets);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -116,8 +118,12 @@ namespace Fluxy.UnitTests.Users
             Assert.True(UserPermissionCatalog.IsKnown(
                 UserPermission.ViewClients | UserPermission.EditStreams));
             Assert.False(UserPermissionCatalog.IsKnown((UserPermission)1));
+
+            // A bit above the highest member the catalog names. It moved up when the bouquet
+            // pair arrived - 1 &lt;&lt; 20 is ViewBouquets now - and it moves again the day a
+            // permission takes the next slot, which is exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 20)));
+                UserPermission.ViewClients | (UserPermission)(1 << 22)));
         }
 
         [Fact]

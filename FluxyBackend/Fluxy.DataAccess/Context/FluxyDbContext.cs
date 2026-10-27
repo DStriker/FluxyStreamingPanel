@@ -120,6 +120,36 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<EpgDataEntity> EpgData => Set<EpgDataEntity>();
 
+        /// <summary>
+        /// Bouquets: named packages of content. What each one holds is not on its row - the
+        /// four membership sets below are.
+        /// </summary>
+        public DbSet<BouquetEntity> Bouquets => Set<BouquetEntity>();
+
+        /// <summary>
+        /// One video stream a bouquet holds, in the position the bouquet holds it in. The set of
+        /// rows one bouquet has is its video list, in order.
+        /// </summary>
+        public DbSet<BouquetVideoStreamEntity> BouquetVideoStreams => Set<BouquetVideoStreamEntity>();
+
+        /// <summary>
+        /// One audio stream a bouquet holds, in the position the bouquet holds it in. Ordered
+        /// apart from the video list, which is why it is its own table.
+        /// </summary>
+        public DbSet<BouquetAudioStreamEntity> BouquetAudioStreams => Set<BouquetAudioStreamEntity>();
+
+        /// <summary>
+        /// One on-demand video a bouquet holds, in the position the bouquet holds it in. Ordered
+        /// apart from the live kinds, which is why it is its own table.
+        /// </summary>
+        public DbSet<BouquetVodItemEntity> BouquetVodItems => Set<BouquetVodItemEntity>();
+
+        /// <summary>
+        /// One series a bouquet holds, in the position the bouquet holds it in. Ordered apart
+        /// from the other three kinds, which is why it is its own table.
+        /// </summary>
+        public DbSet<BouquetSeriesEntity> BouquetSeries => Set<BouquetSeriesEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

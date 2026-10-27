@@ -9,6 +9,7 @@ import {
   HistoryOutlined,
   IdcardOutlined,
   ImportOutlined,
+  InboxOutlined,
   LaptopOutlined,
   PlaySquareOutlined,
   PlusOutlined,
@@ -410,6 +411,30 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     ...contentGroups(),
+    {
+      // The bouquets: the packages the four content headings above are delivered in. It sits
+      // immediately after the content sections and before the guide for the reason the
+      // guide's own comment gives - it is a frame around the four catalogues rather than a
+      // fifth one, so it belongs where a reader who has just met all four finds it.
+      //
+      // One item and no sub-items, on the owner's call: a package has one screen (the list),
+      // and everything else about it is reached from a row of that list - the content manager
+      // is an address with no item of its own, exactly as a group's accounts page is. A
+      // second entry saying "add a bouquet" would be a page whose only content is the button
+      // the list already carries.
+      key: 'bouquets',
+      labelKey: 'nav.groups.bouquets',
+      icon: InboxOutlined,
+      items: [
+        {
+          key: 'bouquetsManage',
+          path: 'bouquets',
+          labelKey: 'nav.items.bouquetsManage',
+          icon: TableOutlined,
+          page: () => import('../pages/admin/BouquetsPage'),
+        },
+      ],
+    },
     {
       // The programme guide: where a schedule is fetched from, and the table of the sources
       // that exist. It sits after the four content sections because a guide is what the

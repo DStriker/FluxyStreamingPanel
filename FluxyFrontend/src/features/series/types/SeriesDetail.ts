@@ -19,4 +19,9 @@ export interface SeriesDetail extends Series {
   director: string | null
   /** Genres, in the order entered. */
   genres: string[]
+  /**
+   * Bouquets the series belongs to, in the bouquets' own order. A **set**: it fills the
+   * picker on the form and says nothing about the series' position inside one.
+   */
+  bouquetIds: string[]
 }

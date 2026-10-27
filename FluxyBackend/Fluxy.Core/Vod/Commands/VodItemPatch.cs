@@ -69,5 +69,15 @@ namespace Fluxy.Core.Vod.Commands
 
         /// <summary>New country code; null keeps, empty clears.</summary>
         public string? CountryCode { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the video belongs to; null keeps, empty leaves every bouquet.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than a list: the field answers "which packages is this video in"
+        /// and says nothing about where it sits inside one. A bouquet the video joins takes it at
+        /// the end of that bouquet's list.
+        /// </remarks>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

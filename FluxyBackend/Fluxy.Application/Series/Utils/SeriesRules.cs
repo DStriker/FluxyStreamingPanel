@@ -29,6 +29,10 @@ namespace Fluxy.Application.Series.Utils
         public static readonly string[] CategoryRule =
             ["The category must be an existing category of series."];
 
+        /// <summary>The sentence a bouquet that names no row gets.</summary>
+        public static readonly string[] BouquetsRule =
+            ["Every bouquet must be an existing bouquet."];
+
         /// <summary>The sentence an IMDb identifier that is not one gets.</summary>
         public static readonly string[] ImdbRule =
             ["The IMDb identifier must be 'tt' followed by 5 to 10 digits."];

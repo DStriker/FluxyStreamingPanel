@@ -61,5 +61,15 @@ namespace Fluxy.API.Contracts.Vod
 
         /// <summary>New country code; null keeps, empty clears.</summary>
         public string? CountryCode { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the video belongs to, as text; null keeps, empty clears.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order: a video joining a bouquet it was not in is
+        /// appended to the end of that bouquet's list, while its position in a bouquet it
+        /// already belonged to is untouched.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 }

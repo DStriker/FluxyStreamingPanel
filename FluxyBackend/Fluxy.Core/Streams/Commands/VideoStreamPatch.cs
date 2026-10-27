@@ -84,5 +84,16 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>New file list; null keeps, empty clears.</summary>
         public IReadOnlyList<string>? Files { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the stream belongs to; null keeps, empty leaves every bouquet.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than a list: the field is a picker on the stream's own form, so
+        /// it answers "which packages is this stream in" and says nothing about where it sits
+        /// inside one. A bouquet the stream joins takes it at the end of that bouquet's list;
+        /// its position in a bouquet it already belongs to is the bouquet screen's to decide.
+        /// </remarks>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

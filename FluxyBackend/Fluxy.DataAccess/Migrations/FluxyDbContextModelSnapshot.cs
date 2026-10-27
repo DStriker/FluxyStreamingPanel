@@ -135,6 +135,189 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("audio_stream_sources", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetAudioStreamEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AudioStreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("audio_stream_id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AudioStreamId");
+
+                    b.HasIndex("BouquetId", "AudioStreamId")
+                        .IsUnique();
+
+                    b.HasIndex("BouquetId", "SortOrder");
+
+                    b.ToTable("bouquet_audio_streams", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SortOrder");
+
+                    b.ToTable("bouquets", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetSeriesEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("series_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeriesId");
+
+                    b.HasIndex("BouquetId", "SeriesId")
+                        .IsUnique();
+
+                    b.HasIndex("BouquetId", "SortOrder");
+
+                    b.ToTable("bouquet_series", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetVideoStreamEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("VideoStreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("video_stream_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VideoStreamId");
+
+                    b.HasIndex("BouquetId", "SortOrder");
+
+                    b.HasIndex("BouquetId", "VideoStreamId")
+                        .IsUnique();
+
+                    b.ToTable("bouquet_video_streams", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetVodItemEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("VodItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("vod_item_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VodItemId");
+
+                    b.HasIndex("BouquetId", "SortOrder");
+
+                    b.HasIndex("BouquetId", "VodItemId")
+                        .IsUnique();
+
+                    b.ToTable("bouquet_vod_items", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.ContentCategoryEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1056,6 +1239,74 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Stream");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetAudioStreamEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.AudioStreamEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AudioStreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", "Bouquet")
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Bouquet");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetSeriesEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", "Bouquet")
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.SeriesEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bouquet");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetVideoStreamEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", "Bouquet")
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.VideoStreamEntity", null)
+                        .WithMany()
+                        .HasForeignKey("VideoStreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bouquet");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetVodItemEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", "Bouquet")
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.VodItemEntity", null)
+                        .WithMany()
+                        .HasForeignKey("VodItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Bouquet");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgDataEntity", b =>

@@ -2,6 +2,8 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Streams;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Interfaces;
@@ -72,20 +74,26 @@ namespace Fluxy.API.Controllers.Content
         private const string IdHint = "That value must be the uuid of the row it names.";
 
         private readonly IVideoStreamService _streams;
+        private readonly IBouquetService _bouquets;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VideoStreamsController"/> class.
         /// </summary>
         /// <param name="streams">Service that reads and changes the streams.</param>
+        /// <param name="bouquets">
+        /// Service that answers which bouquets a stream belongs to, for the form's picker.
+        /// </param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public VideoStreamsController(
             IVideoStreamService streams,
+            IBouquetService bouquets,
             IAntiforgery antiforgery,
             ILogger<VideoStreamsController> logger)
             : base(antiforgery, logger)
         {
             _streams = streams;
+            _bouquets = bouquets;
         }
 
         /// <summary>
@@ -218,7 +226,9 @@ namespace Fluxy.API.Controllers.Content
 
             return stream is null
                 ? Answer(new VideoStreamOutcome { Action = VideoStreamAction.NotFound, StreamId = id })
-                : Ok(ToDetail(stream));
+                : Ok(ToDetail(
+                    stream,
+                    await _bouquets.GetItemBouquetIdsAsync(ContentType.VideoStream, id, cancellationToken)));
         }
 
         /// <summary>
@@ -305,6 +315,11 @@ namespace Fluxy.API.Controllers.Content
             var epgSourceId = ParseIdentifierOrNull(
                 request.EpgSourceId, nameof(CreateVideoStreamRequest.EpgSourceId), errors);
 
+            // A set rather than an order: the service appends the stream to the end of every
+            // bouquet it joins, and the position inside one belongs to the bouquet's own screen.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(CreateVideoStreamRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -330,7 +345,8 @@ namespace Fluxy.API.Controllers.Content
                     RestreamCookies = request.RestreamCookies,
                     RestreamHeaders = request.RestreamHeaders,
                     Sources = request.Sources ?? [],
-                    Files = request.Files ?? []
+                    Files = request.Files ?? [],
+                    BouquetIds = bouquetIds
                 },
                 cancellationToken);
 
@@ -420,6 +436,11 @@ namespace Fluxy.API.Controllers.Content
                 }
             }
 
+            // Parsed before the check, so a broken identifier is refused with the field named
+            // rather than silently dropped. Null keeps every link; an empty list clears them.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(UpdateVideoStreamRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -433,6 +454,7 @@ namespace Fluxy.API.Controllers.Content
                     Type = type,
                     Status = status,
                     CategoryId = categoryId,
+                    BouquetIds = bouquetIds,
                     LogoUrl = request.LogoUrl,
                     Enigma2Sid = request.Enigma2Sid,
                     DelayMinutes = request.DelayMinutes,
@@ -708,7 +730,9 @@ namespace Fluxy.API.Controllers.Content
             HasEpg = item.HasEpg
         };
 
-        private static AdminVideoStreamDetailResponse ToDetail(VideoStream stream) => new()
+        private static AdminVideoStreamDetailResponse ToDetail(
+            VideoStream stream,
+            IReadOnlyList<Guid> bouquetIds) => new()
         {
             Id = stream.Id.ToString(),
             Name = stream.Name,
@@ -731,7 +755,8 @@ namespace Fluxy.API.Controllers.Content
             RestreamCookies = stream.RestreamCookies,
             RestreamHeaders = stream.RestreamHeaders,
             Sources = stream.Sources,
-            Files = stream.Files
+            Files = stream.Files,
+            BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()
         };
     }
 }

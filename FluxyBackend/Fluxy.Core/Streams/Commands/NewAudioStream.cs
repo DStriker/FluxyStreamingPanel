@@ -46,5 +46,11 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>Sources to relay from, in order, the first as the primary.</summary>
         public required IReadOnlyList<string> Sources { get; init; }
+
+        /// <summary>
+        /// Bouquets the new stream joins, or null for none. A <b>set</b> rather than an order:
+        /// the stream is appended to the end of every bouquet it joins.
+        /// </summary>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

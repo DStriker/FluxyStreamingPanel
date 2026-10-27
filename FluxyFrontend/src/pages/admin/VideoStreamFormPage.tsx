@@ -23,6 +23,7 @@ import { useSession } from '../../utils/sessionContext'
 import SourceListEditor from '../../components/SourceListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import { useAllEpgSources } from '../../features/epg/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
 import {
   useCreateVideoStream,
   useUpdateVideoStream,
@@ -113,6 +114,7 @@ const CREATE_VALUES: VideoStreamValues = {
   restreamHeaders: '',
   sources: [''],
   files: [''],
+  bouquetIds: [],
 }
 
 /**
@@ -144,6 +146,7 @@ const FIELD_NAMES: readonly (keyof VideoStreamValues)[] = [
   'restreamHeaders',
   'sources',
   'files',
+  'bouquetIds',
 ]
 
 /** One list of one thing a stream relays: trims what is there and drops what nobody typed. */
@@ -190,6 +193,9 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
     restreamHeaders: restream ? (values.restreamHeaders ?? '') : '',
     sources: cleanList(values.sources),
     files: cleanList(values.files),
+    // Always sent, and an empty array is the statement "in no bouquet" - the set is what the
+    // picker holds, and the form never means "leave this field alone".
+    bouquetIds: values.bouquetIds ?? [],
   }
 }
 
@@ -213,6 +219,7 @@ const detailToFormValues = (detail: {
   restreamHeaders: string | null
   sources: string[]
   files: string[]
+  bouquetIds: string[]
 }): VideoStreamValues => {
   const restream = acceptsRestream(detail.type)
 
@@ -243,6 +250,7 @@ const detailToFormValues = (detail: {
     // draws, holding one field nobody presses anything on.
     sources: detail.sources.length > 0 ? detail.sources : [''],
     files: detail.files.length > 0 ? detail.files : [''],
+    bouquetIds: [...detail.bouquetIds],
   }
 }
 
@@ -364,6 +372,23 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.VideoStream)
   const categories = categoriesQuery.data?.items ?? []
   const categoriesError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
+
+  /**
+   * The bouquets the picker below the category offers.
+   *
+   * A separate query from the categories', for the reason the group filter on the accounts
+   * page is separate: the two are behind different permissions (`viewStreams` to read this
+   * form, `viewBouquets` to read the packages), and sharing one call would fail the whole
+   * form for an operator allowed to edit streams but not to see the bouquets. A failed read
+   * therefore leaves the picker empty and disables it, and everything else still saves - a
+   * stream in no bouquet is a valid row.
+   */
+  const bouquetsQuery = useBouquets()
+  const bouquetOptions = (bouquetsQuery.data?.items ?? []).map((bouquet) => ({
+    value: bouquet.id,
+    label: bouquet.name,
+  }))
+  const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
 
   /**
    * The guide sources the picker offers. A source is a row of this installation now, so the
@@ -640,6 +665,33 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             // and an alert across the top of the card would be reporting one unavailable
             // lookup as a broken page.
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
+          )}
+
+          <Form.Item
+            name="bouquetIds"
+            label={t('bouquets.fieldLabel')}
+            // Under the category, because the two answer the same question at two scales:
+            // the category says where the stream is filed, the bouquets say in which packages
+            // it is delivered. Optional - a stream in no package is a valid row - and a set
+            // rather than an order, which is why the hint says where the order is arranged.
+            extra={t('bouquets.fieldHint')}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={bouquetOptions}
+              placeholder={t('bouquets.fieldPlaceholder')}
+              // A failed read leaves the picker unusable rather than empty-and-silent: an
+              // operator must not think the installation has no bouquets when the truth is
+              // that this group may not read them.
+              disabled={bouquetsError !== null}
+            />
+          </Form.Item>
+
+          {bouquetsError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={bouquetsError} />
           )}
 
           <Form.Item

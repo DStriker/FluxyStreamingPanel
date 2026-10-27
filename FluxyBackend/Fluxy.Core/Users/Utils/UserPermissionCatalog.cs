@@ -19,8 +19,8 @@ namespace Fluxy.Core.Users.Utils
     /// coincidence, and what stops an operator from granting <see cref="EditAdmins"/> to a
     /// group of clients: the member would be accepted and then mean nothing, because the role
     /// gate ahead of it already refused. A permission whose owner role changes is therefore a
-    /// change to this table and nothing else - the storage does not care. All sixteen are owned
-    /// by <see cref="UserRole.Admin"/> today, which says nothing about whether some future
+    /// change to this table and nothing else - the storage does not care. Every permission is
+    /// owned by <see cref="UserRole.Admin"/> today, which says nothing about whether some future
     /// permission could belong to <see cref="UserRole.Reseller"/> instead.
     /// </para>
     /// <para>
@@ -59,7 +59,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewSeries,
             UserPermission.EditSeries,
             UserPermission.ViewEpgSources,
-            UserPermission.EditEpgSources
+            UserPermission.EditEpgSources,
+            UserPermission.ViewBouquets,
+            UserPermission.EditBouquets
         ];
 
         /// <summary>
@@ -109,7 +111,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewSeries] = UserRole.Admin,
                 [UserPermission.EditSeries] = UserRole.Admin,
                 [UserPermission.ViewEpgSources] = UserRole.Admin,
-                [UserPermission.EditEpgSources] = UserRole.Admin
+                [UserPermission.EditEpgSources] = UserRole.Admin,
+                [UserPermission.ViewBouquets] = UserRole.Admin,
+                [UserPermission.EditBouquets] = UserRole.Admin
             };
 
         /// <summary>

@@ -122,6 +122,10 @@ const en = {
       // content sections because a guide is what the streams are filed against rather than a
       // fifth catalogue of content.
       epg: 'Programme guide',
+      // The bouquets: the packages the four content sections above are delivered in. It sits
+      // between the content sections and the guide, and it is a frame around them rather
+      // than a fifth catalogue - which is why it has one entry and the sections have four.
+      bouquets: 'Bouquets',
       account: 'Account',
     },
     items: {
@@ -174,6 +178,10 @@ const en = {
       // look at. The owner asked for these two words, so they are what the rail says.
       epgAdd: 'Add',
       epgManage: 'Manage',
+      // The bouquets section's one entry. Named for the verb like the two guild entries
+      // above it, and for its object as well, because "Manage" alone under a heading called
+      // "Bouquets" would read as a heading with no door.
+      bouquetsManage: 'Manage bouquets',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -514,6 +522,13 @@ const en = {
     // delete a source. A guide source is its own resource, not a kind of stream.
     viewEpgSources: 'View guide sources',
     editEpgSources: 'Edit guide sources',
+    // The bouquet pair guards the packages content is delivered in: the bouquets table, the
+    // content manager behind one row, and the bouquet picker on the four content forms. It is
+    // a pair of its own rather than a reuse of any content pair, because a bouquet is a
+    // package *of* the content: a group may run the streams and still have no business
+    // deciding which packages they are sold in.
+    viewBouquets: 'View bouquets',
+    editBouquets: 'Edit bouquets',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -765,6 +780,97 @@ const en = {
     deleteConfirmTitle: 'Delete this category?',
     deleteConfirmBody: 'The category "{{name}}" will be removed. This cannot be undone.',
     deleteConfirmOk: 'Delete',
+  },
+  // The bouquets: the packages content is delivered in. Two screens share this block - the
+  // list, and the content manager one package opens - because they are two halves of one
+  // domain and a second prefix would only hide that.
+  bouquets: {
+    // The list's heading. Deliberately *not* `nav.items.bouquetsManage`: the menu says how
+    // the visitor got there, and the card says what they are looking at.
+    listTitle: 'Bouquets',
+    emptyList: 'No bouquets yet.',
+    // The drag handle's own name - the only text it carries.
+    dragHint: 'Drag to rearrange',
+    // The two toolbar controls for the unsaved arrangement, the same pair the categories
+    // table carries and for the same reason: a drag changes the screen only.
+    saveOrder: 'Save order',
+    discardOrder: 'Discard changes',
+    // The word beside a row that holds nothing. It is the fact that decides whether the row
+    // can be deleted, said in the row rather than inferred from four zeroes.
+    empty: 'empty',
+    columns: {
+      sort: 'Order',
+      name: 'Name',
+      videoStreams: 'Video streams',
+      audioStreams: 'Audio streams',
+      videoOnDemand: 'On demand',
+      series: 'Series',
+      actions: 'Actions',
+    },
+    addTitle: 'Add bouquet',
+    renameTitle: 'Rename bouquet',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a bouquet name',
+    nameLength: 'Up to 100 characters',
+    // Said under the input, because the rule is not visible in the field: two names that
+    // differ only in case are one bouquet.
+    nameHint: 'The name must be unique, ignoring the case.',
+    // The field the four content forms carry under their category selector. One key for all
+    // four rather than one per form: the control asks the same question of every kind of
+    // content, and four copies would be four places for the wording to drift.
+    fieldLabel: 'Bouquets',
+    fieldHint:
+      'The packages this item belongs to. A bouquet it joins puts it at the end of its list; the order inside a bouquet is arranged on the bouquet screen.',
+    fieldPlaceholder: 'No bouquet',
+    actions: {
+      content: 'Manage content',
+      rename: 'Rename',
+      delete: 'Delete',
+    },
+    // Why the delete button is disabled: the server refuses the same click with a count, and
+    // the row says it before the click rather than after it.
+    notEmpty: 'Empty the bouquet before deleting it.',
+    // The reason every write on both bouquets screens is disabled: the visitor's group does
+    // not hold `editBouquets`. One sentence for the group of controls rather than one per
+    // button, because the answer is the same for all of them.
+    noPermission: 'Your group may not change the bouquets.',
+    deleteConfirmTitle: 'Delete this bouquet?',
+    deleteConfirmBody: 'The bouquet "{{name}}" will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+    // The content manager. Its heading carries the package's name, because the visitor
+    // arrived from a row and the page must say which row it was.
+    content: {
+      title: 'Content of "{{name}}"',
+      back: 'Back to the list',
+      save: 'Save',
+      hint:
+        'Move items between the two lists, arrange the bouquet in the order it should be delivered in, then save. Nothing is written until you do.',
+      tabs: {
+        videostream: 'Video streams',
+        audiostream: 'Audio streams',
+        videoondemand: 'On demand',
+        series: 'Series',
+      },
+      members: 'In the bouquet',
+      available: 'Not in the bouquet',
+      emptyMembers: 'The bouquet holds nothing of this kind yet.',
+      emptyAvailable: 'Everything of this kind is already in the bouquet.',
+      // Shown when the lists hold items but the filters hide all of them - a different
+      // fact from an empty list, and one the operator can act on by clearing a filter.
+      emptyFiltered: 'Nothing matches the filter.',
+      add: 'Add to the bouquet',
+      remove: 'Remove from the bouquet',
+      moveUp: 'Move the selected items up',
+      moveDown: 'Move the selected items down',
+      sortAz: 'Sort by name',
+      filterMembers: 'Filter the bouquet',
+      filterAvailable: 'Filter the other items',
+      // The category filter beside the name filter. It exists for the bulk gesture: narrow
+      // to one section, select all of it, and the whole category moves in one action.
+      filterCategory: 'Any category',
+      selectAll: 'Select all',
+      clearSelection: 'Clear the selection',
+    },
   },
   // The admin's on-demand catalogue: its own block rather than more keys under
   // `videoStreams`, because the two are separate resources behind separate permissions. The
@@ -1852,6 +1958,20 @@ const en = {
       // than deleting anything, because the foreign key is RESTRICT and the rows are not
       // this dialog's to move - the sentence names what to do instead.
       content_category_in_use: '{{count}} streams still file under this category. Move them first.',
+      // The bouquet resource: the same three shapes again, plus the reorder and the one
+      // content write. Its name rule is stricter than the categories' - unique for the whole
+      // installation, ignoring the case - and the sentence says so, because a form that broke
+      // it shows the refusal under the input and names nothing else.
+      bouquet_created: 'The bouquet has been created.',
+      bouquet_updated: 'The bouquet has been renamed.',
+      bouquet_deleted: 'The bouquet has been deleted.',
+      bouquets_reordered: 'The bouquets have been reordered.',
+      bouquet_content_set: 'The content of the bouquet has been saved.',
+      bouquet_not_found: 'There is no bouquet with that identifier.',
+      bouquet_already_exists: 'That bouquet name is already taken, in any spelling.',
+      // A bouquet that still holds content. The server refuses with the count rather than
+      // unlinking anything, because the memberships are not this dialog's to empty.
+      bouquet_not_empty: '{{count}} items are still in this bouquet. Empty it before deleting it.',
       // The stream resource: the same three shapes as the accounts, the groups and the
       // categories above, plus the two state transitions. A start and a stop are answers
       // about the row rather than about a process, and starting a stream that is already

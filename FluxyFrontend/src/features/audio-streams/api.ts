@@ -140,6 +140,14 @@ export interface AudioStreamValues {
   restreamHeaders: string
   /** Sources to relay from, in order, first as the primary. */
   sources: string[]
+  /**
+   * Bouquets the stream belongs to, as identifiers.
+   *
+   * A **set** rather than an order: a bouquet the stream joins takes it at the end of that
+   * bouquet's list, and its position in a bouquet it already belonged to is the bouquet
+   * screen's to decide. Always sent, so an empty array means "in no bouquet".
+   */
+  bouquetIds: string[]
 }
 
 /**

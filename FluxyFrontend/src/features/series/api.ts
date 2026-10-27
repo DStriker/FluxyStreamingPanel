@@ -113,6 +113,14 @@ export interface SeriesValues {
   releaseDate: string
   /** Rating from 0 to 10, or null. */
   rating: number | null
+  /**
+   * Bouquets the series belongs to, as identifiers.
+   *
+   * A **set** rather than an order: a bouquet the series joins takes it at the end of that
+   * bouquet's list, and its position in a bouquet it already belonged to is the bouquet
+   * screen's to decide. Always sent, so an empty array means "in no bouquet".
+   */
+  bouquetIds: string[]
 }
 
 /** Creates a series: `POST /admin/series`, answered with `201` and a `Location`. */

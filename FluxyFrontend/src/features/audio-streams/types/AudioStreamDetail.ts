@@ -28,4 +28,9 @@ export interface AudioStreamDetail extends AudioStream {
   restreamHeaders: string | null
   /** Sources to relay from, in order, the first as the primary and the rest as fallback. */
   sources: string[]
+  /**
+   * Bouquets the stream belongs to, in the bouquets' own order. A **set**: it fills the
+   * picker on the form and says nothing about the stream's position inside one.
+   */
+  bouquetIds: string[]
 }

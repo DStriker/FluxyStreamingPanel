@@ -137,6 +137,12 @@ const EpgSourceFormPage = lazy(() => import('../pages/admin/EpgSourceFormPage'))
 const EpgSourceChannelsPage = lazy(() => import('../pages/admin/EpgSourceChannelsPage'))
 
 /**
+ * The content manager of one bouquet. Lazy for the reason every page is: it is reached from
+ * a row of the bouquets table, so a visitor who never opens one never downloads it.
+ */
+const BouquetContentPage = lazy(() => import('../pages/admin/BouquetContentPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -386,6 +392,13 @@ export const routes: RouteObject[] = [
       {
         path: 'epg-sources/:id/channels',
         element: <EpgSourceChannelsPage sectionKey="nav.items.epgManage" />,
+      },
+      // The content manager of one bouquet. It has no menu item on purpose: the bouquets
+      // section is one list, and a package's content is reached by choosing that package's
+      // own action on the row - the same shape as a guide source's channels above.
+      {
+        path: 'bouquets/:id/content',
+        element: <BouquetContentPage sectionKey="nav.items.bouquetsManage" />,
       },
     ]),
   ),

@@ -1,3 +1,5 @@
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Epg.Repositories;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
@@ -9,6 +11,7 @@ using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Streams.Utils;
 
 namespace Fluxy.Application.Streams.Services
@@ -82,6 +85,7 @@ namespace Fluxy.Application.Streams.Services
 
         private readonly IVideoStreamRepository _streams;
         private readonly IEpgSourceRepository _epgSources;
+        private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
@@ -91,14 +95,20 @@ namespace Fluxy.Application.Streams.Services
         /// <param name="epgSources">
         /// Repository that answers whether the guide source a stream names exists.
         /// </param>
+        /// <param name="bouquets">
+        /// Repository that answers whether the bouquets a stream names exist, and stages the
+        /// membership rows that tie the two together.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public VideoStreamService(
             IVideoStreamRepository streams,
             IEpgSourceRepository epgSources,
+            IBouquetRepository bouquets,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
             _epgSources = epgSources;
+            _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
 
@@ -186,6 +196,13 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(NewVideoStream.Name));
             }
 
+            // The bouquets are a picker on the stream's own form, so a body naming one that does
+            // not exist is refused with the field named rather than failing at the write.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, input.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(NewVideoStream.BouquetIds), VideoStreamRules.BouquetsRule));
+            }
+
             var stream = BuildWrite(
                 input.Name.Trim(),
                 input.Type,
@@ -207,6 +224,16 @@ namespace Fluxy.Application.Streams.Services
                 input.Files);
 
             var streamId = await _streams.AddAsync(stream, cancellationToken);
+
+            // Staged before the save, so the row and the packages it joined are written by one
+            // SaveChanges: a stream that joined half its bouquets because the second write
+            // failed is a row nobody asked for.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.VideoStream,
+                streamId,
+                input.BouquetIds,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } createFailure)
             {
@@ -328,6 +355,13 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(VideoStreamPatch.Name), id);
             }
 
+            // Null keeps every link, an empty list leaves every bouquet: the two are different
+            // answers and the patch convention keeps them apart.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, patch.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(VideoStreamPatch.BouquetIds), VideoStreamRules.BouquetsRule), id);
+            }
+
             var write = BuildWrite(
                 name,
                 type,
@@ -349,6 +383,14 @@ namespace Fluxy.Application.Streams.Services
                 files);
 
             await _streams.UpdateAsync(id, write, cancellationToken);
+
+            // Inside the same unit of work as the row itself, so a failure rolls both back.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.VideoStream,
+                id,
+                patch.BouquetIds,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } updateFailure)
             {

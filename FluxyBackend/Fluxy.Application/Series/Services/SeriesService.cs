@@ -1,5 +1,7 @@
 using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Series.Utils;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Series.Commands;
@@ -24,16 +26,25 @@ namespace Fluxy.Application.Series.Services
     public sealed class SeriesService : ISeriesService
     {
         private readonly ISeriesRepository _series;
+        private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SeriesService"/> class.
         /// </summary>
         /// <param name="series">Repository holding the series rows.</param>
+        /// <param name="bouquets">
+        /// Repository that answers whether the bouquets a series names exist, and stages the
+        /// membership rows that tie the two together.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
-        public SeriesService(ISeriesRepository series, IUnitOfWork unitOfWork)
+        public SeriesService(
+            ISeriesRepository series,
+            IBouquetRepository bouquets,
+            IUnitOfWork unitOfWork)
         {
             _series = series;
+            _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
 
@@ -114,6 +125,13 @@ namespace Fluxy.Application.Series.Services
                 return AlreadyExists(nameof(NewSeries.Name));
             }
 
+            // The bouquets are a picker on the series' own form, so a body naming one that does
+            // not exist is refused with the field named rather than failing at the write.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, input.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(NewSeries.BouquetIds), SeriesRules.BouquetsRule));
+            }
+
             var id = await _series.AddAsync(
                 BuildWrite(
                     name,
@@ -128,6 +146,15 @@ namespace Fluxy.Application.Series.Services
                     genres,
                     releaseDate,
                     input.Rating),
+                cancellationToken);
+
+            // Staged before the save, so the row and the packages it joined are written by one
+            // SaveChanges.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.Series,
+                id,
+                input.BouquetIds,
                 cancellationToken);
 
             var failure = await _unitOfWork.TrySaveAsync(
@@ -234,6 +261,12 @@ namespace Fluxy.Application.Series.Services
                 return AlreadyExists(nameof(SeriesPatch.Name), id);
             }
 
+            // Null keeps every link, an empty list leaves every bouquet.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, patch.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(SeriesPatch.BouquetIds), SeriesRules.BouquetsRule), id);
+            }
+
             await _series.UpdateAsync(
                 id,
                 BuildWrite(
@@ -249,6 +282,14 @@ namespace Fluxy.Application.Series.Services
                     genres,
                     releaseDate,
                     rating),
+                cancellationToken);
+
+            // Inside the same unit of work as the row itself, so a failure rolls both back.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.Series,
+                id,
+                patch.BouquetIds,
                 cancellationToken);
 
             var failure = await _unitOfWork.TrySaveAsync(

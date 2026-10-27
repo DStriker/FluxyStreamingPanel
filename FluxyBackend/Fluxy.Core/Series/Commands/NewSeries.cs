@@ -48,5 +48,11 @@ namespace Fluxy.Core.Series.Commands
 
         /// <summary>Rating from 0 to 10, or null.</summary>
         public decimal? Rating { get; init; }
+
+        /// <summary>
+        /// Bouquets the new series joins, or null for none. A <b>set</b> rather than an order:
+        /// the series is appended to the end of every bouquet it joins.
+        /// </summary>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

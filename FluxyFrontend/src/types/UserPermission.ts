@@ -1,7 +1,7 @@
-/**
+﻿/**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These eighteen strings are the whole catalog at the time of writing. They are a union rather
+ * These twenty strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,9 +16,9 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all eighteen - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
+ * `Admin` for all twenty - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all eighteen comes
+ * dropped on the way in rather than refused, which is why a Client group sent all twenty comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
  *
  * **The two stream permissions are the first pair that is not about accounts.**
@@ -43,6 +43,13 @@
  * run the streams and have no business pointing them at a different guide. The backend keeps
  * them at 262144 and 524288.
  *
+ * **The bouquet pair is the same question asked about the packages.** `viewBouquets` and
+ * `editBouquets` gate the bouquets table, the content manager behind it, and the bouquet
+ * picker on the four content forms. They are a pair of their own rather than a reuse of any
+ * content pair, because a bouquet is a package *of* the content rather than content: a
+ * group that may run the streams and a group that may decide which packages they are sold
+ * in are two different jobs. The backend keeps them at 1048576 and 2097152.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -66,3 +73,6 @@ export type UserPermission =
   | 'editSeries'
   | 'viewEpgSources'
   | 'editEpgSources'
+  | 'viewBouquets'
+  | 'editBouquets'
+

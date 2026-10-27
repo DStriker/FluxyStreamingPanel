@@ -126,6 +126,14 @@ export interface VideoOnDemandValues {
   rating: number | null
   /** Upper case ISO 3166-1 alpha-2 country code, or an empty string. */
   countryCode: string
+  /**
+   * Bouquets the video belongs to, as identifiers.
+   *
+   * A **set** rather than an order: a bouquet the video joins takes it at the end of that
+   * bouquet's list, and its position in a bouquet it already belonged to is the bouquet
+   * screen's to decide. Always sent, so an empty array means "in no bouquet".
+   */
+  bouquetIds: string[]
 }
 
 /** Creates a video: `POST /admin/video-on-demand`, answered with `201` and a `Location`. */

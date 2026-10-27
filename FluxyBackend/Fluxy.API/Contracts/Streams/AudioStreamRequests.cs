@@ -57,6 +57,15 @@ namespace Fluxy.API.Contracts.Streams
         /// fallback.
         /// </summary>
         public IReadOnlyList<string>? Sources { get; init; }
+
+        /// <summary>
+        /// Bouquets the new stream joins, as text; absent or empty means none.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order: the stream is appended to the end of every bouquet
+        /// it joins, and where it sits inside one belongs to the bouquet's own screen.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 
     /// <summary>
@@ -109,5 +118,15 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>New source list; null keeps, a list replaces. An empty list is refused.</summary>
         public IReadOnlyList<string>? Sources { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the stream belongs to, as text; null keeps, empty clears.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order: a stream joining a bouquet it was not in is
+        /// appended to the end of that bouquet's list, while its position in a bouquet it
+        /// already belonged to is untouched.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 }

@@ -46,5 +46,14 @@ namespace Fluxy.API.Contracts.Series
 
         /// <summary>Rating from 0 to 10, or none.</summary>
         public decimal? Rating { get; init; }
+
+        /// <summary>
+        /// Bouquets the new series joins, as text; absent or empty means none.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order: the series is appended to the end of every bouquet
+        /// it joins, and where it sits inside one belongs to the bouquet's own screen.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 }

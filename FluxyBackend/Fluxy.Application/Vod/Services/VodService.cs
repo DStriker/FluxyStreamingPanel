@@ -1,4 +1,7 @@
+using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Vod.Utils;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
@@ -31,16 +34,25 @@ namespace Fluxy.Application.Vod.Services
     public sealed class VodService : IVodService
     {
         private readonly IVodRepository _items;
+        private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VodService"/> class.
         /// </summary>
         /// <param name="items">Repository holding the items.</param>
+        /// <param name="bouquets">
+        /// Repository that answers whether the bouquets an item names exist, and stages the
+        /// membership rows that tie the two together.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
-        public VodService(IVodRepository items, IUnitOfWork unitOfWork)
+        public VodService(
+            IVodRepository items,
+            IBouquetRepository bouquets,
+            IUnitOfWork unitOfWork)
         {
             _items = items;
+            _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
 
@@ -130,6 +142,13 @@ namespace Fluxy.Application.Vod.Services
                 return AlreadyExists(nameof(NewVodItem.Name));
             }
 
+            // The bouquets are a picker on the video's own form, so a body naming one that does
+            // not exist is refused with the field named rather than failing at the write.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, input.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(NewVodItem.BouquetIds), VodRules.BouquetsRule));
+            }
+
             var itemId = await _items.AddAsync(
                 BuildWrite(
                     name,
@@ -148,6 +167,15 @@ namespace Fluxy.Application.Vod.Services
                     releaseDate,
                     input.Rating,
                     countryCode),
+                cancellationToken);
+
+            // Staged before the save, so the row and the packages it joined are written by one
+            // SaveChanges.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.VideoOnDemand,
+                itemId,
+                input.BouquetIds,
                 cancellationToken);
 
             if (await _unitOfWork.TrySaveAsync(cancellationToken) is { } createFailure)
@@ -259,6 +287,12 @@ namespace Fluxy.Application.Vod.Services
                 return AlreadyExists(nameof(VodItemPatch.Name), id);
             }
 
+            // Null keeps every link, an empty list leaves every bouquet.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, patch.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(VodItemPatch.BouquetIds), VodRules.BouquetsRule), id);
+            }
+
             await _items.UpdateAsync(
                 id,
                 BuildWrite(
@@ -278,6 +312,14 @@ namespace Fluxy.Application.Vod.Services
                     releaseDate,
                     rating,
                     countryCode),
+                cancellationToken);
+
+            // Inside the same unit of work as the row itself, so a failure rolls both back.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.VideoOnDemand,
+                id,
+                patch.BouquetIds,
                 cancellationToken);
 
             if (await _unitOfWork.TrySaveAsync(cancellationToken) is { } updateFailure)

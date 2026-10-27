@@ -55,6 +55,12 @@ namespace Fluxy.Application.Streams.Utils
             "The category must be an existing category of video streams."
         ];
 
+        /// <summary>The sentence a bouquet that names no row gets.</summary>
+        public static readonly string[] BouquetsRule =
+        [
+            "Every bouquet must be an existing bouquet."
+        ];
+
         /// <summary>The sentence a delay that is not a whole number of minutes gets.</summary>
         public static readonly string[] DelayRule = ["The delay must be zero or more minutes."];
 

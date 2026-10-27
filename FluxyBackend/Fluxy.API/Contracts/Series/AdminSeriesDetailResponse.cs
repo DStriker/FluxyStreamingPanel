@@ -52,5 +52,11 @@ namespace Fluxy.API.Contracts.Series
 
         /// <summary>How many episode rows the series holds.</summary>
         public required int EpisodesCount { get; init; }
+
+        /// <summary>
+        /// Bouquets the series belongs to, as text, in the bouquets' own order. A <b>set</b>:
+        /// it answers "which packages is this series in" for the form's picker.
+        /// </summary>
+        public required IReadOnlyList<string> BouquetIds { get; init; }
     }
 }

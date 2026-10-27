@@ -21,6 +21,7 @@ import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import SourceListEditor from '../../components/SourceListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
 import {
   useCreateAudioStream,
   useUpdateAudioStream,
@@ -80,6 +81,7 @@ const CREATE_VALUES: AudioStreamValues = {
   restreamCookies: '',
   restreamHeaders: '',
   sources: [''],
+  bouquetIds: [],
 }
 
 /**
@@ -104,6 +106,7 @@ const FIELD_NAMES: readonly (keyof AudioStreamValues)[] = [
   'restreamCookies',
   'restreamHeaders',
   'sources',
+  'bouquetIds',
 ]
 
 /** One list of one thing a stream relays: trims what is there and drops what nobody typed. */
@@ -132,6 +135,7 @@ const toBody = (values: AudioStreamValues): AudioStreamValues => ({
   restreamCookies: values.restreamCookies ?? '',
   restreamHeaders: values.restreamHeaders ?? '',
   sources: cleanList(values.sources),
+  bouquetIds: values.bouquetIds ?? [],
 })
 
 /** The stored stream spelled as form content, drawn over `CREATE_VALUES` when the answer arrives. */
@@ -147,6 +151,7 @@ const detailToFormValues = (detail: {
   restreamCookies: string | null
   restreamHeaders: string | null
   sources: string[]
+  bouquetIds: string[]
 }): AudioStreamValues => ({
   name: detail.name,
   type: detail.type,
@@ -163,6 +168,7 @@ const detailToFormValues = (detail: {
   // stored stream always has at least one source, so this only ever happens to a stream
   // that could not be saved.
   sources: detail.sources.length > 0 ? detail.sources : [''],
+  bouquetIds: [...detail.bouquetIds],
 })
 
 interface AudioStreamFormPageProps {
@@ -268,6 +274,23 @@ export default function AudioStreamFormPage(_props: AudioStreamFormPageProps) {
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.AudioStream)
   const categories = categoriesQuery.data?.items ?? []
   const categoriesError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
+
+  /**
+   * The bouquets the picker below the category offers.
+   *
+   * A separate query from the categories', for the reason the accounts page's group filter is
+   * separate: the two are behind different permissions (`viewAudioStreams` for this form,
+   * `viewBouquets` for the packages), and one shared call would fail the whole form for an
+   * operator allowed to edit audio streams but not to read the bouquets. A failed read
+   * leaves the picker disabled rather than empty-and-silent, and everything else still
+   * saves - a stream in no bouquet is a valid row.
+   */
+  const bouquetsQuery = useBouquets()
+  const bouquetOptions = (bouquetsQuery.data?.items ?? []).map((bouquet) => ({
+    value: bouquet.id,
+    label: bouquet.name,
+  }))
+  const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
 
   // The area this page hangs from, for both buttons below. `null` only under the probes,
   // which render no provider: `RequireAuth` publishes one for every visitor this page can
@@ -451,6 +474,33 @@ export default function AudioStreamFormPage(_props: AudioStreamFormPageProps) {
             // and an alert across the top of the card would be reporting one unavailable
             // lookup as a broken page.
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
+          )}
+
+          <Form.Item
+            name="bouquetIds"
+            label={t('bouquets.fieldLabel')}
+            // Under the category, because the two answer the same question at two scales: the
+            // category says where the stream is filed, the bouquets say in which packages it
+            // is delivered. Optional - a stream in no package is a valid row - and a set
+            // rather than an order, which is why the hint says where the order is arranged.
+            extra={t('bouquets.fieldHint')}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={bouquetOptions}
+              placeholder={t('bouquets.fieldPlaceholder')}
+              // A failed read leaves the picker unusable rather than empty-and-silent: an
+              // operator must not think the installation has no bouquets when the truth is
+              // that this group may not read them.
+              disabled={bouquetsError !== null}
+            />
+          </Form.Item>
+
+          {bouquetsError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={bouquetsError} />
           )}
 
           <Form.Item

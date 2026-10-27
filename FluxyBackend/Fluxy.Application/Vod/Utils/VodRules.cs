@@ -36,6 +36,10 @@ namespace Fluxy.Application.Vod.Utils
         public static readonly string[] CategoryRule =
             ["The category must be an existing category of on-demand video."];
 
+        /// <summary>The sentence a bouquet that names no row gets.</summary>
+        public static readonly string[] BouquetsRule =
+            ["Every bouquet must be an existing bouquet."];
+
         /// <summary>The sentence a source that is blank or too long gets.</summary>
         public static readonly string[] SourceRule =
         [

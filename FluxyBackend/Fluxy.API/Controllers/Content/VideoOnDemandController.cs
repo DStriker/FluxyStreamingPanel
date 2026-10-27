@@ -4,6 +4,8 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Vod;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Vod.Commands;
 using Fluxy.Core.Vod.Enums;
 using Fluxy.Core.Vod.Interfaces;
@@ -67,6 +69,7 @@ namespace Fluxy.API.Controllers.Content
         private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
         private readonly IVodService _items;
+        private readonly IBouquetService _bouquets;
         private readonly IHttpClientFactory _http;
         private readonly IWebHostEnvironment _environment;
 
@@ -74,12 +77,16 @@ namespace Fluxy.API.Controllers.Content
         /// Initializes a new instance of the <see cref="VideoOnDemandController"/> class.
         /// </summary>
         /// <param name="items">Service that reads and changes the catalogue.</param>
+        /// <param name="bouquets">
+        /// Service that answers which bouquets a video belongs to, for the form's picker.
+        /// </param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         /// <param name="http">Factory for the client that relays a remote source.</param>
         /// <param name="environment">Environment whose content root resolves a relative path.</param>
         public VideoOnDemandController(
             IVodService items,
+            IBouquetService bouquets,
             IAntiforgery antiforgery,
             ILogger<VideoOnDemandController> logger,
             IHttpClientFactory http,
@@ -87,6 +94,7 @@ namespace Fluxy.API.Controllers.Content
             : base(antiforgery, logger)
         {
             _items = items;
+            _bouquets = bouquets;
             _http = http;
             _environment = environment;
         }
@@ -188,7 +196,9 @@ namespace Fluxy.API.Controllers.Content
 
             return item is null
                 ? Answer(new VodOutcome { Action = VodAction.NotFound, VodId = id })
-                : Ok(ToDetail(item));
+                : Ok(ToDetail(
+                    item,
+                    await _bouquets.GetItemBouquetIdsAsync(ContentType.VideoOnDemand, id, cancellationToken)));
         }
 
         /// <summary>Creates a video in its category.</summary>
@@ -245,6 +255,11 @@ namespace Fluxy.API.Controllers.Content
                 categoryId = parsedCategory;
             }
 
+            // A set rather than an order: the service appends the video to the end of every
+            // bouquet it joins, and the position inside one belongs to the bouquet's own screen.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(CreateVodItemRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -268,7 +283,8 @@ namespace Fluxy.API.Controllers.Content
                     Genres = request.Genres ?? [],
                     ReleaseDate = request.ReleaseDate,
                     Rating = request.Rating,
-                    CountryCode = request.CountryCode
+                    CountryCode = request.CountryCode,
+                    BouquetIds = bouquetIds
                 },
                 cancellationToken);
 
@@ -339,6 +355,11 @@ namespace Fluxy.API.Controllers.Content
                 }
             }
 
+            // Parsed before the check, so a broken identifier is refused with the field named
+            // rather than silently dropped. Null keeps every link; an empty list clears them.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(UpdateVodItemRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -352,6 +373,7 @@ namespace Fluxy.API.Controllers.Content
                     Status = status,
                     Type = type,
                     CategoryId = categoryId,
+                    BouquetIds = bouquetIds,
                     Source = request.Source,
                     SubtitleUrl = request.SubtitleUrl,
                     ImdbId = request.ImdbId,
@@ -636,7 +658,9 @@ namespace Fluxy.API.Controllers.Content
             Rating = item.Rating
         };
 
-        private static AdminVodDetailResponse ToDetail(VodItem item) => new()
+        private static AdminVodDetailResponse ToDetail(
+            VodItem item,
+            IReadOnlyList<Guid> bouquetIds) => new()
         {
             Id = item.Id.ToString(),
             Name = item.Name,
@@ -655,7 +679,8 @@ namespace Fluxy.API.Controllers.Content
             Genres = item.Genres,
             ReleaseDate = FormatDate(item.ReleaseDate),
             Rating = item.Rating,
-            CountryCode = item.CountryCode
+            CountryCode = item.CountryCode,
+            BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()
         };
 
         private static string? FormatDate(DateOnly? value)

@@ -20,6 +20,7 @@ import type { Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
 import type { SeriesValues } from '../../features/series/api'
 import {
   useCreateSeries,
@@ -58,6 +59,7 @@ const CREATE_VALUES: SeriesValues = {
   genres: [],
   releaseDate: '',
   rating: null,
+  bouquetIds: [],
 }
 
 /** Every field this form draws, so a refusal can be cleared before the next attempt. */
@@ -74,6 +76,7 @@ const FIELD_NAMES: readonly (keyof SeriesValues)[] = [
   'genres',
   'releaseDate',
   'rating',
+  'bouquetIds',
 ]
 
 /** Trims what is there, drops what nobody typed, and keeps the order. */
@@ -103,6 +106,7 @@ const toBody = (values: SeriesValues): SeriesValues => ({
   genres: cleanList(values.genres),
   releaseDate: (values.releaseDate ?? '').trim(),
   rating: values.rating ?? null,
+  bouquetIds: values.bouquetIds ?? [],
 })
 
 /** The stored series spelled as form content. */
@@ -119,6 +123,7 @@ const detailToFormValues = (detail: {
   genres: string[]
   releaseDate: string | null
   rating: number | null
+  bouquetIds: string[]
 }): SeriesValues => ({
   name: detail.name,
   status: detail.status,
@@ -132,6 +137,7 @@ const detailToFormValues = (detail: {
   genres: detail.genres,
   releaseDate: detail.releaseDate ?? '',
   rating: detail.rating,
+  bouquetIds: [...detail.bouquetIds],
 })
 
 interface SeriesFormPageProps {
@@ -172,6 +178,21 @@ export default function SeriesFormPage(_props: SeriesFormPageProps) {
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.Series)
   const categories = categoriesQuery.data?.items ?? []
   const categoriesError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
+
+  /**
+   * The bouquets the picker below the category offers.
+   *
+   * A separate query, behind its own permission (`viewBouquets`): sharing one call with the
+   * categories would fail the whole form for an operator allowed to edit the series and not
+   * to read the packages. A failed read leaves the picker disabled rather than
+   * empty-and-silent, and everything else still saves.
+   */
+  const bouquetsQuery = useBouquets()
+  const bouquetOptions = (bouquetsQuery.data?.items ?? []).map((bouquet) => ({
+    value: bouquet.id,
+    label: bouquet.name,
+  }))
+  const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
 
   const area = session ? areaForRole(session.role) : ''
   const listPath = `${area}/series`
@@ -307,6 +328,29 @@ export default function SeriesFormPage(_props: SeriesFormPageProps) {
 
         {categoriesError && (
           <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
+        )}
+
+        <Form.Item
+          name="bouquetIds"
+          label={t('bouquets.fieldLabel')}
+          // Under the category, because the two answer the same question at two scales: the
+          // category files the series, the bouquets say in which packages it is delivered.
+          // Optional, and a set rather than an order - see the hint.
+          extra={t('bouquets.fieldHint')}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={bouquetOptions}
+            placeholder={t('bouquets.fieldPlaceholder')}
+            disabled={bouquetsError !== null}
+          />
+        </Form.Item>
+
+        {bouquetsError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={bouquetsError} />
         )}
 
         <Form.Item

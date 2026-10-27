@@ -46,4 +46,9 @@ export interface VideoStreamDetail extends VideoStream {
   sources: string[]
   /** Files to play, in order. Empty for every kind but `FilePlaylist`. */
   files: string[]
+  /**
+   * Bouquets the stream belongs to, in the bouquets' own order. A **set**: it fills the
+   * picker on the form and says nothing about the stream's position inside one.
+   */
+  bouquetIds: string[]
 }

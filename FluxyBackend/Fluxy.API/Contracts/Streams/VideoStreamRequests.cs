@@ -92,6 +92,15 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>Files to play, in order, for a file-playlist stream.</summary>
         public IReadOnlyList<string>? Files { get; init; }
+
+        /// <summary>
+        /// Bouquets the new stream joins, as text; absent or empty means none.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order: the stream is appended to the end of every bouquet
+        /// it joins, and where it sits inside one belongs to the bouquet's own screen.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 
     /// <summary>
@@ -177,5 +186,17 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>New file list; null keeps, empty clears.</summary>
         public IReadOnlyList<string>? Files { get; init; }
+
+        /// <summary>
+        /// New set of bouquets the stream belongs to, as text; null keeps, empty clears.
+        /// </summary>
+        /// <remarks>
+        /// A <b>set</b> rather than an order, and the second list on this request that answers
+        /// "absent keeps, empty clears": a stream joining a bouquet it was not in is appended to
+        /// the end of that bouquet's list, while its position in a bouquet it already belonged to
+        /// is untouched - a tick in a picker must never re-order a list the operator arranged
+        /// somewhere else.
+        /// </remarks>
+        public IReadOnlyList<string>? BouquetIds { get; init; }
     }
 }

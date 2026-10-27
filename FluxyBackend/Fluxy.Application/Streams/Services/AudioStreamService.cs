@@ -1,4 +1,7 @@
+using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Streams.Utils;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
@@ -35,18 +38,25 @@ namespace Fluxy.Application.Streams.Services
     public sealed class AudioStreamService : IAudioStreamService
     {
         private readonly IAudioStreamRepository _streams;
+        private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AudioStreamService"/> class.
         /// </summary>
         /// <param name="streams">Repository holding the streams and their sources.</param>
+        /// <param name="bouquets">
+        /// Repository that answers whether the bouquets a stream names exist, and stages the
+        /// membership rows that tie the two together.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public AudioStreamService(
             IAudioStreamRepository streams,
+            IBouquetRepository bouquets,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
+            _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
 
@@ -113,6 +123,13 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(NewAudioStream.Name));
             }
 
+            // The bouquets are a picker on the stream's own form, so a body naming one that does
+            // not exist is refused with the field named rather than failing at the write.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, input.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(NewAudioStream.BouquetIds), AudioStreamRules.BouquetsRule));
+            }
+
             var write = BuildWrite(
                 input.Name.Trim(),
                 input.Type,
@@ -127,6 +144,15 @@ namespace Fluxy.Application.Streams.Services
                 input.Sources);
 
             var streamId = await _streams.AddAsync(write, cancellationToken);
+
+            // Staged before the save, so the row and the packages it joined are written by one
+            // SaveChanges.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.AudioStream,
+                streamId,
+                input.BouquetIds,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } createFailure)
             {
@@ -203,6 +229,12 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(AudioStreamPatch.Name), id);
             }
 
+            // Null keeps every link, an empty list leaves every bouquet.
+            if (!await BouquetMembership.AreKnownAsync(_bouquets, patch.BouquetIds, cancellationToken))
+            {
+                return Invalid(Field(nameof(AudioStreamPatch.BouquetIds), AudioStreamRules.BouquetsRule), id);
+            }
+
             var write = BuildWrite(
                 name,
                 type,
@@ -217,6 +249,14 @@ namespace Fluxy.Application.Streams.Services
                 sources);
 
             await _streams.UpdateAsync(id, write, cancellationToken);
+
+            // Inside the same unit of work as the row itself, so a failure rolls both back.
+            await BouquetMembership.StageAsync(
+                _bouquets,
+                ContentType.AudioStream,
+                id,
+                patch.BouquetIds,
+                cancellationToken);
 
             if (await SaveAsync(cancellationToken) is { } updateFailure)
             {

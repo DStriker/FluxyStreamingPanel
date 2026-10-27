@@ -94,6 +94,13 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>Files to play, in order. Empty for every kind but the file playlist.</summary>
         public required IReadOnlyList<string> Files { get; init; }
+
+        /// <summary>
+        /// Bouquets the new stream joins, or null for none. A <b>set</b> rather than an order:
+        /// the stream is appended to the end of every bouquet it joins, and a position inside a
+        /// bouquet is the bouquet screen's to decide.
+        /// </summary>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 
     /// <summary>

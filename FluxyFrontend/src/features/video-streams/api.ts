@@ -156,6 +156,16 @@ export interface VideoStreamValues {
   sources: string[]
   /** Files to play, in order. */
   files: string[]
+  /**
+   * Bouquets the stream belongs to, as identifiers.
+   *
+   * A **set** rather than an order: the picker says "these are the packages this stream is
+   * in" and nothing about where it sits inside one. A bouquet the stream joins is appended to
+   * the end of that bouquet's list, and its position in a bouquet it already belonged to is
+   * the bouquet screen's to decide. Always sent - the form never means "leave the field
+   * alone" - so an empty array is the statement "in no bouquet".
+   */
+  bouquetIds: string[]
 }
 
 /**

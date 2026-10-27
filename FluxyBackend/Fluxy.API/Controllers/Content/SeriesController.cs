@@ -3,6 +3,8 @@ using Fluxy.API.Contracts.Common;
 using Fluxy.API.Contracts.Series;
 using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Series.Commands;
 using Fluxy.Core.Series.Enums;
 using Fluxy.Core.Series.Interfaces;
@@ -48,20 +50,26 @@ namespace Fluxy.API.Controllers.Content
         private const string IdHint = "That value must be the uuid of the row it names.";
 
         private readonly ISeriesService _series;
+        private readonly IBouquetService _bouquets;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SeriesController"/> class.
         /// </summary>
         /// <param name="series">Service that reads and changes the catalogue.</param>
+        /// <param name="bouquets">
+        /// Service that answers which bouquets a series belongs to, for the form's picker.
+        /// </param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="logger">Logger the changes worth remembering are reported to.</param>
         public SeriesController(
             ISeriesService series,
+            IBouquetService bouquets,
             IAntiforgery antiforgery,
             ILogger<SeriesController> logger)
             : base(antiforgery, logger)
         {
             _series = series;
+            _bouquets = bouquets;
         }
 
         /// <summary>Reports one page of the table, filtered and ordered the way the query asked.</summary>
@@ -151,7 +159,9 @@ namespace Fluxy.API.Controllers.Content
 
             return series is null
                 ? Answer(new SeriesOutcome { Action = SeriesAction.NotFound, SeriesId = id })
-                : Ok(ToDetail(series));
+                : Ok(ToDetail(
+                    series,
+                    await _bouquets.GetItemBouquetIdsAsync(ContentType.Series, id, cancellationToken)));
         }
 
         /// <summary>Creates a series in its category.</summary>
@@ -195,6 +205,11 @@ namespace Fluxy.API.Controllers.Content
                 categoryId = parsedCategory;
             }
 
+            // A set rather than an order: the service appends the series to the end of every
+            // bouquet it joins, and the position inside one belongs to the bouquet's own screen.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(CreateSeriesRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -214,7 +229,8 @@ namespace Fluxy.API.Controllers.Content
                     Director = request.Director,
                     Genres = request.Genres ?? [],
                     ReleaseDate = request.ReleaseDate,
-                    Rating = request.Rating
+                    Rating = request.Rating,
+                    BouquetIds = bouquetIds
                 },
                 cancellationToken);
 
@@ -270,6 +286,11 @@ namespace Fluxy.API.Controllers.Content
                 }
             }
 
+            // Parsed before the check, so a broken identifier is refused with the field named
+            // rather than silently dropped. Null keeps every link; an empty list clears them.
+            var bouquetIds = BouquetTextParser.ParseOrNull(
+                request.BouquetIds, nameof(UpdateSeriesRequest.BouquetIds), errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -282,6 +303,7 @@ namespace Fluxy.API.Controllers.Content
                     Name = request.Name,
                     Status = status,
                     CategoryId = categoryId,
+                    BouquetIds = bouquetIds,
                     ImdbId = request.ImdbId,
                     PosterUrl = request.PosterUrl,
                     BackdropUrl = request.BackdropUrl,
@@ -380,7 +402,9 @@ namespace Fluxy.API.Controllers.Content
             Rating = item.Rating
         };
 
-        private static AdminSeriesDetailResponse ToDetail(SeriesDetail item) => new()
+        private static AdminSeriesDetailResponse ToDetail(
+            SeriesDetail item,
+            IReadOnlyList<Guid> bouquetIds) => new()
         {
             Id = item.Id.ToString(),
             Name = item.Name,
@@ -397,7 +421,8 @@ namespace Fluxy.API.Controllers.Content
             ReleaseDate = item.ReleaseDate,
             Rating = item.Rating,
             SeasonsCount = item.SeasonsCount,
-            EpisodesCount = item.EpisodesCount
+            EpisodesCount = item.EpisodesCount,
+            BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()
         };
     }
 }
