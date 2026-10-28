@@ -20,11 +20,11 @@ namespace Fluxy.Core.Streams.Commands
     /// stop actions write - a create is simply allowed to set it once.
     /// </para>
     /// <para>
-    /// The three identifiers that name rows of a domain that does not exist here yet
-    /// (<see cref="SeriesId"/>, <see cref="VodId"/> and <see cref="EpgSourceId"/>) are plain
-    /// <see cref="Guid"/>s rather than foreign keys, for the reason the read model gives: there
-    /// is no table behind them to be a key to, so they are opaque references the relaying
-    /// process resolves on its own.
+    /// The references that name rows of other domains are plain <see cref="Guid"/>s rather than
+    /// navigation properties: a stream form names a series, a guide source and a playlist of
+    /// on-demand items by their identifiers, and the service is what checks that each one
+    /// exists. <see cref="VodItems"/> is a list rather than one identifier because the
+    /// playlist kind plays its items in sequence - the relay walks it and starts over.
     /// </para>
     /// </remarks>
     public sealed record NewVideoStream
@@ -57,10 +57,11 @@ namespace Fluxy.Core.Streams.Commands
         public Guid? SeriesId { get; init; }
 
         /// <summary>
-        /// On-demand item this stream plays, for <see cref="VideoStreamType.VodPlaylist"/> and
-        /// nothing else.
+        /// On-demand items this stream plays, in the order it plays them, for
+        /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other
+        /// kind, and refused by the service when the kind is the playlist and the list is empty.
         /// </summary>
-        public Guid? VodId { get; init; }
+        public IReadOnlyList<Guid> VodItems { get; init; } = [];
 
         /// <summary>Programme guide the schedule is read from, or null to carry none.</summary>
         public Guid? EpgSourceId { get; init; }

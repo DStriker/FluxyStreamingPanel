@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  ALL_SERIES_PAGE_SIZE,
   getEpisodeDetail,
   getEpisodeTranscodeFormats,
   getEpisodes,
@@ -32,6 +33,28 @@ export const useSeries = (params: {
   useQuery({
     queryKey: ['series', params],
     queryFn: ({ signal }) => getSeries({ ...params, signal }),
+  })
+
+/**
+ * The whole catalogue for a picker, for the reason `useAllEpgSources` gives: the stream form
+ * needs every series to choose from, and it asks by name rather than by paging through a list
+ * inside a form field.
+ *
+ * A separate key from the paged table's - `['series', 'picker']` against `['series', params]`
+ * - so opening the stream form never disturbs the page the operator was reading, and the
+ * two reads cannot answer each other's question.
+ */
+export const useAllSeries = () =>
+  useQuery({
+    queryKey: ['series', 'picker'],
+    queryFn: ({ signal }) =>
+      getSeries({
+        page: 1,
+        pageSize: ALL_SERIES_PAGE_SIZE,
+        sortBy: 'name',
+        sortOrder: 'asc',
+        signal,
+      }),
   })
 
 export const useSeriesDetail = (id: string | undefined) =>

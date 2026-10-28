@@ -55,6 +55,21 @@ namespace Fluxy.Core.Vod.Repositories
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<bool> CategoryIsUsableAsync(Guid categoryId, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Which of the named videos exist.
+        /// </summary>
+        /// <remarks>
+        /// The probe behind a playlist's entries. The membership rows carry a real foreign key,
+        /// so a video that does not exist would be refused at the write anyway - this is what
+        /// turns that refusal into a sentence under the field the operator can fix.
+        /// </remarks>
+        /// <param name="ids">Identifiers to test.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>The subset of <paramref name="ids"/> that names a video.</returns>
+        Task<IReadOnlySet<Guid>> GetExistingIdsAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken = default);
+
         /// <summary>Whether another item of the same category already holds the name.</summary>
         /// <param name="name">Name to probe, compared case sensitively.</param>
         /// <param name="categoryId">Category the name is scoped to.</param>

@@ -11,6 +11,7 @@ using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Core.Vod.Repositories;
 using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Streams.Utils;
 
@@ -60,10 +61,18 @@ namespace Fluxy.Application.Streams.Services
             "A series stream needs the identifier of the series it plays."
         ];
 
-        /// <summary>The sentence a video-playlist stream with no item gets.</summary>
+        /// <summary>The sentence a video-playlist stream with no items gets.</summary>
         private static readonly string[] VodRule =
         [
-            "A video playlist stream needs the identifier of the item it plays."
+            "A video playlist stream needs at least one on-demand video to play."
+        ];
+
+        /// <summary>The sentence a playlist longer than the bound gets.</summary>
+        private static readonly string[] VodCountRule =
+        [
+            "A video playlist stream may hold at most "
+                + VideoStreamLimits.VodItemsMaxCount
+                + " videos."
         ];
 
         /// <summary>The sentence an identifier that is not a uuid gets.</summary>
@@ -77,6 +86,12 @@ namespace Fluxy.Application.Streams.Services
                 "if the stream carries no guide."
         ];
 
+        /// <summary>The sentence a playlist naming a video that does not exist gets.</summary>
+        private static readonly string[] VodItemsRule =
+        [
+            "Every on-demand video in the playlist must be an existing video."
+        ];
+
         /// <summary>The sentence a guide source that names no existing source gets.</summary>
         private static readonly string[] EpgSourceRule =
         [
@@ -85,6 +100,7 @@ namespace Fluxy.Application.Streams.Services
 
         private readonly IVideoStreamRepository _streams;
         private readonly IEpgSourceRepository _epgSources;
+        private readonly IVodRepository _videos;
         private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
@@ -95,6 +111,9 @@ namespace Fluxy.Application.Streams.Services
         /// <param name="epgSources">
         /// Repository that answers whether the guide source a stream names exists.
         /// </param>
+        /// <param name="videos">
+        /// Repository that answers whether the videos a playlist names exist.
+        /// </param>
         /// <param name="bouquets">
         /// Repository that answers whether the bouquets a stream names exist, and stages the
         /// membership rows that tie the two together.
@@ -103,11 +122,13 @@ namespace Fluxy.Application.Streams.Services
         public VideoStreamService(
             IVideoStreamRepository streams,
             IEpgSourceRepository epgSources,
+            IVodRepository videos,
             IBouquetRepository bouquets,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
             _epgSources = epgSources;
+            _videos = videos;
             _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
@@ -153,7 +174,7 @@ namespace Fluxy.Application.Streams.Services
                 input.DelayMinutes,
                 input.ArchiveDays,
                 input.SeriesId,
-                input.VodId,
+                input.VodItems,
                 input.EpgSourceId,
                 input.EpgChannelKey,
                 input.RestreamUserAgent,
@@ -173,6 +194,15 @@ namespace Fluxy.Application.Streams.Services
                 && await _epgSources.ExistsAsync(input.EpgSourceId!.Value, cancellationToken) is false)
             {
                 return Invalid(Field(nameof(NewVideoStream.EpgSourceId), EpgSourceRule));
+            }
+
+            // Every video a playlist names has to exist, for the reason the guide source above
+            // does: the membership rows carry a real foreign key, so a missing one would be
+            // refused at the write - and a refusal naming the field is worth more to the
+            // operator than a provider's exception.
+            if (!await VideosExistAsync(input.VodItems, cancellationToken))
+            {
+                return Invalid(Field(nameof(NewVideoStream.VodItems), VodItemsRule));
             }
 
             // The category is checked after the shape rather than before it, because a body
@@ -212,7 +242,7 @@ namespace Fluxy.Application.Streams.Services
                 input.Enigma2Sid,
                 input.DelayMinutes,
                 input.SeriesId,
-                input.VodId,
+                input.VodItems,
                 input.EpgSourceId,
                 input.EpgChannelKey,
                 input.ArchiveDays,
@@ -295,11 +325,6 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(Field(nameof(VideoStreamPatch.SeriesId), seriesError ?? IdentifierRule), id);
             }
 
-            if (!TryMergeIdentifier(patch.VodId, stream.VodId, out var vodId, out var vodError))
-            {
-                return Invalid(Field(nameof(VideoStreamPatch.VodId), vodError ?? IdentifierRule), id);
-            }
-
             if (!TryMergeIdentifier(patch.EpgSourceId, stream.EpgSourceId, out var epgSourceId, out var epgError))
             {
                 return Invalid(Field(nameof(VideoStreamPatch.EpgSourceId), epgError ?? IdentifierRule), id);
@@ -310,6 +335,7 @@ namespace Fluxy.Application.Streams.Services
             // screen the order the relay plays in.
             var sources = patch.Sources ?? stream.Sources;
             var files = patch.Files ?? stream.Files;
+            var vodItems = patch.VodItems ?? stream.VodItems;
             var archiveDays = patch.ArchiveDays ?? stream.ArchiveDays;
 
             var errors = ValidateShape(
@@ -320,7 +346,7 @@ namespace Fluxy.Application.Streams.Services
                 delayMinutes,
                 archiveDays,
                 seriesId,
-                vodId,
+                vodItems,
                 epgSourceId,
                 epgChannelKey,
                 restreamUserAgent,
@@ -341,6 +367,15 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(
                     Field(nameof(VideoStreamPatch.EpgSourceId), EpgSourceRule),
                     id);
+            }
+
+            // The playlist's videos are checked for the reason the guide source above is, and
+            // against the merged list rather than the patch: a stream whose kind is the
+            // playlist and whose stored list is empty is refused here as well, which is what
+            // stops an edit that only changed the kind from saving a playlist of nothing.
+            if (!await VideosExistAsync(vodItems, cancellationToken))
+            {
+                return Invalid(Field(nameof(VideoStreamPatch.VodItems), VodItemsRule), id);
             }
 
             if (await _streams.CategoryIsUsableAsync(categoryId, cancellationToken) is false)
@@ -371,7 +406,7 @@ namespace Fluxy.Application.Streams.Services
                 enigma2Sid,
                 delayMinutes,
                 seriesId,
-                vodId,
+                vodItems,
                 epgSourceId,
                 epgChannelKey,
                 archiveDays,
@@ -497,7 +532,7 @@ namespace Fluxy.Application.Streams.Services
             int delayMinutes,
             int archiveDays,
             Guid? seriesId,
-            Guid? vodId,
+            IReadOnlyList<Guid> vodItems,
             Guid? epgSourceId,
             string? epgChannelKey,
             string? restreamUserAgent,
@@ -549,9 +584,13 @@ namespace Fluxy.Application.Streams.Services
                     break;
 
                 case VideoStreamType.VodPlaylist:
-                    if (vodId is null)
+                    if (vodItems.Count == 0)
                     {
-                        errors[nameof(NewVideoStream.VodId)] = VodRule;
+                        errors[nameof(NewVideoStream.VodItems)] = VodRule;
+                    }
+                    else if (vodItems.Count > VideoStreamLimits.VodItemsMaxCount)
+                    {
+                        errors[nameof(NewVideoStream.VodItems)] = VodCountRule;
                     }
 
                     break;
@@ -586,7 +625,7 @@ namespace Fluxy.Application.Streams.Services
             string? enigma2Sid,
             int delayMinutes,
             Guid? seriesId,
-            Guid? vodId,
+            IReadOnlyList<Guid> vodItems,
             Guid? epgSourceId,
             string? epgChannelKey,
             int archiveDays,
@@ -610,7 +649,7 @@ namespace Fluxy.Application.Streams.Services
                 Enigma2Sid = VideoStreamRules.NullIfBlank(enigma2Sid),
                 DelayMinutes = delayMinutes,
                 SeriesId = type is VideoStreamType.OnlineSeries ? seriesId : null,
-                VodId = type is VideoStreamType.VodPlaylist ? vodId : null,
+                VodItems = type is VideoStreamType.VodPlaylist ? vodItems : [],
                 EpgSourceId = hasEpg ? epgSourceId : null,
                 EpgChannelKey = hasEpg ? epgChannelKey!.Trim() : null,
                 ArchiveDays = type is VideoStreamType.Permanent ? archiveDays : 0,
@@ -633,6 +672,25 @@ namespace Fluxy.Application.Streams.Services
                 .Where(entry => !string.IsNullOrWhiteSpace(entry))
                 .Select(entry => entry.Trim())
                 .ToList();
+
+        /// <summary>Whether every video a playlist names exists.</summary>
+        /// <remarks>
+        /// Answered by one probe rather than one per entry: a playlist may name hundreds of
+        /// videos, and the question is about the set as a whole.
+        /// </remarks>
+        private async Task<bool> VideosExistAsync(
+            IReadOnlyList<Guid> vodItems,
+            CancellationToken cancellationToken)
+        {
+            if (vodItems.Count == 0)
+            {
+                return true;
+            }
+
+            var existing = await _videos.GetExistingIdsAsync(vodItems, cancellationToken);
+
+            return vodItems.All(existing.Contains);
+        }
 
         /// <summary>Writes the staged changes, interpreting the one failure that is expected.</summary>
         /// <returns>Null when it was written, or the exception when a unique index refused it.</returns>

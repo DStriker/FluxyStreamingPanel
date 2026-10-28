@@ -119,8 +119,9 @@ namespace Fluxy.DataAccess.Repositories
 
             var sources = await ReadSourcesAsync(id, cancellationToken);
             var files = await ReadFilesAsync(id, cancellationToken);
+            var vodItems = await ReadVodItemsAsync(id, cancellationToken);
 
-            return stream.ToModel(sources, files);
+            return stream.ToModel(sources, files, vodItems);
         }
 
         /// <inheritdoc />
@@ -132,6 +133,7 @@ namespace Fluxy.DataAccess.Repositories
                 .Include(entry => entry.Category)
                 .Include(entry => entry.StreamSources)
                 .Include(entry => entry.StreamFiles)
+                .Include(entry => entry.VodItems)
                 .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
 
             if (stream is null)
@@ -149,7 +151,12 @@ namespace Fluxy.DataAccess.Repositories
                 .Select(entry => entry.Path)
                 .ToList();
 
-            return stream.ToModel(sources, files);
+            var vodItems = stream.VodItems
+                .OrderBy(entry => entry.Position)
+                .Select(entry => entry.VodItemId)
+                .ToList();
+
+            return stream.ToModel(sources, files, vodItems);
         }
 
         /// <inheritdoc />
@@ -239,7 +246,6 @@ namespace Fluxy.DataAccess.Repositories
                 Enigma2Sid = stream.Enigma2Sid,
                 DelayMinutes = stream.DelayMinutes,
                 SeriesId = stream.SeriesId,
-                VodId = stream.VodId,
                 EpgSourceId = stream.EpgSourceId,
                 EpgChannelKey = stream.EpgChannelKey,
                 ArchiveDays = stream.ArchiveDays,
@@ -251,6 +257,7 @@ namespace Fluxy.DataAccess.Repositories
 
             AppendSources(entity, stream.Sources);
             AppendFiles(entity, stream.Files);
+            AppendVodItems(entity, stream.VodItems);
 
             return entity;
         }
@@ -276,7 +283,6 @@ namespace Fluxy.DataAccess.Repositories
             entity.Enigma2Sid = stream.Enigma2Sid;
             entity.DelayMinutes = stream.DelayMinutes;
             entity.SeriesId = stream.SeriesId;
-            entity.VodId = stream.VodId;
             entity.EpgSourceId = stream.EpgSourceId;
             entity.EpgChannelKey = stream.EpgChannelKey;
             entity.ArchiveDays = stream.ArchiveDays;
@@ -287,6 +293,7 @@ namespace Fluxy.DataAccess.Repositories
 
             ReplaceSources(entity, stream.Sources);
             ReplaceFiles(entity, stream.Files);
+            ReplaceVodItems(entity, stream.VodItems);
 
             return true;
         }
@@ -328,11 +335,11 @@ namespace Fluxy.DataAccess.Repositories
                     entity.RestreamHeaders = update.RestreamHeaders;
 
                     // A kind that does not relay from a source list keeps neither a series, a
-                    // video-playlist item, nor a stored file list - those payloads belong to
-                    // other kinds. A URL kind keeps its existing sources unless the import
-                    // appends to them below.
+                    // video playlist, nor a stored file list - those payloads belong to other
+                    // kinds. A URL kind keeps its existing sources unless the import appends to
+                    // them below.
                     entity.SeriesId = null;
-                    entity.VodId = null;
+                    ReplaceVodItems(entity, []);
                     ReplaceFiles(entity, []);
 
                     // A converted stream that has no source yet takes the playlist's source,
@@ -427,6 +434,17 @@ namespace Fluxy.DataAccess.Repositories
                 .Select(entry => entry.Path)
                 .ToListAsync(cancellationToken);
 
+        /// <summary>Reads the stored on-demand playlist, in the order it is played.</summary>
+        private async Task<IReadOnlyList<Guid>> ReadVodItemsAsync(
+            Guid id,
+            CancellationToken cancellationToken)
+            => await _context.VideoStreamVodItems
+                .AsNoTracking()
+                .Where(entry => entry.StreamId == id)
+                .OrderBy(entry => entry.Position)
+                .Select(entry => entry.VodItemId)
+                .ToListAsync(cancellationToken);
+
         private async Task<VideoStreamEntity?> FindTrackedWithListsAsync(
             Guid id,
             CancellationToken cancellationToken)
@@ -448,6 +466,12 @@ namespace Fluxy.DataAccess.Repositories
             if (!entry.Collection(stream => stream.StreamFiles).IsLoaded)
             {
                 await entry.Collection(stream => stream.StreamFiles)
+                    .LoadAsync(cancellationToken);
+            }
+
+            if (!entry.Collection(stream => stream.VodItems).IsLoaded)
+            {
+                await entry.Collection(stream => stream.VodItems)
                     .LoadAsync(cancellationToken);
             }
 
@@ -482,6 +506,22 @@ namespace Fluxy.DataAccess.Repositories
                     StreamId = entity.Id,
                     Position = position++,
                     Path = entry
+                });
+            }
+        }
+
+        private static void AppendVodItems(
+            VideoStreamEntity entity,
+            IReadOnlyList<Guid> vodItems)
+        {
+            var position = 0;
+            foreach (var entry in vodItems)
+            {
+                entity.VodItems.Add(new VideoStreamVodItemEntity
+                {
+                    StreamId = entity.Id,
+                    Position = position++,
+                    VodItemId = entry
                 });
             }
         }
@@ -536,6 +576,38 @@ namespace Fluxy.DataAccess.Repositories
                     StreamId = stream.Id,
                     Position = index,
                     Path = files[index]
+                });
+            }
+        }
+
+        /// <summary>Replaces the stored on-demand playlist with the one the change is sending.</summary>
+        /// <remarks>
+        /// Compared as a sequence, like the two lists above it: a save that did not touch the
+        /// playlist leaves its rows alone rather than deleting and rewriting them, which keeps
+        /// the audit columns of an untouched entry meaningful.
+        /// </remarks>
+        private void ReplaceVodItems(
+            VideoStreamEntity stream,
+            IReadOnlyList<Guid> vodItems)
+        {
+            var stored = stream.VodItems
+                .OrderBy(entry => entry.Position)
+                .ToList();
+
+            if (stored.Select(entry => entry.VodItemId).SequenceEqual(vodItems))
+            {
+                return;
+            }
+
+            _context.VideoStreamVodItems.RemoveRange(stored);
+
+            for (var index = 0; index < vodItems.Count; index++)
+            {
+                stream.VodItems.Add(new VideoStreamVodItemEntity
+                {
+                    StreamId = stream.Id,
+                    Position = index,
+                    VodItemId = vodItems[index]
                 });
             }
         }

@@ -1023,10 +1023,6 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<Guid?>("VodId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("vod_id");
-
                     b.HasKey("Id");
 
                     b.HasIndex("EpgSourceId");
@@ -1111,6 +1107,42 @@ namespace Fluxy.DataAccess.Migrations
                         .IsUnique();
 
                     b.ToTable("video_stream_sources", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.VideoStreamVodItemEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stream_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("VodItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("vod_item_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VodItemId");
+
+                    b.HasIndex("StreamId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("video_stream_vod_items", (string)null);
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.VodItemEntity", b =>
@@ -1431,6 +1463,23 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("Stream");
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.VideoStreamVodItemEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.VideoStreamEntity", "Stream")
+                        .WithMany("VodItems")
+                        .HasForeignKey("StreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.VodItemEntity", null)
+                        .WithMany()
+                        .HasForeignKey("VodItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Stream");
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.VodItemEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
@@ -1462,6 +1511,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("StreamFiles");
 
                     b.Navigation("StreamSources");
+
+                    b.Navigation("VodItems");
                 });
 #pragma warning restore 612, 618
         }

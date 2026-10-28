@@ -127,8 +127,11 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Series the stream plays, as text, or null.</summary>
         public string? SeriesId { get; init; }
 
-        /// <summary>On-demand item the stream plays, as text, or null.</summary>
-        public string? VodId { get; init; }
+        /// <summary>
+        /// On-demand videos the stream plays, as text, in the order it plays them. Empty for
+        /// every kind but the video playlist.
+        /// </summary>
+        public required IReadOnlyList<string> VodItems { get; init; }
 
         /// <summary>Programme guide the schedule is read from, as text, or null.</summary>
         public string? EpgSourceId { get; init; }

@@ -80,6 +80,12 @@ namespace Fluxy.DataAccess.Context
         public DbSet<VideoStreamFileEntity> VideoStreamFiles => Set<VideoStreamFileEntity>();
 
         /// <summary>
+        /// One on-demand video a playlist stream plays, in the order it plays them. The set of
+        /// rows a stream has is its whole playlist.
+        /// </summary>
+        public DbSet<VideoStreamVodItemEntity> VideoStreamVodItems => Set<VideoStreamVodItemEntity>();
+
+        /// <summary>
         /// Configured audio streams. Each names the category it is filed under and the kind of
         /// stream it is, and carries its source list as rows of their own.
         /// </summary>

@@ -26,8 +26,11 @@ export interface VideoStreamDetail extends VideoStream {
   delayMinutes: number
   /** Series the stream plays, as text, or null. Used by `OnlineSeries` and nothing else. */
   seriesId: string | null
-  /** On-demand item the stream plays, as text, or null. Used by `VodPlaylist`. */
-  vodId: string | null
+  /**
+   * On-demand videos the stream plays, as text, in the order it plays them. Used by
+   * `VodPlaylist` and nothing else; empty for every other kind.
+   */
+  vodItems: string[]
   /** Programme guide the schedule is read from, as text, or null. */
   epgSourceId: string | null
   /** Key the channel is filed under inside that guide, or null. */

@@ -103,8 +103,9 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(stream => stream.SeriesId)
                 .HasColumnName("series_id");
 
-            builder.Property(stream => stream.VodId)
-                .HasColumnName("vod_id");
+            // The on-demand playlist is not a column here: it is the rows of
+            // <c>video_stream_vod_items</c>, one per entry, because the kind plays a sequence
+            // and the order is the list. See `VideoStreamVodItemConfiguration`.
 
             // The third reference *is* a foreign key, because a guide is fetched from this
             // installation: a dangling source is a schedule nothing can ever look up, which is

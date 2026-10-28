@@ -135,6 +135,27 @@ namespace Fluxy.DataAccess.Repositories
                     cancellationToken);
 
         /// <inheritdoc />
+        public async Task<IReadOnlySet<Guid>> GetExistingIdsAsync(
+            IReadOnlyCollection<Guid> ids,
+            CancellationToken cancellationToken = default)
+        {
+            if (ids.Count == 0)
+            {
+                return new HashSet<Guid>();
+            }
+
+            var wanted = ids.Distinct().ToList();
+
+            var found = await _context.VodItems
+                .AsNoTracking()
+                .Where(entry => wanted.Contains(entry.Id))
+                .Select(entry => entry.Id)
+                .ToListAsync(cancellationToken);
+
+            return found.ToHashSet();
+        }
+
+        /// <inheritdoc />
         public Task<bool> IsNameTakenAsync(
             string name,
             Guid categoryId,

@@ -12,8 +12,8 @@ namespace Fluxy.Core.Streams.Models
     /// <para>
     /// A stream is named, typed and filed under a category. Everything
     /// else is either the answer to "what does it broadcast" (<see cref="Sources"/>,
-    /// <see cref="Files"/>, <see cref="SeriesId"/>, <see cref="VodId"/> - exactly one of the
-    /// four is used, decided by <see cref="Type"/>), or the answer to "how does it relay it"
+    /// <see cref="Files"/>, <see cref="SeriesId"/>, <see cref="VodItems"/> - exactly one of
+    /// the four is used, decided by <see cref="Type"/>), or the answer to "how does it relay it"
     /// (<see cref="RestreamUserAgent"/>, <see cref="RestreamProxy"/>,
     /// <see cref="RestreamCookies"/>, <see cref="RestreamHeaders"/>, <see cref="DelayMinutes"/>).
     /// </para>
@@ -89,10 +89,18 @@ namespace Fluxy.Core.Streams.Models
         public Guid? SeriesId { get; init; }
 
         /// <summary>
-        /// On-demand item this stream plays, for <see cref="VideoStreamType.VodPlaylist"/> and
-        /// nothing else.
+        /// On-demand items this stream plays, in the order it plays them, for
+        /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other
+        /// kind.
         /// </summary>
-        public Guid? VodId { get; init; }
+        /// <remarks>
+        /// A list rather than one identifier, because that is what the kind is: a playlist
+        /// relays its items one after another and starts over, so a stream holding one video
+        /// would be a playlist of one. The order is the operator's and is what the relay
+        /// follows - the same contract <see cref="Sources"/> and <see cref="Files"/> have, and
+        /// for the same reason.
+        /// </remarks>
+        public IReadOnlyList<Guid> VodItems { get; init; } = [];
 
         /// <summary>
         /// Programme guide the schedule is read from, or null when the stream carries none.

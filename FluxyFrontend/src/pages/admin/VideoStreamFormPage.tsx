@@ -21,8 +21,11 @@ import { ApiError, fieldErrors, messageForError, successTextFor } from '../../ut
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import SourceListEditor from '../../components/SourceListEditor'
+import CatalogListEditor from '../../components/CatalogListEditor'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
 import { useAllEpgSources } from '../../features/epg/hooks/queries'
+import { useAllSeries } from '../../features/series/hooks/queries'
+import { useAllVideoOnDemand } from '../../features/video-on-demand/hooks/queries'
 import { useBouquets } from '../../features/bouquets/hooks/queries'
 import {
   useCreateVideoStream,
@@ -104,7 +107,7 @@ const CREATE_VALUES: VideoStreamValues = {
   enigma2Sid: '',
   delayMinutes: 0,
   seriesId: '',
-  vodId: '',
+  vodItems: [],
   epgSourceId: '',
   epgChannelKey: '',
   archiveDays: 0,
@@ -136,7 +139,7 @@ const FIELD_NAMES: readonly (keyof VideoStreamValues)[] = [
   'enigma2Sid',
   'delayMinutes',
   'seriesId',
-  'vodId',
+  'vodItems',
   'epgSourceId',
   'epgChannelKey',
   'archiveDays',
@@ -183,7 +186,7 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
     // always describes what the enabled controls show.
     delayMinutes: acceptsDelay(type) ? (values.delayMinutes ?? 0) : 0,
     seriesId: values.seriesId ?? '',
-    vodId: values.vodId ?? '',
+    vodItems: values.vodItems ?? [],
     epgSourceId: values.epgSourceId ?? '',
     epgChannelKey: values.epgChannelKey ?? '',
     archiveDays: acceptsArchive(type) ? (values.archiveDays ?? 0) : 0,
@@ -209,7 +212,7 @@ const detailToFormValues = (detail: {
   enigma2Sid: string | null
   delayMinutes: number
   seriesId: string | null
-  vodId: string | null
+  vodItems: string[]
   epgSourceId: string | null
   epgChannelKey: string | null
   archiveDays: number
@@ -235,7 +238,7 @@ const detailToFormValues = (detail: {
     // the next save is about to clear, and the form would be disagreeing with itself.
     delayMinutes: acceptsDelay(detail.type) ? detail.delayMinutes : 0,
     seriesId: detail.seriesId ?? '',
-    vodId: detail.vodId ?? '',
+    vodItems: [...detail.vodItems],
     epgSourceId: detail.epgSourceId ?? '',
     epgChannelKey: detail.epgChannelKey ?? '',
     archiveDays: acceptsArchive(detail.type) ? detail.archiveDays : 0,
@@ -406,6 +409,30 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
     ? messageForError(epgSourcesQuery.error)
     : null
 
+  /**
+   * The series and videos a stream of those two kinds plays.
+   *
+   * Both are pickers over their whole catalogue for the reason the guide source above is:
+   * the field names a row of this installation, and asking an operator to type its uuid was
+   * the field being "alive" in name only - nobody knows a uuid by sight, and the endpoint
+   * refused anything that was not one. Each is its own query rather than one shared call:
+   * they sit behind separate permissions (`viewSeries`, `viewVideoOnDemand`), and a shared
+   * read would fail both fields for a group that holds only one of the two grants.
+   */
+  const seriesQuery = useAllSeries()
+  const seriesOptions = (seriesQuery.data?.items ?? []).map((entry) => ({
+    value: entry.id,
+    label: entry.name,
+  }))
+  const seriesError = seriesQuery.isError ? messageForError(seriesQuery.error) : null
+
+  const vodQuery = useAllVideoOnDemand()
+  const vodOptions = (vodQuery.data?.items ?? []).map((entry) => ({
+    value: entry.id,
+    label: entry.name,
+  }))
+  const vodError = vodQuery.isError ? messageForError(vodQuery.error) : null
+
   // The area this page hangs from, for both buttons below. `null` only under the probes,
   // which render no provider: `RequireAuth` publishes one for every visitor this page can
   // have, and without it the navigation is inert rather than wrong.
@@ -502,7 +529,7 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
    * rather than a `pattern` rule - async-validator applies a pattern to an empty string
    * too, and "none" is the correct answer for a stream that names no series.
    */
-  const optionalIdRule = (name: 'seriesId' | 'vodId' | 'epgSourceId') => ({
+  const optionalIdRule = (name: 'seriesId' | 'epgSourceId') => ({
     validator: (_: unknown, value: string | undefined) => {
       const text = (value ?? '').trim()
 
@@ -748,19 +775,48 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
             <Form.Item
               name="seriesId"
               label={t('videoStreamsForm.seriesId')}
+              // The server refuses a series that does not exist, so the field offers the ones
+              // that do rather than a uuid nobody can look up. Optional: a series stream with
+              // no series is refused by the service's own rule, which is where that sentence
+              // belongs - the rule is about the row, not about this form.
               rules={[optionalIdRule('seriesId')]}
-              extra={t('videoStreamsForm.idHint')}
+              extra={seriesError ?? t('videoStreamsForm.seriesIdHint')}
+              validateStatus={seriesError ? 'warning' : undefined}
             >
-              <Input placeholder={t('videoStreamsForm.idPlaceholder')} />
+              <Select
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                options={seriesOptions}
+                placeholder={t('videoStreamsForm.seriesIdPlaceholder')}
+                loading={seriesQuery.isFetching}
+                notFoundContent={t('videoStreamsForm.seriesIdEmpty')}
+              />
             </Form.Item>
           ) : chosenType === 'VodPlaylist' ? (
             <Form.Item
-              name="vodId"
-              label={t('videoStreamsForm.vodId')}
-              rules={[optionalIdRule('vodId')]}
-              extra={t('videoStreamsForm.idHint')}
+              label={t('videoStreamsForm.vodItems')}
+              // Required, and the rule lives on the list rather than on any one row: a
+              // playlist stream with nothing to play is refused by the service, so this is
+              // the same fact said before the request instead of after one.
+              required
+              extra={vodError ?? t('videoStreamsForm.vodItemsHint')}
+              validateStatus={vodError ? 'warning' : undefined}
             >
-              <Input placeholder={t('videoStreamsForm.idPlaceholder')} />
+              <CatalogListEditor
+                name={['vodItems']}
+                options={vodOptions}
+                placeholder={t('videoStreamsForm.vodIdPlaceholder')}
+                emptyCatalog={t('videoStreamsForm.vodIdEmpty')}
+                loading={vodQuery.isFetching}
+                labels={{
+                  up: t('videoStreamsForm.moveUp'),
+                  down: t('videoStreamsForm.moveDown'),
+                  remove: t('videoStreamsForm.removeVod'),
+                  add: t('videoStreamsForm.addVod'),
+                  required: t('videoStreamsForm.vodItemsRequired'),
+                }}
+              />
             </Form.Item>
           ) : (
             <Form.Item label={t('videoStreamsForm.filesLabel')} required>

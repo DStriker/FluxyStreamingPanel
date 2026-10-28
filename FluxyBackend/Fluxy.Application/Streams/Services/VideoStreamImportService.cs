@@ -331,6 +331,10 @@ namespace Fluxy.Application.Streams.Services
                 RestreamCookies = VideoStreamRules.NullIfBlank(input.RestreamCookies),
                 RestreamHeaders = VideoStreamRules.NullIfBlank(input.RestreamHeaders),
                 Sources = [entry.Source],
+                // An imported entry is a source or a file path, never a playlist of catalogue
+                // videos: the import's kinds are the three that relay from an address, which is
+                // exactly what the service permits.
+                VodItems = [],
                 Files = []
             };
 

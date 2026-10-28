@@ -41,6 +41,10 @@ import {
   useUpdateContentCategory,
 } from '../../features/content-categories/hooks/mutations'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useNavigate } from 'react-router-dom'
+import { useSession } from '../../utils/sessionContext'
+import { areaForRole } from '../../utils/session'
+import { withFilter } from '../../utils/tableParams'
 import { useRowAction } from '../../hooks/table'
 
 /**
@@ -61,6 +65,21 @@ const SECTION_TYPES: Record<string, ContentType> = {
   'nav.items.audioStreamsCategories': 'AudioStream',
   'nav.items.videoOnDemandCategories': 'VideoOnDemand',
   'nav.items.seriesCategories': 'Series',
+}
+
+/**
+ * The address of each kind's table, relative to the area prefix.
+ *
+ * The same four sections CONTENT_SECTIONS in src/utils/navigation.ts generates - the map
+ * is written out here because a feature may not import the navigation table and this page
+ * needs the path, not the menu. probe:render renders two of the four keys, so a path that
+ * drifted from the router's would land on the catch-all there rather than in production.
+ */
+const SECTION_PATHS: Record<ContentType, string> = {
+  VideoStream: 'video-streams',
+  AudioStream: 'audio-streams',
+  VideoOnDemand: 'video-on-demand',
+  Series: 'series',
 }
 
 interface ContentCategoriesPageProps {
@@ -183,6 +202,8 @@ function DragHandle({ label }: { label: string }) {
 export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesPageProps) {
   const { t } = useTranslation()
   const { message } = App.useApp()
+  const navigate = useNavigate()
+  const session = useSession()
 
   const type = SECTION_TYPES[sectionKey] ?? 'VideoStream'
   const typeParam = CONTENT_TYPE_PARAMS[type]
@@ -316,6 +337,23 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
     setEditing(category)
   }
 
+  /**
+   * Opens the table that lists this category's content, filtered to it.
+   *
+   * One navigation, because the four sections' tables already read `categoryId` from the
+   * address - so the filter survives a reload and the address can be sent to somebody else,
+   * which a filter carried in a page's own state could not do. The four addresses differ by
+   * the kind the page was opened for, which `SECTION_PATHS` maps from the same `type` this
+   * page already resolved.
+   */
+  const openContent = (category: ContentCategory) => {
+    const area = session ? areaForRole(session.role) : ''
+    const path = `${area}/${SECTION_PATHS[type]}`
+    const query = withFilter(new URLSearchParams(), 'categoryId', category.id).toString()
+
+    navigate(`${path}?${query}`)
+  }
+
   /** Submits whichever dialog is open, mapping field errors under the one input there is. */
   const submitDialog = async () => {
     const values = await form.validateFields()
@@ -397,19 +435,24 @@ export default function ContentCategoriesPage({ sectionKey }: ContentCategoriesP
         const busy = busyId === category.id
 
         const actions: RowAction[] = [
-          // Disabled rather than hidden, for the reason every disabled control on this
-          // application's tables gives: a button that vanishes teaches nothing about why it
-          // was there, and "the content list is not built yet" is the fact an operator is
-          // owed before they go looking for it.
+          // The content filed under this category, in the table that lists it. The four
+          // sections each own one table and each of those tables already filters by
+          // `categoryId` through the address, so this is one navigation rather than a new
+          // screen - and the list it lands on can be reloaded, shared or bookmarked with the
+          // filter still on, which a page holding a category in its own state could not offer.
           {
             key: 'members',
-            label: t('contentCategories.membersSoon'),
+            label: t('contentCategories.actions.members'),
             icon: <EyeOutlined />,
-            disabled: true,
+            disabled: busy || reorder.isPending,
+            onClick: () => openContent(category),
           },
           {
             key: 'edit',
-            label: t('contentCategories.actions.edit'),
+            // Named "rename" rather than "edit" because that is the whole of what the dialog
+            // does: the one field a category can be given here is its name - its type never
+            // moves and its position is arranged by dragging, not in a form.
+            label: t('contentCategories.actions.rename'),
             icon: <EditOutlined />,
             disabled: busy || reorder.isPending,
             onClick: () => openEdit(category),

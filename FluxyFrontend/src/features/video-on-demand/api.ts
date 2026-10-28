@@ -34,6 +34,15 @@ export type VideoOnDemandSortOrder = 'asc' | 'desc'
 /** The page size the pager offers, which is also the server's default. */
 export const VIDEO_ON_DEMAND_PAGE_SIZE = 20
 
+/**
+ * The page size the "every on-demand video" picker asks for, and the server's ceiling.
+ *
+ * The stream form's VOD field is a picker over the whole catalogue rather than a page of it,
+ * for the reason `ALL_SERIES_PAGE_SIZE` gives from the other catalogue: a pager inside a form
+ * field would ask the operator to walk it before they could answer one question.
+ */
+export const ALL_VIDEO_ON_DEMAND_PAGE_SIZE = 1000
+
 /** The largest playlist a browser will send before the server sees it. */
 export const VIDEO_ON_DEMAND_IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024
 

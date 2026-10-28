@@ -136,8 +136,14 @@ export interface VideoStreamValues {
   delayMinutes: number
   /** Series reference, for `OnlineSeries` and nothing else. */
   seriesId: string
-  /** On-demand reference, for `VodPlaylist` and nothing else. */
-  vodId: string
+  /**
+   * On-demand videos the stream plays, in order, for `VodPlaylist` and nothing else.
+   *
+   * A list rather than one identifier: the kind plays its videos one after another, so the
+   * list *is* the playlist and its order is what the relay follows. The form's editor draws
+   * it as an ordered list and sends it back in the same order.
+   */
+  vodItems: string[]
   /** Programme guide reference. */
   epgSourceId: string
   /** Key the channel is filed under inside that guide. */

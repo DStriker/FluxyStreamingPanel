@@ -767,13 +767,10 @@ const en = {
     nameLength: 'Up to 100 characters',
     create: 'Create',
     actions: {
-      edit: 'Edit',
+      members: 'Show content',
+      rename: 'Rename',
       delete: 'Delete',
     },
-    // Why the "show content" button is disabled: no content exists yet to list, so there
-    // is nothing the click could open. Stated as the fact rather than as a refusal - the
-    // visitor is being told before the click, not after it.
-    membersSoon: 'The content list is not built yet.',
     // The one action that asks first. Nothing is filed under categories yet, so the body
     // carries no warning about members - the confirmation is the whole of the guard until
     // the content tables arrive.
@@ -1507,12 +1504,25 @@ const en = {
     // The three identifier fields. Each label doubles as the name inside the "not a
     // uuid" sentence, so a refusal under two inputs of the guide pair says which fact each
     // one is missing.
-    seriesId: 'Series identifier',
-    vodId: 'Video-on-demand identifier',
+    seriesId: 'Series',
+    vodItems: 'On-demand videos',
     epgSourceId: 'EPG source',
     // The guide source is chosen from the ones that exist; the placeholder is the prompt
     // rather than a uuid to imitate, because a source is a row of this installation now.
     epgSourcePlaceholder: 'Choose a guide source',
+    // The series and the video are chosen from their catalogues for the same reason the
+    // source is: the field names a row of this installation, and an operator picking a series
+    // by name is the whole of the interaction. The empty text is drawn when the catalogue has
+    // nothing in it - which reads differently from a failed read, and the hint says which.
+    seriesIdPlaceholder: 'Choose a series',
+    seriesIdHint: 'Leave empty if this stream plays no series.',
+    seriesIdEmpty: 'The catalogue holds no series yet.',
+    vodIdPlaceholder: 'Choose a video',
+    vodItemsHint: 'The playlist plays these videos in order and starts over at the end.',
+    vodIdEmpty: 'The catalogue holds no videos yet.',
+    addVod: 'Add a video',
+    removeVod: 'Remove the video',
+    vodItemsRequired: 'Add at least one video to the playlist.',
     idPlaceholder: '00000000-0000-0000-0000-000000000000',
     idHint: 'Leave empty if this stream has none.',
     idInvalid: '{{field}} must be an identifier.',

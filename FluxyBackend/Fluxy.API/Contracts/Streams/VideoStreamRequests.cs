@@ -16,7 +16,7 @@ namespace Fluxy.API.Contracts.Streams
     /// <para>
     /// <b>Only the payload the chosen kind of stream uses should be filled in.</b> A permanent,
     /// on-demand or redirect stream takes a list of <c>sources</c>; a series stream takes
-    /// <c>seriesId</c>; a video-playlist stream takes <c>vodId</c>; a file-playlist stream
+    /// <c>seriesId</c>; a video-playlist stream takes a list of <c>vodItems</c>; a file-playlist stream
     /// takes a list of <c>files</c>. The others are accepted and then dropped rather than
     /// refused, because a form whose operator has just changed the type is still carrying the
     /// previous type's values - refusing them would answer a request nobody meant to make.
@@ -60,8 +60,15 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Series the stream plays, for a series stream. As text.</summary>
         public string? SeriesId { get; init; }
 
-        /// <summary>On-demand item the stream plays, for a video-playlist stream. As text.</summary>
-        public string? VodId { get; init; }
+        /// <summary>
+        /// On-demand videos the stream plays, in order, for a video-playlist stream. As text.
+        /// </summary>
+        /// <remarks>
+        /// A list because a playlist plays its videos one after another: the order is what the
+        /// relay follows, and it is the order the form's editor draws and sends back. Absent
+        /// means none on a create; on a patch it means "leave the stored list alone".
+        /// </remarks>
+        public IReadOnlyList<string>? VodItems { get; init; }
 
         /// <summary>Programme guide the schedule is read from, or none. As text.</summary>
         public string? EpgSourceId { get; init; }
@@ -157,8 +164,8 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>New series reference; null keeps, empty clears.</summary>
         public string? SeriesId { get; init; }
 
-        /// <summary>New on-demand reference; null keeps, empty clears.</summary>
-        public string? VodId { get; init; }
+        /// <summary>New on-demand list, in relay order; null keeps, empty clears.</summary>
+        public IReadOnlyList<string>? VodItems { get; init; }
 
         /// <summary>New programme guide reference; null keeps, empty clears.</summary>
         public string? EpgSourceId { get; init; }

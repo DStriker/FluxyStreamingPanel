@@ -47,8 +47,10 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>Series the stream plays, or null when its type does not use one.</summary>
         public Guid? SeriesId { get; init; }
 
-        /// <summary>On-demand item the stream plays, or null when its type does not use one.</summary>
-        public Guid? VodId { get; init; }
+        /// <summary>
+        /// On-demand items the stream plays, in order, or empty when its type does not use any.
+        /// </summary>
+        public required IReadOnlyList<Guid> VodItems { get; init; }
 
         /// <summary>Programme guide the schedule is read from, or null when there is none.</summary>
         public Guid? EpgSourceId { get; init; }

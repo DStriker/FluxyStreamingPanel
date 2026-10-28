@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  ALL_VIDEO_ON_DEMAND_PAGE_SIZE,
   getVideoOnDemand,
   getVideoOnDemandDetail,
   getVideoOnDemandTranscodeFormats,
@@ -30,6 +31,27 @@ export const useVideoOnDemand = (params: {
   useQuery({
     queryKey: ['videoOnDemand', params],
     queryFn: ({ signal }) => getVideoOnDemand({ ...params, signal }),
+  })
+
+/**
+ * The whole catalogue for a picker, for the reason `useAllEpgSources` gives: the stream form
+ * needs every video to choose from, and it asks by name rather than by paging through a list
+ * inside a form field.
+ *
+ * A separate key from the paged table's, so opening the stream form never disturbs the page
+ * the operator was reading.
+ */
+export const useAllVideoOnDemand = () =>
+  useQuery({
+    queryKey: ['videoOnDemand', 'picker'],
+    queryFn: ({ signal }) =>
+      getVideoOnDemand({
+        page: 1,
+        pageSize: ALL_VIDEO_ON_DEMAND_PAGE_SIZE,
+        sortBy: 'name',
+        sortOrder: 'asc',
+        signal,
+      }),
   })
 
 /**

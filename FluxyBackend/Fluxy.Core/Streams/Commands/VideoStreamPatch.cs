@@ -55,8 +55,16 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>New series reference; null keeps, empty clears.</summary>
         public string? SeriesId { get; init; }
 
-        /// <summary>New on-demand reference; null keeps, empty clears.</summary>
-        public string? VodId { get; init; }
+        /// <summary>
+        /// New on-demand list, in the order the stream plays it; null keeps, empty clears.
+        /// </summary>
+        /// <remarks>
+        /// The same three states the source and file lists have, and for the same reason: an
+        /// absent list means "this patch says nothing about the playlist", an empty one means
+        /// "it holds nothing", and anything else replaces the stored order wholesale - which
+        /// is what makes the order on the operator's screen the order the relay follows.
+        /// </remarks>
+        public IReadOnlyList<Guid>? VodItems { get; init; }
 
         /// <summary>New programme guide reference; null keeps, empty clears.</summary>
         public string? EpgSourceId { get; init; }

@@ -305,13 +305,13 @@ namespace Fluxy.API.Controllers.Content
             }
 
             // The three references are parsed here rather than by the service, because the
-            // create model holds them as <c>Guid?</c> - it has nothing to "keep", so there is
-            // no reason for the text form to survive this far. An empty one simply means
-            // "none", which is the only thing a create can mean.
+            // create model holds them as plain identifiers - it has nothing to "keep", so
+            // there is no reason for the text form to survive this far. An empty one simply
+            // means "none", which is the only thing a create can mean.
             var seriesId = ParseIdentifierOrNull(
                 request.SeriesId, nameof(CreateVideoStreamRequest.SeriesId), errors);
-            var vodId = ParseIdentifierOrNull(
-                request.VodId, nameof(CreateVideoStreamRequest.VodId), errors);
+            var vodItems = ParseIdentifierListOrEmpty(
+                request.VodItems, nameof(CreateVideoStreamRequest.VodItems), errors);
             var epgSourceId = ParseIdentifierOrNull(
                 request.EpgSourceId, nameof(CreateVideoStreamRequest.EpgSourceId), errors);
 
@@ -336,7 +336,7 @@ namespace Fluxy.API.Controllers.Content
                     Enigma2Sid = request.Enigma2Sid,
                     DelayMinutes = request.DelayMinutes ?? 0,
                     SeriesId = seriesId,
-                    VodId = vodId,
+                    VodItems = vodItems,
                     EpgSourceId = epgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
                     ArchiveDays = request.ArchiveDays ?? 0,
@@ -459,7 +459,8 @@ namespace Fluxy.API.Controllers.Content
                     Enigma2Sid = request.Enigma2Sid,
                     DelayMinutes = request.DelayMinutes,
                     SeriesId = request.SeriesId,
-                    VodId = request.VodId,
+                    VodItems = ParseIdentifierList(
+                        request.VodItems, nameof(UpdateVideoStreamRequest.VodItems), errors),
                     EpgSourceId = request.EpgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
                     ArchiveDays = request.ArchiveDays,
@@ -652,6 +653,60 @@ namespace Fluxy.API.Controllers.Content
         }
 
         /// <summary>
+        /// Turns the playlist a create body sent into the identifiers it names, or an empty list.
+        /// </summary>
+        /// <remarks>
+        /// Absent and empty both mean "no playlist", because a create has nothing to keep. A
+        /// duplicate is collapsed rather than refused: the list is a playlist, and a video
+        /// named twice is one entry - unlike the reorder lists, where a duplicate is two
+        /// claims about one position.
+        /// </remarks>
+        private static IReadOnlyList<Guid> ParseIdentifierListOrEmpty(
+            IReadOnlyList<string>? values,
+            string propertyName,
+            Dictionary<string, string[]> errors)
+            => ParseIdentifierList(values, propertyName, errors) ?? [];
+
+        /// <summary>
+        /// Turns the playlist a body sent into the identifiers it names, or nothing at all.
+        /// </summary>
+        /// <remarks>
+        /// <c>null</c> is returned only when the field was absent or an entry was refused: the
+        /// first means "the body said nothing about the playlist", which a patch reads as
+        /// "keep", and the second means the request is already being refused with the field
+        /// named. An empty list is a statement - the playlist holds nothing.
+        /// </remarks>
+        private static IReadOnlyList<Guid>? ParseIdentifierList(
+            IReadOnlyList<string>? values,
+            string propertyName,
+            Dictionary<string, string[]> errors)
+        {
+            if (values is null)
+            {
+                return null;
+            }
+
+            var parsed = new List<Guid>(values.Count);
+            var seen = new HashSet<Guid>();
+
+            foreach (var text in values)
+            {
+                if (!Guid.TryParse(text, out var id))
+                {
+                    errors[propertyName] = [IdHint];
+                    return null;
+                }
+
+                if (seen.Add(id))
+                {
+                    parsed.Add(id);
+                }
+            }
+
+            return parsed;
+        }
+
+        /// <summary>
         /// Which of the bounds a request broke, keyed by the camelCase name of the query
         /// parameter so the reason lands under the input a client would fix.
         /// </summary>
@@ -745,7 +800,7 @@ namespace Fluxy.API.Controllers.Content
             Enigma2Sid = stream.Enigma2Sid,
             DelayMinutes = stream.DelayMinutes,
             SeriesId = stream.SeriesId?.ToString(),
-            VodId = stream.VodId?.ToString(),
+            VodItems = stream.VodItems.Select(id => id.ToString()).ToList(),
             EpgSourceId = stream.EpgSourceId?.ToString(),
             EpgChannelKey = stream.EpgChannelKey,
             HasEpg = stream.HasEpg,

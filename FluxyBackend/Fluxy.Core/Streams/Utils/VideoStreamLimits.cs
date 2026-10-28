@@ -37,5 +37,16 @@ namespace Fluxy.Core.Streams.Utils
 
         /// <summary>Longest path of a file a stream plays.</summary>
         public const int FilePathMaxLength = 1000;
+
+        /// <summary>
+        /// Most on-demand items one playlist stream may hold.
+        /// </summary>
+        /// <remarks>
+        /// A bound rather than a taste: the list is written as one row per entry in a single
+        /// save, and a request naming an unbounded number of them would let one form build a
+        /// statement the database refuses at the end of a long round trip. A playlist longer
+        /// than this is a catalogue question rather than a stream's.
+        /// </remarks>
+        public const int VodItemsMaxCount = 1000;
     }
 }

@@ -69,10 +69,17 @@ namespace Fluxy.DataAccess.Entities
         public Guid? SeriesId { get; set; }
 
         /// <summary>
-        /// On-demand item this stream plays, for <see cref="VideoStreamType.VodPlaylist"/> and
-        /// nothing else. Not a foreign key, for the same reason.
+        /// On-demand items this stream plays, in order, for
+        /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else.
         /// </summary>
-        public Guid? VodId { get; set; }
+        /// <remarks>
+        /// Rows of <c>video_stream_vod_items</c> rather than one nullable column, because the
+        /// kind plays a sequence: the list is the playlist, and its order is what the relay
+        /// follows. Each row carries a real foreign key to <c>vod_items</c>, so a deleted video
+        /// leaves no link to nobody behind - which one identifier in a column could not offer.
+        /// </remarks>
+        public ICollection<VideoStreamVodItemEntity> VodItems { get; set; } =
+            new List<VideoStreamVodItemEntity>();
 
         /// <summary>
         /// Programme guide the schedule is read from, or null when the stream carries none. Not
@@ -110,13 +117,17 @@ namespace Fluxy.DataAccess.Entities
             new List<VideoStreamFileEntity>();
 
         /// <summary>
-        /// Builds the business model out of this row and the two lists stored beside it.
+        /// Builds the business model out of this row and the lists stored beside it.
         /// </summary>
         /// <param name="sources">Rows of <c>video_stream_sources</c>, already in position order.</param>
         /// <param name="files">Rows of <c>video_stream_files</c>, already in position order.</param>
+        /// <param name="vodItems">
+        /// Rows of <c>video_stream_vod_items</c>, already in position order.
+        /// </param>
         public VideoStream ToModel(
             IReadOnlyList<string> sources,
-            IReadOnlyList<string> files) => new()
+            IReadOnlyList<string> files,
+            IReadOnlyList<Guid> vodItems) => new()
         {
             Id = Id,
             Name = Name,
@@ -129,7 +140,7 @@ namespace Fluxy.DataAccess.Entities
             Enigma2Sid = Enigma2Sid,
             DelayMinutes = DelayMinutes,
             SeriesId = SeriesId,
-            VodId = VodId,
+            VodItems = vodItems,
             EpgSourceId = EpgSourceId,
             EpgChannelKey = EpgChannelKey,
             ArchiveDays = ArchiveDays,
