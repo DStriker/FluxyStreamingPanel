@@ -103,6 +103,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the bouquets.</summary>
         public const string EditBouquetsPolicy = "Permission.EditBouquets";
 
+        /// <summary>Policy that accepts an operator who may read the tariff plans.</summary>
+        public const string ViewTariffPlansPolicy = "Permission.ViewTariffPlans";
+
+        /// <summary>Policy that accepts an operator who may change the tariff plans.</summary>
+        public const string EditTariffPlansPolicy = "Permission.EditTariffPlans";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -286,7 +292,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBouquets)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBouquets)))
+                .AddPolicy(ViewTariffPlansPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewTariffPlans)))
+                .AddPolicy(EditTariffPlansPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditTariffPlans)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

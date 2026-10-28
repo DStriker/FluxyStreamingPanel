@@ -1,4 +1,4 @@
-﻿/**
+/**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
  * These twenty strings are the whole catalog at the time of writing. They are a union rather
@@ -50,6 +50,12 @@
  * group that may run the streams and a group that may decide which packages they are sold
  * in are two different jobs. The backend keeps them at 1048576 and 2097152.
  *
+ * **The tariff plan pair is the same question asked about the price list.** `viewTariffPlans`
+ * and `editTariffPlans` gate the plans table and the plan form, which is where a plan's two
+ * relations - the groups it may be sold to and the bouquets it delivers - are decided. The
+ * pair is separate from the bouquet one because what a package costs and what a package
+ * contains are decided by different jobs. The backend keeps them at 4194304 and 8388608.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -75,4 +81,6 @@ export type UserPermission =
   | 'editEpgSources'
   | 'viewBouquets'
   | 'editBouquets'
+  | 'viewTariffPlans'
+  | 'editTariffPlans'
 

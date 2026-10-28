@@ -25,6 +25,27 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheTariffPlanPairBelongsToTheAdministratorBaseGroup()
+        {
+            // The seeder reconciles the base groups against this catalog on every start, and the
+            // migration `GrantTariffPlanPermissions` backfills the same pair for an installation
+            // that has been migrated but not yet restarted. Both decisions rest on this one: the
+            // pair is owned by Admin, so it is granted to the Administrators group and to nobody
+            // else.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewTariffPlans, admin);
+            Assert.Contains(UserPermission.EditTariffPlans, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewTariffPlans,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.EditTariffPlans,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -55,6 +76,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(524288, (int)UserPermission.EditEpgSources);
             Assert.Equal(1048576, (int)UserPermission.ViewBouquets);
             Assert.Equal(2097152, (int)UserPermission.EditBouquets);
+            Assert.Equal(4194304, (int)UserPermission.ViewTariffPlans);
+            Assert.Equal(8388608, (int)UserPermission.EditTariffPlans);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -120,10 +143,11 @@ namespace Fluxy.UnitTests.Users
             Assert.False(UserPermissionCatalog.IsKnown((UserPermission)1));
 
             // A bit above the highest member the catalog names. It moved up when the bouquet
-            // pair arrived - 1 &lt;&lt; 20 is ViewBouquets now - and it moves again the day a
-            // permission takes the next slot, which is exactly what this line is for.
+            // pair arrived (1 &lt;&lt; 20), again when the tariff plan pair took the next two
+            // slots, and it moves each time a permission takes one - which is exactly what this
+            // line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 22)));
+                UserPermission.ViewClients | (UserPermission)(1 << 24)));
         }
 
         [Fact]

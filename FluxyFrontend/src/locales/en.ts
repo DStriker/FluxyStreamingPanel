@@ -38,7 +38,7 @@ const en = {
   errors: {
     title: 'Something went wrong',
     description:
-      'The page failed to render. Reloading usually brings it back — nothing that already reached the server was affected.',
+      'The page failed to render. Reloading usually brings it back вЂ” nothing that already reached the server was affected.',
     reload: 'Reload the page',
   },
   // The guard on every form that edits something: a move away from a page with unsaved
@@ -126,6 +126,10 @@ const en = {
       // between the content sections and the guide, and it is a frame around them rather
       // than a fifth catalogue - which is why it has one entry and the sections have four.
       bouquets: 'Bouquets',
+      // The subscriptions: what a subscriber buys. It follows the accounts and the packages
+      // because it is the price list of the second - a plan names the packages it delivers and
+      // the groups it may be sold to. Four of its five entries are placeholders for now.
+      subscriptions: 'Subscriptions',
       account: 'Account',
     },
     items: {
@@ -182,6 +186,16 @@ const en = {
       // above it, and for its object as well, because "Manage" alone under a heading called
       // "Bouquets" would read as a heading with no door.
       bouquetsManage: 'Manage bouquets',
+      // The subscriptions section. Four of the five are placeholders - the screens they name
+      // have not been built - and they are named exactly as the owner described the section:
+      // adding a subscription first, then the lists of what a subscriber holds, and the price
+      // list last. The plan entry names its object as well as its list, because "Tariff plans"
+      // under "Subscriptions" is one product described twice rather than a heading with no door.
+      subscriptionsAdd: 'Add',
+      subscriptionsPlaylists: 'Playlists',
+      subscriptionsMagDevices: 'MAG devices',
+      subscriptionsEnigma2Devices: 'Enigma2 devices',
+      tariffPlans: 'Tariff plans',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
       // rows are tokens - a visitor reading the menu should be told they will see every
@@ -277,7 +291,7 @@ const en = {
     // the same card has just disproved.
     noMatches: 'No visits match this search.',
     // The pager's own sentence, which antd would otherwise write in its default locale.
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     current: 'This session',
     searchPlaceholder: 'Search by IP address or user agent',
     // For the screen reader: a placeholder is not a label, and it disappears the moment
@@ -373,7 +387,7 @@ const en = {
     // the table has just disproved.
     noMatches: 'No accounts match this search.',
     // The pager's own sentence, which antd would otherwise write in its default locale.
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     // The handle at the right edge of every column header, which the visitor drags to change
     // the width. `{{column}}` is that column's own name - a separator a screen reader cannot
     // name is a separator it can only find by tabbing into it blindly.
@@ -447,7 +461,7 @@ const en = {
     // confirmation here is a question and not a habit.
     deleteConfirmTitle: 'Delete this account?',
     deleteConfirmBody:
-      'The account "{{name}}" and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
+      'The account "{{name}}" and everything attached to it вЂ” sessions, sign-in protection вЂ” will be removed. This cannot be undone.',
     deleteConfirmOk: 'Delete',
     // The bulk toolbar over the selection: one count and one menu, deliberately the smallest
     // thing that can carry five operations, because the toolbar shares its row with the
@@ -457,8 +471,8 @@ const en = {
     bulk: {
       menu: 'Actions',
       // The count rides inside the button that the count enables, rather than beside it as
-      // a label of its own. That is a width decision before it is a design one: `Сбросить
-      // ширину`, `Добавить пользователя` and `Действия` are already longer than their
+      // a label of its own. That is a width decision before it is a design one: `РЎР±СЂРѕСЃРёС‚СЊ
+      // С€РёСЂРёРЅСѓ`, `Р”РѕР±Р°РІРёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ` and `Р”РµР№СЃС‚РІРёСЏ` are already longer than their
       // English twins, and a separate `Selected: 0` costs a whole extra element of room in
       // the one row of the card that has no room to spare. Number and control in one place
       // is also the tighter truth - the count exists to say why the button is greyed.
@@ -481,7 +495,7 @@ const en = {
       // Only deletion asks first, for the reason only deletion asks first on a single row.
       deleteTitle: 'Delete these {{count}} accounts?',
       deleteBody:
-        'Each account and everything attached to it — sessions, sign-in protection — will be removed. This cannot be undone.',
+        'Each account and everything attached to it вЂ” sessions, sign-in protection вЂ” will be removed. This cannot be undone.',
     },
   },
   // The ten permission keys, exactly as the catalog spells them. These strings are the
@@ -529,6 +543,12 @@ const en = {
     // deciding which packages they are sold in.
     viewBouquets: 'View bouquets',
     editBouquets: 'Edit bouquets',
+    // The tariff plan pair guards the price list a subscription is sold under: the plans
+    // table and the plan form, where a plan's two relations - the groups it may be sold to and
+    // the bouquets it delivers - are decided. It is a pair of its own because what a package
+    // costs and what a package contains are decided by different jobs.
+    viewTariffPlans: 'View tariff plans',
+    editTariffPlans: 'Edit tariff plans',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -567,7 +587,7 @@ const en = {
     // filter panel right above the table.
     noMatches: 'No groups match this search.',
     // The pager's own row, which antd would otherwise write in its default language.
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     // The handle at the right edge of each header: it is dragged to change the width.
     // `{{column}}` is the column's own name - a separator a screen reader cannot name is one
     // it can only find by tabbing blindly through six headers.
@@ -619,7 +639,7 @@ const en = {
     // exactly one role, and offering one the role does not own would be offering a choice
     // the server throws away on the way in.
     permissionsHint:
-      'A permission decides which accounts a member of this group may see and change. It belongs to the group’s own level, so a permission that level does not own cannot be granted.',
+      'A permission decides which accounts a member of this group may see and change. It belongs to the groupвЂ™s own level, so a permission that level does not own cannot be granted.',
     // The section for a role that owns none of them - which, on this installation, is every
     // role but Admin. An empty space would read as a section that failed to load.
     permissionsNone: 'This role owns no permissions of its own, so there is nothing to grant here.',
@@ -687,7 +707,7 @@ const en = {
     // by the filters right above the table.
     noMatches: 'No visits match this search.',
     // The pager's own sentence, which antd would otherwise write in its default locale.
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     current: 'This session',
     // The row whose session has already been ended or has quietly expired. It stays in the
     // list rather than being dropped: a history is a record of what happened, and a row that
@@ -922,7 +942,7 @@ const en = {
     autoRefreshHint: 're-reads the table every {{seconds}} seconds',
     empty: 'No videos yet.',
     noMatches: 'No videos match these filters.',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
     // The one action on the table that asks first, because it cannot be undone.
@@ -1031,7 +1051,7 @@ const en = {
     filterAnyStatus: 'Any status',
     empty: 'No series yet.',
     noMatches: 'No series match these filters.',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
     deleteConfirmTitle: 'Delete this series?',
@@ -1119,7 +1139,7 @@ const en = {
     searchPlaceholder: 'Search by name or address',
     empty: 'No guide sources yet.',
     noMatches: 'No guide source matches this search.',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
     deleteConfirmTitle: 'Delete this guide source?',
@@ -1160,7 +1180,7 @@ const en = {
     searchPlaceholder: 'Search by stream or channel key',
     empty: 'No stream reads its guide from this source.',
     noMatches: 'No channel matches this search.',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
   },
@@ -1205,7 +1225,7 @@ const en = {
     seasonOption: 'Season {{season}}',
     empty: 'No episodes yet.',
     noMatches: 'No episodes match these filters.',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
     deleteConfirmTitle: 'Delete this episode?',
@@ -1294,7 +1314,7 @@ const en = {
   // Everything here is copy the server does not send.
   videoStreams: {
     // The list page's heading. Deliberately *not* `nav.items.videoStreamsManage`, which
-    // names the action (`Manage video streams`/`Управление`) - a card titled after the menu
+    // names the action (`Manage video streams`/`РЈРїСЂР°РІР»РµРЅРёРµ`) - a card titled after the menu
     // item would name neither the page nor its subject. The pair here is `Video streams`
     // beside `Manage video streams`: one naming what is looked at, one naming how the
     // visitor got there.
@@ -1368,7 +1388,7 @@ const en = {
     // reader: the column's own label lives in `columns`, and the handle says what it is
     // resizing rather than what the column is called.
     resizeColumn: 'Resize the {{column}} column',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     empty: 'No streams yet.',
     noMatches: 'No streams match these filters.',
     // Why the bulk toolbar is greyed for an operator whose group holds no `editStreams`
@@ -1592,10 +1612,10 @@ const en = {
     existingDivider: 'Existing streams',
     appendSourceLabel: 'Append source to existing streams',
     appendSourceHint:
-      'When a name is already taken in the category, add the entry’s address to that stream’s source list instead of skipping it.',
+      'When a name is already taken in the category, add the entryвЂ™s address to that streamвЂ™s source list instead of skipping it.',
     overwriteSettingsLabel: 'Overwrite existing stream settings',
     overwriteSettingsHint:
-      'When a name is already taken in the category, replace that stream’s status, type, delay, archive length and restream settings.',
+      'When a name is already taken in the category, replace that streamвЂ™s status, type, delay, archive length and restream settings.',
     columns: {
       line: 'Line',
       name: 'Name',
@@ -1637,7 +1657,7 @@ const en = {
   // answered 403 must be able to say which of the two it was asking for.
   audioStreams: {
     // The list page's heading. Deliberately *not* `nav.items.audioStreamsManage`, which
-    // names the action (`Manage audio streams`/`Управление`) - a card titled after the menu
+    // names the action (`Manage audio streams`/`РЈРїСЂР°РІР»РµРЅРёРµ`) - a card titled after the menu
     // item would name neither the page nor its subject. The pair here is `Audio streams`
     // beside `Manage audio streams`: one naming what is looked at, one naming how the
     // visitor got there.
@@ -1703,7 +1723,7 @@ const en = {
     // reader: the column's own label lives in `columns`, and the handle says what it is
     // resizing rather than what the column is called.
     resizeColumn: 'Resize the {{column}} column',
-    range: '{{from}}–{{to}} of {{total}}',
+    range: '{{from}}вЂ“{{to}} of {{total}}',
     empty: 'No audio streams yet.',
     noMatches: 'No audio streams match these filters.',
     // Why the bulk toolbar is greyed for an operator whose group holds no
@@ -1855,16 +1875,152 @@ const en = {
     existingDivider: 'Existing streams',
     appendSourceLabel: 'Append source to existing streams',
     appendSourceHint:
-      'When a name is already taken in the category, add the entry’s address to that stream’s source list instead of skipping it.',
+      'When a name is already taken in the category, add the entryвЂ™s address to that streamвЂ™s source list instead of skipping it.',
     overwriteSettingsLabel: 'Overwrite existing stream settings',
     overwriteSettingsHint:
-      'When a name is already taken in the category, replace that stream’s status, type and restream settings.',
+      'When a name is already taken in the category, replace that streamвЂ™s status, type and restream settings.',
     columns: {
       line: 'Line',
       name: 'Name',
       outcome: 'Outcome',
       reason: 'Reason',
     },
+  },
+  // The tariff plans: the price list a subscription is sold under. Two screens share this
+  // block - the table and the form - because they are two halves of one domain and a second
+  // prefix would only hide that.
+  tariffPlans: {
+    // The list's heading. Deliberately *not* `nav.items.tariffPlans`: the menu says how the
+    // visitor got there, and the card says what they are looking at.
+    listTitle: 'Tariff plans',
+    addTitle: 'Add tariff plan',
+    editTitle: 'Edit tariff plan',
+    create: 'Create',
+    save: 'Save',
+    backToList: 'Back to the list',
+    columns: {
+      id: 'ID',
+      name: 'Name',
+      cost: 'Cost',
+      duration: 'Validity',
+      // The two sets that used to be two columns, under one heading: what a subscription on
+      // this plan actually gets. The cell draws delivery on its first line and the output
+      // formats on its second.
+      services: 'Services and formats',
+      connections: 'Max connections',
+      bouquets: 'Bouquets',
+      actions: 'Actions',
+    },
+    actions: {
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    // The rows' two badge sets. Short forms: the cell holds several of them on one line.
+    delivery: {
+      m3u: 'M3U',
+      mag: 'MAG',
+      enigma2: 'Enigma2',
+    },
+    formats: {
+      mpegTs: 'MPEG-TS',
+      hls: 'HLS',
+    },
+    // The tag beside a plan's name. A trial is a property of the plan rather than a value to
+    // compare down a column, which is why it rides beside the name.
+    trialBadge: 'Trial',
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by name',
+    searchPlaceholder: 'Search by name',
+    empty: 'No tariff plans yet.',
+    noMatches: 'No tariff plan matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    deleteConfirmTitle: 'Delete this tariff plan?',
+    // A plan that is deleted takes its two relations with it through the cascade, so the
+    // sentence says so rather than leaving the visitor to discover it afterwards.
+    deleteConfirmBody:
+      'The plan "{{name}}", the groups it is offered to and the bouquets it delivers will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form for one tariff plan. Its own block because the table names what a
+  // row is and the form names what an operator is being asked to type - and there are five
+  // sections of it: identity, services, formats, limits, and the two relations.
+  tariffPlansForm: {
+    idLabel: 'ID',
+    // No heading over the identity fields: the owner asked for it to go, and a group of three
+    // controls that open the form needs no name of its own.
+    servicesSection: 'Services',
+    formatsSection: 'Allowed video stream formats',
+    limitsSection: 'Limits',
+    accessSection: 'Access to the plan',
+    contentSection: 'Plan contents',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a name for the plan.',
+    maxLength: 'No more than {{max}} characters.',
+    isTrialLabel: 'Trial plan',
+    isTrialHint:
+      'A trial may last at most {{days}} days and may only be measured in hours or days.',
+    costLabel: 'Cost',
+    costRequired: 'Enter a cost.',
+    costHint: 'In credits. Zero means the plan is free.',
+    // The period is one parameter drawn as one row: the amount and its unit in a single
+    // composite control, so nobody reads the unit as a setting of its own.
+    durationLabel: 'Validity',
+    durationHint: 'How long a subscription on this plan lasts.',
+    durationValueRequired: 'Enter how long the plan lasts.',
+    durationValueHint: 'At least one unit.',
+    durationUnitRequired: 'Choose a unit.',
+    trialDurationHint:
+      'A trial may last at most {{days}} days, so it can only be measured in hours or days.',
+    units: {
+      hours: 'Hours',
+      days: 'Days',
+      months: 'Months',
+      years: 'Years',
+    },
+    // The delivery methods, one line each, named exactly as the owner wrote them. One key per
+    // box rather than a label plus a checkbox text: the form draws no heading over a checkbox,
+    // so the name beside it is the whole of what a reader sees.
+    supportsM3uCheckbox: 'M3U playlist',
+    supportsMagCheckbox: 'MAG',
+    supportsEnigma2Checkbox: 'Enigma2',
+    // Two sentences about the same set: the requirement, and the reason for it. The first is
+    // what a validator shows; the second is what the form always draws under the section's
+    // heading.
+    supportsRequired: 'Choose at least one service.',
+    supportsHint: 'A plan has to offer at least one service.',
+    outputMpegTsCheckbox: 'MPEG-TS',
+    outputHlsCheckbox: 'HLS',
+    formatsRequired: 'Choose at least one video stream format.',
+    formatsHint: 'A plan has to allow at least one video stream format.',
+    maxConnectionsLabel: 'Maximum connections',
+    maxConnectionsRequired: 'Enter the number of connections.',
+    maxConnectionsHint: 'Between {{min}} and {{max}}.',
+    strictStbCheckbox: 'Enforce the STB device id strictly',
+    strictStbHint: 'Only a MAG device carries an STB identifier, so this applies to MAG only.',
+    strictStbNeedsMag: 'Enable MAG support first - the STB identifier is a MAG device fact.',
+    allowRestreamCheckbox: 'Allow restreaming',
+    allowRestreamHint: 'Whether a subscriber may relay the subscription through their own servers.',
+    allowMultipleCountriesCheckbox: 'Allow connections from other countries',
+    // The rule is about a subscriber *changing* country and keeping the subscription, not
+    // about two devices in two countries at the same moment.
+    allowMultipleCountriesHint:
+      'Whether a subscriber may change their country and keep watching the subscription from there.',
+    userGroupsLabel: 'User groups with access',
+    userGroupsPlaceholder: 'Choose the groups',
+    userGroupsHint: 'A plan has to be available to at least one group. Empty means nobody.',
+    userGroupsRequired: 'Choose at least one user group.',
+    userGroupsUnavailable:
+      'The groups could not be read, so this picker offers nothing. The rest of the form still saves.',
+    bouquetsLabel: 'Bouquets in the plan',
+    bouquetsPlaceholder: 'Choose the bouquets',
+    bouquetsHint: 'A plan has to deliver at least one bouquet.',
+    bouquetsRequired: 'Choose at least one bouquet.',
+    bouquetsUnavailable:
+      'The bouquets could not be read, so this picker offers nothing. The rest of the form still saves.',
+    selectAll: 'Select all',
+    clear: 'Clear',
   },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
@@ -1883,7 +2039,7 @@ const en = {
     // Every code the API can answer with. The keys are the server's own `code` values, so
     // a new one on the backend falls back to its English `message` until it is added here.
     api: {
-      registration_submitted: 'Check your inbox — we sent you a confirmation code.',
+      registration_submitted: 'Check your inbox вЂ” we sent you a confirmation code.',
       registration_confirmed: 'Registration confirmed. You can sign in now.',
       registration_not_configured: 'Registration is not available on this server right now.',
       validation_failed: 'Please correct the highlighted fields.',
@@ -1979,6 +2135,14 @@ const en = {
       bouquet_content_set: 'The content of the bouquet has been saved.',
       bouquet_not_found: 'There is no bouquet with that identifier.',
       bouquet_already_exists: 'That bouquet name is already taken, in any spelling.',
+      // The tariff plan resource: the same three shapes again, plus the two refusals a price
+      // list shares with every other named resource. Its name rule matches the bouquets' - one
+      // name per installation, ignoring the case - and the sentence says so.
+      tariff_plan_created: 'The tariff plan has been created.',
+      tariff_plan_updated: 'The tariff plan has been updated.',
+      tariff_plan_deleted: 'The tariff plan has been deleted.',
+      tariff_plan_not_found: 'There is no tariff plan with that identifier.',
+      tariff_plan_already_exists: 'That tariff plan name is already taken, in any spelling.',
       // A bouquet that still holds content. The server refuses with the count rather than
       // unlinking anything, because the memberships are not this dialog's to empty.
       bouquet_not_empty: '{{count}} items are still in this bouquet. Empty it before deleting it.',

@@ -185,6 +185,27 @@ namespace Fluxy.Core.Users.Enums
         /// content each one holds and in what order. Separate from
         /// <see cref="ViewBouquets"/> for the reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditBouquets = 2097152
+        EditBouquets = 2097152,
+
+        /// <summary>
+        /// May read the tariff plans: the plans table, one plan in full with the groups it is
+        /// offered to and the bouquets it delivers, and the plan picker anywhere else.
+        /// </summary>
+        /// <remarks>
+        /// A tariff plan is the price a subscription is sold under rather than a package of
+        /// content, so this is a pair of its own rather than a reuse of
+        /// <see cref="ViewBouquets"/>: a group that may decide which packages are delivered and
+        /// a group that may decide what a package costs are two different jobs. The plan still
+        /// needs <see cref="ViewBouquets"/> and <see cref="ViewUserGroups"/> beside it to draw
+        /// the two pickers - this grant is about the plans themselves.
+        /// </remarks>
+        ViewTariffPlans = 4194304,
+
+        /// <summary>
+        /// May change the tariff plans: create, edit and delete them, and change which groups
+        /// they are offered to and which bouquets they deliver. Separate from
+        /// <see cref="ViewTariffPlans"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditTariffPlans = 8388608
     }
 }

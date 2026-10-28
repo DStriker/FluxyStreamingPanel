@@ -37,10 +37,14 @@ describe('ALL_PERMISSIONS', () => {
       'editSeries',
       'viewEpgSources',
       'editEpgSources',
-      // The bouquet pair closes the catalog: it is the package *of* the four content kinds
-      // rather than a fifth kind, so it sits after them and after the guide.
+      // The bouquet pair closes the content resources: a bouquet is the package *of* the four
+      // content kinds rather than a fifth kind, so it sits after them and after the guide.
       'viewBouquets',
       'editBouquets',
+      // The tariff plan pair closes the catalog: it is the price list the packages are sold
+      // under rather than a fifth package, so it sits after the bouquets.
+      'viewTariffPlans',
+      'editTariffPlans',
     ])
   })
 })

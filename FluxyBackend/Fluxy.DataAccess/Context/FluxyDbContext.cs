@@ -156,6 +156,24 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<BouquetSeriesEntity> BouquetSeries => Set<BouquetSeriesEntity>();
 
+        /// <summary>
+        /// Tariff plans: the packages a subscription is sold under. What each one may be sold to
+        /// and what it delivers are not on its row - the two junction sets below are.
+        /// </summary>
+        public DbSet<TariffPlanEntity> TariffPlans => Set<TariffPlanEntity>();
+
+        /// <summary>
+        /// One user group that may be sold a tariff plan. The set of rows one plan has is the set
+        /// of groups its price is offered to.
+        /// </summary>
+        public DbSet<TariffPlanUserGroupEntity> TariffPlanUserGroups => Set<TariffPlanUserGroupEntity>();
+
+        /// <summary>
+        /// One bouquet a tariff plan delivers. The set of rows one plan has is the package a
+        /// subscriber on that plan receives.
+        /// </summary>
+        public DbSet<TariffPlanBouquetEntity> TariffPlanBouquets => Set<TariffPlanBouquetEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

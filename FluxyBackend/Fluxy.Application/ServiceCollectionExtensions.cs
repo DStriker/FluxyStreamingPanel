@@ -8,6 +8,7 @@ using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
 using Fluxy.Application.Series.Services;
 using Fluxy.Application.Streams.Services;
+using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Application.Users.Options;
 using Fluxy.Application.Users.Services;
 using Fluxy.Application.Vod.Services;
@@ -19,6 +20,7 @@ using Fluxy.Core.Epg.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
+using Fluxy.Core.Subscriptions.Interfaces;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Vod.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -142,6 +144,13 @@ namespace Fluxy.Application
             // the programme rows are written here - that machinery arrives with the updater -
             // so this service is scoped only because it reads and writes through the context.
             services.AddScoped<IEpgSourceService, EpgSourceService>();
+
+            // The tariff plans are the pricing side of a subscription: a price with a length and
+            // a delivery shape, plus the two relations it only points at - the groups it may be
+            // sold to and the bouquets it delivers. They belong beside the bouquets rather than
+            // inside them, because a plan owns rules no bouquet has (a trial ceiling, a minimum
+            // delivery shape) and a bouquet has no price at all.
+            services.AddScoped<ITariffPlanService, TariffPlanService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
