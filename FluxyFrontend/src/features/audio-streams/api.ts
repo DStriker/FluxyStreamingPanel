@@ -387,7 +387,14 @@ export interface AudioStreamImportValues {
   appendSourceToExisting: boolean
   /** Overwrite an existing stream's status, type and restream settings. */
   overwriteExistingSettings: boolean
-}
+  /**
+   * Bouquets every stream this import creates joins, as identifiers.
+   *
+   * Applied to the rows the import **creates**, not to the ones it skips or appends to: those
+   * already exist, and an import is not an edit of a package somebody else arranged. Sent as
+   * `bouquetIds`, once per bouquet - the one field a multipart form repeats for a list.
+   */
+  bouquetIds: string[]}
 
 /**
  * Imports audio streams from an uploaded M3U playlist:
@@ -415,6 +422,11 @@ export const importAudioStreams = ({
   body.set('type', values.type)
   body.set('status', values.status)
   body.set('categoryId', values.categoryId)
+
+  // Once per bouquet: a multipart form has no array, so a repeated field is the list.
+  for (const bouquetId of values.bouquetIds ?? []) {
+    body.append('bouquetIds', bouquetId)
+  }
   body.set('restreamUserAgent', values.restreamUserAgent)
   body.set('restreamProxy', values.restreamProxy)
   body.set('restreamCookies', values.restreamCookies)

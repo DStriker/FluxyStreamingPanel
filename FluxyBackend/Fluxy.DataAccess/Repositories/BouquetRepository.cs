@@ -782,27 +782,87 @@ namespace Fluxy.DataAccess.Repositories
         /// tick in a picker must never re-order a list the operator arranged elsewhere.
         /// </summary>
         private async Task<int> NextVideoPositionAsync(Guid bouquetId, CancellationToken cancellationToken)
-            => (await _context.BouquetVideoStreams
+        {
+            // **The tracked rows count**, not only the stored ones. An import stages one
+            // membership per created row inside a single unit of work, so on the second
+            // iteration the first one is in the change tracker and not yet in the database -
+            // a Max over the table alone answered 0 for every row and the whole batch
+            // landed on position 1, which is a unique-index violation waiting for the save.
+            var stored = await _context.BouquetVideoStreams
                 .Where(row => row.BouquetId == bouquetId)
-                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0) + 1;
+                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0;
+
+            var staged = _context.BouquetVideoStreams.Local
+                .Where(row => row.BouquetId == bouquetId)
+                .Select(row => row.SortOrder)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return Math.Max(stored, staged) + 1;
+        }
 
         /// <summary>The position an audio stream appended to a bouquet takes.</summary>
         private async Task<int> NextAudioPositionAsync(Guid bouquetId, CancellationToken cancellationToken)
-            => (await _context.BouquetAudioStreams
+        {
+            // **The tracked rows count**, not only the stored ones. An import stages one
+            // membership per created row inside a single unit of work, so on the second
+            // iteration the first one is in the change tracker and not yet in the database -
+            // a Max over the table alone answered 0 for every row and the whole batch
+            // landed on position 1, which is a unique-index violation waiting for the save.
+            var stored = await _context.BouquetAudioStreams
                 .Where(row => row.BouquetId == bouquetId)
-                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0) + 1;
+                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0;
+
+            var staged = _context.BouquetAudioStreams.Local
+                .Where(row => row.BouquetId == bouquetId)
+                .Select(row => row.SortOrder)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return Math.Max(stored, staged) + 1;
+        }
 
         /// <summary>The position an on-demand video appended to a bouquet takes.</summary>
         private async Task<int> NextVodPositionAsync(Guid bouquetId, CancellationToken cancellationToken)
-            => (await _context.BouquetVodItems
+        {
+            // **The tracked rows count**, not only the stored ones. An import stages one
+            // membership per created row inside a single unit of work, so on the second
+            // iteration the first one is in the change tracker and not yet in the database -
+            // a Max over the table alone answered 0 for every row and the whole batch
+            // landed on position 1, which is a unique-index violation waiting for the save.
+            var stored = await _context.BouquetVodItems
                 .Where(row => row.BouquetId == bouquetId)
-                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0) + 1;
+                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0;
+
+            var staged = _context.BouquetVodItems.Local
+                .Where(row => row.BouquetId == bouquetId)
+                .Select(row => row.SortOrder)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return Math.Max(stored, staged) + 1;
+        }
 
         /// <summary>The position a series appended to a bouquet takes.</summary>
         private async Task<int> NextSeriesPositionAsync(Guid bouquetId, CancellationToken cancellationToken)
-            => (await _context.BouquetSeries
+        {
+            // **The tracked rows count**, not only the stored ones. An import stages one
+            // membership per created row inside a single unit of work, so on the second
+            // iteration the first one is in the change tracker and not yet in the database -
+            // a Max over the table alone answered 0 for every row and the whole batch
+            // landed on position 1, which is a unique-index violation waiting for the save.
+            var stored = await _context.BouquetSeries
                 .Where(row => row.BouquetId == bouquetId)
-                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0) + 1;
+                .MaxAsync(row => (int?)row.SortOrder, cancellationToken) ?? 0;
+
+            var staged = _context.BouquetSeries.Local
+                .Where(row => row.BouquetId == bouquetId)
+                .Select(row => row.SortOrder)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return Math.Max(stored, staged) + 1;
+        }
 
         /// <summary>The refusal for a kind of content no membership table carries.</summary>
         private static ArgumentOutOfRangeException Unsupported(ContentType type)

@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
 import {
   AUDIO_STREAM_IMPORT_MAX_ENTRIES,
   AUDIO_STREAM_IMPORT_MAX_FILE_BYTES,
@@ -62,6 +63,7 @@ const IMPORT_VALUES: AudioStreamImportValues = {
   type: 'OnDemand',
   status: 'Stopped',
   categoryId: '',
+  bouquetIds: [],
   restreamUserAgent: '',
   restreamProxy: '',
   restreamCookies: '',
@@ -80,6 +82,7 @@ const FIELD_NAMES: readonly (keyof AudioStreamImportValues)[] = [
   'type',
   'status',
   'categoryId',
+  'bouquetIds',
   'restreamUserAgent',
   'restreamProxy',
   'restreamCookies',
@@ -99,6 +102,7 @@ const toBody = (values: AudioStreamImportValues): AudioStreamImportValues => ({
   type: values.type ?? IMPORT_VALUES.type,
   status: values.status ?? IMPORT_VALUES.status,
   categoryId: values.categoryId ?? '',
+  bouquetIds: values.bouquetIds ?? [],
   restreamUserAgent: values.restreamUserAgent ?? '',
   restreamProxy: values.restreamProxy ?? '',
   restreamCookies: values.restreamCookies ?? '',
@@ -148,6 +152,13 @@ export default function AudioStreamImportPage(_props: AudioStreamImportPageProps
   useUnsavedChangesWarning(dirty)
 
   const importStreams = useImportAudioStreams()
+
+  const bouquets = useBouquets()
+  const bouquetOptions = (bouquets.data?.items ?? []).map((entry) => ({
+    value: entry.id,
+    label: entry.name,
+  }))
+  const bouquetsError = bouquets.isError ? messageForError(bouquets.error) : null
 
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.AudioStream)
   const categories = categoriesQuery.data?.items ?? []
@@ -397,6 +408,28 @@ export default function AudioStreamImportPage(_props: AudioStreamImportPageProps
 
         {categoriesError && (
           <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
+        )}
+        <Form.Item
+          name="bouquetIds"
+          label={t('bouquets.fieldLabel')}
+          // Under the category, exactly as on the four single-content forms: the category
+          // files what is being imported, the bouquets say which packages it lands in.
+          // Optional, and applied to the rows this import creates and no others.
+          extra={t('bouquets.fieldHint')}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={bouquetOptions}
+            placeholder={t('bouquets.fieldPlaceholder')}
+            disabled={bouquetsError !== null}
+          />
+        </Form.Item>
+
+        {bouquetsError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={bouquetsError} />
         )}
 
         <Form.Item

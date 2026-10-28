@@ -1,4 +1,7 @@
 using Fluxy.Application.Vod.Utils;
+using Fluxy.Application.Content.Utils;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
 using Fluxy.Core.Streams.Commands;
@@ -35,16 +38,25 @@ namespace Fluxy.Application.Vod.Services
     public sealed class VodImportService : IVodImportService
     {
         private readonly IVodRepository _items;
+        private readonly IBouquetRepository _bouquets;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VodImportService"/> class.
         /// </summary>
         /// <param name="items">Repository holding the items.</param>
+        /// <param name="bouquets">
+        /// Repository staging the membership rows that put the imported items in the bouquets
+        /// the request named.
+        /// </param>
         /// <param name="unitOfWork">Commits the batch one operation stages.</param>
-        public VodImportService(IVodRepository items, IUnitOfWork unitOfWork)
+        public VodImportService(
+            IVodRepository items,
+            IBouquetRepository bouquets,
+            IUnitOfWork unitOfWork)
         {
             _items = items;
+            _bouquets = bouquets;
             _unitOfWork = unitOfWork;
         }
 
@@ -209,7 +221,17 @@ namespace Fluxy.Application.Vod.Services
 
             if (writes.Count > 0)
             {
-                await _items.AddRangeAsync(writes, cancellationToken);
+                var created = await _items.AddRangeAsync(writes, cancellationToken);
+
+                // The bouquets the import named go on the rows it created, and only on
+                // those: a skipped or updated entry is a row that already existed, and an
+                // import is not an edit of somebody else's packaging.
+                await BouquetMembership.StageManyAsync(
+                    _bouquets,
+                    ContentType.VideoOnDemand,
+                    created,
+                    input.BouquetIds,
+                    cancellationToken);
 
                 if (await _unitOfWork.TrySaveAsync(cancellationToken) is { } failure)
                 {

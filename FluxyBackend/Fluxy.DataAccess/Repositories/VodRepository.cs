@@ -205,16 +205,21 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public Task AddRangeAsync(
+        public Task<IReadOnlyList<Guid>> AddRangeAsync(
             IReadOnlyList<VodItemWrite> items,
             CancellationToken cancellationToken = default)
         {
+            var created = new List<Guid>(items.Count);
+
             foreach (var item in items)
             {
-                _context.VodItems.Add(BuildEntity(item));
+                var entity = BuildEntity(item);
+
+                _context.VodItems.Add(entity);
+                created.Add(entity.Id);
             }
 
-            return Task.CompletedTask;
+            return Task.FromResult<IReadOnlyList<Guid>>(created);
         }
 
         /// <inheritdoc />

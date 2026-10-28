@@ -43,5 +43,16 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>Whether an entry whose name is already taken overwrites the stored settings.</summary>
         public bool OverwriteExistingSettings { get; init; }
+
+        /// <summary>
+        /// Bouquets every stream this import creates joins, or null for none.
+        /// </summary>
+        /// <remarks>
+        /// Applied to the rows the import **creates**, not to the ones it skips or appends to:
+        /// those already exist, and an import is not an edit of a stream somebody else put in
+        /// a package. A stream named in a bouquet is appended to the end of its list, exactly
+        /// as it would be from the single-stream form.
+        /// </remarks>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }

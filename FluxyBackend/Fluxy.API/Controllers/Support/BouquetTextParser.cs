@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Http;
 
 namespace Fluxy.API.Controllers.Support
 {
@@ -70,5 +71,32 @@ namespace Fluxy.API.Controllers.Support
         /// <summary>Renders an identifier the way every response does, as a lower-case uuid.</summary>
         /// <param name="id">Identifier to render.</param>
         public static string Text(Guid id) => id.ToString("D", CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// Reads the bouquet list out of one multipart form, where a list arrives as the same
+        /// field repeated once per value.
+        /// </summary>
+        /// <remarks>
+        /// The three import forms are multipart rather than JSON, so their list field is
+        /// <c>bouquetIds</c> sent once per bouquet - what a browser posts for repeated inputs
+        /// and what `FormData.append` builds. An absent field is "no bouquets", which is the
+        /// only thing an import can mean: there is no stored row whose list it could keep.
+        /// </remarks>
+        /// <param name="form">The parsed form.</param>
+        /// <param name="errors">Errors of the request being parsed; a broken entry adds to them.</param>
+        /// <returns>The identifiers, or null when an entry was refused.</returns>
+        public static IReadOnlyList<Guid>? ParseFromForm(
+            IFormCollection form,
+            Dictionary<string, string[]> errors)
+            // `StringValues` yields `string?` for a field that was not sent at all, so the nulls
+            // are dropped here rather than reaching a parser that promises plain strings - the
+            // same "absent means none" the JSON side gets from a null list.
+            => ParseOrNull(
+                form[FieldName].Where(value => value is not null).Select(value => value!).ToArray(),
+                FieldName,
+                errors);
+
+        /// <summary>The form field the bouquet list travels under.</summary>
+        public const string FieldName = "bouquetIds";
     }
 }

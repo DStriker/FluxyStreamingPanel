@@ -111,7 +111,11 @@ namespace Fluxy.Core.Streams.Repositories
         /// <summary>Stages a batch of new streams in one category.</summary>
         /// <param name="streams">Values the rows are written with, in playlist order.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        Task AddRangeAsync(
+        /// <returns>
+        /// The identifiers of the rows, in the order they were named - which is what the
+        /// caller needs to attach them to the bouquets the import asked for.
+        /// </returns>
+        Task<IReadOnlyList<Guid>> AddRangeAsync(
             IReadOnlyList<AudioStreamWrite> streams,
             CancellationToken cancellationToken = default);
 

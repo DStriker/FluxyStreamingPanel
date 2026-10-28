@@ -19,6 +19,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CONTENT_TYPE_PARAMS } from '../../features/content-categories/api'
 import { useContentCategories } from '../../features/content-categories/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
 import {
   VIDEO_ON_DEMAND_IMPORT_MAX_ENTRIES,
   VIDEO_ON_DEMAND_IMPORT_MAX_FILE_BYTES,
@@ -53,6 +54,7 @@ const IMPORT_VALUES: VideoOnDemandImportValues = {
   type: 'Relay',
   status: 'Inactive',
   categoryId: '',
+  bouquetIds: [],
 }
 
 /** Every field this form draws, so a refusal can be cleared before the next attempt. */
@@ -60,6 +62,7 @@ const FIELD_NAMES: readonly (keyof VideoOnDemandImportValues)[] = [
   'type',
   'status',
   'categoryId',
+  'bouquetIds',
 ]
 
 interface VideoOnDemandImportPageProps {
@@ -92,6 +95,13 @@ export default function VideoOnDemandImportPage(_props: VideoOnDemandImportPageP
   useUnsavedChangesWarning(dirty)
 
   const importVideos = useImportVideoOnDemand()
+
+  const bouquets = useBouquets()
+  const bouquetOptions = (bouquets.data?.items ?? []).map((entry) => ({
+    value: entry.id,
+    label: entry.name,
+  }))
+  const bouquetsError = bouquets.isError ? messageForError(bouquets.error) : null
 
   const categoriesQuery = useContentCategories(CONTENT_TYPE_PARAMS.VideoOnDemand)
   const categories = categoriesQuery.data?.items ?? []
@@ -205,6 +215,7 @@ export default function VideoOnDemandImportPage(_props: VideoOnDemandImportPageP
           type: values.type ?? IMPORT_VALUES.type,
           status: values.status ?? IMPORT_VALUES.status,
           categoryId: values.categoryId ?? '',
+  bouquetIds: values.bouquetIds ?? [],
         },
         file: picked,
       })
@@ -328,6 +339,28 @@ export default function VideoOnDemandImportPage(_props: VideoOnDemandImportPageP
 
         {categoriesError && (
           <Alert type="error" showIcon style={{ marginBottom: 16 }} message={categoriesError} />
+        )}
+        <Form.Item
+          name="bouquetIds"
+          label={t('bouquets.fieldLabel')}
+          // Under the category, exactly as on the four single-content forms: the category
+          // files what is being imported, the bouquets say which packages it lands in.
+          // Optional, and applied to the rows this import creates and no others.
+          extra={t('bouquets.fieldHint')}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={bouquetOptions}
+            placeholder={t('bouquets.fieldPlaceholder')}
+            disabled={bouquetsError !== null}
+          />
+        </Form.Item>
+
+        {bouquetsError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={bouquetsError} />
         )}
 
         <Form.Item

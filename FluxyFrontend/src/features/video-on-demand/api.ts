@@ -262,7 +262,14 @@ export interface VideoOnDemandImportValues {
   status: VideoOnDemandStatus
   /** Identifier of the category the videos are filed under. */
   categoryId: string
-}
+  /**
+   * Bouquets every stream this import creates joins, as identifiers.
+   *
+   * Applied to the rows the import **creates**, not to the ones it skips or appends to: those
+   * already exist, and an import is not an edit of a package somebody else arranged. Sent as
+   * `bouquetIds`, once per bouquet - the one field a multipart form repeats for a list.
+   */
+  bouquetIds: string[]}
 
 /**
  * Imports videos from an uploaded M3U playlist:
@@ -285,6 +292,11 @@ export const importVideoOnDemand = ({
   body.set('type', values.type)
   body.set('status', values.status)
   body.set('categoryId', values.categoryId)
+
+  // Once per bouquet: a multipart form has no array, so a repeated field is the list.
+  for (const bouquetId of values.bouquetIds ?? []) {
+    body.append('bouquetIds', bouquetId)
+  }
   body.set('playlist', file)
 
   return apiFetch('/admin/video-on-demand/import', {

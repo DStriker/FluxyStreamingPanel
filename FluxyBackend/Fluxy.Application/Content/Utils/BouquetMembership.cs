@@ -73,5 +73,39 @@ namespace Fluxy.Application.Content.Utils
             => bouquetIds is null
                 ? Task.CompletedTask
                 : bouquets.SetItemBouquetIdsAsync(type, contentId, bouquetIds, cancellationToken);
+
+        /// <summary>
+        /// Stages the membership of every item in a batch the same way
+        /// <see cref="StageAsync"/> stages one.
+        /// </summary>
+        /// <remarks>
+        /// An import creates a row per playlist entry and knows each one's bouquet set only
+        /// after the rows exist, so the staging happens once per created row inside the same
+        /// unit of work - a batch of a thousand streams and its memberships commit together or
+        /// not at all. Each item is appended to the end of every bouquet it joins, exactly as a
+        /// single save from the stream form would append it.
+        /// </remarks>
+        /// <param name="bouquets">Repository staging the membership rows.</param>
+        /// <param name="type">Which of the four content kinds the batch is.</param>
+        /// <param name="contentIds">Identifiers of the rows the batch created, in order.</param>
+        /// <param name="bouquetIds">Identifiers the request named, or null for none.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task StageManyAsync(
+            IBouquetRepository bouquets,
+            ContentType type,
+            IReadOnlyList<Guid> contentIds,
+            IReadOnlyList<Guid>? bouquetIds,
+            CancellationToken cancellationToken = default)
+        {
+            if (bouquetIds is null || bouquetIds.Count == 0 || contentIds.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var contentId in contentIds)
+            {
+                await bouquets.SetItemBouquetIdsAsync(type, contentId, bouquetIds, cancellationToken);
+            }
+        }
     }
 }

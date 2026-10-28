@@ -174,6 +174,10 @@ namespace Fluxy.API.Controllers.Content
             var archiveDays = ReadNumber(form, "archiveDays", errors);
 
             var appendSourceToExisting = ReadBoolean(form, AppendSourceField, errors);
+
+            // Parsed before the error check below, so a broken identifier is refused with the
+            // field named rather than silently dropped.
+            var bouquetIds = BouquetTextParser.ParseFromForm(form, errors);
             var overwriteExistingSettings = ReadBoolean(form, OverwriteSettingsField, errors);
 
             var file = form.Files.GetFile(PlaylistField);
@@ -229,7 +233,8 @@ namespace Fluxy.API.Controllers.Content
                     RestreamCookies = form["restreamCookies"].ToString(),
                     RestreamHeaders = form["restreamHeaders"].ToString(),
                     AppendSourceToExisting = appendSourceToExisting,
-                    OverwriteExistingSettings = overwriteExistingSettings
+                    OverwriteExistingSettings = overwriteExistingSettings,
+                    BouquetIds = bouquetIds
                 },
                 cancellationToken);
 

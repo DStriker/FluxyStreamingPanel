@@ -203,16 +203,21 @@ namespace Fluxy.DataAccess.Repositories
         }
 
         /// <inheritdoc />
-        public Task AddRangeAsync(
+        public Task<IReadOnlyList<Guid>> AddRangeAsync(
             IReadOnlyList<AudioStreamWrite> streams,
             CancellationToken cancellationToken = default)
         {
+            var created = new List<Guid>(streams.Count);
+
             foreach (var stream in streams)
             {
-                _context.AudioStreams.Add(BuildEntity(stream));
+                var entity = BuildEntity(stream);
+
+                _context.AudioStreams.Add(entity);
+                created.Add(entity.Id);
             }
 
-            return Task.CompletedTask;
+            return Task.FromResult<IReadOnlyList<Guid>>(created);
         }
 
         /// <summary>Builds one tracked row, with its sources attached.</summary>

@@ -160,6 +160,10 @@ namespace Fluxy.API.Controllers.Content
                 errors[PlaylistField] = [PlaylistHint];
             }
 
+            // Parsed before the error check below, so a broken identifier is refused with the
+            // field named rather than silently dropped.
+            var bouquetIds = BouquetTextParser.ParseFromForm(form, errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -199,7 +203,8 @@ namespace Fluxy.API.Controllers.Content
                     Type = type!.Value,
                     Status = status!.Value,
                     CategoryId = categoryId,
-                    Playlist = playlist
+                    Playlist = playlist,
+                    BouquetIds = bouquetIds
                 },
                 cancellationToken);
 

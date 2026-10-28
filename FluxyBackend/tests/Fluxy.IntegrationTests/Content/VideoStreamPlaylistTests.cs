@@ -224,4 +224,177 @@ namespace Fluxy.IntegrationTests.Content
             return IdFromLocation(response);
         }
     }
+
+    /// <summary>
+    /// The bouquets an import names: the rows it creates join them, the rows it skips do not.
+    /// </summary>
+    /// <remarks>
+    /// The field is one repeated multipart entry rather than a JSON array, so what these tests
+    /// pin is that the form parser reads the repetition at all - a list sent as `bouquetIds`
+    /// three times would otherwise arrive as one bouquet or as nothing, and the import would
+    /// look like it had accepted a field it silently dropped.
+    /// </remarks>
+    public sealed class VideoStreamImportBouquetTests : IntegrationTestBase
+    {
+        public VideoStreamImportBouquetTests(FluxyFixture fixture)
+            : base(fixture)
+        {
+        }
+
+        [Fact]
+        public async Task AnImportPutsEveryCreatedStreamInTheNamedBouquets()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var category = await CreateCategoryAsync("Imported");
+            var first = await CreateBouquetAsync("First");
+            var second = await CreateBouquetAsync("Second");
+
+            var playlist = "#EXTM3U\n#EXTINF:-1,Alpha\nhttps://example.test/alpha\n" +
+                "#EXTINF:-1,Beta\nhttps://example.test/beta\n";
+
+            using var imported = await ImportAsync(playlist, category, [first, second]);
+            await AssertCodeAsync(imported, HttpStatusCode.OK, "video_streams_import_completed");
+
+            // Both bouquets hold both streams: the field applies to every row the import
+            // created, which is the whole reason it is offered on the form.
+            foreach (var bouquetId in new[] { first, second })
+            {
+                using var content = await Client.GetAsync(
+                    $"/admin/bouquets/{bouquetId}/content?contentType=videostream",
+                    TestContext.Current.CancellationToken);
+
+                using var body = await ReadJsonAsync(content);
+
+                Assert.Equal(
+                    new[] { "Alpha", "Beta" },
+                    body.RootElement.GetProperty("members").EnumerateArray()
+                        .Select(member => member.GetProperty("name").GetString())
+                        .ToArray());
+            }
+        }
+
+        [Fact]
+        public async Task AnImportLeavesAnExistingStreamWhereItWas()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var category = await CreateCategoryAsync("Existing first");
+            var bouquet = await CreateBouquetAsync("Package");
+
+            // A stream that already exists, and is in no bouquet.
+            using var existing = await PostJsonAsync(
+                "/admin/video-streams",
+                new
+                {
+                    name = "Keeper",
+                    type = "permanent",
+                    categoryId = category,
+                    sources = new[] { "https://example.test/keeper" }
+                },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(existing, HttpStatusCode.Created, "video_stream_created");
+
+            // The import names the same stream, which is skipped rather than created.
+            var playlist = "#EXTM3U\n#EXTINF:-1,Keeper\nhttps://example.test/keeper\n";
+
+            using var imported = await ImportAsync(playlist, category, [bouquet]);
+            await AssertCodeAsync(imported, HttpStatusCode.OK, "video_streams_import_completed");
+
+            using var importedBody = await ReadJsonAsync(imported);
+            Assert.Equal(1, importedBody.RootElement.GetProperty("skipped").GetInt32());
+
+            // The skipped stream did not join the bouquet: an import is not an edit of a row
+            // it did not create, and the count is what proves it.
+            using var list = await Client.GetAsync("/admin/bouquets", TestContext.Current.CancellationToken);
+            using var listBody = await ReadJsonAsync(list);
+
+            Assert.Equal(
+                0,
+                listBody.RootElement.GetProperty("items")[0].GetProperty("videoStreamCount").GetInt32());
+        }
+
+        [Fact]
+        public async Task AnImportRefusesABouquetIdentifierThatIsNotOne()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var category = await CreateCategoryAsync("Broken field");
+
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent("permanent"), "type");
+            form.Add(new StringContent(category), "categoryId");
+            form.Add(new StringContent("not-a-uuid"), "bouquetIds");
+
+            var file = new ByteArrayContent(
+                System.Text.Encoding.UTF8.GetBytes("#EXTM3U\n#EXTINF:-1,One\nhttps://example.test/one\n"));
+            form.Add(file, "playlist", "playlist.m3u");
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "/admin/video-streams/import")
+            {
+                Content = form
+            };
+            request.Headers.Add("X-CSRF-Token", await GetCsrfTokenAsync());
+
+            using var response = await Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            await AssertCodeAsync(response, HttpStatusCode.BadRequest, "validation_failed");
+            using var body = await ReadJsonAsync(response);
+            Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("bouquetIds", out _));
+        }
+
+        private async Task<string> CreateCategoryAsync(string name)
+        {
+            using var response = await PostJsonAsync(
+                "/admin/content-categories",
+                new { name, type = "VideoStream" },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "content_category_created");
+
+            return IdFromLocation(response);
+        }
+
+        private async Task<string> CreateBouquetAsync(string name)
+        {
+            using var response = await PostJsonAsync(
+                "/admin/bouquets",
+                new { name },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "bouquet_created");
+
+            return IdFromLocation(response);
+        }
+
+        private async Task<HttpResponseMessage> ImportAsync(
+            string playlist,
+            string categoryId,
+            IReadOnlyList<string> bouquetIds)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent("permanent"), "type");
+            form.Add(new StringContent(categoryId), "categoryId");
+
+            // Once per bouquet, which is how a multipart form carries a list.
+            foreach (var bouquetId in bouquetIds)
+            {
+                form.Add(new StringContent(bouquetId), "bouquetIds");
+            }
+
+            var file = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(playlist));
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/x-mpegurl");
+            form.Add(file, "playlist", "playlist.m3u");
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "/admin/video-streams/import")
+            {
+                Content = form
+            };
+            request.Headers.Add("X-CSRF-Token", await GetCsrfTokenAsync());
+
+            return await Client.SendAsync(request, TestContext.Current.CancellationToken);
+        }
+    }
 }

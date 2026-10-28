@@ -24,5 +24,14 @@ namespace Fluxy.Core.Vod.Commands
 
         /// <summary>Text of the uploaded playlist.</summary>
         public required string Playlist { get; init; }
+
+        /// <summary>
+        /// Bouquets every item this import creates joins, or null for none.
+        /// </summary>
+        /// <remarks>
+        /// Applied to the rows the import **creates**: an item whose name is already taken is
+        /// skipped, and an import is not an edit of a video somebody else put in a package.
+        /// </remarks>
+        public IReadOnlyList<Guid>? BouquetIds { get; init; }
     }
 }
