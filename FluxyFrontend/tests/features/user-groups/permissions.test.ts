@@ -37,6 +37,10 @@ describe('ALL_PERMISSIONS', () => {
       'editSeries',
       'viewEpgSources',
       'editEpgSources',
+      // The bouquet pair closes the catalog: it is the package *of* the four content kinds
+      // rather than a fifth kind, so it sits after them and after the guide.
+      'viewBouquets',
+      'editBouquets',
     ])
   })
 })
@@ -98,6 +102,10 @@ describe('canViewAny / canEditAny', () => {
     expect(canEditAny(['viewVideoOnDemand', 'editVideoOnDemand'])).toBe(false)
     expect(canViewAny(['viewEpgSources', 'editEpgSources'])).toBe(false)
     expect(canEditAny(['viewEpgSources', 'editEpgSources'])).toBe(false)
+    // The bouquet pair names packages of content rather than accounts, so it must not
+    // satisfy these gates either - the same rule the five resource pairs above follow.
+    expect(canViewAny(['viewBouquets', 'editBouquets'])).toBe(false)
+    expect(canEditAny(['viewBouquets', 'editBouquets'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {
