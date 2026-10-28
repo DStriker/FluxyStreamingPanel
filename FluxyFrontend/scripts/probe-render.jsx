@@ -48,6 +48,8 @@ import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import EpgSourcesPage from '../src/pages/admin/EpgSourcesPage'
 import EpgSourceFormPage from '../src/pages/admin/EpgSourceFormPage'
 import EpgSourceChannelsPage from '../src/pages/admin/EpgSourceChannelsPage'
+import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
+import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
 import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
@@ -63,7 +65,7 @@ import ErrorFallback from '../src/components/ErrorFallback'
 import AccountLayout from '../src/layouts/AccountLayout'
 import { routes as routeTable } from '../src/router/routes'
 import { SessionContext } from '../src/utils/sessionContext'
-import { NAVIGATION, flatItems } from '../src/utils/navigation'
+import { NAVIGATION, flatItems, menuPath } from '../src/utils/navigation'
 import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../src/utils/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/utils/theme'
 import { countryName } from '../src/utils/countryName'
@@ -1869,6 +1871,152 @@ async function main() {
     `rendered ${epgSourceChannelsHtml.length} bytes`,
   )
 
+  // --- The subscriptions section and its tariff plans -------------------------
+  //
+  // The section the owner asked for: five entries under one heading, four of them
+  // placeholders, and the price list as the only real screen so far. What is asserted here is
+  // that the rail shows the whole shape of it (a placeholder that vanished would read as an
+  // entry the owner never asked for), that the tariff table carries no selection column and no
+  // drag, and that the form draws every setting the domain states - including the two relations
+  // whose pickers are the reason it is one form rather than three screens.
+  const subscriptionsGroup = NAVIGATION.Admin.find((group) => group.key === 'subscriptions')
+  const subscriptionItemKeys = subscriptionsGroup?.items.map((item) => item.key) ?? []
+  const adminGroupKeys = NAVIGATION.Admin.map((group) => group.key)
+  check(
+    'the subscriptions section sits directly under the accounts section the owner named',
+    adminGroupKeys.indexOf('subscriptions') === adminGroupKeys.indexOf('users') + 1,
+    `the rail reads ${adminGroupKeys.join(', ')}`,
+  )
+
+  check(
+    'the subscriptions section carries the five entries the owner listed, in that order',
+    subscriptionItemKeys.join(',') ===
+      'subscriptionsAdd,subscriptionsPlaylists,subscriptionsMagDevices,subscriptionsEnigma2Devices,tariffPlans',
+    `the section reads ${subscriptionItemKeys.join(', ')}`,
+  )
+
+  check(
+    'only the tariff plans entry opens a page; the other four are placeholders',
+    subscriptionsGroup?.items.filter((item) => item.page !== undefined).map((item) => item.key).join(',') ===
+      'tariffPlans',
+    `pages behind the section: ${
+      subscriptionsGroup?.items
+        .filter((item) => item.page !== undefined)
+        .map((item) => item.key)
+        .join(', ') ?? 'none'
+    }`,
+  )
+
+  check(
+    'the tariff plans entry lives at the address the backend serves, not under subscriptions',
+    // The owner's call: the page's address mirrors `admin/tariff-plans` on the API, so one
+    // resource is named the same way by the menu, the page and the endpoint. The menu heading
+    // is still "Subscriptions" - the group is a rail grouping, not a path segment.
+    menuPath('Admin', 'tariff-plans') === '/admin/tariff-plans',
+    `the entry opens ${menuPath('Admin', 'tariff-plans')}`,
+  )
+
+  const tariffPlansHtml = renderToStaticMarkup(
+    withRouter('/admin/tariff-plans', withQuery(
+      <AntApp>
+        <TariffPlansPage sectionKey="nav.items.tariffPlans" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the tariff plan table draws its own heading and its table before any rows arrive',
+    tariffPlansHtml.includes('>Tariff plans<') &&
+      tariffPlansHtml.includes('ant-table') &&
+      !tariffPlansHtml.includes('nav.items.tariffPlans'),
+    `rendered ${tariffPlansHtml.length} bytes with the plans still being fetched`,
+  )
+
+  check(
+    'the tariff plan table offers its columns and the search, and no selection column',
+    // The set the owner settled on: no trial column (the tag rides beside the name), one
+    // combined services column, and the two count columns. Asserted by heading rather than by
+    // width, because a heading renamed on one side only is invisible to typecheck.
+    tariffPlansHtml.includes('>Cost<') &&
+      tariffPlansHtml.includes('>Validity<') &&
+      tariffPlansHtml.includes('>Services and formats<') &&
+      tariffPlansHtml.includes('>Max connections<') &&
+      tariffPlansHtml.includes('>Bouquets<') &&
+      !tariffPlansHtml.includes('>Delivery<') &&
+      !tariffPlansHtml.includes('>Formats<') &&
+      !tariffPlansHtml.includes('>Trial<') &&
+      tariffPlansHtml.includes('Search by name') &&
+      !tariffPlansHtml.includes('ant-table-selection-column') &&
+      !tariffPlansHtml.includes('ant-table-row-drag'),
+    `rendered ${tariffPlansHtml.length} bytes`,
+  )
+
+  check(
+    'the tariff plan table carries the page-card class the compact rules key on',
+    tariffPlansHtml.includes('page-card'),
+    `rendered ${tariffPlansHtml.length} bytes`,
+  )
+
+  const tariffPlanFormHtml = renderToStaticMarkup(
+    withRouter('/admin/tariff-plans/add', withQuery(
+      <AntApp>
+        <TariffPlanFormPage sectionKey="nav.items.tariffPlans" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the tariff plan form draws every setting, both relations and no raw key',
+    // The headings the owner settled on: one field per row, no heading over the checkboxes, and
+    // the relations split into access and contents.
+    tariffPlanFormHtml.includes('Add tariff plan') &&
+      tariffPlanFormHtml.includes('Trial plan') &&
+      tariffPlanFormHtml.includes('Cost') &&
+      tariffPlanFormHtml.includes('Validity') &&
+      tariffPlanFormHtml.includes('Services') &&
+      tariffPlanFormHtml.includes('Allowed video stream formats') &&
+      tariffPlanFormHtml.includes('Limits') &&
+      tariffPlanFormHtml.includes('Access to the plan') &&
+      tariffPlanFormHtml.includes('Plan contents') &&
+      // The boxes, each named once, with no heading repeating the name over it.
+      tariffPlanFormHtml.includes('M3U playlist') &&
+      tariffPlanFormHtml.includes('MAG') &&
+      tariffPlanFormHtml.includes('Enigma2') &&
+      tariffPlanFormHtml.includes('MPEG-TS') &&
+      tariffPlanFormHtml.includes('HLS') &&
+      tariffPlanFormHtml.includes('Enforce the STB device id strictly') &&
+      tariffPlanFormHtml.includes('Allow restreaming') &&
+      tariffPlanFormHtml.includes('Allow connections from other countries') &&
+      tariffPlanFormHtml.includes('Maximum connections') &&
+      tariffPlanFormHtml.includes('User groups with access') &&
+      tariffPlanFormHtml.includes('Bouquets in the plan') &&
+      // The two selection helpers each picker carries.
+      tariffPlanFormHtml.includes('Select all') &&
+      tariffPlanFormHtml.includes('Clear') &&
+      !tariffPlanFormHtml.includes('tariffPlansForm.'),
+    `rendered ${tariffPlanFormHtml.length} bytes`,
+  )
+
+  check(
+    'the strict STB switch is drawn disabled while MAG support is off in the new plan',
+    // `CREATE_VALUES` opens with MAG on, so the switch is enabled on the add address and the
+    // reason it *can* be disabled is the watched flag rather than a constant - the sentence is
+    // asserted instead of the attribute, because the attribute is a fact about the defaults.
+    tariffPlanFormHtml.includes('Only a MAG device carries an STB identifier'),
+    `rendered ${tariffPlanFormHtml.length} bytes`,
+  )
+
+  const [tariffPlanAddModule, tariffPlanEditModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'tariffPlans')?.page?.(),
+    import('../src/pages/admin/TariffPlanFormPage'),
+  ])
+  check(
+    'the tariff plans entry opens its table, and the form is a module of its own',
+    tariffPlanAddModule?.default === TariffPlansPage &&
+      tariffPlanEditModule?.default === TariffPlanFormPage,
+    `the entry opens ${tariffPlanAddModule?.default?.name ?? 'nothing'}, the form imports ${
+      tariffPlanEditModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
   const epgItemKeys = flatItems('Admin')
     .filter((item) => item.key.startsWith('epg'))
     .map((item) => item.key)
@@ -2465,8 +2613,15 @@ async function main() {
     // the row you just picked. `user-groups/add` is the same exception in its other shape:
     // it has no `:` in it, but it is reached the same way - from the add button above the
     // group table - and a menu item for it would be a second way to open a form the "Add
-    // group" button already opens. Only the children a visitor could click to are compared.
-    const EXTRA_ROUTES = ['user-groups/add']
+    // group" button already opens. The tariff plan form's two addresses are the same case
+    // again: the rail offers the plans table alone, and both the create button in its toolbar
+    // and the edit action on its rows open the one form. Only the children a visitor could
+    // click to are compared.
+    const EXTRA_ROUTES = [
+      'user-groups/add',
+      'tariff-plans/add',
+      'tariff-plans/:id',
+    ]
     const fromRoutes = new Set(
       (route.children ?? [])
         .filter((child) => !child.path?.includes(':') && !EXTRA_ROUTES.includes(child.path ?? ''))

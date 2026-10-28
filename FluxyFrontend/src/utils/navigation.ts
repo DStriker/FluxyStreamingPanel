@@ -3,8 +3,10 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   CalendarOutlined,
+  CreditCardOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
+  DesktopOutlined,
   GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
@@ -18,6 +20,7 @@ import {
   TagsOutlined,
   TeamOutlined,
   UnorderedListOutlined,
+  UsbOutlined,
   UserAddOutlined,
   UserOutlined,
   VideoCameraOutlined,
@@ -407,6 +410,65 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.adminSessions',
           icon: GlobalOutlined,
           page: () => import('../pages/admin/AdminSessionsPage'),
+        },
+      ],
+    },
+    {
+      // The subscriptions: what a subscriber buys, sold under a tariff plan. It sits
+      // immediately under the accounts section, which is where the owner asked for it: the
+      // accounts say who may sign in, and this is what those accounts are sold. Everything
+      // below it - the content sections, the bouquets and the guide - is what a subscription
+      // delivers rather than what a subscriber pays.
+      //
+      // Four of its five entries are placeholders today, and that is deliberate rather than an
+      // oversight: the rail shows the whole shape of the section the owner described, and the
+      // items without a page draw `SectionPage` - the same honesty the account rail's own
+      // placeholders have always had. Only the tariff plans are a real screen so far.
+      //
+      // The order is the owner's: adding a subscription first, then the lists of the things a
+      // subscriber holds, and the price list last - the same "create before manage" order the
+      // accounts section follows.
+      key: 'subscriptions',
+      labelKey: 'nav.groups.subscriptions',
+      icon: CreditCardOutlined,
+      items: [
+        {
+          key: 'subscriptionsAdd',
+          path: 'subscriptions/add',
+          labelKey: 'nav.items.subscriptionsAdd',
+          icon: PlusOutlined,
+        },
+        {
+          key: 'subscriptionsPlaylists',
+          path: 'subscriptions/playlists',
+          labelKey: 'nav.items.subscriptionsPlaylists',
+          icon: UnorderedListOutlined,
+        },
+        {
+          key: 'subscriptionsMagDevices',
+          path: 'subscriptions/mag-devices',
+          labelKey: 'nav.items.subscriptionsMagDevices',
+          icon: UsbOutlined,
+        },
+        {
+          key: 'subscriptionsEnigma2Devices',
+          path: 'subscriptions/enigma2-devices',
+          labelKey: 'nav.items.subscriptionsEnigma2Devices',
+          icon: DesktopOutlined,
+        },
+        {
+          // The price list. Its add form and its edit form are addresses with no item of their
+          // own - both are reached from the table, exactly as a group's form is - so this is the
+          // only entry the section carries for it.
+          //
+          // `tariff-plans` rather than `subscriptions/tariff-plans`: the address mirrors the
+          // backend's own route (`admin/tariff-plans`), so the page, the API and the menu entry
+          // name one resource the same way.
+          key: 'tariffPlans',
+          path: 'tariff-plans',
+          labelKey: 'nav.items.tariffPlans',
+          icon: TagsOutlined,
+          page: () => import('../pages/admin/TariffPlansPage'),
         },
       ],
     },

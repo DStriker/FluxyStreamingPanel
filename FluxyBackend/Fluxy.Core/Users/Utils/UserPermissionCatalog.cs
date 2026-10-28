@@ -36,9 +36,9 @@ namespace Fluxy.Core.Users.Utils
         /// The whole catalog, in a stable order so a form, a log line and a migration can
         /// agree on how the permissions are listed. Grouped by subject - the accounts, then
         /// the groups, then the four content resources (the video streams, the audio streams,
-        /// the on-demand catalogue, the series) and finally the guide sources - and inside
-        /// each subject as a read beside its write, which is the shape the first two
-        /// permissions had.
+        /// the on-demand catalogue, the series), then the guide sources, then the bouquets and
+        /// finally the tariff plans a subscription is sold under - and inside each subject as a
+        /// read beside its write, which is the shape the first two permissions had.
         /// </summary>
         public static IReadOnlyList<UserPermission> All { get; } =
         [
@@ -61,7 +61,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewEpgSources,
             UserPermission.EditEpgSources,
             UserPermission.ViewBouquets,
-            UserPermission.EditBouquets
+            UserPermission.EditBouquets,
+            UserPermission.ViewTariffPlans,
+            UserPermission.EditTariffPlans
         ];
 
         /// <summary>
@@ -113,7 +115,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewEpgSources] = UserRole.Admin,
                 [UserPermission.EditEpgSources] = UserRole.Admin,
                 [UserPermission.ViewBouquets] = UserRole.Admin,
-                [UserPermission.EditBouquets] = UserRole.Admin
+                [UserPermission.EditBouquets] = UserRole.Admin,
+                [UserPermission.ViewTariffPlans] = UserRole.Admin,
+                [UserPermission.EditTariffPlans] = UserRole.Admin
             };
 
         /// <summary>

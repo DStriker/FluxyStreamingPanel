@@ -143,6 +143,24 @@ const EpgSourceChannelsPage = lazy(() => import('../pages/admin/EpgSourceChannel
 const BouquetContentPage = lazy(() => import('../pages/admin/BouquetContentPage'))
 
 /**
+ * The tariff plan form, one component behind two addresses and no menu item.
+ *
+ * `/admin/tariff-plans/add` and `/admin/tariff-plans/{id}` are both `extra` routes: the rail
+ * offers the table alone, and both forms are reached from it - the create button in its toolbar
+ * and the edit action on its rows. A third entry saying "add a plan" would be a page whose only
+ * content is the button that brought you here.
+ *
+ * The addresses carry no `subscriptions/` prefix: they mirror the backend's own route
+ * (`admin/tariff-plans`), so one resource is named the same way by the menu, the page and the
+ * API it calls.
+ *
+ * A second `lazy()` over the same module, so a move between the two addresses remounts the form
+ * instead of carrying a half-filled one across - which is what you want when the identifier
+ * under it just changed from "no plan" to "this plan".
+ */
+const TariffPlanFormPage = lazy(() => import('../pages/admin/TariffPlanFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -399,6 +417,20 @@ export const routes: RouteObject[] = [
       {
         path: 'bouquets/:id/content',
         element: <BouquetContentPage sectionKey="nav.items.bouquetsManage" />,
+      },
+      // The tariff plan form's two addresses. `add` is a static segment written first, so
+      // react-router ranks it above `:id`. Neither has a menu item: the rail offers the plans
+      // table alone, and both forms are reached from it (see the loader above for why). The
+      // paths mirror the backend's `admin/tariff-plans` routes rather than hanging off the
+      // menu's `subscriptions` heading, so the page and the API it calls name one resource the
+      // same way.
+      {
+        path: 'tariff-plans/add',
+        element: <TariffPlanFormPage sectionKey="nav.items.tariffPlans" />,
+      },
+      {
+        path: 'tariff-plans/:id',
+        element: <TariffPlanFormPage sectionKey="nav.items.tariffPlans" />,
       },
     ]),
   ),

@@ -1030,7 +1030,7 @@ from a `PATCH`.
   *valid* permission the chosen role does not own (`viewClients` on a Client group) is **dropped**
   — that is a client describing a group, and the server already knows what a Client group may
   hold. The catalog is `[Flags]` powers of two stored as `integer` in
-  `user_group_permissions`, and it now has **eighteen** members in five groups: the two
+  `user_group_permissions`, and it now has **twenty-two** members in six groups: the two
   **group-management** keys (`ViewUserGroups=4`, `EditUserGroups=8`), the six **account** keys
   split by the role of the account they act on (`ViewClients=16, ViewResellers=32,
   ViewAdmins=64, EditClients=128, EditResellers=256, EditAdmins=512`), the four **stream**
@@ -1038,11 +1038,21 @@ from a `PATCH`.
   (`ViewAudioStreams=4096`, `EditAudioStreams=8192`), which are deliberately **not** the same
   pair: a group that may watch the video streams may not watch the audio ones — the
   **on-demand** pair (`ViewVideoOnDemand=16384`, `EditVideoOnDemand=32768`), the **series**
-  pair (`ViewSeries=65536`, `EditSeries=131072`) and the **guide** pair
-  (`ViewEpgSources=262144`, `EditEpgSources=524288`). All eighteen are
+  pair (`ViewSeries=65536`, `EditSeries=131072`), the **guide** pair
+  (`ViewEpgSources=262144`, `EditEpgSources=524288`), the **bouquet** pair
+  (`ViewBouquets=1048576`, `EditBouquets=2097152`) and the **tariff plan** pair
+  (`ViewTariffPlans=4194304`, `EditTariffPlans=8388608`). All twenty-two are
   owned by `Admin`, so
   `permissionsForRole` on the frontend answers an empty set for Client and Reseller and their
   form shows a note instead of boxes.
+  - **A permission added in code reaches the base groups two ways.** The startup seeder
+    (`DefaultUserSeeder.ReconcilePermissionsAsync`) reconciles the three base groups against
+    `UserPermissionCatalog` on every start, which is why adding a member needs no migration. The
+    tariff plan pair also got a data-only migration
+    (`20261028140626_GrantTariffPlanPermissions`) for the installation that has been migrated
+    but not yet restarted: it inserts the two grants for the Administrators base group with a
+    `WHERE NOT EXISTS` guard, because the seeder may already have written them and the unique
+    index over (user_group_id, permission) would refuse a second copy and fail the migration.
   - **The column is `integer`, not `smallint`.** The on-demand write key is `32768`, one more
     than a `smallint` can hold; the first scaffold therefore wrapped it and the base group
     stored a negative grant. `WidenUserGroupPermission` widens the column, which is lossless

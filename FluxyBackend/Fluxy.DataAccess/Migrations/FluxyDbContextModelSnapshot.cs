@@ -749,6 +749,160 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("series", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanBouquetEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("TariffPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tariff_plan_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BouquetId");
+
+                    b.HasIndex("TariffPlanId", "BouquetId")
+                        .IsUnique();
+
+                    b.ToTable("tariff_plan_bouquets", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AllowMultipleCountries")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_multiple_countries");
+
+                    b.Property<bool>("AllowRestream")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_restream");
+
+                    b.Property<int>("Cost")
+                        .HasColumnType("integer")
+                        .HasColumnName("cost");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("DurationUnit")
+                        .HasColumnType("smallint")
+                        .HasColumnName("duration_unit");
+
+                    b.Property<int>("DurationValue")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_value");
+
+                    b.Property<bool>("IsTrial")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_trial");
+
+                    b.Property<int>("MaxConnections")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_connections");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("OutputHls")
+                        .HasColumnType("boolean")
+                        .HasColumnName("output_hls");
+
+                    b.Property<bool>("OutputMpegTs")
+                        .HasColumnType("boolean")
+                        .HasColumnName("output_mpeg_ts");
+
+                    b.Property<bool>("StrictStbDeviceId")
+                        .HasColumnType("boolean")
+                        .HasColumnName("strict_stb_device_id");
+
+                    b.Property<bool>("SupportsEnigma2")
+                        .HasColumnType("boolean")
+                        .HasColumnName("supports_enigma2");
+
+                    b.Property<bool>("SupportsM3u")
+                        .HasColumnType("boolean")
+                        .HasColumnName("supports_m3u");
+
+                    b.Property<bool>("SupportsMag")
+                        .HasColumnType("boolean")
+                        .HasColumnName("supports_mag");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Cost");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("tariff_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tariff_plans_cost", "cost >= 0");
+
+                            t.HasCheckConstraint("ck_tariff_plans_duration_value", "duration_value >= 1");
+
+                            t.HasCheckConstraint("ck_tariff_plans_max_connections", "max_connections BETWEEN 1 AND 10000");
+                        });
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanUserGroupEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("TariffPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tariff_plan_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_group_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserGroupId");
+
+                    b.HasIndex("TariffPlanId", "UserGroupId")
+                        .IsUnique();
+
+                    b.ToTable("tariff_plan_user_groups", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1392,6 +1546,40 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanBouquetEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.TariffPlanEntity", "TariffPlan")
+                        .WithMany()
+                        .HasForeignKey("TariffPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TariffPlan");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanUserGroupEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.TariffPlanEntity", "TariffPlan")
+                        .WithMany()
+                        .HasForeignKey("TariffPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.UserGroupEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TariffPlan");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
