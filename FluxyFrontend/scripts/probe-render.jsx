@@ -52,6 +52,7 @@ import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
+import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
 import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
@@ -2472,6 +2473,61 @@ async function main() {
       subscriptionFormHtml.includes('Enigma2 MAC address') &&
       !subscriptionFormHtml.includes('subscriptionsForm.'),
     `rendered ${subscriptionFormHtml.length} bytes`,
+  )
+
+  // Every write button on a service strip is gated on `editSubscriptions`, and copy is not: a
+  // view-only operator must see a greyed control with the reason rather than a live button whose
+  // request the server refuses. `probe:render` lands before `getProfile` answers, so `canEdit` is
+  // false here - which is exactly the read-only state this asserts.
+  const subrows = renderToStaticMarkup(
+    withQuery(
+      <AntApp>
+        <SubscriptionSubrows
+          subscription={{
+            id: '11111111-1111-1111-1111-111111111111',
+            userId: '22222222-2222-2222-2222-222222222222',
+            username: 'subscriber',
+            ownerBlocked: false,
+            creatorUsername: 'operator',
+            tariffPlanId: null,
+            tariffPlanName: null,
+            createdAt: '2026-01-01T00:00:00+00:00',
+            expireAt: null,
+            isTrial: false,
+            status: 'active',
+            maxConnections: 2,
+            playlistId: '0123456789abcdef0123456789abcdef',
+            magMac: 'AA:BB:CC:DD:EE:FF',
+            enigma2Mac: null,
+            supportsPlaylist: true,
+            supportsMag: true,
+            supportsEnigma2: true,
+          }}
+        />
+      </AntApp>,
+    ),
+  )
+
+  check(
+    'the service strips draw every attached service, its copy and its gated write actions',
+    subrows.includes('Playlist') &&
+      subrows.includes('0123456789abcdef0123456789abcdef') &&
+      subrows.includes('MAG') &&
+      subrows.includes('AA:BB:CC:DD:EE:FF') &&
+      // The add line offers the missing Enigma2 device and nothing else, because the playlist and
+      // the MAG are attached.
+      subrows.includes('Add Enigma2') &&
+      !subrows.includes('Generate a playlist') &&
+      !subrows.includes('Add MAG'),
+    `rendered ${subrows.length} bytes`,
+  )
+
+  check(
+    'every write button on a strip is disabled for a view-only operator',
+    // Two services are attached, so exactly two buttons stay live - the two copy buttons, which
+    // change nothing. Every regenerate, change, delete and add button carries `disabled`.
+    [...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length === 2,
+    `live buttons: ${[...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length}`,
   )
 
   const subscriptionEditFormHtml = renderToStaticMarkup(

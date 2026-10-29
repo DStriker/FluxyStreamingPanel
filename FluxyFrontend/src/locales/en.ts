@@ -553,6 +553,8 @@ const en = {
     // costs and what a package contains are decided by different jobs.
     viewTariffPlans: 'View tariff plans',
     editTariffPlans: 'Edit tariff plans',
+    viewSubscriptions: 'View subscriptions',
+    editSubscriptions: 'Edit subscriptions',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -2339,6 +2341,29 @@ const en = {
       tariff_plan_deleted: 'The tariff plan has been deleted.',
       tariff_plan_not_found: 'There is no tariff plan with that identifier.',
       tariff_plan_already_exists: 'That tariff plan name is already taken, in any spelling.',
+      // The subscription resource: the same three shapes the plans and the bouquets use, plus
+      // the three warnings a plan change can report and the plan's own in-use refusal. A
+      // duplicate names the field in `errors`, because the playlist id and the two MACs are
+      // three different uniqueness rules on one row.
+      subscription_created: 'The subscription has been created.',
+      subscription_updated: 'The subscription has been updated.',
+      subscription_deleted: 'The subscription has been deleted.',
+      subscription_not_found: 'There is no subscription with that identifier.',
+      subscription_already_exists:
+        'Another subscription already holds that playlist id or device address.',
+      // A plan change that cleared a service the new plan cannot deliver. A warning, not a
+      // refusal: the row was written and lost a setting, which is the consequence of the
+      // operator's own choice of plan.
+      subscription_playlist_cleared:
+        'The new tariff plan does not deliver a playlist, so it was cleared.',
+      subscription_mag_cleared:
+        'The new tariff plan does not support MAG devices, so the MAG was cleared.',
+      subscription_enigma2_cleared:
+        'The new tariff plan does not support Enigma2 devices, so the Enigma2 device was cleared.',
+      // A plan a subscription is still sold under. The server refuses with the count rather than
+      // re-meaning the parameters that subscription derives from it.
+      tariff_plan_in_use:
+        'Subscriptions are still sold under this plan. Move them to another plan first.',
       // A bouquet that still holds content. The server refuses with the count rather than
       // unlinking anything, because the memberships are not this dialog's to empty.
       bouquet_not_empty: '{{count}} items are still in this bouquet. Empty it before deleting it.',

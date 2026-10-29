@@ -22,7 +22,7 @@ import type {
 } from '../../features/subscriptions/components/SubscriptionsListContext'
 import { SubscriptionsListContext } from '../../features/subscriptions/components/SubscriptionsListContext'
 import type { Subscription, SubscriptionStatus } from '../../features/subscriptions/types'
-import { SUBSCRIPTION_STATUSES } from '../../features/subscriptions/types'
+import { SUBSCRIPTION_STATUSES } from '../../features/subscriptions/subscriptionOptions'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useAllUsers } from '../../features/users/hooks/queries'
 import {

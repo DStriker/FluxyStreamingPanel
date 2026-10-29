@@ -29,10 +29,8 @@ import {
   isUsableConnections,
 } from '../../features/subscriptions/subscriptionRules'
 import type { SubscriptionValues } from '../../features/subscriptions/api'
-import {
-  SUBSCRIPTION_OUTPUT_FORMATS,
-  type SubscriptionOutputFormat,
-} from '../../features/subscriptions/types'
+import type { SubscriptionOutputFormat } from '../../features/subscriptions/types'
+import { SUBSCRIPTION_OUTPUT_FORMATS } from '../../features/subscriptions/subscriptionOptions'
 import {
   useCreateSubscription,
   useGeneratePlaylistId,
@@ -60,9 +58,7 @@ const CREATE_VALUES: SubscriptionValues = {
   playlistId: null,
   expireAt: null,
   tariffPlanId: null,
-  clearTariffPlan: false,
   maxConnections: null,
-  clearMaxConnections: false,
   isRestreamer: false,
   ipWhitelist: [],
   userAgentWhitelist: [],
@@ -217,16 +213,17 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     const values = currentValues()
 
     if (!planed) {
-      return { ...values, clearTariffPlan: false }
+      return values
     }
 
     // The plan owns these, so the request must not carry them: a body that named them would be a
     // body contradicting the plan, and the server would have to decide which to believe. The
     // server drops them anyway; sending them would still be a lie about what the form asked for.
+    // The two clear flags need no handling here - `toUpdateBody` derives them from the values it
+    // is handed, so a null ceiling stays "unlimited" whether the form or the plan produced it.
     return {
       ...values,
       maxConnections: null,
-      clearMaxConnections: false,
       isRestreamer: false,
       ipWhitelist: values.ipWhitelist,
       userAgentWhitelist: values.userAgentWhitelist,
@@ -246,9 +243,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       playlistId: detail.playlistId,
       expireAt: detail.expireAt === null ? null : detail.expireAt.slice(0, 10),
       tariffPlanId: detail.tariffPlanId,
-      clearTariffPlan: false,
       maxConnections: detail.maxConnections,
-      clearMaxConnections: false,
       isRestreamer: detail.isRestreamer,
       ipWhitelist: [...detail.ipWhitelist],
       userAgentWhitelist: [...detail.userAgentWhitelist],
