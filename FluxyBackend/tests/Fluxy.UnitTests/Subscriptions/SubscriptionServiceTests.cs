@@ -74,6 +74,91 @@ namespace Fluxy.UnitTests.Subscriptions
         }
 
         [Fact]
+        public async Task ACreateWithAPlanDoesNotValidateTheDependentValuesItIgnores()
+        {
+            // A plan owns the connection ceiling and the formats, so a body naming an unusable
+            // value for either is not refused for it: the operator cannot even edit those
+            // controls, and refusing a field that is never written would be a refusal nobody can
+            // act on.
+            var repository = new FakeSubscriptions { Plan = PlanContext(maxConnections: 2) };
+            var service = NewService(repository);
+
+            var outcome = await service.CreateAsync(
+                New(
+                    planId: Plan,
+                    playlistId: Playlist(),
+                    maxConnections: 0,
+                    outputFormats: SubscriptionOutputFormat.None),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Created, outcome.Action);
+            Assert.Equal(2, repository.Added!.MaxConnections);
+            Assert.Equal(SubscriptionOutputFormat.MpegTs, repository.Added.OutputFormats);
+        }
+
+        [Fact]
+        public async Task ACreateWithoutAPlanStillValidatesTheDependentValues()
+        {
+            var service = NewService(new FakeSubscriptions());
+
+            var noFormat = await service.CreateAsync(
+                New(playlistId: Playlist(), outputFormats: SubscriptionOutputFormat.None),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, noFormat.Action);
+            Assert.True(noFormat.Errors!.ContainsKey(nameof(NewSubscription.OutputFormats)));
+
+            var badCeiling = await service.CreateAsync(
+                New(playlistId: Playlist(), maxConnections: 0),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, badCeiling.Action);
+            Assert.True(badCeiling.Errors!.ContainsKey(nameof(NewSubscription.MaxConnections)));
+        }
+
+        [Fact]
+        public async Task ACreateDoesNotRefuseAValueThePlanIsAboutToClearAsADuplicate()
+        {
+            // The row names a playlist and a MAG, and the plan delivers a playlist only. The MAG
+            // is about to be cleared, so a MAC another subscription holds is not a collision this
+            // save would ever store - refusing it would tell the operator about a field the plan
+            // owns and drops.
+            var repository = new FakeSubscriptions
+            {
+                Plan = PlanContext(supportsM3u: true, supportsMag: false, supportsEnigma2: false),
+                MagTaken = true
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.CreateAsync(
+                New(planId: Plan, playlistId: Playlist(), magMac: "AA:BB:CC:DD:EE:FF"),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Created, outcome.Action);
+            Assert.Null(repository.Added!.MagMac);
+        }
+
+        [Fact]
+        public async Task ACreateStillRefusesADuplicateOfAValueThePlanKeeps()
+        {
+            // The control for the test above: a value the plan *does* deliver is still probed, so
+            // the reordering did not simply disable the check.
+            var repository = new FakeSubscriptions
+            {
+                Plan = PlanContext(supportsM3u: true),
+                PlaylistTaken = true
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.CreateAsync(
+                New(planId: Plan, playlistId: Playlist()),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.AlreadyExists, outcome.Action);
+            Assert.Null(repository.Added);
+        }
+
+        [Fact]
         public async Task ACreateWithAPlanComputesTheExpiryFromCreation()
         {
             var repository = new FakeSubscriptions { Plan = PlanContext() };
@@ -120,6 +205,13 @@ namespace Fluxy.UnitTests.Subscriptions
 
             Assert.Equal(SubscriptionAction.Invalid, outcome.Action);
             Assert.Null(repository.Added);
+
+            // The refusal is keyed under every service field, not only the playlist: a save can
+            // be missing all three, and the form draws the reason under the input the operator
+            // was looking at.
+            Assert.True(outcome.Errors!.ContainsKey("PlaylistId"));
+            Assert.True(outcome.Errors.ContainsKey("MagMac"));
+            Assert.True(outcome.Errors.ContainsKey("Enigma2Mac"));
         }
 
         [Fact]
@@ -348,6 +440,58 @@ namespace Fluxy.UnitTests.Subscriptions
 
             Assert.Equal(SubscriptionAction.Invalid, outcome.Action);
             Assert.Null(repository.Updated);
+
+            // The refusal names all three service fields, so the form shows it beside whichever
+            // one the operator cleared.
+            Assert.True(outcome.Errors!.ContainsKey("PlaylistId"));
+            Assert.True(outcome.Errors.ContainsKey("MagMac"));
+            Assert.True(outcome.Errors.ContainsKey("Enigma2Mac"));
+        }
+
+        [Fact]
+        public async Task UpdateWithAPlanDoesNotValidateTheDependentValuesItIgnores()
+        {
+            // A zero ceiling is unusable without a plan and irrelevant with one: the plan decides
+            // it, so the save is not refused for a number that is never written.
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id),
+                Plan = PlanContext(maxConnections: 2)
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { TariffPlanId = Plan, MaxConnections = 0 },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Action);
+            Assert.Equal(2, repository.Updated!.MaxConnections);
+        }
+
+        [Fact]
+        public async Task UpdateDoesNotRefuseAValueThePlanIsAboutToClearAsADuplicate()
+        {
+            // The stored row has a MAG, and the new plan does not deliver MAG devices. The MAC is
+            // about to be cleared, so another subscription holding a MAG is not this save's
+            // collision.
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id) with { MagMac = "AA:BB:CC:DD:EE:FF" },
+                Plan = PlanContext(supportsMag: false),
+                MagTaken = true
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { TariffPlanId = Plan },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Action);
+            Assert.Null(repository.Updated!.MagMac);
         }
 
         [Fact]

@@ -125,6 +125,30 @@ namespace Fluxy.Application.Subscriptions.Services
 
             var plan = await ResolvePlanAsync(input.TariffPlanId, owner, errors, cancellationToken);
 
+            // One instant for the whole create, read once.
+            //
+            // Two things must agree about "now" on this path: the expiry a plan derives (creation
+            // date plus the plan's length) and the `created_at` the context stamps on the row.
+            // They cannot be the *same* value without the repository taking the timestamp as an
+            // argument - the context stamps every inserted row itself, and a caller that wrote its
+            // own would be a second source for a fact the context owns. So the derivation uses one
+            // read taken here, and the difference from the stored `created_at` is whatever elapses
+            // between this line and the save: microseconds on a healthy request.
+            //
+            // The alternative - deriving from the row's stored `created_at` after the insert -
+            // would need a second save, and a failed first save would leave a row with no expiry.
+            // The skew is accepted and documented rather than hidden; a subscription re-saved with
+            // a plan is recomputed from the *stored* creation date, so the two only ever differ by
+            // that first request's execution time.
+            var now = _time.GetUtcNow();
+
+            // What the plan owns is derived before anything is validated, because the dependent
+            // checks below must be skipped while a plan decides them: validating a value that is
+            // never written would refuse a save for a field the operator cannot even edit.
+            var derived = plan is null
+                ? null
+                : SubscriptionRules.Derive(plan, now);
+
             var playlistId = NormalizePlaylistId(input.PlaylistId, errors);
             var magMac = NormalizeMac(input.MagMac, errors, nameof(NewSubscription.MagMac));
             var enigma2Mac = NormalizeMac(
@@ -139,12 +163,15 @@ namespace Fluxy.Application.Subscriptions.Services
             Merge(ipErrors, errors);
             Merge(userAgentErrors, errors);
 
-            if (!SubscriptionRules.IsUsableOutputFormats(input.OutputFormats))
+            // The two dependent checks are the plan's to answer while a plan is attached. Without
+            // one they are the request's, and an unusable value is refused under its own field.
+            if (derived is null && !SubscriptionRules.IsUsableOutputFormats(input.OutputFormats))
             {
                 errors[nameof(NewSubscription.OutputFormats)] = SubscriptionRules.OutputFormatsRule;
             }
 
-            if (input.MaxConnections is { } connections
+            if (derived is null
+                && input.MaxConnections is { } connections
                 && !SubscriptionRules.IsUsableConnections(connections))
             {
                 errors[nameof(NewSubscription.MaxConnections)] =
@@ -168,30 +195,9 @@ namespace Fluxy.Application.Subscriptions.Services
                 errors["BouquetIds"] = SubscriptionRules.BouquetsRequiredRule;
             }
 
-            // The three uniqueness rules are probed before the write so a duplicate is answered
-            // with the field named rather than as a provider error; the partial unique indexes
-            // remain the authority when two operators race. A duplicate is its own outcome (409,
-            // naming the field) rather than a validation failure: "another subscription already
-            // holds this value" is a conflict with the table, not a malformed request.
-            var duplicate = await FindDuplicateAsync(
-                playlistId,
-                magMac,
-                enigma2Mac,
-                exceptSubscription: null,
-                cancellationToken);
-
-            if (duplicate is { } duplicatedField)
-            {
-                return AlreadyExists(duplicatedField);
-            }
-
             // What the plan owns is derived; what it does not own is the request's. The two
             // branches produce one row, so a create with a plan never stores a value the plan did
             // not state.
-            var derived = plan is null
-                ? null
-                : SubscriptionRules.Derive(plan, _time.GetUtcNow());
-
             var effective = new Subscription
             {
                 Id = Guid.Empty,
@@ -212,15 +218,36 @@ namespace Fluxy.Application.Subscriptions.Services
                 IsStbLock = derived?.IsStbLock ?? input.IsStbLock,
                 Enigma2Mac = enigma2Mac,
                 BouquetIds = bouquetIds,
-                CreatedAt = _time.GetUtcNow(),
-                UpdatedAt = _time.GetUtcNow()
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
+            // The services the plan cannot deliver are cleared *before* the uniqueness probe, so
+            // a value that is about to be dropped is not refused as a duplicate of one it will
+            // never hold. Probing first would tell the operator about a collision with a value the
+            // save does not store.
             var services = ApplyServiceSupport(effective, derived);
 
             if (services is null)
             {
-                errors[nameof(NewSubscription.PlaylistId)] = SubscriptionRules.ServiceRequiredRule;
+                AddServiceRequiredError(errors);
+            }
+
+            // The three uniqueness rules are probed before the write so a duplicate is answered
+            // with the field named rather than as a provider error; the partial unique indexes
+            // remain the authority when two operators race. A duplicate is its own outcome (409,
+            // naming the field) rather than a validation failure: "another subscription already
+            // holds this value" is a conflict with the table, not a malformed request.
+            var duplicate = await FindDuplicateAsync(
+                services?.PlaylistId,
+                services?.MagMac,
+                services?.Enigma2Mac,
+                exceptSubscription: null,
+                cancellationToken);
+
+            if (duplicate is { } duplicatedField)
+            {
+                return AlreadyExists(duplicatedField);
             }
 
             if (errors.Count > 0)
@@ -311,6 +338,13 @@ namespace Fluxy.Application.Subscriptions.Services
             // cleared, and the current one when the patch says nothing about it.
             var plan = await ResolvePlanForUpdateAsync(patch, current, owner, errors, cancellationToken);
 
+            // Derived before the dependent checks, for the reason the create gives: a value the
+            // plan owns is not written, so validating it would refuse a save the operator cannot
+            // even edit.
+            var derived = plan is null
+                ? null
+                : SubscriptionRules.Derive(plan, current.CreatedAt);
+
             var playlistId = patch.PlaylistId is null
                 ? current.PlaylistId
                 : NormalizePlaylistId(patch.PlaylistId, errors);
@@ -341,7 +375,7 @@ namespace Fluxy.Application.Subscriptions.Services
             }
 
             var outputFormats = patch.OutputFormats ?? current.OutputFormats;
-            if (!SubscriptionRules.IsUsableOutputFormats(outputFormats))
+            if (derived is null && !SubscriptionRules.IsUsableOutputFormats(outputFormats))
             {
                 errors[nameof(SubscriptionPatch.OutputFormats)] = SubscriptionRules.OutputFormatsRule;
             }
@@ -349,7 +383,8 @@ namespace Fluxy.Application.Subscriptions.Services
             var maxConnections = patch.ClearMaxConnections
                 ? null
                 : patch.MaxConnections ?? current.MaxConnections;
-            if (maxConnections is { } connections
+            if (derived is null
+                && maxConnections is { } connections
                 && !SubscriptionRules.IsUsableConnections(connections))
             {
                 errors[nameof(SubscriptionPatch.MaxConnections)] = SubscriptionRules.MaxConnectionsRule;
@@ -370,24 +405,6 @@ namespace Fluxy.Application.Subscriptions.Services
             {
                 bouquetIds = await _subscriptions.GetAllBouquetIdsAsync(cancellationToken);
             }
-
-            var duplicate = await FindDuplicateAsync(
-                playlistId,
-                magMac,
-                enigma2Mac,
-                id,
-                cancellationToken);
-
-            if (duplicate is { } duplicatedField)
-            {
-                return AlreadyExists(duplicatedField, id);
-            }
-
-            // The plan-derived values, measured from the subscription's own creation date so a
-            // re-save never extends it.
-            var derived = plan is null
-                ? null
-                : SubscriptionRules.Derive(plan, current.CreatedAt);
 
             var effective = current with
             {
@@ -412,11 +429,25 @@ namespace Fluxy.Application.Subscriptions.Services
                 BouquetIds = bouquetIds
             };
 
+            // The services the plan cannot deliver are cleared before the uniqueness probe, so a
+            // value about to be dropped is not refused as a duplicate of one it will never hold.
             var services = ApplyServiceSupport(effective, derived);
 
             if (services is null)
             {
-                errors[nameof(SubscriptionPatch.PlaylistId)] = SubscriptionRules.ServiceRequiredRule;
+                AddServiceRequiredError(errors);
+            }
+
+            var duplicate = await FindDuplicateAsync(
+                services?.PlaylistId,
+                services?.MagMac,
+                services?.Enigma2Mac,
+                id,
+                cancellationToken);
+
+            if (duplicate is { } duplicatedField)
+            {
+                return AlreadyExists(duplicatedField, id);
             }
 
             // A plan-less subscription must carry at least one bouquet - the rule the specification
@@ -551,16 +582,18 @@ namespace Fluxy.Application.Subscriptions.Services
             Dictionary<string, string[]> errors,
             CancellationToken cancellationToken)
         {
-            // Clearing wins over naming, because a body that names both is a body saying "not
-            // this plan" twice; the create-style resolution then never sees it.
-            if (patch.ClearTariffPlan && patch.TariffPlanId is null)
-            {
-                return null;
-            }
-
+            // A plan the request *names* is attached; a request that clears the plan nulls the
+            // reference. Naming wins over clearing when a body carries both, because a plan
+            // identifier is a decision about this save while the clear flag is the absence of
+            // one - and a body that sent a plan and a clear together is asking for the plan.
             if (patch.TariffPlanId is { } wanted)
             {
                 return await ResolvePlanAsync(wanted, owner, errors, cancellationToken);
+            }
+
+            if (patch.ClearTariffPlan)
+            {
+                return null;
             }
 
             if (current.TariffPlanId is not { } existing)
@@ -610,6 +643,24 @@ namespace Fluxy.Application.Subscriptions.Services
             }
 
             return bouquetIds.Distinct().ToList();
+        }
+
+        /// <summary>
+        /// Records the minimum-one-service refusal under all three service fields.
+        /// </summary>
+        /// <remarks>
+        /// The rule is about the set, not about one field: a save that leaves nothing may be
+        /// missing a playlist, a MAG and an Enigma2 device at once, and the form draws the refusal
+        /// under the input the operator was looking at. Keying it under `PlaylistId` alone told
+        /// an operator who had just cleared the last MAG about a playlist they never touched, so
+        /// every field that could have carried the service is told.
+        /// </remarks>
+        private static void AddServiceRequiredError(Dictionary<string, string[]> errors)
+        {
+            foreach (var field in new[] { "PlaylistId", "MagMac", "Enigma2Mac" })
+            {
+                errors[field] = SubscriptionRules.ServiceRequiredRule;
+            }
         }
 
         /// <summary>
@@ -749,14 +800,19 @@ namespace Fluxy.Application.Subscriptions.Services
         }
 
         /// <summary>
-        /// Reads an expiry the caller sent as text: blank clears it, a date sets it.
+        /// Reads an expiry the caller sent as text: blank or unparseable clears it, a date sets it.
         /// </summary>
         /// <remarks>
         /// Parsed with the invariant culture and no time, because the value is a calendar date the
         /// operator chose rather than an instant: a bare date lands at midnight UTC, and the whole
-        /// day is what the operator meant. A value that does not parse is treated as "no change" -
-        /// the transport refuses a malformed date before this point, so reaching here means the
-        /// body carried one and the honest answer is the date on the row.
+        /// day is what the operator meant.
+        ///
+        /// A value that does not parse answers <c>null</c>, which is the same thing a blank value
+        /// answers - "no expiry". That is deliberate rather than a fallback: the transport refuses
+        /// a malformed date under its own field before this point, so a body reaching here with
+        /// one is a body the caller built by hand, and the honest reading of an unusable expiry is
+        /// no expiry rather than the date already on the row. Answering the row's own date would
+        /// silently ignore a request the operator did make.
         /// </remarks>
         private static DateTimeOffset? ParseExpiry(string value)
         {

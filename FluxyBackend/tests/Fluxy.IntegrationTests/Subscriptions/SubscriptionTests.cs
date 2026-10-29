@@ -196,6 +196,74 @@ namespace Fluxy.IntegrationTests.Subscriptions
         }
 
         [Fact]
+        public async Task ClearingThePlanAndTheCeilingWithTheBodysOwnFlagsTakesEffect()
+        {
+            // The body the edit form actually sends once its two clear flags are derived from the
+            // values rather than from state kept beside them: a null identifier *and* the flag.
+            // Without the flag the transport reads a null as "keep", so this test is the one that
+            // would have caught a form reporting "saved" while the old plan stayed attached.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var groups = await GroupIdsAsync();
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var plan = await CreatePlanAsync("Monthly", groups, [bouquet], maxConnections: 2);
+
+            var id = await CreateSubscriptionAsync(Body(
+                owner,
+                planId: plan,
+                playlistId: Playlist(),
+                maxConnections: 8));
+
+            using var cleared = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { tariffPlanId = (string?)null, clearTariffPlan = true, maxConnections = (int?)null, clearMaxConnections = true },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "subscription_updated");
+
+            using var detail = await Client.GetAsync(
+                $"/admin/subscriptions/{id}",
+                TestContext.Current.CancellationToken);
+            using var body = await ReadJsonAsync(detail);
+            var subscription = body.RootElement;
+
+            Assert.Equal(JsonValueKind.Null, subscription.GetProperty("tariffPlanId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, subscription.GetProperty("maxConnections").ValueKind);
+            Assert.Equal(JsonValueKind.Null, subscription.GetProperty("derived").ValueKind);
+        }
+
+        [Fact]
+        public async Task ClearingOnlyTheCeilingKeepsThePlanAttached()
+        {
+            // The two flags are independent: clearing the ceiling must not clear the plan, and a
+            // null ceiling alone (no flag) would be read as "keep".
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var groups = await GroupIdsAsync();
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var plan = await CreatePlanAsync("Monthly", groups, [bouquet], maxConnections: 2);
+
+            var id = await CreateSubscriptionAsync(Body(owner, planId: plan, playlistId: Playlist()));
+
+            using var cleared = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { maxConnections = (int?)null, clearMaxConnections = true },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "subscription_updated");
+
+            using var detail = await Client.GetAsync(
+                $"/admin/subscriptions/{id}",
+                TestContext.Current.CancellationToken);
+            using var body = await ReadJsonAsync(detail);
+            var subscription = body.RootElement;
+
+            // The plan is still attached, and its ceiling is still what the row reports.
+            Assert.Equal(plan, subscription.GetProperty("tariffPlanId").GetString());
+            Assert.Equal(2, subscription.GetProperty("maxConnections").GetInt32());
+        }
+
+        [Fact]
         public async Task APlanOutsideTheOwnersGroupsIsRefused()
         {
             await CreateAdminAndSignInAsync();
@@ -458,6 +526,13 @@ namespace Fluxy.IntegrationTests.Subscriptions
             var bouquet = await CreateBouquetAsync("Cinema");
 
             var first = await CreateSubscriptionAsync(Body(owner, playlistId: Playlist("a"), bouquetIds: [bouquet]));
+
+            // The audit clock is the host's `TimeProvider` (the design derives an expiry from the
+            // very stamp the row is written with), and the test host freezes it - so two creates a
+            // moment apart would share a `created_at` and the order would fall to the identifier
+            // tie-break. Advancing it keeps this test about the *order* rather than about the tie.
+            Fixture.Clock.Advance(TimeSpan.FromSeconds(1));
+
             var second = await CreateSubscriptionAsync(Body(owner, playlistId: Playlist("b"), magMac: "AA:BB:CC:DD:EE:02", bouquetIds: [bouquet]));
 
             // The owner filter narrows before the count.
