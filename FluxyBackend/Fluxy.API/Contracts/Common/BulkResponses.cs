@@ -1,5 +1,6 @@
 using Fluxy.API.Contracts.Streams;
 using Fluxy.API.Contracts.Series;
+using Fluxy.API.Contracts.Subscriptions;
 using Fluxy.API.Contracts.UserGroups;
 using Fluxy.API.Contracts.Users;
 using Fluxy.API.Contracts.Vod;
@@ -7,6 +8,8 @@ using Fluxy.Core.Series.Enums;
 using Fluxy.Core.Series.Outcomes;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Outcomes;
+using Fluxy.Core.Subscriptions.Enums;
+using Fluxy.Core.Subscriptions.Outcomes;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Outcomes;
 using Fluxy.Core.Vod.Enums;
@@ -53,6 +56,9 @@ namespace Fluxy.API.Contracts.Common
 
         /// <summary>Code reported once a run over episodes has been answered for.</summary>
         public const string EpisodesCompletedCode = "series_episodes_bulk_completed";
+
+        /// <summary>Code reported once a run over subscriptions has been answered for.</summary>
+        public const string SubscriptionsCompletedCode = "subscriptions_bulk_completed";
 
         /// <summary>Body for a run over accounts.</summary>
         /// <param name="outcome">What the service reported, one entry per identifier.</param>
@@ -214,8 +220,39 @@ namespace Fluxy.API.Contracts.Common
             return Answer(EpisodesCompletedCode, Summary(outcome.Action, items), items);
         }
 
-        private static BulkItemResponse ToItem(
-            Guid id,
+        /// <summary>Body for a run over subscriptions.</summary>
+        /// <param name="outcome">What the service reported, one entry per identifier.</param>
+        public static BulkOperationResponse Describe(BulkSubscriptionOutcome outcome)
+        {
+            var items = outcome.Items
+                .Select(item =>
+                {
+                    var (status, body) = SubscriptionResponses.Describe(new SubscriptionOutcome
+                    {
+                        Action = item.Action,
+                        SubscriptionId = item.SubscriptionId,
+                        Errors = item.Errors
+                    });
+
+                    // A warning belongs to a row that was written: a plan change that cleared a
+                    // service succeeded and lost a setting, which is not a refusal.
+                    var warnings = item.Warnings?
+                        .Select(SubscriptionResponses.DescribeWarning)
+                        .Select(warning => new BulkItemWarningResponse
+                        {
+                            Code = warning.Code,
+                            Message = warning.Message
+                        })
+                        .ToList();
+
+                    return ToItem(item.SubscriptionId, status, body, warnings);
+                })
+                .ToList();
+
+            return Answer(SubscriptionsCompletedCode, Summary(outcome.Action, items), items);
+        }
+
+        private static BulkItemResponse ToItem(            Guid id,
             int status,
             MessageResponse body,
             IReadOnlyList<BulkItemWarningResponse>? warnings = null)
@@ -397,6 +434,37 @@ namespace Fluxy.API.Contracts.Common
 
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} episodes changed."
+            };
+
+        /// <summary>The sentence naming how much of a run over subscriptions landed.</summary>
+        private static string Summary(
+            BulkSubscriptionAction action,
+            IReadOnlyList<BulkItemResponse> items)
+            => action switch
+            {
+                BulkSubscriptionAction.ChangeTariff =>
+                    $"{Landed(items)} of {items.Count} subscriptions moved to that tariff plan.",
+
+                BulkSubscriptionAction.ChangeCreator =>
+                    $"{Landed(items)} of {items.Count} subscriptions reassigned.",
+
+                BulkSubscriptionAction.Delete =>
+                    $"{Landed(items)} of {items.Count} subscriptions deleted.",
+
+                BulkSubscriptionAction.DeletePlaylist =>
+                    $"{Landed(items)} of {items.Count} subscriptions had their playlist cleared.",
+
+                BulkSubscriptionAction.DeleteMag =>
+                    $"{Landed(items)} of {items.Count} subscriptions had their MAG cleared.",
+
+                BulkSubscriptionAction.DeleteEnigma2 =>
+                    $"{Landed(items)} of {items.Count} subscriptions had their Enigma2 cleared.",
+
+                BulkSubscriptionAction.BlockOwner =>
+                    $"{Landed(items)} of {items.Count} owners blocked.",
+
+                // Unreachable: the enum holds no other member.
+                _ => $"{Landed(items)} of {items.Count} subscriptions changed."
             };
 
         private static int Landed(IReadOnlyList<BulkItemResponse> items)

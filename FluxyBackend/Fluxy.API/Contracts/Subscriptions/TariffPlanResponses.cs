@@ -31,6 +31,8 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Code reported when another plan already holds that name.</summary>
         public const string AlreadyExistsCode = "tariff_plan_already_exists";
 
+        /// <summary>Code reported when a subscription is still sold under the plan.</summary>
+        public const string InUseCode = "tariff_plan_in_use";
         /// <summary>Answer describing <paramref name="outcome"/>.</summary>
         /// <param name="outcome">What the service reported.</param>
         /// <returns>The status, the body, and the rejected fields when the input was the problem.</returns>
@@ -56,6 +58,12 @@ namespace Fluxy.API.Contracts.Subscriptions
                     (StatusCodes.Status409Conflict,
                         AlreadyExistsCode,
                         "That tariff plan name is already taken."),
+
+                TariffPlanAction.InUse =>
+                    (StatusCodes.Status409Conflict,
+                        InUseCode,
+                        "The tariff plan is still used by " + outcome.SubscriptionsUsing +
+                            " subscription(s). Move them to another plan first."),
 
                 TariffPlanAction.Invalid =>
                     (StatusCodes.Status400BadRequest,

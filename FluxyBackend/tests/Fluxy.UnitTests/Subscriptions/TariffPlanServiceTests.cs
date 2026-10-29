@@ -1,4 +1,4 @@
-using Fluxy.Application.Subscriptions.Services;
+﻿using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Subscriptions.Commands;
@@ -7,6 +7,7 @@ using Fluxy.Core.Subscriptions.Models;
 using Fluxy.Core.Subscriptions.Outcomes;
 using Fluxy.Core.Subscriptions.ReadModels;
 using Fluxy.Core.Subscriptions.Repositories;
+using Fluxy.Core.Subscriptions.Rows;
 
 namespace Fluxy.UnitTests.Subscriptions
 {
@@ -33,7 +34,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 ExistingGroupIds = [DefaultGroup],
                 BouquetIds = [DefaultBouquet]
             };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(NewPlan(name: "  Standard  "), TestContext.Current.CancellationToken);
 
@@ -51,7 +52,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesABlankName(string name)
         {
             var repository = new FakePlans();
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(NewPlan(name: name), TestContext.Current.CancellationToken);
 
@@ -64,7 +65,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesANameAnotherPlanHolds()
         {
             var repository = new FakePlans { NameTaken = true };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(NewPlan(), TestContext.Current.CancellationToken);
 
@@ -86,7 +87,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 ExistingGroupIds = [DefaultGroup],
                 BouquetIds = [DefaultBouquet]
             };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork(violation));
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork(violation));
 
             var outcome = await service.CreateAsync(NewPlan(), TestContext.Current.CancellationToken);
 
@@ -104,6 +105,7 @@ namespace Fluxy.UnitTests.Subscriptions
                     ExistingGroupIds = [DefaultGroup],
                     BouquetIds = [DefaultBouquet]
                 },
+                new FakeSubscriptions(),
                 new FakeUnitOfWork(violation));
 
             await Assert.ThrowsAsync<UniqueViolationException>(
@@ -114,7 +116,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesAGroupIdentifierThatNamesNothing()
         {
             var repository = new FakePlans { ExistingGroupIds = [] };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(userGroupIds: [Guid.NewGuid()]),
@@ -129,7 +131,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesABouquetIdentifierThatNamesNothing()
         {
             var repository = new FakePlans { ExistingBouquetIds = [] };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(bouquetIds: [Guid.NewGuid()]),
@@ -144,7 +146,7 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var repeated = Guid.NewGuid();
             var repository = new FakePlans { ExistingGroupIds = [repeated] };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(userGroupIds: [repeated, repeated]),
@@ -165,7 +167,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 BaseGroupIds = baseGroups,
                 ExistingGroupIds = baseGroups
             };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(userGroupIds: null, bouquetIds: [Guid.NewGuid()]),
@@ -182,7 +184,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesAPlanOfferedToNobody()
         {
             var repository = new FakePlans { BouquetIds = [DefaultBouquet] };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(userGroupIds: [], bouquetIds: [Guid.NewGuid()]),
@@ -197,7 +199,7 @@ namespace Fluxy.UnitTests.Subscriptions
         public async Task CreateRefusesAPlanThatDeliversNothing()
         {
             var repository = new FakePlans();
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(bouquetIds: []),
@@ -214,7 +216,7 @@ namespace Fluxy.UnitTests.Subscriptions
             var group = Guid.NewGuid();
             var bouquet = Guid.NewGuid();
             var repository = new FakePlans { ExistingGroupIds = [group], ExistingBouquetIds = [bouquet] };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.CreateAsync(
                 NewPlan(userGroupIds: [group], bouquetIds: [bouquet]),
@@ -237,7 +239,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 Existing = Stored(id, supportsMag: true, strictStbDeviceId: true)
             };
 
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 id,
@@ -254,7 +256,7 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var id = Guid.NewGuid();
             var repository = new FakePlans { Existing = Stored(id) };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 id,
@@ -272,7 +274,7 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var id = Guid.NewGuid();
             var repository = new FakePlans { Existing = Stored(id) };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             await service.UpdateAsync(id, new TariffPlanPatch { Name = "Renamed" }, TestContext.Current.CancellationToken);
 
@@ -285,7 +287,7 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var id = Guid.NewGuid();
             var repository = new FakePlans { Existing = Stored(id) };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 id,
@@ -302,7 +304,7 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var id = Guid.NewGuid();
             var repository = new FakePlans { Existing = Stored(id) };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 id,
@@ -326,7 +328,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 ExistingGroupIds = [group],
                 ExistingBouquetIds = [bouquet]
             };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 id,
@@ -341,7 +343,7 @@ namespace Fluxy.UnitTests.Subscriptions
         [Fact]
         public async Task UpdateAnswersAnUnknownIdentifierAsNotFound()
         {
-            var service = new TariffPlanService(new FakePlans(), new FakeUnitOfWork());
+            var service = new TariffPlanService(new FakePlans(), new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.UpdateAsync(
                 Guid.NewGuid(),
@@ -354,7 +356,7 @@ namespace Fluxy.UnitTests.Subscriptions
         [Fact]
         public async Task DeleteAnswersAnUnknownIdentifierAsNotFound()
         {
-            var service = new TariffPlanService(new FakePlans { Removable = false }, new FakeUnitOfWork());
+            var service = new TariffPlanService(new FakePlans { Removable = false }, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.DeleteAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
 
@@ -366,13 +368,34 @@ namespace Fluxy.UnitTests.Subscriptions
         {
             var id = Guid.NewGuid();
             var repository = new FakePlans { Removable = true };
-            var service = new TariffPlanService(repository, new FakeUnitOfWork());
+            var service = new TariffPlanService(repository, new FakeSubscriptions(), new FakeUnitOfWork());
 
             var outcome = await service.DeleteAsync(id, TestContext.Current.CancellationToken);
 
             Assert.Equal(TariffPlanAction.Deleted, outcome.Action);
             Assert.Equal(id, outcome.PlanId);
             Assert.True(repository.Removed);
+        }
+
+        [Fact]
+        public async Task DeleteRefusesAPlanASubscriptionIsStillSoldUnder()
+        {
+            // The plan's parameters are derived rather than stored while it is attached, so
+            // deleting it would silently re-mean the subscriber's subscription. The foreign key is
+            // RESTRICT; this refusal is the service asking first so the operator gets a code and a
+            // count instead of a provider error.
+            var id = Guid.NewGuid();
+            var repository = new FakePlans { Removable = true };
+            var service = new TariffPlanService(
+                repository,
+                new FakeSubscriptions { SubscriptionsForPlan = 3 },
+                new FakeUnitOfWork());
+
+            var outcome = await service.DeleteAsync(id, TestContext.Current.CancellationToken);
+
+            Assert.Equal(TariffPlanAction.InUse, outcome.Action);
+            Assert.Equal(3, outcome.SubscriptionsUsing);
+            Assert.False(repository.Removed);
         }
 
         /// <summary>A plan the service would accept, with the one value a test overrides.</summary>
@@ -560,9 +583,106 @@ namespace Fluxy.UnitTests.Subscriptions
                 => Task.FromResult(BaseGroupIds);
         }
 
-        /// <summary>The unit of work as the service sees it, with one failure to report.</summary>
-        private sealed class FakeUnitOfWork : IUnitOfWork
+        /// <summary>
+        /// The subscription repository as the plan service sees it: all it asks is how many
+        /// subscriptions are still sold under a plan.
+        /// </summary>
+        /// <remarks>
+        /// The other members throw rather than answer. A plan operation that started asking the
+        /// subscription repository anything else would be a change the test wants to notice, and a
+        /// silent default would hide it.
+        /// </remarks>
+        private sealed class FakeSubscriptions : ISubscriptionRepository
         {
+            public int SubscriptionsForPlan { get; init; }
+
+            public Task<int> CountForPlanAsync(Guid planId, CancellationToken cancellationToken = default)
+                => Task.FromResult(SubscriptionsForPlan);
+
+            public Task<SubscriptionPage> GetPageAsync(
+                int page,
+                int pageSize,
+                string? search,
+                Guid? ownerId,
+                Guid? creatorId,
+                SubscriptionStatus? status,
+                SubscriptionSortField sortBy,
+                SubscriptionSortOrder sortOrder,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<SubscriptionDetail?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<Subscription?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> IsPlaylistIdTakenAsync(
+                string playlistId,
+                Guid? exceptSubscription,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> PlaylistIdExistsAsync(
+                string playlistId,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> IsMagMacTakenAsync(
+                string mac,
+                Guid? exceptSubscription,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> IsEnigma2MacTakenAsync(
+                string mac,
+                Guid? exceptSubscription,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<SubscriptionOwnerContext?> GetOwnerContextAsync(
+                Guid userId,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<SubscriptionPlanContext?> GetPlanContextAsync(
+                Guid planId,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<IReadOnlyList<Guid>> GetAllBouquetIdsAsync(
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<IReadOnlySet<Guid>> GetExistingBouquetIdsAsync(
+                IReadOnlyCollection<Guid> bouquetIds,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<Guid> AddAsync(
+                NewSubscription subscription,
+                IReadOnlyList<Guid> bouquetIds,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> UpdateAsync(
+                Guid id,
+                Subscription subscription,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> RemoveAsync(Guid id, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task ReplaceBouquetsAsync(
+                Guid subscriptionId,
+                IReadOnlyList<Guid> bouquetIds,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+        }
+
+        /// <summary>The unit of work as the service sees it, with one failure to report.</summary>
+        private sealed class FakeUnitOfWork : IUnitOfWork        {
             private readonly Exception? _failure;
 
             public FakeUnitOfWork(Exception? failure = null) => _failure = failure;
