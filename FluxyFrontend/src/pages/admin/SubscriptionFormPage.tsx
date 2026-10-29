@@ -203,11 +203,26 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
    * Read through one helper because several controls are dropped on the way out: the dependent
    * fields are not sent while a plan is attached, which is exactly what "the plan is the only
    * source of truth" means on the wire.
+   *
+   * **Two fields are normalized to `null` after the spread, and that is not cosmetic.** A cleared
+   * antd `Select` calls `onChange(undefined)` and rc-field-form stores the key with an `undefined`
+   * value, so the store holds `tariffPlanId: undefined` rather than `null` - a state the declared
+   * `string | null` cannot even express. Left alone it would spread over `CREATE_VALUES`' null and
+   * the body would send `clearTariffPlan: false` with the identifier dropped by JSON, which the
+   * controller reads as "keep" - the plan would stay attached while the form reported success.
+   * Coercing here makes "the operator cleared it" and "the value is absent" one representation
+   * before anything downstream reads it.
    */
-  const currentValues = (): SubscriptionValues => ({
-    ...CREATE_VALUES,
-    ...(form.getFieldsValue(true) as Partial<SubscriptionValues>),
-  })
+  const currentValues = (): SubscriptionValues => {
+    const held = form.getFieldsValue(true) as Partial<SubscriptionValues>
+
+    return {
+      ...CREATE_VALUES,
+      ...held,
+      tariffPlanId: held.tariffPlanId ?? null,
+      maxConnections: held.maxConnections ?? null,
+    }
+  }
 
   const visibleValues = (): SubscriptionValues => {
     const values = currentValues()

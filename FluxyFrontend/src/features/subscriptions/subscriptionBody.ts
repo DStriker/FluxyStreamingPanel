@@ -47,13 +47,17 @@ export interface SubscriptionValues {
  *
  * A create has nothing to clear, so the two flags would be a statement about a row that does not
  * exist yet. The owner travels because a create is the one request that chooses it.
+ *
+ * The two nullable values are sent as an explicit `null` rather than omitted: an absent key and a
+ * null key mean the same thing to this endpoint, and writing the null states "no plan" and "no
+ * ceiling" rather than leaving a reader to infer it from what is missing.
  */
 export const toCreateBody = (values: SubscriptionValues) => ({
   userId: values.userId,
   playlistId: values.playlistId,
   expireAt: values.expireAt,
-  tariffPlanId: values.tariffPlanId,
-  maxConnections: values.maxConnections,
+  tariffPlanId: values.tariffPlanId ?? null,
+  maxConnections: values.maxConnections ?? null,
   isRestreamer: values.isRestreamer,
   ipWhitelist: values.ipWhitelist,
   userAgentWhitelist: values.userAgentWhitelist,
@@ -81,14 +85,22 @@ export const toCreateBody = (values: SubscriptionValues) => ({
  * flag true. Reading the flag off the form would need a second piece of state kept in step with the
  * first, and the day they disagreed an operator would clear the plan, save successfully, and find
  * it still attached - which is exactly what this derivation exists to prevent.
+ *
+ * The comparison is `== null` rather than `=== null`, and the identifier is written out as
+ * `?? null`, because **the form store can hold `undefined` here**: a cleared antd `Select` calls
+ * `onChange(undefined)` and rc-field-form keeps the key, so the runtime value is a state the
+ * declared `string | null` cannot express. `=== null` would answer false for it and send
+ * `clearTariffPlan: false` with the identifier dropped by JSON - a "save" that keeps the old plan.
+ * The boundary in `SubscriptionFormPage.currentValues` also coerces it, and this stays tolerant so
+ * the pure module is correct for a value its own type says cannot arrive.
  */
 export const toUpdateBody = (values: SubscriptionValues) => ({
   playlistId: values.playlistId,
   expireAt: values.expireAt,
-  tariffPlanId: values.tariffPlanId,
-  clearTariffPlan: values.tariffPlanId === null,
-  maxConnections: values.maxConnections,
-  clearMaxConnections: values.maxConnections === null,
+  tariffPlanId: values.tariffPlanId ?? null,
+  clearTariffPlan: values.tariffPlanId == null,
+  maxConnections: values.maxConnections ?? null,
+  clearMaxConnections: values.maxConnections == null,
   isRestreamer: values.isRestreamer,
   ipWhitelist: values.ipWhitelist,
   userAgentWhitelist: values.userAgentWhitelist,

@@ -70,6 +70,27 @@ describe('toUpdateBody', () => {
     expect(body.clearTariffPlan).toBe(true)
   })
 
+  it('treats an undefined plan id as a cleared plan, which is what antd actually stores', () => {
+    // The runtime case the type cannot express: a cleared antd `Select` calls
+    // `onChange(undefined)` and rc-field-form keeps the key, so the form store holds
+    // `tariffPlanId: undefined` - never `null`. A `=== null` comparison answered false for it and
+    // the body said `clearTariffPlan: false`, so the plan stayed attached while the form reported
+    // "saved". The cast is the point of the test: it feeds the module the value antd produces.
+    const body = toUpdateBody(
+      values({ tariffPlanId: undefined as unknown as null }),
+    )
+
+    expect(body.tariffPlanId).toBeNull()
+    expect(body.clearTariffPlan).toBe(true)
+  })
+
+  it('treats an undefined ceiling as unlimited, which is what antd actually stores', () => {
+    const body = toUpdateBody(values({ maxConnections: undefined as unknown as null }))
+
+    expect(body.maxConnections).toBeNull()
+    expect(body.clearMaxConnections).toBe(true)
+  })
+
   it('does not clear the plan when one is attached', () => {
     const body = toUpdateBody(values({ tariffPlanId: 'plan-1' }))
 
