@@ -8,7 +8,6 @@ using Fluxy.Core.Subscriptions.Models;
 using Fluxy.Core.Subscriptions.Outcomes;
 using Fluxy.Core.Subscriptions.ReadModels;
 using Fluxy.Core.Subscriptions.Repositories;
-
 namespace Fluxy.Application.Subscriptions.Services
 {
     /// <summary>
@@ -30,16 +29,25 @@ namespace Fluxy.Application.Subscriptions.Services
     public sealed class TariffPlanService : ITariffPlanService
     {
         private readonly ITariffPlanRepository _plans;
+        private readonly ISubscriptionRepository _subscriptions;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TariffPlanService"/> class.
         /// </summary>
         /// <param name="plans">Repository holding the plans.</param>
+        /// <param name="subscriptions">
+        /// Repository that answers whether a subscription is still sold under a plan, which is
+        /// what makes a delete a refusal rather than a cascade.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
-        public TariffPlanService(ITariffPlanRepository plans, IUnitOfWork unitOfWork)
+        public TariffPlanService(
+            ITariffPlanRepository plans,
+            ISubscriptionRepository subscriptions,
+            IUnitOfWork unitOfWork)
         {
             _plans = plans;
+            _subscriptions = subscriptions;
             _unitOfWork = unitOfWork;
         }
 
@@ -278,6 +286,22 @@ namespace Fluxy.Application.Subscriptions.Services
             Guid id,
             CancellationToken cancellationToken = default)
         {
+            // A subscription still sold under the plan derives its parameters from it and never
+            // stored them, so deleting the plan would silently re-mean the subscriber's
+            // subscription. The foreign key is RESTRICT and would refuse the delete anyway; this
+            // answers with a code and a count instead of a provider error.
+            var subscriptionsUsing = await _subscriptions.CountForPlanAsync(id, cancellationToken);
+
+            if (subscriptionsUsing > 0)
+            {
+                return new TariffPlanOutcome
+                {
+                    Action = TariffPlanAction.InUse,
+                    PlanId = id,
+                    SubscriptionsUsing = subscriptionsUsing
+                };
+            }
+
             if (await _plans.RemoveAsync(id, cancellationToken) is false)
             {
                 return NotFound(id);

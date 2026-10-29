@@ -34,7 +34,9 @@ namespace Fluxy.DataAccess.Context
                         : connectionString)
                 .Options;
 
-            return new FluxyDbContext(options);
+            // The system clock: scaffolding a migration reads no row and stamps nothing, so the
+            // clock only has to exist.
+            return new FluxyDbContext(options, TimeProvider.System);
         }
     }
 }

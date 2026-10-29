@@ -749,6 +749,146 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("series", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionBouquetEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BouquetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bouquet_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BouquetId");
+
+                    b.HasIndex("SubscriptionId", "BouquetId")
+                        .IsUnique();
+
+                    b.ToTable("subscription_bouquets", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Enigma2Mac")
+                        .HasMaxLength(17)
+                        .HasColumnType("character varying(17)")
+                        .HasColumnName("enigma2_mac");
+
+                    b.Property<DateTimeOffset?>("ExpireAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expire_at");
+
+                    b.PrimitiveCollection<string[]>("IpWhitelist")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("ip_whitelist");
+
+                    b.Property<bool>("IsCountryLock")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_country_lock");
+
+                    b.Property<bool>("IsIspLock")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_isp_lock");
+
+                    b.Property<bool>("IsRestreamer")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_restreamer");
+
+                    b.Property<bool>("IsStbLock")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_stb_lock");
+
+                    b.Property<bool>("IsTrial")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_trial");
+
+                    b.Property<string>("MagMac")
+                        .HasMaxLength(17)
+                        .HasColumnType("character varying(17)")
+                        .HasColumnName("mag_mac");
+
+                    b.Property<int?>("MaxConnections")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_connections");
+
+                    b.Property<short>("OutputFormats")
+                        .HasColumnType("smallint")
+                        .HasColumnName("output_formats");
+
+                    b.Property<string>("PlayToken")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("play_token");
+
+                    b.Property<string>("PlaylistId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("playlist_id");
+
+                    b.Property<Guid?>("ResellerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reseller_id");
+
+                    b.Property<Guid?>("TariffPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tariff_plan_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.PrimitiveCollection<string[]>("UserAgentWhitelist")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("user_agent_whitelist");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ExpireAt");
+
+                    b.HasIndex("ResellerId");
+
+                    b.HasIndex("TariffPlanId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("subscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_subscriptions_max_connections", "max_connections IS NULL OR max_connections BETWEEN 1 AND 10000");
+
+                            t.HasCheckConstraint("ck_subscriptions_output_formats", "output_formats <> 0");
+                        });
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanBouquetEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1548,6 +1688,44 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionBouquetEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BouquetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.SubscriptionEntity", "Subscription")
+                        .WithMany("Bouquets")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscription");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ResellerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Fluxy.DataAccess.Entities.TariffPlanEntity", "TariffPlan")
+                        .WithMany()
+                        .HasForeignKey("TariffPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TariffPlan");
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.TariffPlanBouquetEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.BouquetEntity", null)
@@ -1687,6 +1865,11 @@ namespace Fluxy.DataAccess.Migrations
             modelBuilder.Entity("Fluxy.DataAccess.Entities.SeriesEntity", b =>
                 {
                     b.Navigation("Episodes");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionEntity", b =>
+                {
+                    b.Navigation("Bouquets");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>

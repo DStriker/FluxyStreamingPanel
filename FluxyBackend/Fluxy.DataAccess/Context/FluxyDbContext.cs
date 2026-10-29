@@ -16,12 +16,26 @@ namespace Fluxy.DataAccess.Context
     internal sealed class FluxyDbContext : DbContext
     {
         /// <summary>
+        /// Clock the audit columns are stamped from.
+        /// </summary>
+        /// <remarks>
+        /// Injected rather than read from <see cref="DateTimeOffset.UtcNow"/> directly, because a
+        /// business rule may be stated in terms of the row's own <c>created_at</c> - a
+        /// subscription's expiry is exactly that - and two clocks would be two answers to one
+        /// question. The design-time factory supplies the system clock, so scaffolding a migration
+        /// never needs one.
+        /// </remarks>
+        private readonly TimeProvider _time;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="FluxyDbContext"/> class.
         /// </summary>
         /// <param name="options">Options carrying the Npgsql provider and the connection string.</param>
-        public FluxyDbContext(DbContextOptions<FluxyDbContext> options)
+        /// <param name="time">Clock the audit columns are stamped from.</param>
+        public FluxyDbContext(DbContextOptions<FluxyDbContext> options, TimeProvider time)
             : base(options)
         {
+            _time = time;
         }
 
         /// <summary>User accounts.</summary>
@@ -174,6 +188,19 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<TariffPlanBouquetEntity> TariffPlanBouquets => Set<TariffPlanBouquetEntity>();
 
+        /// <summary>
+        /// Subscriptions: the rows an operator issues to a user. Each names its owner, the
+        /// services it delivers and the access it allows; what it carries of its own content is
+        /// the junction below.
+        /// </summary>
+        public DbSet<SubscriptionEntity> Subscriptions => Set<SubscriptionEntity>();
+
+        /// <summary>
+        /// One bouquet a subscription carries. Used only while the subscription has no tariff
+        /// plan; with one its bouquet list lies dormant.
+        /// </summary>
+        public DbSet<SubscriptionBouquetEntity> SubscriptionBouquets => Set<SubscriptionBouquetEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {
@@ -215,7 +242,7 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         private void ApplyAudit()
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = _time.GetUtcNow();
 
             foreach (var entry in ChangeTracker.Entries<AuditableEntity>())
             {

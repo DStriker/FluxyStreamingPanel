@@ -152,6 +152,19 @@ namespace Fluxy.Application
             // delivery shape) and a bouquet has no price at all.
             services.AddScoped<ITariffPlanService, TariffPlanService>();
 
+            // The subscription is the row a plan is sold *as*: the owner, the services, the
+            // access parameters and the expiry. It belongs beside the plans for the reason the
+            // plans belong beside the bouquets - it points at them - and it is its own service
+            // because a subscription owns rules no plan has (which service may be attached, how
+            // the expiry is computed, which fields a plan makes dormant).
+            services.AddScoped<ISubscriptionService, SubscriptionService>();
+
+            // The collective operations over those rows. Its own service for the reason
+            // IUserBulkService gives: a bulk request names a set and answers with an entry per
+            // row, and a client asking for that must not have to know which single-row method it
+            // is built on.
+            services.AddScoped<ISubscriptionBulkService, SubscriptionBulkService>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();

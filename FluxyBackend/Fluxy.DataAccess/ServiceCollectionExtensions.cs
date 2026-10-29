@@ -103,6 +103,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IEpgSourceRepository, EpgSourceRepository>();
             services.AddScoped<IBouquetRepository, BouquetRepository>();
             services.AddScoped<ITariffPlanRepository, TariffPlanRepository>();
+            services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 
