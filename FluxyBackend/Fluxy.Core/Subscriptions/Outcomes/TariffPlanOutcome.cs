@@ -25,5 +25,12 @@ namespace Fluxy.Core.Subscriptions.Outcomes
 
         /// <summary>Rejected fields, when the input was the problem.</summary>
         public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
+
+        /// <summary>
+        /// How many subscriptions are sold under the plan. Set only by an
+        /// <see cref="TariffPlanAction.InUse"/> refusal, and used for the sentence that tells the
+        /// operator what is standing in the way.
+        /// </summary>
+        public int SubscriptionsUsing { get; init; }
     }
 }

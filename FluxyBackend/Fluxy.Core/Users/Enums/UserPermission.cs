@@ -206,6 +206,25 @@ namespace Fluxy.Core.Users.Enums
         /// they are offered to and which bouquets they deliver. Separate from
         /// <see cref="ViewTariffPlans"/> for the reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditTariffPlans = 8388608
+        EditTariffPlans = 8388608,
+
+        /// <summary>
+        /// May read the subscriptions: the subscriptions table, one subscription in full with its
+        /// services and access parameters, and the plan picker on its form.
+        /// </summary>
+        /// <remarks>
+        /// A subscription is neither a price list nor a package: it is the row a subscriber is
+        /// actually issued, so it carries a pair of its own rather than reusing the plan one. An
+        /// operator who may decide what a subscription costs and one who may issue it are two
+        /// different jobs - the second touches somebody's access.
+        /// </remarks>
+        ViewSubscriptions = 16777216,
+
+        /// <summary>
+        /// May change the subscriptions: create, edit, delete and bulk-edit them, mint playlist
+        /// ids and clear their services. Separate from <see cref="ViewSubscriptions"/> for the
+        /// reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditSubscriptions = 33554432
     }
 }
