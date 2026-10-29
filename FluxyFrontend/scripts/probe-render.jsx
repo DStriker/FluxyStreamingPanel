@@ -50,6 +50,8 @@ import EpgSourceFormPage from '../src/pages/admin/EpgSourceFormPage'
 import EpgSourceChannelsPage from '../src/pages/admin/EpgSourceChannelsPage'
 import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
+import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
+import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
 import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
@@ -1889,22 +1891,30 @@ async function main() {
   )
 
   check(
-    'the subscriptions section carries the five entries the owner listed, in that order',
-    subscriptionItemKeys.join(',') ===
-      'subscriptionsAdd,subscriptionsPlaylists,subscriptionsMagDevices,subscriptionsEnigma2Devices,tariffPlans',
+    'the subscriptions section carries the add form, the management list and the price list',
+    subscriptionItemKeys.join(',') === 'subscriptionsAdd,subscriptionsManage,tariffPlans',
     `the section reads ${subscriptionItemKeys.join(', ')}`,
   )
 
   check(
-    'only the tariff plans entry opens a page; the other four are placeholders',
-    subscriptionsGroup?.items.filter((item) => item.page !== undefined).map((item) => item.key).join(',') ===
-      'tariffPlans',
+    'the three placeholder entries are gone and every remaining entry opens a page',
+    !subscriptionItemKeys.includes('subscriptionsPlaylists') &&
+      !subscriptionItemKeys.includes('subscriptionsMagDevices') &&
+      !subscriptionItemKeys.includes('subscriptionsEnigma2Devices') &&
+      subscriptionsGroup?.items.every((item) => item.page !== undefined) === true,
     `pages behind the section: ${
       subscriptionsGroup?.items
         .filter((item) => item.page !== undefined)
         .map((item) => item.key)
         .join(', ') ?? 'none'
     }`,
+  )
+
+  check(
+    'the management list lives at subscriptions and the add form beside it',
+    menuPath('Admin', 'subscriptions') === '/admin/subscriptions' &&
+      menuPath('Admin', 'subscriptions/add') === '/admin/subscriptions/add',
+    `the entries open ${menuPath('Admin', 'subscriptions')} and ${menuPath('Admin', 'subscriptions/add')}`,
   )
 
   check(
@@ -2393,6 +2403,100 @@ async function main() {
     `rendered ${seasonFormHtml.length} bytes with the spinner up`,
   )
 
+  // --- The subscriptions management list and its form ------------------------
+  //
+  // The list is the screen the three placeholders collapsed into: one row per subscription with
+  // its service strips drawn as forced-open expanded rows, the five columns the owner named, and
+  // the same toolbar (auto-refresh, bulk menu, search, three filters) the streams table draws.
+  const subscriptionsHtml = renderToStaticMarkup(
+    withRouter('/admin/subscriptions', withQuery(
+      <AntApp>
+        <SubscriptionsPage sectionKey="nav.items.subscriptionsManage" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the subscriptions table draws its own heading and its table before any rows arrive',
+    subscriptionsHtml.includes('>Subscriptions<') &&
+      subscriptionsHtml.includes('ant-table') &&
+      !subscriptionsHtml.includes('nav.items.subscriptionsManage'),
+    `rendered ${subscriptionsHtml.length} bytes with the subscriptions still being fetched`,
+  )
+
+  check(
+    'the subscriptions table offers its five columns, the three filters and the search',
+    subscriptionsHtml.includes('>Expires<') &&
+      subscriptionsHtml.includes('>Max connections<') &&
+      subscriptionsHtml.includes('>Issued by<') &&
+      subscriptionsHtml.includes('Search by playlist id or MAC') &&
+      subscriptionsHtml.includes('Any status') &&
+      subscriptionsHtml.includes('Any owner') &&
+      subscriptionsHtml.includes('Any issuer') &&
+      // The auto-refresh toggle leads the toolbar, the same place the streams page puts it.
+      subscriptionsHtml.includes('Pause auto refresh') &&
+      subscriptionsHtml.includes('Bulk actions'),
+    `rendered ${subscriptionsHtml.length} bytes`,
+  )
+
+  check(
+    'the subscriptions table carries the page-card class the compact rules key on',
+    subscriptionsHtml.includes('page-card'),
+    `rendered ${subscriptionsHtml.length} bytes`,
+  )
+
+  const subscriptionFormHtml = renderToStaticMarkup(
+    withRouter('/admin/subscriptions/add', withQuery(
+      <AntApp>
+        <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the subscription form draws every section, the plan-owned hint and no raw key',
+    subscriptionFormHtml.includes('Add subscription') &&
+      subscriptionFormHtml.includes('Owner') &&
+      subscriptionFormHtml.includes('Tariff plan') &&
+      subscriptionFormHtml.includes('No tariff plan') &&
+      subscriptionFormHtml.includes('Services') &&
+      subscriptionFormHtml.includes('Output formats') &&
+      subscriptionFormHtml.includes('Limits') &&
+      subscriptionFormHtml.includes('Access') &&
+      subscriptionFormHtml.includes('Bouquets') &&
+      subscriptionFormHtml.includes('Generate') &&
+      subscriptionFormHtml.includes('Select all') &&
+      subscriptionFormHtml.includes('Clear') &&
+      // The add form opens with MAG and Enigma2 support available, so both MAC inputs are drawn.
+      subscriptionFormHtml.includes('MAG MAC address') &&
+      subscriptionFormHtml.includes('Enigma2 MAC address') &&
+      !subscriptionFormHtml.includes('subscriptionsForm.'),
+    `rendered ${subscriptionFormHtml.length} bytes`,
+  )
+
+  const subscriptionEditFormHtml = renderToStaticMarkup(
+    withRoutes('/admin/subscriptions/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/subscriptions/:id',
+        element: withQuery(
+          <AntApp>
+            <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+
+  check(
+    'the subscription edit form waits for the row before drawing the fields',
+    // The same loading state every edit form here draws: a spinner in a bare card, and no field
+    // painted from whatever the previous screen happened to hold.
+    subscriptionEditFormHtml.includes('ant-spin') &&
+      !subscriptionEditFormHtml.includes('MAG MAC address') &&
+      !subscriptionEditFormHtml.includes('Tariff plan'),
+    `rendered ${subscriptionEditFormHtml.length} bytes with the spinner up`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -2409,6 +2513,7 @@ async function main() {
     epgSourceChannelsHtml,
     bouquetsHtml,
     bouquetContentHtml,
+    subscriptionsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

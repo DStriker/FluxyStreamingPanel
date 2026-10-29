@@ -27,6 +27,7 @@ describe('groupKeyForPath', () => {
   it('names the category of each menu page', () => {
     expect(groupKeyForPath('Admin', '/admin/dashboard')).toBe('overview')
     expect(groupKeyForPath('Admin', '/admin/users')).toBe('users')
+    expect(groupKeyForPath('Admin', '/admin/subscriptions')).toBe('subscriptions')
     expect(groupKeyForPath('Admin', '/admin/video-streams/categories')).toBe('videoStreams')
     expect(groupKeyForPath('Client', '/client/sessions/active')).toBe('account')
   })
@@ -35,6 +36,8 @@ describe('groupKeyForPath', () => {
     // The edit forms are `extra` routes: the table's row action opens them, and a reload
     // there must still leave the category that contains their list expanded.
     expect(groupKeyForPath('Admin', '/admin/users/8f3c1e2a')).toBe('users')
+    // The subscription edit form is the same shape, and the subscriptions table owns it.
+    expect(groupKeyForPath('Admin', '/admin/subscriptions/8f3c1e2a')).toBe('subscriptions')
     expect(groupKeyForPath('Admin', '/admin/user-groups/add')).toBe('users')
     expect(groupKeyForPath('Admin', '/admin/video-streams/8f3c1e2a')).toBe('videoStreams')
   })

@@ -41,10 +41,14 @@ describe('ALL_PERMISSIONS', () => {
       // content kinds rather than a fifth kind, so it sits after them and after the guide.
       'viewBouquets',
       'editBouquets',
-      // The tariff plan pair closes the catalog: it is the price list the packages are sold
-      // under rather than a fifth package, so it sits after the bouquets.
+      // The tariff plan pair follows the bouquets: it is the price list the packages are sold
+      // under rather than a fifth package.
       'viewTariffPlans',
       'editTariffPlans',
+      // The subscription pair closes the catalog: a subscription is the row a plan is sold *as*,
+      // so it sits after the price list that decides what it delivers.
+      'viewSubscriptions',
+      'editSubscriptions',
     ])
   })
 })
@@ -110,6 +114,12 @@ describe('canViewAny / canEditAny', () => {
     // satisfy these gates either - the same rule the five resource pairs above follow.
     expect(canViewAny(['viewBouquets', 'editBouquets'])).toBe(false)
     expect(canEditAny(['viewBouquets', 'editBouquets'])).toBe(false)
+    // The plan and subscription pairs name the price list and the issued rows rather than accounts,
+    // so they must not satisfy these gates either.
+    expect(canViewAny(['viewTariffPlans', 'editTariffPlans'])).toBe(false)
+    expect(canEditAny(['viewTariffPlans', 'editTariffPlans'])).toBe(false)
+    expect(canViewAny(['viewSubscriptions', 'editSubscriptions'])).toBe(false)
+    expect(canEditAny(['viewSubscriptions', 'editSubscriptions'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

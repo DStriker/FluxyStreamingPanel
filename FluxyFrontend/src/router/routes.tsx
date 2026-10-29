@@ -161,6 +161,20 @@ const BouquetContentPage = lazy(() => import('../pages/admin/BouquetContentPage'
 const TariffPlanFormPage = lazy(() => import('../pages/admin/TariffPlanFormPage'))
 
 /**
+ * The subscription form, one component behind two addresses.
+ *
+ * `/admin/subscriptions/add` is a menu item (its label is the verb a visitor scans for, exactly
+ * like `usersAdd`), while `/admin/subscriptions/{id}` is an `extra` route with no menu item
+ * beside it - it is only ever reached by choosing a row to edit, and a third entry saying "edit"
+ * would be a page that is empty until you tell it *which*.
+ *
+ * A second `lazy()` over the same module as the `add` item, so a move between the two addresses
+ * remounts the form instead of carrying a half-filled one across - which is what you want when
+ * the owner underneath it just changed.
+ */
+const SubscriptionFormPage = lazy(() => import('../pages/admin/SubscriptionFormPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -431,6 +445,14 @@ export const routes: RouteObject[] = [
       {
         path: 'tariff-plans/:id',
         element: <TariffPlanFormPage sectionKey="nav.items.tariffPlans" />,
+      },
+      // The subscription form's edit address. `subscriptions/add` is a menu item and is a static
+      // segment, so react-router ranks it above `:id` - the same reason `users/add` can be a menu
+      // item while `users/:id` is not. This one has no menu item: it is reached only by choosing a
+      // row of the subscriptions table.
+      {
+        path: 'subscriptions/:id',
+        element: <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />,
       },
     ]),
   ),

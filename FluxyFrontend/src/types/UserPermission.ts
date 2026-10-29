@@ -1,7 +1,7 @@
 /**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These twenty strings are the whole catalog at the time of writing. They are a union rather
+ * These twenty-four strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,9 +16,9 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all twenty - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
+ * `Admin` for all twenty-four - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all twenty comes
+ * dropped on the way in rather than refused, which is why a Client group sent all twenty-four comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
  *
  * **The two stream permissions are the first pair that is not about accounts.**
@@ -56,6 +56,12 @@
  * pair is separate from the bouquet one because what a package costs and what a package
  * contains are decided by different jobs. The backend keeps them at 4194304 and 8388608.
  *
+ * **The subscription pair is the same question asked about the rows a plan is sold as.**
+ * `viewSubscriptions` and `editSubscriptions` gate the subscriptions table, its form and the
+ * seven bulk operations. A subscription is not a plan: a plan says what a subscriber may buy,
+ * while a subscription is one issued row that carries somebody's access, so pricing it and
+ * issuing it are two different jobs. The backend keeps them at 16777216 and 33554432.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -83,4 +89,6 @@ export type UserPermission =
   | 'editBouquets'
   | 'viewTariffPlans'
   | 'editTariffPlans'
+  | 'viewSubscriptions'
+  | 'editSubscriptions'
 

@@ -1,0 +1,859 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Checkbox,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Spin,
+  Typography,
+} from 'antd'
+import { useTranslation } from 'react-i18next'
+import {
+  PLAYLIST_ID_LENGTH,
+  SUBSCRIPTION_CONNECTIONS_MAX,
+  SUBSCRIPTION_CONNECTIONS_MIN,
+  WHITELIST_ENTRY_MAX_LENGTH,
+  WHITELIST_MAX_ENTRIES,
+  hasOutputFormat,
+  hasService,
+  isMac,
+  isPlaylistId,
+  isUsableConnections,
+} from '../../features/subscriptions/subscriptionRules'
+import type { SubscriptionValues } from '../../features/subscriptions/api'
+import {
+  SUBSCRIPTION_OUTPUT_FORMATS,
+  type SubscriptionOutputFormat,
+} from '../../features/subscriptions/types'
+import {
+  useCreateSubscription,
+  useGeneratePlaylistId,
+  useUpdateSubscription,
+} from '../../features/subscriptions/hooks/mutations'
+import { useSubscription } from '../../features/subscriptions/hooks/queries'
+import { useAllUsers } from '../../features/users/hooks/queries'
+import { useBouquets } from '../../features/bouquets/hooks/queries'
+import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
+import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
+import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
+import { areaForRole } from '../../utils/session'
+import { useSession } from '../../utils/sessionContext'
+
+/**
+ * The add form's starting content.
+ *
+ * Every dependent control starts on the answer the domain states: a subscription is not a trial,
+ * it delivers MPEG-TS, it is not pinned to a country or a provider, and it allows restreaming off.
+ * The connection ceiling starts empty, which is "unlimited" - a form that opened on zero would be
+ * a form whose first submit was a refusal.
+ */
+const CREATE_VALUES: SubscriptionValues = {
+  userId: null,
+  playlistId: null,
+  expireAt: null,
+  tariffPlanId: null,
+  clearTariffPlan: false,
+  maxConnections: null,
+  clearMaxConnections: false,
+  isRestreamer: false,
+  ipWhitelist: [],
+  userAgentWhitelist: [],
+  isIspLock: false,
+  isCountryLock: false,
+  isTrial: false,
+  outputFormats: ['mpegTs'],
+  magMac: null,
+  isStbLock: false,
+  enigma2Mac: null,
+  bouquetIds: [],
+}
+
+/** Every field this form draws, so a refusal can be cleared before the next attempt. */
+const FIELD_NAMES: readonly (keyof SubscriptionValues)[] = [
+  'userId',
+  'playlistId',
+  'expireAt',
+  'tariffPlanId',
+  'maxConnections',
+  'isRestreamer',
+  'ipWhitelist',
+  'userAgentWhitelist',
+  'isIspLock',
+  'isCountryLock',
+  'isTrial',
+  'outputFormats',
+  'magMac',
+  'isStbLock',
+  'enigma2Mac',
+  'bouquetIds',
+]
+
+interface SubscriptionFormPageProps {
+  /** The menu key this route carries, accepted and deliberately unread. */
+  sectionKey: string
+}
+
+/**
+ * The administrator's add and edit form for one subscription - one component behind two
+ * addresses, and every parameter on one screen.
+ *
+ * **The tariff plan owns what it owns.** While a plan is selected the dependent controls are
+ * disabled and not part of the save: the plan decides the connection ceiling, restreaming, formats,
+ * the device checks, the trial flag and which services are supported. Clearing the plan nulls the
+ * reference and re-activates the fields, opening them on what the row carries underneath.
+ *
+ * **Rules the server owns, mirrored here so the form refuses before the wire:** at least one
+ * service, at least one bouquet without a plan, at least one output format, a playlist id of 32
+ * lower-case hex characters, a MAC of six hex pairs, a connection ceiling of 1..10000, and
+ * whitelists of at most twenty entries.
+ *
+ * The form is fetched rather than passed in edit mode, for the reason every other edit form gives:
+ * a form painted from whatever the previous screen held would edit the wrong row after a reload.
+ * While the fetch is in flight the page is a spinner, which is the state `probe:render` asserts.
+ */
+export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) {
+  const { id } = useParams()
+  const isEdit = id !== undefined
+
+  const navigate = useNavigate()
+  const { t } = useTranslation()
+  const { message } = App.useApp()
+  const session = useSession()
+  const [form] = Form.useForm<SubscriptionValues>()
+
+  const detailQuery = useSubscription(id)
+  const detail = detailQuery.data ?? null
+  const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
+  const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
+
+  // The pickers, each behind its own grant and its own request: an operator who may issue a
+  // subscription but not read the accounts must still be able to save one.
+  const usersQuery = useAllUsers()
+  const plansQuery = useTariffPlans({
+    page: 1,
+    pageSize: 1000,
+    search: '',
+    sortBy: 'name',
+    sortOrder: 'asc',
+  })
+  const bouquetsQuery = useBouquets()
+
+  const usersError = usersQuery.isError ? messageForError(usersQuery.error) : null
+  const plansError = plansQuery.isError ? messageForError(plansQuery.error) : null
+  const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
+
+  const ownerOptions = useMemo(
+    () => (usersQuery.data?.items ?? []).map((user) => ({ value: user.id, label: user.username })),
+    [usersQuery.data],
+  )
+
+  const plans = plansQuery.data?.items ?? []
+
+  const bouquetOptions = useMemo(
+    () =>
+      (bouquetsQuery.data?.items ?? []).map((bouquet) => ({
+        value: bouquet.id,
+        label: bouquet.name,
+      })),
+    [bouquetsQuery.data],
+  )
+
+  const create = useCreateSubscription()
+  const update = useUpdateSubscription()
+  const generatePlaylistId = useGeneratePlaylistId()
+  const submitting = create.isPending || update.isPending
+
+  const [dirty, setDirty] = useState(false)
+  // The returned function is the deliberate-navigation bypass: the guard sees the form still dirty
+  // at the instant after a save, so the success path says that this move is intended.
+  const allowNavigation = useUnsavedChangesWarning(dirty)
+
+  const area = session ? areaForRole(session.role) : ''
+  const listPath = `${area}/subscriptions`
+
+  // Watched rather than read at submit time, because several controls exist only in relation to
+  // another one: a plan disables six fields, and a plan's support flags gate the three service
+  // inputs.
+  const tariffPlanId = Form.useWatch('tariffPlanId', form) ?? CREATE_VALUES.tariffPlanId
+
+  /** The plan the form currently has selected, or null when it has none. */
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.id === tariffPlanId) ?? null,
+    [plans, tariffPlanId],
+  )
+
+  /** Whether a plan is attached, which is what disables everything the plan owns. */
+  const planed = tariffPlanId !== null && tariffPlanId !== undefined
+
+  /**
+   * The effective support flags. While a plan is attached they are the plan's; without one, all
+   * three are available and it is the service inputs that decide.
+   */
+  const supportsPlaylist = !planed || (selectedPlan?.supportsM3u ?? false)
+  const supportsMag = !planed || (selectedPlan?.supportsMag ?? false)
+  const supportsEnigma2 = !planed || (selectedPlan?.supportsEnigma2 ?? false)
+
+  /**
+   * The form's values as the form currently holds them.
+   *
+   * Read through one helper because several controls are dropped on the way out: the dependent
+   * fields are not sent while a plan is attached, which is exactly what "the plan is the only
+   * source of truth" means on the wire.
+   */
+  const currentValues = (): SubscriptionValues => ({
+    ...CREATE_VALUES,
+    ...(form.getFieldsValue(true) as Partial<SubscriptionValues>),
+  })
+
+  const visibleValues = (): SubscriptionValues => {
+    const values = currentValues()
+
+    if (!planed) {
+      return { ...values, clearTariffPlan: false }
+    }
+
+    // The plan owns these, so the request must not carry them: a body that named them would be a
+    // body contradicting the plan, and the server would have to decide which to believe. The
+    // server drops them anyway; sending them would still be a lie about what the form asked for.
+    return {
+      ...values,
+      maxConnections: null,
+      clearMaxConnections: false,
+      isRestreamer: false,
+      ipWhitelist: values.ipWhitelist,
+      userAgentWhitelist: values.userAgentWhitelist,
+      isIspLock: values.isIspLock,
+      isTrial: false,
+      outputFormats: values.outputFormats,
+      isStbLock: false,
+      bouquetIds: values.bouquetIds,
+    }
+  }
+
+  useEffect(() => {
+    if (!detail) return
+
+    form.setFieldsValue({
+      userId: detail.userId,
+      playlistId: detail.playlistId,
+      expireAt: detail.expireAt === null ? null : detail.expireAt.slice(0, 10),
+      tariffPlanId: detail.tariffPlanId,
+      clearTariffPlan: false,
+      maxConnections: detail.maxConnections,
+      clearMaxConnections: false,
+      isRestreamer: detail.isRestreamer,
+      ipWhitelist: [...detail.ipWhitelist],
+      userAgentWhitelist: [...detail.userAgentWhitelist],
+      isIspLock: detail.isIspLock,
+      isCountryLock: detail.isCountryLock,
+      isTrial: detail.isTrial,
+      outputFormats: [...detail.outputFormats],
+      magMac: detail.magMac,
+      isStbLock: detail.isStbLock,
+      enigma2Mac: detail.enigma2Mac,
+      bouquetIds: [...detail.bouquetIds],
+    })
+  }, [detail, form])
+
+  /**
+   * The add form opens with every bouquet preselected.
+   *
+   * Once, and only while the field is still untouched: the server applies the same default to a
+   * body that names none, and opening the form on it means the operator sees what the create would
+   * do before they touch anything. An operator who cleared the picker must not have it refilled the
+   * moment the bouquet list re-rendered.
+   */
+  const [bouquetsApplied, setBouquetsApplied] = useState(false)
+
+  useEffect(() => {
+    if (isEdit || bouquetsApplied || planed || bouquetOptions.length === 0) return
+
+    setBouquetsApplied(true)
+
+    if ((form.getFieldValue('bouquetIds') as string[] | undefined)?.length) return
+
+    form.setFieldValue(
+      'bouquetIds',
+      bouquetOptions.map((option) => option.value),
+    )
+  }, [isEdit, bouquetsApplied, planed, bouquetOptions, form])
+
+  /**
+   * Minting a playlist id on the create form when the plan supports playlists and nothing else.
+   *
+   * The rule the specification states as "auto-generated on creation only when the selected plan
+   * supports playlists and nothing else" - because in that case the playlist is the only service
+   * the plan can deliver, and an operator who has to press a button to get the one service they
+   * could possibly have is being asked to do the server's job.
+   */
+  const [minted, setMinted] = useState(false)
+
+  useEffect(() => {
+    if (isEdit || minted || !selectedPlan) return
+    if (!selectedPlan.supportsM3u || selectedPlan.supportsMag || selectedPlan.supportsEnigma2) return
+    if ((form.getFieldValue('playlistId') as string | null | undefined) !== null) return
+
+    setMinted(true)
+
+    void generatePlaylistId
+      .mutateAsync({})
+      .then((answer) => {
+        form.setFieldValue('playlistId', answer.playlistId)
+        setDirty(true)
+      })
+      .catch(() => {
+        // A generator that could not answer is not a reason to block the form: the operator can
+        // still press "generate" themselves, and the field accepts a pasted identifier.
+      })
+  }, [isEdit, minted, selectedPlan, form, generatePlaylistId])
+
+  /** Mints a fresh playlist id and puts it in the field. */
+  const generatePlaylist = () => {
+    void generatePlaylistId
+      .mutateAsync({})
+      .then((answer) => {
+        form.setFieldValue('playlistId', answer.playlistId)
+        setDirty(true)
+      })
+      .catch((error) => void message.error(messageForError(error)))
+  }
+
+  const handleFinish = async (values: SubscriptionValues) => {
+    form.setFields(FIELD_NAMES.map((name) => ({ name, errors: [] })))
+
+    const body = visibleValues()
+
+    try {
+      const answer = isEdit
+        ? await update.mutateAsync({ id: id!, values: body })
+        : await create.mutateAsync({ values: { ...body, userId: values.userId } })
+
+      message.success(successTextFor(answer))
+      setDirty(false)
+      allowNavigation()
+      navigate(listPath)
+    } catch (error) {
+      const fields = fieldErrors(error instanceof ApiError ? error.errors : null)
+      if (fields.length > 0)
+        form.setFields(
+          fields.map((field) => ({
+            name: field.name as keyof SubscriptionValues,
+            errors: field.errors,
+          })),
+        )
+      message.error(messageForError(error))
+    }
+  }
+
+  /** Chooses every bouquet of one picker, or clears it. */
+  const setAllBouquets = (choose: boolean) => {
+    form.setFieldValue(
+      'bouquetIds',
+      choose ? bouquetOptions.map((option) => option.value) : [],
+    )
+    setDirty(true)
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <Spin />
+      </Card>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Card>
+        <Alert
+          type="error"
+          showIcon
+          message={loadError}
+          action={<Button onClick={() => navigate(listPath)}>{t('subscriptions.backToList')}</Button>}
+        />
+      </Card>
+    )
+  }
+
+  return (
+    <Card title={t(isEdit ? 'subscriptions.editTitle' : 'subscriptions.addTitle')}>
+      <Form<SubscriptionValues>
+        form={form}
+        layout="vertical"
+        initialValues={CREATE_VALUES}
+        onFinish={handleFinish}
+        onValuesChange={() => setDirty(true)}
+        style={{ maxWidth: 720 }}
+      >
+        {detail && (
+          <Form.Item label={t('subscriptionsForm.idLabel')}>
+            {/* No `name`: layout only, so the identifier is never part of the body. */}
+            <Typography.Text code copyable={{ text: detail.id }}>
+              {detail.id}
+            </Typography.Text>
+          </Form.Item>
+        )}
+
+        <Divider titlePlacement="start" style={{ marginTop: 0 }}>
+          {t('subscriptionsForm.ownerSection')}
+        </Divider>
+
+        {/* The owner is chosen only on create: it never changes after the subscription is issued,
+            and the server ignores the field on a change. `planAvailableToOwner` re-filters the
+            plan list when the owner is chosen, because a plan is only attachable while its groups
+            include the owner's. */}
+        <Form.Item
+          name="userId"
+          label={t('subscriptionsForm.ownerLabel')}
+          rules={
+            isEdit
+              ? []
+              : [
+                  {
+                    required: true,
+                    message: t('subscriptionsForm.ownerRequired'),
+                  },
+                ]
+          }
+          extra={usersError ?? t('subscriptionsForm.ownerHint')}
+          validateStatus={usersError ? 'warning' : undefined}
+        >
+          <Select
+            showSearch
+            disabled={isEdit || usersError !== null}
+            options={ownerOptions}
+            placeholder={t('subscriptionsForm.ownerLabel')}
+            optionFilterProp="label"
+            onChange={() => {
+              // A plan the new owner may not have must not stay selected: the server would refuse
+              // the save, and the refusal would look like a bug in the form.
+              form.setFieldValue('tariffPlanId', null)
+            }}
+          />
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.planSection')}</Divider>
+
+        <Form.Item
+          name="tariffPlanId"
+          label={t('subscriptionsForm.planLabel')}
+          extra={plansError ?? t('subscriptionsForm.planHint')}
+          validateStatus={plansError ? 'warning' : undefined}
+        >
+          <Select
+            allowClear
+            showSearch
+            disabled={plansError !== null}
+            options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
+            placeholder={t('subscriptionsForm.planNone')}
+            optionFilterProp="label"
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="expireAt"
+          label={t('subscriptionsForm.expiryLabel')}
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.expiryHint')}
+        >
+          {/* A date input rather than a picker dependency: the value travels as `yyyy-MM-dd`, and
+              a native date field is the smallest control that produces that string in the
+              browser's own language. Disabled while a plan is attached, because the plan computes
+              the expiry from the creation date. */}
+          <Input type="date" disabled={planed} />
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.servicesSection')}</Divider>
+
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          {t('subscriptionsForm.servicesHint')}
+        </Typography.Paragraph>
+
+        {/* The three service inputs. Each is disabled when the effective plan does not support that
+            kind, and the refusal belongs under the set rather than under one of them. */}
+        <Form.Item
+          name="playlistId"
+          label={t('subscriptionsForm.playlistIdLabel')}
+          dependencies={['magMac', 'enigma2Mac']}
+          rules={[
+            {
+              validator: (_, value: string | null | undefined) => {
+                if (value !== null && value !== undefined && value !== '' && !isPlaylistId(value)) {
+                  return Promise.reject(new Error(t('subscriptionsForm.playlistIdInvalid')))
+                }
+
+                return serviceOrRefusal(form, supportsPlaylist, supportsMag, supportsEnigma2, t)
+              },
+            },
+          ]}
+          extra={t('subscriptionsForm.playlistIdHint')}
+        >
+          <Space.Compact style={{ width: '100%' }}>
+            <Input
+              disabled={!supportsPlaylist}
+              maxLength={PLAYLIST_ID_LENGTH}
+              style={{ fontFamily: 'monospace' }}
+            />
+            <Button
+              disabled={!supportsPlaylist || generatePlaylistId.isPending}
+              loading={generatePlaylistId.isPending}
+              onClick={generatePlaylist}
+            >
+              {t('subscriptionsForm.generatePlaylistId')}
+            </Button>
+          </Space.Compact>
+        </Form.Item>
+
+        <Form.Item
+          name="magMac"
+          label={t('subscriptionsForm.magLabel')}
+          dependencies={['playlistId', 'enigma2Mac']}
+          rules={[
+            {
+              validator: (_, value: string | null | undefined) => {
+                if (value !== null && value !== undefined && value !== '' && !isMac(value)) {
+                  return Promise.reject(new Error(t('subscriptionsForm.magInvalid')))
+                }
+
+                return serviceOrRefusal(form, supportsPlaylist, supportsMag, supportsEnigma2, t)
+              },
+            },
+          ]}
+          extra={
+            supportsMag
+              ? t('subscriptionsForm.magHint')
+              : t('subscriptionsForm.magNeedsPlanSupport')
+          }
+        >
+          <Input disabled={!supportsMag} placeholder="AA:BB:CC:DD:EE:FF" />
+        </Form.Item>
+
+        <Form.Item
+          name="enigma2Mac"
+          label={t('subscriptionsForm.enigma2Label')}
+          dependencies={['playlistId', 'magMac']}
+          rules={[
+            {
+              validator: (_, value: string | null | undefined) => {
+                if (value !== null && value !== undefined && value !== '' && !isMac(value)) {
+                  return Promise.reject(new Error(t('subscriptionsForm.enigma2Invalid')))
+                }
+
+                return serviceOrRefusal(form, supportsPlaylist, supportsMag, supportsEnigma2, t)
+              },
+            },
+          ]}
+          extra={
+            supportsEnigma2
+              ? t('subscriptionsForm.enigma2Hint')
+              : t('subscriptionsForm.enigma2NeedsPlanSupport')
+          }
+        >
+          <Input disabled={!supportsEnigma2} placeholder="AA:BB:CC:DD:EE:FF" />
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.formatsSection')}</Divider>
+
+        <Form.Item
+          name="outputFormats"
+          label={t('subscriptionsForm.formatsSection')}
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.formatsHint')}
+          rules={[
+            {
+              validator: (_, value: SubscriptionOutputFormat[] | undefined) =>
+                hasOutputFormat(value ?? [])
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('subscriptionsForm.formatsRequired'))),
+            },
+          ]}
+        >
+          <Checkbox.Group
+            disabled={planed}
+            options={SUBSCRIPTION_OUTPUT_FORMATS.map((format) => ({
+              value: format,
+              label: t(`subscriptionsForm.formats.${format}`),
+            }))}
+          />
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.limitsSection')}</Divider>
+
+        <Form.Item
+          name="maxConnections"
+          label={t('subscriptionsForm.maxConnectionsLabel')}
+          extra={
+            planed
+              ? t('subscriptionsForm.planOwnedHint')
+              : t('subscriptionsForm.maxConnectionsHint', {
+                  min: SUBSCRIPTION_CONNECTIONS_MIN,
+                  max: SUBSCRIPTION_CONNECTIONS_MAX,
+                })
+          }
+          rules={[
+            {
+              validator: (_, value: number | null | undefined) =>
+                isUsableConnections(value ?? null)
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('subscriptionsForm.maxConnectionsRequired'))),
+            },
+          ]}
+        >
+          <InputNumber
+            min={SUBSCRIPTION_CONNECTIONS_MIN}
+            max={SUBSCRIPTION_CONNECTIONS_MAX}
+            precision={0}
+            disabled={planed}
+            style={{ width: 220 }}
+            placeholder={t('subscriptionsForm.unlimitedConnections')}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="isRestreamer"
+          valuePropName="checked"
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.restreamHint')}
+        >
+          <Checkbox disabled={planed}>{t('subscriptionsForm.restreamLabel')}</Checkbox>
+        </Form.Item>
+
+        <Form.Item
+          name="isStbLock"
+          valuePropName="checked"
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.stbLockHint')}
+        >
+          <Checkbox disabled={planed || !supportsMag}>
+            {t('subscriptionsForm.stbLockLabel')}
+          </Checkbox>
+        </Form.Item>
+
+        <Form.Item
+          name="isCountryLock"
+          valuePropName="checked"
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.countryLockHint')}
+        >
+          <Checkbox disabled={planed}>{t('subscriptionsForm.countryLockLabel')}</Checkbox>
+        </Form.Item>
+
+        {/* The provider lock is not a plan-derived field, so it is never disabled by a plan. */}
+        <Form.Item
+          name="isIspLock"
+          valuePropName="checked"
+          extra={t('subscriptionsForm.ispLockHint')}
+        >
+          <Checkbox>{t('subscriptionsForm.ispLockLabel')}</Checkbox>
+        </Form.Item>
+
+        <Form.Item
+          name="isTrial"
+          valuePropName="checked"
+          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.trialHint')}
+        >
+          <Checkbox disabled={planed}>{t('subscriptionsForm.trialLabel')}</Checkbox>
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.accessSection')}</Divider>
+
+        <Form.Item
+          name="ipWhitelist"
+          label={t('subscriptionsForm.ipWhitelistLabel')}
+          extra={t('subscriptionsForm.ipWhitelistHint', { max: WHITELIST_MAX_ENTRIES })}
+          rules={[
+            {
+              validator: (_, value: string[] | undefined) => {
+                const entries = (value ?? []).filter((entry) => entry.trim().length > 0)
+
+                if (entries.length > WHITELIST_MAX_ENTRIES) {
+                  return Promise.reject(
+                    new Error(
+                      t('subscriptionsForm.ipWhitelistHint', { max: WHITELIST_MAX_ENTRIES }),
+                    ),
+                  )
+                }
+
+                const parsed = entries.every((entry) => isIpEntry(entry))
+
+                return parsed
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('subscriptionsForm.ipWhitelistInvalid')))
+              },
+            },
+          ]}
+        >
+          <Select mode="tags" open={false} suffixIcon={null} placeholder="192.168.1.0/24" />
+        </Form.Item>
+
+        <Form.Item
+          name="userAgentWhitelist"
+          label={t('subscriptionsForm.userAgentWhitelistLabel')}
+          extra={t('subscriptionsForm.userAgentWhitelistHint', { max: WHITELIST_MAX_ENTRIES })}
+          rules={[
+            {
+              validator: (_, value: string[] | undefined) => {
+                const entries = (value ?? []).filter((entry) => entry.trim().length > 0)
+
+                if (entries.length > WHITELIST_MAX_ENTRIES) {
+                  return Promise.reject(
+                    new Error(
+                      t('subscriptionsForm.userAgentWhitelistHint', {
+                        max: WHITELIST_MAX_ENTRIES,
+                      }),
+                    ),
+                  )
+                }
+
+                const valid = entries.every(
+                  (entry) => entry.length > 0 && entry.length <= WHITELIST_ENTRY_MAX_LENGTH,
+                )
+
+                return valid
+                  ? Promise.resolve()
+                  : Promise.reject(
+                      new Error(
+                        t('subscriptionsForm.userAgentWhitelistInvalid', {
+                          max: WHITELIST_ENTRY_MAX_LENGTH,
+                        }),
+                      ),
+                    )
+              },
+            },
+          ]}
+        >
+          <Select mode="tags" open={false} suffixIcon={null} placeholder="Mozilla/5.0" />
+        </Form.Item>
+
+        <Divider titlePlacement="start">{t('subscriptionsForm.contentSection')}</Divider>
+
+        <Form.Item
+          name="bouquetIds"
+          label={t('subscriptionsForm.bouquetsLabel')}
+          rules={[
+            {
+              validator: (_, value: string[] | undefined) => {
+                // With a plan the plan's bouquets are delivered, so this list is not required and
+                // not read; without one it is the subscription's whole content.
+                if (planed) return Promise.resolve()
+
+                return value !== undefined && value.length > 0
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('subscriptionsForm.bouquetsRequired')))
+              },
+            },
+          ]}
+          extra={bouquetsError ?? t('subscriptionsForm.bouquetsHint')}
+          validateStatus={bouquetsError ? 'warning' : undefined}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            disabled={planed || bouquetsError !== null}
+            options={bouquetOptions}
+            placeholder={t('subscriptionsForm.bouquetsPlaceholder')}
+            optionFilterProp="label"
+            maxTagCount="responsive"
+          />
+        </Form.Item>
+
+        <Form.Item style={{ marginTop: -8 }}>
+          <Space size={8}>
+            <Button
+              size="small"
+              disabled={planed || bouquetsError !== null || bouquetOptions.length === 0}
+              onClick={() => setAllBouquets(true)}
+            >
+              {t('subscriptionsForm.selectAll')}
+            </Button>
+            <Button
+              size="small"
+              disabled={planed || bouquetsError !== null}
+              onClick={() => setAllBouquets(false)}
+            >
+              {t('subscriptionsForm.clear')}
+            </Button>
+          </Space>
+        </Form.Item>
+
+        {bouquetsError && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={bouquetsError}
+            description={t('subscriptionsForm.bouquetsUnavailable')}
+          />
+        )}
+
+        <Form.Item style={{ marginTop: 24 }}>
+          <Space>
+            <Button type="primary" htmlType="submit" loading={submitting}>
+              {t(isEdit ? 'subscriptions.save' : 'subscriptions.create')}
+            </Button>
+            <Button disabled={submitting} onClick={() => navigate(listPath)}>
+              {t('subscriptions.backToList')}
+            </Button>
+          </Space>
+        </Form.Item>
+      </Form>
+    </Card>
+  )
+}
+
+/**
+ * The minimum-one-service rule, as a validator.
+ *
+ * It reads the three service fields together, because they answer one question between them and
+ * antd only re-checks the field that changed. The effective support flags matter: the server
+ * *clears* a service the plan cannot deliver, so a row whose only service is unsupported holds
+ * nothing once the save runs.
+ */
+function serviceOrRefusal(
+  form: ReturnType<typeof Form.useForm<SubscriptionValues>>[0],
+  supportsPlaylist: boolean,
+  supportsMag: boolean,
+  supportsEnigma2: boolean,
+  t: (key: string) => string,
+): Promise<void> {
+  const values = form.getFieldsValue(['playlistId', 'magMac', 'enigma2Mac']) as {
+    playlistId?: string | null
+    magMac?: string | null
+    enigma2Mac?: string | null
+  }
+
+  const present = (value: string | null | undefined): string | null =>
+    value === undefined || value === null || value.trim().length === 0 ? null : value
+
+  return hasService({
+    playlistId: present(values.playlistId),
+    magMac: present(values.magMac),
+    enigma2Mac: present(values.enigma2Mac),
+    supportsPlaylist,
+    supportsMag,
+    supportsEnigma2,
+  })
+    ? Promise.resolve()
+    : Promise.reject(new Error(t('subscriptionsForm.servicesRequired')))
+}
+
+/**
+ * Whether a whitelist entry is an IP address or a CIDR range.
+ *
+ * A shape check rather than a parser: the browser has no address type, and the server's own
+ * normalizer is the authority. What this catches is the typo a form can catch - a value with no
+ * dots or colons in it - so the operator learns before the wire instead of after.
+ */
+function isIpEntry(value: string): boolean {
+  const trimmed = value.trim()
+  const [address, prefix] = trimmed.split('/')
+
+  if (prefix !== undefined && !/^\d{1,3}$/.test(prefix)) return false
+
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(address ?? '')) return true
+
+  return /^[0-9a-f]*:[0-9a-f:]*$/i.test(address ?? '') && (address ?? '').includes(':')
+}

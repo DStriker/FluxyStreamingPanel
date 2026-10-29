@@ -191,10 +191,14 @@ const en = {
       // adding a subscription first, then the lists of what a subscriber holds, and the price
       // list last. The plan entry names its object as well as its list, because "Tariff plans"
       // under "Subscriptions" is one product described twice rather than a heading with no door.
+      // The subscriptions section. The first is the form that issues a subscription, the
+      // second is the list that draws every one of them with its service subrows and the price
+      // list after them. The three placeholder entries the section used to carry - playlists,
+      // MAG devices and Enigma2 devices - are gone: each of those is a field of a row on the
+      // management list, and a second screen for one field would be a second place for the same
+      // fact to disagree with itself.
       subscriptionsAdd: 'Add',
-      subscriptionsPlaylists: 'Playlists',
-      subscriptionsMagDevices: 'MAG devices',
-      subscriptionsEnigma2Devices: 'Enigma2 devices',
+      subscriptionsManage: 'Manage',
       tariffPlans: 'Tariff plans',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
@@ -2019,6 +2023,198 @@ const en = {
     bouquetsRequired: 'Choose at least one bouquet.',
     bouquetsUnavailable:
       'The bouquets could not be read, so this picker offers nothing. The rest of the form still saves.',
+    selectAll: 'Select all',
+    clear: 'Clear',
+  },
+  // The subscriptions: the rows an operator issues to a user. A block of its own rather than
+  // part of `tariffPlans`, because a plan says what a subscriber may buy and a subscription is
+  // one issued row that carries somebody's access.
+  subscriptions: {
+    listTitle: 'Subscriptions',
+    addTitle: 'Add subscription',
+    editTitle: 'Edit subscription',
+    create: 'Create',
+    save: 'Save',
+    backToList: 'Back to the list',
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by playlist id or MAC',
+    searchPlaceholder: 'Playlist id or MAC',
+    // The three filters.
+    filterAnyStatus: 'Any status',
+    filterAnyOwner: 'Any owner',
+    filterAnyCreator: 'Any issuer',
+    columns: {
+      name: 'Subscription',
+      expiry: 'Expires',
+      connections: 'Max connections',
+      creator: 'Issued by',
+      actions: 'Actions',
+    },
+    // The status tags. Short words: the tag sits inside a two-line name cell.
+    statuses: {
+      active: 'Active',
+      trial: 'Trial',
+      blocked: 'Blocked',
+      expired: 'Expired',
+    },
+    // The two "no plan" and "no date" answers the table draws rather than a blank.
+    noPlan: 'No tariff plan',
+    neverExpires: 'never',
+    unlimited: 'unlimited',
+    noCreator: 'deleted account',
+    actions: {
+      edit: 'Edit',
+      killConnections: 'Kill active connections (not available yet)',
+      blockOwner: 'Block the owner',
+      delete: 'Delete',
+    },
+    // The service subrows. Each strip names the service it is about, then its actions.
+    services: {
+      playlist: 'Playlist',
+      mag: 'MAG',
+      enigma2: 'Enigma2',
+      copy: 'Copy',
+      copied: 'Copied',
+      regenerate: 'Regenerate',
+      change: 'Change',
+      delete: 'Delete',
+      addPlaylist: 'Generate a playlist',
+      addMag: 'Add MAG',
+      addEnigma2: 'Add Enigma2',
+    },
+    // The small dialog that changes a MAC in place.
+    changeMacTitle: 'Change the MAC address',
+    changeMacLabel: 'MAC address',
+    changeMacRequired: 'Enter a MAC address.',
+    changeMacInvalid: 'Six pairs of hexadecimal digits, with ":" or "-" between them.',
+    changeMacOk: 'Save',
+    // The playlist id preview, used by both the form and the regenerate action.
+    generatePlaylist: 'Generate a playlist id',
+    regeneratePlaylist: 'Regenerate',
+    playlistIdLabel: 'Playlist id',
+    deleteConfirmTitle: 'Delete this subscription?',
+    deleteConfirmBody:
+      'The subscription of "{{name}}" and everything it carries will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+    blockOwnerConfirmTitle: 'Block the owner?',
+    blockOwnerConfirmBody:
+      'The account of "{{name}}" will be blocked and every one of its sessions ended. Its subscriptions will read blocked.',
+    blockOwnerConfirmOk: 'Block',
+    empty: 'No subscriptions yet.',
+    noMatches: 'No subscription matches this filter.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded exactly as the streams table's.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The bulk menu's entry names and the dialogs behind the two that ask for a value.
+    bulk: {
+      menu: 'Bulk actions',
+      menuWithCount: 'Bulk actions ({{count}})',
+      changeTariff: 'Change the tariff plan',
+      changeCreator: 'Change the issuer',
+      delete: 'Delete',
+      deletePlaylist: 'Clear the playlist',
+      deleteMag: 'Clear the MAC addresses',
+      deleteEnigma2: 'Clear the Enigma2 devices',
+      blockOwner: 'Block the owners',
+      apply: 'Apply',
+      changeTariffTitle: 'Change the tariff plan',
+      changeTariffPlaceholder: 'Choose a tariff plan',
+      changeTariffHint:
+        'Services the new plan does not deliver are cleared, and each clearance is reported.',
+      changeCreatorTitle: 'Change the issuer',
+      changeCreatorPlaceholder: 'Choose an administrator or a reseller',
+      deleteTitle: 'Delete {{count}} subscriptions?',
+      deleteBody: 'Every selected subscription and everything it carries will be removed.',
+      deletePlaylistTitle: 'Clear the playlist of {{count}} subscriptions?',
+      deletePlaylistBody: 'A subscription whose only service is its playlist is refused.',
+      deleteMagTitle: 'Clear the MAC addresses of {{count}} subscriptions?',
+      deleteMagBody: 'A subscription whose only service is its MAG is refused.',
+      deleteEnigma2Title: 'Clear the Enigma2 devices of {{count}} subscriptions?',
+      deleteEnigma2Body: 'A subscription whose only service is its Enigma2 device is refused.',
+      blockOwnerTitle: 'Block the owner of {{count}} subscriptions?',
+      blockOwnerBody: 'Each account is blocked and its sessions ended. Your own is refused.',
+      partialTitle: 'Changed {{done}} of {{total}}. Some rows were refused:',
+    },
+  },
+  // The add and edit form for one subscription. Its own block because the table names what a row
+  // is and the form names what an operator is being asked to type.
+  subscriptionsForm: {
+    idLabel: 'ID',
+    ownerSection: 'Owner',
+    ownerLabel: 'Owner',
+    ownerRequired: 'Choose the owner.',
+    ownerHint: "The owner is chosen once and never changes after the subscription is issued.",
+    planSection: 'Tariff plan',
+    planLabel: 'Tariff plan',
+    planNone: 'No tariff plan',
+    planHint:
+      "A plan decides the connection ceiling, restreaming, formats, the device checks and the expiry. Leave it empty to set those here.",
+    planUnavailable: 'The plans could not be read, so this picker offers nothing to pick.',
+    expiryLabel: 'Expires',
+    expiryHint:
+      "With a plan the expiry is its creation date plus the plan's length. Without one, leave it empty for \"never\".",
+    servicesSection: 'Services',
+    servicesHint: 'A subscription has to deliver at least one service.',
+    servicesRequired: 'Choose at least one service.',
+    playlistIdLabel: 'Playlist id',
+    playlistIdHint:
+      '32 lower-case hexadecimal characters. Generate one, or paste an identifier from another system.',
+    playlistIdInvalid: '32 lower-case hexadecimal characters.',
+    generatePlaylistId: 'Generate',
+    regeneratePlaylistId: 'Regenerate',
+    magLabel: 'MAG MAC address',
+    magHint: 'Six pairs of hexadecimal digits.',
+    magNeedsPlanSupport: 'The selected plan does not deliver to MAG devices.',
+    magInvalid: 'Six pairs of hexadecimal digits, with ":" or "-" between them.',
+    enigma2Label: 'Enigma2 MAC address',
+    enigma2Hint: 'Six pairs of hexadecimal digits.',
+    enigma2NeedsPlanSupport: 'The selected plan does not deliver to Enigma2 devices.',
+    enigma2Invalid: 'Six pairs of hexadecimal digits, with ":" or "-" between them.',
+    formatsSection: 'Output formats',
+    formatsRequired: 'Choose at least one format.',
+    formatsHint: 'A subscription has to be delivered in at least one format.',
+    // The two format boxes, named exactly as the server names them.
+    formats: {
+      mpegTs: 'MPEG-TS',
+      hls: 'HLS',
+    },
+    limitsSection: 'Limits',
+    maxConnectionsLabel: 'Maximum connections',
+    maxConnectionsRequired: 'Enter the number of connections.',
+    maxConnectionsHint: 'Between {{min}} and {{max}}. Leave it empty for unlimited.',
+    unlimitedConnections: 'Unlimited',
+    restreamLabel: 'Allow restreaming',
+    restreamHint: 'Whether the subscriber may relay the subscription through their own servers.',
+    stbLockLabel: 'Enforce the STB device id strictly',
+    stbLockHint: 'Only a MAG device carries an STB identifier.',
+    countryLockLabel: 'Pin to one country',
+    countryLockHint: "Whether the subscription may only be watched from the owner's country.",
+    ispLockLabel: 'Pin to one provider',
+    ispLockHint: "Whether the subscription may only be watched from the owner's provider.",
+    trialLabel: 'Trial subscription',
+    trialHint: 'Whether the subscription is a trial rather than a paid one.',
+    accessSection: 'Access',
+    ipWhitelistLabel: 'Allowed IP addresses',
+    ipWhitelistHint:
+      'Up to {{max}} addresses or CIDR ranges, IPv4 or IPv6. Empty means no restriction.',
+    ipWhitelistInvalid: 'Every entry must be an IP address or a CIDR range.',
+    userAgentWhitelistLabel: 'Allowed user agents',
+    userAgentWhitelistHint: 'Up to {{max}} entries of free text. Empty means no restriction.',
+    userAgentWhitelistInvalid: 'Every entry must be between 1 and {{max}} characters.',
+    contentSection: 'Bouquets',
+    bouquetsLabel: 'Bouquets in the subscription',
+    bouquetsPlaceholder: 'Choose the bouquets',
+    bouquetsHint:
+      "Used only while no tariff plan is attached. With a plan the plan's bouquets are delivered instead.",
+    bouquetsRequired: 'Choose at least one bouquet.',
+    bouquetsUnavailable:
+      'The bouquets could not be read, so this picker offers nothing. The rest of the form still saves.',
+    // The sentence that explains a disabled control while a plan is attached.
+    planOwnedHint: 'The selected tariff plan decides this field.',
     selectAll: 'Select all',
     clear: 'Clear',
   },

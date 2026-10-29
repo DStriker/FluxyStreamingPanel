@@ -1,5 +1,5 @@
 import { Table } from 'antd'
-import type { TableColumnsType, TablePaginationConfig } from 'antd'
+import type { TableColumnsType, TablePaginationConfig, TableProps } from 'antd'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Key } from 'react'
 import type { useServerTable } from '../../hooks/table'
@@ -71,6 +71,15 @@ interface ServerTableProps<Row extends object, SortField extends string> {
   showTotal: NonNullable<TablePaginationConfig['showTotal']>
   /** The selection, for the tables with checkboxes. Its column is added to `scroll.x` here. */
   selection?: ServerTableSelection
+  /**
+   * The expandable rows configuration, passed through untouched.
+   *
+   * It exists for exactly one table: the subscriptions page draws its service subrows as
+   * **forced-open** expanded rows - every row expanded, no chevron and no interaction - which is
+   * the one way to render a strip of subrows below a row without injecting `<tr>`s into antd's
+   * own body. Every other table leaves this undefined and draws no expand column at all.
+   */
+  expandable?: TableProps<Row>['expandable']
 }
 
 /**
@@ -118,6 +127,7 @@ export default function ServerTable<Row extends object, SortField extends string
   emptyText,
   showTotal,
   selection,
+  expandable,
 }: ServerTableProps<Row, SortField>) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [boxWidth, setBoxWidth] = useState<number | null>(null)
@@ -253,6 +263,7 @@ export default function ServerTable<Row extends object, SortField extends string
         }
         scroll={{ x: fittedWidth + selectionWidth }}
         onChange={table.handleTableChange}
+        expandable={expandable}
         locale={{ emptyText }}
         pagination={{
           ...table.pagination,

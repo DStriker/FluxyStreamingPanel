@@ -6,7 +6,6 @@ import {
   CreditCardOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
-  DesktopOutlined,
   GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
@@ -20,7 +19,6 @@ import {
   TagsOutlined,
   TeamOutlined,
   UnorderedListOutlined,
-  UsbOutlined,
   UserAddOutlined,
   UserOutlined,
   VideoCameraOutlined,
@@ -420,14 +418,14 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       // below it - the content sections, the bouquets and the guide - is what a subscription
       // delivers rather than what a subscriber pays.
       //
-      // Four of its five entries are placeholders today, and that is deliberate rather than an
-      // oversight: the rail shows the whole shape of the section the owner described, and the
-      // items without a page draw `SectionPage` - the same honesty the account rail's own
-      // placeholders have always had. Only the tariff plans are a real screen so far.
+      // The section has two entries now: the management list, which draws every subscription
+      // with its service subrows, and the add form. The three placeholders it used to carry -
+      // playlists, MAG devices and Enigma2 devices - are gone, because the subrows of the
+      // management list are where each of those is managed: a second screen for one field of a
+      // row would be a second place for the same fact to disagree with itself.
       //
-      // The order is the owner's: adding a subscription first, then the lists of the things a
-      // subscriber holds, and the price list last - the same "create before manage" order the
-      // accounts section follows.
+      // The order is the owner's: adding a subscription first, then the list, and the price list
+      // last - the same "create before manage" order the accounts section follows.
       key: 'subscriptions',
       labelKey: 'nav.groups.subscriptions',
       icon: CreditCardOutlined,
@@ -437,24 +435,14 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: 'subscriptions/add',
           labelKey: 'nav.items.subscriptionsAdd',
           icon: PlusOutlined,
+          page: () => import('../pages/admin/SubscriptionFormPage'),
         },
         {
-          key: 'subscriptionsPlaylists',
-          path: 'subscriptions/playlists',
-          labelKey: 'nav.items.subscriptionsPlaylists',
-          icon: UnorderedListOutlined,
-        },
-        {
-          key: 'subscriptionsMagDevices',
-          path: 'subscriptions/mag-devices',
-          labelKey: 'nav.items.subscriptionsMagDevices',
-          icon: UsbOutlined,
-        },
-        {
-          key: 'subscriptionsEnigma2Devices',
-          path: 'subscriptions/enigma2-devices',
-          labelKey: 'nav.items.subscriptionsEnigma2Devices',
-          icon: DesktopOutlined,
+          key: 'subscriptionsManage',
+          path: 'subscriptions',
+          labelKey: 'nav.items.subscriptionsManage',
+          icon: TableOutlined,
+          page: () => import('../pages/admin/SubscriptionsPage'),
         },
         {
           // The price list. Its add form and its edit form are addresses with no item of their
