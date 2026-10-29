@@ -58,6 +58,10 @@ namespace Fluxy.API.Controllers.Subscriptions
         private const string IdentifierHint =
             "That value must be the identifier of the item it names, as a uuid.";
 
+        /// <summary>Sentence a create with no owner gets.</summary>
+        private const string OwnerHint =
+            "The owner must be the identifier of an account, as a uuid.";
+
         /// <summary>Sentence a date that is not <c>yyyy-MM-dd</c> gets.</summary>
         private const string ExpireAtHint = "The expiry must be a date written as yyyy-MM-dd.";
 
@@ -228,6 +232,18 @@ namespace Fluxy.API.Controllers.Subscriptions
             var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
             var owner = ParseIdentifier(request.UserId, nameof(request.UserId), errors);
+
+            // A create must name an owner, and `ParseIdentifier` answers null for a blank value
+            // *without* recording an error - deliberately, because its other callers treat a blank
+            // as "not named" (the list filters, the update's plan). A create has no "not named"
+            // state: a subscription without an owner is a row nobody can be told about, so the
+            // refusal is recorded here rather than letting the null reach `owner!.Value` and fail
+            // as a 500.
+            if (owner is null && !errors.ContainsKey(nameof(CreateSubscriptionRequest.UserId)))
+            {
+                errors[nameof(CreateSubscriptionRequest.UserId)] = [OwnerHint];
+            }
+
             var plan = ParseIdentifier(request.TariffPlanId, nameof(request.TariffPlanId), errors);
             var expireAt = ParseExpireAt(request.ExpireAt, nameof(request.ExpireAt), errors);
             var formats = ParseOutputFormats(

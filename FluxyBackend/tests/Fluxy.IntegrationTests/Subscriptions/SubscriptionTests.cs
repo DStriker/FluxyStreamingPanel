@@ -285,6 +285,33 @@ namespace Fluxy.IntegrationTests.Subscriptions
         }
 
         [Fact]
+        public async Task ACreateWithNoOwnerIsRefusedWithAFieldError()
+        {
+            // A create must name an owner, and a body that names none has to be a 400 with the
+            // field under it rather than the 500 an unguarded `.Value` on a null identifier
+            // produced. The blank and the absent spellings are the same request.
+            await CreateAdminAndSignInAsync();
+
+            var bouquet = await CreateBouquetAsync("Cinema");
+
+            foreach (var owner in new[] { AbsentOwner, (object)"", "   ", "not-a-uuid" })
+            {
+                using var refused = await PostSubscriptionAsync(Body(
+                    Guid.Empty,
+                    ownerOverride: owner,
+                    playlistId: Playlist(),
+                    bouquetIds: [bouquet]));
+
+                await AssertCodeAsync(refused, HttpStatusCode.BadRequest, "validation_failed");
+
+                using var body = await ReadJsonAsync(refused);
+                Assert.True(
+                    body.RootElement.GetProperty("errors").TryGetProperty("userId", out _),
+                    $"no errors.userId for owner '{owner}': {body.RootElement}");
+            }
+        }
+
+        [Fact]
         public async Task ASaveThatLeavesNoServiceIsRefused()
         {
             await CreateAdminAndSignInAsync();
@@ -702,7 +729,8 @@ namespace Fluxy.IntegrationTests.Subscriptions
         /// </remarks>
         private static object Body(
             Guid owner,
-            string? playlistId = "0123456789abcdef0123456789abcdef",            string? magMac = null,
+            string? playlistId = "0123456789abcdef0123456789abcdef",
+            string? magMac = null,
             string? enigma2Mac = null,
             string? planId = null,
             int? maxConnections = 3,
@@ -710,10 +738,18 @@ namespace Fluxy.IntegrationTests.Subscriptions
             IReadOnlyList<string>? outputFormats = null,
             string? expireAt = null,
             bool isTrial = false,
-            IReadOnlyList<string>? bouquetIds = null)
+            IReadOnlyList<string>? bouquetIds = null,
+            object? ownerOverride = null)
             => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["userId"] = owner.ToString(),
+                // The override is what lets a test send a blank, absent or malformed owner; the
+                // parameter itself is the identifier every other test uses. `AbsentOwner` is the
+                // one value a JSON body cannot spell as a string, so it becomes a real null.
+                ["userId"] = ownerOverride is null
+                    ? owner.ToString()
+                    : ReferenceEquals(ownerOverride, AbsentOwner)
+                        ? null
+                        : ownerOverride,
                 ["playlistId"] = playlistId,
                 ["magMac"] = magMac,
                 ["enigma2Mac"] = enigma2Mac,
@@ -813,6 +849,13 @@ namespace Fluxy.IntegrationTests.Subscriptions
                 .Select(item => item.GetProperty("id").GetString()!)
                 .ToList();
         }
+
+        /// <summary>
+        /// The marker that makes a body omit the owner entirely, which is one of the spellings a
+        /// create must refuse: a JSON `null` is not the same request as a missing key, and both
+        /// reach the same "not named" branch.
+        /// </summary>
+        private static readonly object AbsentOwner = new();
 
         /// <summary>A 32-hex playlist id, deterministic so a search can find it.</summary>
         /// <remarks>
