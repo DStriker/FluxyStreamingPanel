@@ -474,16 +474,44 @@ body.table-col-resizing {
 /*
  * A selected subscription's strips follow its row.
  *
- * antd paints `.ant-table-expanded-row > td` with a fixed background, so the strips under a
- * selected row stayed unhighlighted even though the row itself was marked. The subscriptions page
- * adds `subscription-row-selected` to the selected row and this repaints both halves with the
- * selection colour, so the strips read as part of the row rather than as a detached band.
+ * antd paints `tr.ant-table-expanded-row > td` with `tableExpandedRowBg` - a fixed surface that
+ * knows nothing about the selection - so the strips under a selected row stayed unhighlighted
+ * while the row itself was not. The subscriptions page marks the row with
+ * `subscription-row-selected` and this repaints it *and* the expanded row that follows it, which
+ * is how the highlight reaches the strips: rc-table puts `rowClassName` on body rows only, so the
+ * expanded `<tr>` is reached by the adjacent-sibling selector and never by the class.
+ *
+ * **The colours are theme-scoped, because the app ships a dark theme.** They are antd's own
+ * `controlItemBgActive` / `controlItemBgActiveHover`, measured with `theme.getDesignToken` against
+ * this application's seeds (`appTheme` in `utils/theme.ts`) rather than copied from a palette: the
+ * light algorithm answers `#e6f4ff` / `#add8ff` and the dark one `#213b5b` / `#284f7e`. Painting
+ * the light pair unconditionally is what made a selected row's strips turn bright blue under the
+ * dark theme while their text stayed near-white - unreadable, and invisible to every check that
+ * does not switch the theme. `documentElement.dataset.theme` is published by `App` for exactly
+ * this; nothing here guesses which theme is on.
+ *
+ * The hover half is a real rule rather than dead code: antd's own selected-hover selector is
+ * `tr.ant-table-row-selected > td.ant-table-cell-row-hover`, which matches the *cell* rc-table
+ * marks while the pointer is over a row - so the state to answer is the hovered cell, not
+ * `:hover` on the `<tr>`. Both halves carry the `[data-theme]` prefix, which is also what puts
+ * these above antd's class-only selectors in the cascade.
  */
-.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
-.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
+[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
+[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
   background: #e6f4ff;
 }
 
-.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover > td {
-  background: #bae0ff;
+[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td.ant-table-cell-row-hover,
+[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td.ant-table-cell-row-hover {
+  background: #add8ff;
+}
+
+[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
+[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
+  background: #213b5b;
+}
+
+[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td.ant-table-cell-row-hover,
+[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td.ant-table-cell-row-hover {
+  background: #284f7e;
 }

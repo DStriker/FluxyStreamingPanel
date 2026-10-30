@@ -775,10 +775,11 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   /**
    * Marks a row that is selected so its strips can follow.
    *
-   * antd gives an expanded row's `<tr>` its own fixed background instead of the selected-row
-   * paint, so the strips under a selected subscription stayed unhighlighted however the row was
-   * selected. The class is what the stylesheet keys on; both the main `<tr>` and the expanded one
-   * carry it, because the table spreads `rowClassName` over both.
+   * antd paints an expanded row's `<tr>` with its own fixed background, so the strips under a
+   * selected subscription stayed unhighlighted however the row was selected. rc-table puts this
+   * class on **body rows only** - the expanded `<tr>` is a row rc-table renders after it and never
+   * names - so the stylesheet reaches the strips with the adjacent-sibling selector
+   * (`tr.subscription-row-selected + tr.ant-table-expanded-row`) rather than through this class.
    */
   const rowClassName = (subscription: Subscription) =>
     selectedIds.some((id) => String(id) === subscription.id) ? 'subscription-row-selected' : ''

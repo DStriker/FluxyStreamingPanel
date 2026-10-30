@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, matchRoutes, RouterProvider } from 'react-router-dom'
-import { App as AntApp, ConfigProvider } from 'antd'
+import { App as AntApp, ConfigProvider, Form } from 'antd'
 import { DeleteOutlined, EditOutlined, LockOutlined } from '@ant-design/icons'
 import { QueryClientProvider } from '@tanstack/react-query'
 import i18n from '../src/i18n'
@@ -52,6 +52,7 @@ import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
+import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
 import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
@@ -2561,6 +2562,55 @@ async function main() {
     `live buttons: ${[...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length}`,
   )
 
+  // The expiry field, rendered with a **populated** value. This is the regression check for the
+  // crash a populated edit form had: `DatePicker` requires a `Dayjs` and calls `.isValid()` on
+  // whatever it is handed, so a raw ISO string passed straight through threw
+  // `getUDayjs(...).isValid is not a function` and took the form down. Seeding through
+  // `initialValues` puts the stored string where the real page puts it, so this render fails on
+  // the buggy wiring rather than only on a page that never had data.
+  const expiryFieldHtml = renderToStaticMarkup(
+    withQuery(
+      <AntApp>
+        <Form initialValues={{ expireAt: '2027-03-04T15:30:00+00:00' }}>
+          <SubscriptionExpiryField planed={false} neverExpires={false} onNeverExpiresChange={() => {}} />
+        </Form>
+      </AntApp>,
+    ),
+  )
+
+  check(
+    'the expiry field renders a stored ISO moment through the picker without throwing',
+    // The value is asserted as "populated with the stored day", not as an exact string: the picker
+    // renders in the machine's zone, so 15:30Z is 18:30 on a UTC+3 box. What matters is that the
+    // stored moment arrived - a raw string handed to `DatePicker` threw here rather than drawing
+    // anything at all.
+    expiryFieldHtml.includes('ant-picker') &&
+      /value="2027-03-04 \d{2}:\d{2}"/.test(expiryFieldHtml) &&
+      expiryFieldHtml.includes('Never expires'),
+    `rendered ${expiryFieldHtml.length} bytes; value=${
+      /value="([^"]*)"/.exec(expiryFieldHtml)?.[1] ?? 'none'
+    }`,
+  )
+
+  // The same field with no expiry: an empty picker, which is the create form's state.
+  const expiryFieldEmptyHtml = renderToStaticMarkup(
+    withQuery(
+      <AntApp>
+        <Form initialValues={{ expireAt: null }}>
+          <SubscriptionExpiryField planed={false} neverExpires onNeverExpiresChange={() => {}} />
+        </Form>
+      </AntApp>,
+    ),
+  )
+
+  check(
+    'the expiry field draws an empty picker when nothing is stored and the never switch is on',
+    expiryFieldEmptyHtml.includes('ant-picker') &&
+      expiryFieldEmptyHtml.includes('ant-picker-disabled') &&
+      !expiryFieldEmptyHtml.includes('ant-picker-input-placeholder'),
+    `rendered ${expiryFieldEmptyHtml.length} bytes with no expiry`,
+  )
+
   const subscriptionEditFormHtml = renderToStaticMarkup(
     withRoutes('/admin/subscriptions/11111111-1111-1111-1111-111111111111', [
       {
@@ -2620,12 +2670,12 @@ async function main() {
     // The regression this pins: `DatePicker` was handed the raw ISO string and threw
     // `getUDayjs(...).isValid is not a function`, which took the whole form down. A form that
     // renders its sections *and* draws the expiry control is the proof the conversion happens.
-    // What this can prove and what it cannot, stated plainly: `renderToStaticMarkup` runs no
-    // effects, so the `setFieldsValue` that fills the form never runs and the picker is drawn
-    // empty. What it *does* prove is the crash is gone - the form reaches its fields and draws the
-    // `DatePicker` from a row whose `expireAt` is a string, where handing that string straight to
-    // the control threw `isValid is not a function` and took the whole form down. The conversion
-    // itself is pinned by `expireAtPickerProps`'s unit test, which is the half a render cannot see.
+    // What this proves: the page draws its sections and its controls from a row that carries a
+    // plan, two services and an expiry, rather than failing on the way. What it does **not** prove
+    // is the expiry conversion - `renderToStaticMarkup` runs no effects, so the `setFieldsValue`
+    // that fills the form never runs and the picker is drawn empty either way. That half is the
+    // `SubscriptionExpiryField` render above (seeded through `initialValues`, which the effect is
+    // not needed for) and `expireAtPickerProps`' unit test.
     subscriptionPopulatedHtml.includes('Edit subscription') &&
       subscriptionPopulatedHtml.includes('MAG MAC address') &&
       subscriptionPopulatedHtml.includes('ant-picker') &&

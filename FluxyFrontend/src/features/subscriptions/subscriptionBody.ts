@@ -138,6 +138,11 @@ export const toUpdateBody = (values: SubscriptionValues) => ({
  * Extracted rather than written inline so a unit test can pin the conversion: every render of the
  * page in `probe:render` lands before the row arrives, so a probe can never see this path.
  */
-export const expireAtPickerProps = (value?: string | null): { value: dayjs.Dayjs | null } => ({
+export const expireAtPickerProps = (value?: string | dayjs.Dayjs | null): {
+  value: dayjs.Dayjs | null
+} => ({
+  // `dayjs(dayjs)` clones rather than re-parsing, so the wider input is safe: the store holds the
+  // wire string until the operator touches the control, and a Dayjs afterwards (`DatePicker` writes
+  // its own type on change). Typing it as `string | null` alone described only the first half.
   value: value ? dayjs(value) : null,
 })

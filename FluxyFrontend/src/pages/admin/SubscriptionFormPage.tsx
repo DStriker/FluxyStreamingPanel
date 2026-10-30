@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   Checkbox,
-  DatePicker,
   Divider,
   Form,
   Input,
@@ -30,7 +29,6 @@ import {
   isUsableConnections,
 } from '../../features/subscriptions/subscriptionRules'
 import type { SubscriptionValues } from '../../features/subscriptions/api'
-import { expireAtPickerProps } from '../../features/subscriptions/subscriptionBody'
 import type { SubscriptionOutputFormat } from '../../features/subscriptions/types'
 import { SUBSCRIPTION_OUTPUT_FORMATS } from '../../features/subscriptions/subscriptionOptions'
 import {
@@ -39,6 +37,7 @@ import {
   useUpdateSubscription,
 } from '../../features/subscriptions/hooks/mutations'
 import { useSubscription } from '../../features/subscriptions/hooks/queries'
+import SubscriptionExpiryField from '../../features/subscriptions/components/SubscriptionExpiryField'
 import { useAllUsers } from '../../features/users/hooks/queries'
 import { useBouquets } from '../../features/bouquets/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
@@ -505,42 +504,15 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           />
         </Form.Item>
 
-        {/* The expiry is a full moment, not a day: an operator selling an hour-long plan needs the
-            time. `DatePicker` with `showTime` is the project's antd control for it, and the value
-            travels as an ISO 8601 date-time.
-
-            "Never expires" is its own checkbox rather than an empty picker, because an empty
-            picker is too easy to read as "not filled in yet" - and on this API the two are
-            different requests (absent keeps, an explicit clear nulls it). */}
-        <Form.Item label={t('subscriptionsForm.expiryLabel')}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            {/* The form stores the wire string, while `DatePicker` speaks `Dayjs`. Converting at
-                the field boundary - the pattern `VideoOnDemandFormPage` uses for its release date -
-                keeps every request and every `setFieldsValue` on the string shape the contract
-                uses, instead of leaking dayjs objects into the body mapping. Without it a populated
-                edit form hands a raw ISO string to the picker and it throws on `.isValid`. */}
-            <Form.Item name="expireAt" noStyle getValueProps={expireAtPickerProps}>
-              <DatePicker
-                showTime={{ format: 'HH:mm' }}
-                format="YYYY-MM-DD HH:mm"
-                disabled={planed || neverExpires}
-                style={{ width: 240 }}
-                placeholder={t('subscriptionsForm.expiryLabel')}
-              />
-            </Form.Item>
-            <Checkbox
-              checked={neverExpires}
-              disabled={planed}
-              onChange={(event) => {
-                setNeverExpires(event.target.checked)
-                form.setFieldValue('expireAt', null)
-                setDirty(true)
-              }}
-            >
-              {t('subscriptionsForm.neverExpiresLabel')}
-            </Checkbox>
-          </Space>
-        </Form.Item>
+        <SubscriptionExpiryField
+          planed={planed}
+          neverExpires={neverExpires}
+          onNeverExpiresChange={(next) => {
+            setNeverExpires(next)
+            form.setFieldValue('expireAt', null)
+            setDirty(true)
+          }}
+        />
 
         <Divider titlePlacement="start">{t('subscriptionsForm.servicesSection')}</Divider>
 
