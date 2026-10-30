@@ -1,4 +1,5 @@
 import type { SubscriptionStatus } from './SubscriptionStatus'
+import type { TariffPlanDurationUnit } from './TariffPlanDurationUnit'
 
 /**
  * One row of the subscriptions table: what the main row and its service subrows draw.
@@ -23,6 +24,16 @@ export interface Subscription {
   tariffPlanId: string | null
   /** Name of that plan, or null. */
   tariffPlanName: string | null
+  /**
+   * How many `tariffPlanDurationUnit` the attached plan lasts for, or null when there is none.
+   *
+   * The prolongation dialog projects the new expiry before asking, and the projection has to use
+   * the server's own rule - `max(now, expiry) + the plan's duration` - so the two numbers travel
+   * with the page the table already reads rather than costing a request per dialog open.
+   */
+  tariffPlanDurationValue: number | null
+  /** The unit that length is counted in, or null when there is no plan. */
+  tariffPlanDurationUnit: TariffPlanDurationUnit | null
   /** When the subscription was issued. */
   createdAt: string
   /** When it lapses, or null for "never expires". */

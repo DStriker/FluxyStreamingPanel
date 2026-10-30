@@ -149,6 +149,23 @@ namespace Fluxy.DataAccess.Repositories
                             .Select(plan => plan.SupportsEnigma2)
                             .First(),
 
+                    // The plan's length, for the prolongation dialog's projected date. Two more
+                    // correlated reads rather than a join, exactly like the five above: the row
+                    // set is one page of a hundred at most, and this keeps the projection flat.
+                    PlanDurationValue = subscription.TariffPlanId == null
+                        ? null
+                        : _context.TariffPlans
+                            .Where(plan => plan.Id == subscription.TariffPlanId)
+                            .Select(plan => (int?)plan.DurationValue)
+                            .FirstOrDefault(),
+
+                    PlanDurationUnit = subscription.TariffPlanId == null
+                        ? null
+                        : _context.TariffPlans
+                            .Where(plan => plan.Id == subscription.TariffPlanId)
+                            .Select(plan => (TariffPlanDurationUnit?)plan.DurationUnit)
+                            .FirstOrDefault(),
+
                     Item = new SubscriptionListItem
                     {
                         Id = subscription.Id,
@@ -170,6 +187,18 @@ namespace Fluxy.DataAccess.Repositories
                             : _context.TariffPlans
                                 .Where(plan => plan.Id == subscription.TariffPlanId)
                                 .Select(plan => plan.Name)
+                                .FirstOrDefault(),
+                        TariffPlanDurationValue = subscription.TariffPlanId == null
+                            ? null
+                            : _context.TariffPlans
+                                .Where(plan => plan.Id == subscription.TariffPlanId)
+                                .Select(plan => (int?)plan.DurationValue)
+                                .FirstOrDefault(),
+                        TariffPlanDurationUnit = subscription.TariffPlanId == null
+                            ? null
+                            : _context.TariffPlans
+                                .Where(plan => plan.Id == subscription.TariffPlanId)
+                                .Select(plan => (TariffPlanDurationUnit?)plan.DurationUnit)
                                 .FirstOrDefault(),
                         CreatedAt = subscription.CreatedAt,
                         ExpireAt = subscription.ExpireAt,
@@ -195,6 +224,8 @@ namespace Fluxy.DataAccess.Repositories
                     SupportsPlaylist = row.SupportsPlaylist,
                     SupportsMag = row.SupportsMag,
                     SupportsEnigma2 = row.SupportsEnigma2,
+                    TariffPlanDurationValue = row.PlanDurationValue,
+                    TariffPlanDurationUnit = row.PlanDurationUnit,
                     Status = SubscriptionStatusComposition.Compose(
                         row.Item.ExpireAt,
                         row.OwnerBlocked,

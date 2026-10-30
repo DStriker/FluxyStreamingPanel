@@ -515,6 +515,54 @@ body.table-col-resizing {
 }
 
 /*
+ * The rows are tighter than the table's default, and only in this table.
+ *
+ * antd gives every cell 16px above and below its text. This table's rows carry two lines of their
+ * own - the owner with a tag, then the plan and the date - and a strip of services underneath, so
+ * the four together read as one block about eight words tall; at 16px each the block was mostly
+ * air and the table showed fewer subscriptions on the screen than the card had room for. 8px keeps
+ * a row's own two lines apart without padding the block twice.
+ *
+ * Written from the token rather than as the literal 8px, so the cell's inline padding keeps
+ * following antd's own steps for the three table sizes (`cellPaddingBlock` / `-md` / `-sm` and
+ * their horizontal pairs) while only the vertical amount changes.
+ */
+.subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td {
+  padding-block: 8px;
+}
+
+/*
+ * The plan name is a link, and in the dark theme antd's link colour is not readable on this row.
+ *
+ * Measured against the surfaces this table actually paints (see the selection rules below):
+ * antd's default link is `rgb(57, 131, 220)` in dark, which is 4.5:1 on the plain row but 2.8:1 on
+ * a *selected* one and 2.0:1 when that row is also hovered - and the link was additionally drawn
+ * at 0.9 opacity inside a 0.75 line, which took the plain row down to 2.8:1 on its own. A link
+ * nobody can read is not an affordance.
+ *
+ * `#b7d4ff` is antd's own blue ramp carried up to a tint that survives the darkest surface this
+ * table paints: 12.2:1 on the row, 7.5:1 on a selected row and 5.5:1 on a selected row under the
+ * pointer, all above the 4.5:1 floor for body text. The hand and the underline on hover are what
+ * keep it reading as a link; the colour only has to be legible, not blue.
+ *
+ * Scoped to the link's own class rather than to every `a` in the card: the owner's name above it
+ * is the same component on a surface with more room, and changing its colour is not what was
+ * asked.
+ */
+.subscriptions-table .ant-table-wrapper a.subscription-plan-link {
+  color: var(--ant-color-primary);
+}
+
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper a.subscription-plan-link {
+  color: #b7d4ff;
+}
+
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper a.subscription-plan-link:hover,
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper a.subscription-plan-link:focus {
+  color: #d6e4ff;
+}
+
+/*
  * A selected subscription's strips follow its row.
  *
  * antd paints `tr.ant-table-expanded-row > td` with `tableExpandedRowBg` - a fixed surface that

@@ -2122,7 +2122,7 @@ const en = {
     // repeating the button, because a second prolongation is a real second extension.
     prolongConfirmTitle: 'Extend this subscription?',
     prolongConfirmBody:
-      'The expiry of "{{name}}" will move forward by the tariff plan\'s duration, keeping the time already left.',
+      'The subscription of {{name}} will be extended until {{expiry}} under the {{plan}} tariff plan.',
     prolongConfirmOk: 'Extend',
     lastServiceBody:
       'A subscription must keep at least one service. Add another one before removing this.',
@@ -2141,7 +2141,7 @@ const en = {
       // The prolongation question for a selection, worded like the other bulk confirms.
       prolongTitle: 'Extend {{count}} subscriptions?',
       prolongBody:
-        'Each selected subscription moves forward by its own plan\'s duration, keeping the time already left.',
+        'Each subscription is extended by its own tariff plan\'s duration, keeping the time already left.',
       changeTariffTitle: 'Change the tariff plan',
       changeTariffPlaceholder: 'Choose a tariff plan',
       changeTariffHint:

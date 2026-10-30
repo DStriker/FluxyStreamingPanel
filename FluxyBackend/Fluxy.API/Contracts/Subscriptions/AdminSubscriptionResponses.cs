@@ -38,6 +38,19 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Name of that plan, or null.</summary>
         public string? TariffPlanName { get; init; }
 
+        /// <summary>
+        /// How many <see cref="TariffPlanDurationUnit"/> the attached plan lasts for, or null when
+        /// there is no plan. Read by the prolongation confirmation, which projects the new expiry
+        /// with the server's own rule.
+        /// </summary>
+        public int? TariffPlanDurationValue { get; init; }
+
+        /// <summary>
+        /// Unit of that length - <c>hours</c>, <c>days</c>, <c>months</c> or <c>years</c> - or null
+        /// when there is no plan.
+        /// </summary>
+        public string? TariffPlanDurationUnit { get; init; }
+
         /// <summary>When the subscription was issued.</summary>
         public required DateTimeOffset CreatedAt { get; init; }
 

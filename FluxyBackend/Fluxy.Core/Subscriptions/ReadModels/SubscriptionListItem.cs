@@ -44,6 +44,23 @@ namespace Fluxy.Core.Subscriptions.ReadModels
         /// <summary>Name of that plan, or null when there is none.</summary>
         public string? TariffPlanName { get; init; }
 
+        /// <summary>
+        /// How many <see cref="TariffPlanDurationUnit"/> the attached plan lasts for, or null when
+        /// there is no plan.
+        /// </summary>
+        /// <remarks>
+        /// Travels for one reader: the prolongation confirmation, which has to show the date the
+        /// row is about to move to and must compute it with the server's own rule -
+        /// <c>max(now, expiry) + the plan's duration</c>. Sending the two numbers with the page the
+        /// table already reads is what keeps that preview from needing a second request per dialog
+        /// open, and from needing the whole plan list on a screen that only ever shows one plan's
+        /// length at a time.
+        /// </remarks>
+        public int? TariffPlanDurationValue { get; init; }
+
+        /// <summary>The unit that length is counted in, or null when there is no plan.</summary>
+        public TariffPlanDurationUnit? TariffPlanDurationUnit { get; init; }
+
         /// <summary>When the subscription was issued.</summary>
         public required DateTimeOffset CreatedAt { get; init; }
 

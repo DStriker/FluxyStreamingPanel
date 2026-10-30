@@ -657,6 +657,10 @@ namespace Fluxy.API.Controllers.Subscriptions
             CreatorUsername = item.CreatorUsername,
             TariffPlanId = item.TariffPlanId?.ToString(),
             TariffPlanName = item.TariffPlanName,
+            TariffPlanDurationValue = item.TariffPlanDurationValue,
+            TariffPlanDurationUnit = item.TariffPlanDurationUnit is { } unit
+                ? TariffPlanTextParser.NameOf(unit)
+                : null,
             CreatedAt = item.CreatedAt,
             ExpireAt = item.ExpireAt,
             IsTrial = item.IsTrial,

@@ -2583,6 +2583,10 @@ async function main() {
             creatorUsername: 'operator',
             tariffPlanId: null,
             tariffPlanName: null,
+            // The two fields the prolongation dialog projects from; null because this fixture
+            // has no plan, which is the state whose button is disabled.
+            tariffPlanDurationValue: null,
+            tariffPlanDurationUnit: null,
             createdAt: '2026-01-01T00:00:00+00:00',
             expireAt: null,
             isTrial: false,
@@ -3420,6 +3424,50 @@ async function main() {
     'the dark rail overrides the selected category with the primary it renders with',
     titleColor === darkTheme.derived.colorPrimary,
     `index.css says ${titleColor ?? 'NO RULE'}, theme says ${darkTheme.derived.colorPrimary}`,
+  )
+
+  // The plan-name link's dark colour, measured against every surface this table actually paints.
+  //
+  // The owner's round-5 item 12.3: antd's link colour is legible on the plain row and drops to
+  // 2.8:1 on a selected one - and the link used to be drawn at 0.9 opacity inside a 0.75 line,
+  // which took the plain row down to 2.8:1 as well. The replacement is pinned here rather than
+  // merely present, and every one of the four backgrounds is checked: a colour chosen against the
+  // plain row alone would pass on the row nobody is looking at and fail on the row they are.
+  const planLinkDark =
+    /\[data-theme=['"]dark['"]\] \.subscriptions-table \.ant-table-wrapper a\.subscription-plan-link \{\s*color:\s*(#[0-9a-f]{6});/.exec(
+      railCss,
+    )?.[1]
+
+  const darkSurfaces = {
+    row: '#141414',
+    hover: '#1d1d1d',
+    selected: '#213b5b',
+    selectedHover: '#284f7e',
+  }
+
+  const planLinkRatios = planLinkDark
+    ? Object.entries(darkSurfaces).map(([name, bg]) => [name, contrast(planLinkDark, bg)])
+    : []
+
+  check(
+    'the plan link stays readable on every dark surface this table paints',
+    planLinkDark !== undefined && planLinkRatios.every(([, ratio]) => ratio >= 4.5),
+    planLinkDark === undefined
+      ? 'index.css has no dark rule for .subscription-plan-link'
+      : `${planLinkDark}: ${planLinkRatios.map(([n, r]) => `${n}=${r.toFixed(2)}`).join(', ')}`,
+  )
+
+  // The rows are tightened to 8px, and only in this table. The number is asserted rather than the
+  // rule's existence: "it has a padding rule" would pass at the 16px this replaces.
+  check(
+    'the subscriptions rows carry 8px of vertical padding and no other table is touched',
+    /\.subscriptions-table \.ant-table-wrapper \.ant-table-tbody > tr\.ant-table-row > td \{\s*padding-block: 8px;/.test(
+      railCss,
+    ) &&
+      !/(?<!\.subscriptions-table )\.ant-table-wrapper \.ant-table-tbody > tr\.ant-table-row > td \{\s*padding-block:/.test(
+        railCss,
+      ),
+    'the scoped 8px rule is present and unscoped',
   )
 
   const rowRatio = contrast(

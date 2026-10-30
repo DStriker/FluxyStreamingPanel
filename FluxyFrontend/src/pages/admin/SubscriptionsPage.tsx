@@ -14,6 +14,7 @@ import {
   Typography,
 } from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
+import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import {
   CalendarOutlined,
@@ -32,6 +33,7 @@ import {
 } from '@ant-design/icons'
 import { SUBSCRIPTIONS_PAGE_SIZE } from '../../features/subscriptions/api'
 import { isMac } from '../../features/subscriptions/subscriptionRules'
+import { projectedExpiry } from '../../features/subscriptions/prolongPreview'
 import type { BulkSubscriptionAction, SubscriptionSortField } from '../../features/subscriptions/api'
 import SubscriptionSubrows from '../../features/subscriptions/components/SubscriptionSubrows'
 import type {
@@ -507,21 +509,47 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   }
 
   /**
-   * Asks before prolonging, from a row or over a selection.
+   * Asks before prolonging one row, naming the date it will move to.
    *
    * A prolongation moves a date that may already have been extended on purpose, and clicking again
-   * does not undo it - the delete-confirm pattern of this page, for the same reason. The question
-   * names what will change rather than repeating the verb.
+   * does not undo it - the delete-confirm pattern of this page, for the same reason. But "extend
+   * this subscription?" repeats the verb the operator just pressed; the fact they cannot see is
+   * *which date* it becomes, so the question states it.
+   *
+   * The date is `projectedExpiry`'s: `max(now, the stored expiry) + the plan's duration`, the same
+   * rule `SubscriptionRules.ProlongedExpiry` applies on the server, printed through
+   * `formatTimestamp` in this account's zone and this page's language - exactly as the expiry cell
+   * behind the dialog prints it. The two are read at the same moment, so they can differ only by
+   * the seconds between the click and the request, which the format does not show.
+   *
+   * The row's button is disabled without a plan (`prolongNeedsPlan`), so a projection here is
+   * always available; the null branch is the belt to that braces and would ask without a date.
    */
-  const confirmProlong = (subscription: Subscription) =>
+  const confirmProlong = (subscription: Subscription) => {
+    const projected = projectedExpiry(subscription, dayjs())
+
     modal.confirm({
       title: t('subscriptions.prolongConfirmTitle'),
-      content: t('subscriptions.prolongConfirmBody', { name: subscription.username }),
+      content: projected
+        ? t('subscriptions.prolongConfirmBody', {
+            name: subscription.username,
+            expiry: formatTimestamp(projected.toISOString(), language, timeZone),
+            plan: subscription.tariffPlanName ?? t('subscriptions.noPlan'),
+          })
+        : t('subscriptions.prolongConfirmTitle'),
       okText: t('subscriptions.prolongConfirmOk'),
       cancelText: t('actions.cancel'),
       onOk: () => runAction(() => prolong.mutateAsync({ id: subscription.id }), subscription),
     })
+  }
 
+  /**
+   * The same question over a selection.
+   *
+   * No date here, and that is the honest answer: each row is extended by its own plan's duration
+   * from its own expiry, so a selection of two rows has two answers. The sentence names the rule
+   * instead, which is the whole of what can be said about a set.
+   */
   const confirmBulkProlong = () => {
     modal.confirm({
       title: t('subscriptions.bulk.prolongTitle', { count: selectedIds.length }),
@@ -629,19 +657,28 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
           </Tag>
         )}
       </Space>
-      <Space size={6} wrap style={{ opacity: 0.75, fontSize: 12 }}>
+      {/* The second line is quieter than the first - a plan and a date are reference, the owner
+          is the subject - but `opacity` on this whole line was too blunt for it: the plan is a
+          *link*, and the line's 0.75 multiplied with the link's own 0.9 left it at 67% of its
+          colour. In dark mode that measured 2.8:1 against the row, 2.1:1 on a selected one. The
+          dimming now lives on the plain spans, so the date still recedes while the link carries a
+          colour chosen for the surface behind it (see `.subscription-plan-link` in `index.css`). */}
+      <Space size={6} wrap style={{ fontSize: 12 }}>
         {subscription.tariffPlanId === null ? (
-          <span>{t('subscriptions.noPlan')}</span>
+          <span style={{ opacity: 0.75 }}>{t('subscriptions.noPlan')}</span>
         ) : (
           <Typography.Link
+            className="subscription-plan-link"
             onClick={() => navigate(`${area}/tariff-plans/${subscription.tariffPlanId}`)}
-            style={{ fontSize: 12, opacity: 0.9 }}
+            style={{ fontSize: 12 }}
           >
             {subscription.tariffPlanName ?? t('subscriptions.noPlan')}
           </Typography.Link>
         )}
-        <span>·</span>
-        <span>{formatTimestamp(subscription.createdAt, language, timeZone)}</span>
+        <span style={{ opacity: 0.75 }}>·</span>
+        <span style={{ opacity: 0.75 }}>
+          {formatTimestamp(subscription.createdAt, language, timeZone)}
+        </span>
       </Space>
     </Space>
   )
