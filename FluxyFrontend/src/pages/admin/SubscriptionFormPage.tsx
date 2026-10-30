@@ -366,10 +366,17 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
   /**
    * Mints a fresh playlist id and puts it in the field.
    *
-   * The field is set from the generator's own answer rather than from a re-read, and the value is
-   * written with `setFieldsValue` so the controlled input repaints: `setFieldValue` alone updates
-   * the store but not always the touched field's displayed value when the form has never been
-   * submitted.
+   * The value is written with `setFields`, not `setFieldsValue`: it sets the field *and* clears any
+   * error left over from a previous failed validation, so the answer is not hidden behind a red
+   * message about the id that was there before.
+   *
+   * That alone would still show nothing if the `Input` were not bound to the form, and it was not,
+   * until round 3: `Form.Item name="playlistId"` had a `Space.Compact` as its direct child, and a
+   * named item injects `value`/`onChange` into that child. A compact wrapper is a layout `div` and
+   * keeps neither, so every write to the store - `setFieldValue`, `setFields`, `setFieldsValue`
+   * alike - went somewhere no control read from. The `Input` is now the direct child of the named
+   * item (the generate button lives in a `Form.Item` of its own), which is what makes any of these
+   * writers visible.
    */
   const generatePlaylist = () => {
     void generatePlaylistId

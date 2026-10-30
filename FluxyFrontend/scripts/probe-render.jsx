@@ -2507,6 +2507,31 @@ async function main() {
     `rendered ${subscriptionFormHtml.length} bytes`,
   )
 
+  check(
+    'the access lock hints read as sentences about watching a subscription, in both languages',
+    // Round 3 replaced a garbled Russian construction ("Может ли подписка смотреться ...") that
+    // named the subscription as the thing doing the watching. The bug lived only in `ru.ts`, so
+    // the render alone would not catch it coming back: this asserts the English wording as drawn
+    // *and* the Russian wording the bundle holds, plus the absence of the old construction in
+    // either bundle. Keys are read through i18next rather than the module so a renamed key fails
+    // here instead of silently passing.
+    // Around the apostrophe rather than through it: `renderToStaticMarkup` escapes it, so the
+    // literal "owner's" never appears in the markup.
+    /may only be watched from the owner(?:&#x27;|')s country/.test(subscriptionFormHtml) &&
+      /may only be watched from the owner(?:&#x27;|')s provider/.test(subscriptionFormHtml) &&
+      i18n.t('subscriptionsForm.countryLockHint', { lng: 'ru' }) ===
+        'Можно ли смотреть подписку только из страны владельца.' &&
+      i18n.t('subscriptionsForm.ispLockHint', { lng: 'ru' }) ===
+        'Можно ли смотреть подписку только из сети владельца.' &&
+      !['en', 'ru'].some((lng) =>
+        /смотреться|may be (only )?watched by the subscription/i.test(
+          i18n.t('subscriptionsForm.countryLockHint', { lng }) +
+            i18n.t('subscriptionsForm.ispLockHint', { lng }),
+        ),
+      ),
+    `en drawn, ru reads "${i18n.t('subscriptionsForm.countryLockHint', { lng: 'ru' })}"`,
+  )
+
   // The create form's own defaults, read through the rendered controls. `renderToStaticMarkup`
   // runs no effects, so this shows what `initialValues` opens with - which is exactly the state
   // the operator sees before touching anything.
