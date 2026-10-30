@@ -153,11 +153,17 @@ export default function SubscriptionSubrows({ subscription }: { subscription: Su
     // with the expand column hidden (design decision 17) the strips are the only thing telling a
     // reader these lines belong to the row above, and the indent is that statement.
     //
+    // 40, and measured rather than guessed. The expanded row is one cell across every column, so
+    // its content box starts 40px left of the "Subscription" cell - the selection column sits
+    // between them - and both cells add the table's own 16px padding. With 16 the strip text began
+    // 24px left of the name; with 40 the two start on the same x (measured 345px in a 1600px
+    // window, strip and name both).
+    //
     // The strips do **not** inherit the row's highlight on their own: antd paints the expanded
     // `<tr>` with a fixed background. The page marks a selected row with `subscription-row-selected`
     // and `index.css` repaints that row *and* the expanded row beside it, which is what makes the
     // highlight reach here.
-    <div style={{ width: '100%', paddingInlineStart: 16, paddingBlock: 4 }}>
+    <div style={{ width: '100%', paddingInlineStart: 40, paddingBlock: 4 }}>
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
         {strips}
         {addable.length > 0 && (

@@ -59,7 +59,10 @@ const CREATE_VALUES: SubscriptionValues = {
   playlistId: null,
   expireAt: null,
   tariffPlanId: null,
-  maxConnections: null,
+  // One, not empty: the domain's floor is one connection, and a form that opened on "unlimited"
+  // would store a subscription with no ceiling unless the operator noticed. "Unlimited" is what
+  // the *picker's clear* means once the field is editable.
+  maxConnections: 1,
   isRestreamer: false,
   ipWhitelist: [],
   userAgentWhitelist: [],
@@ -372,7 +375,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     void generatePlaylistId
       .mutateAsync({})
       .then((answer) => {
-        form.setFieldsValue({ playlistId: answer.playlistId })
+        form.setFields([{ name: 'playlistId', value: answer.playlistId, errors: [] }])
         setDirty(true)
       })
       .catch((error) => void message.error(messageForError(error)))
@@ -539,20 +542,29 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           ]}
           extra={t('subscriptionsForm.playlistIdHint')}
         >
-          <Space.Compact style={{ width: '100%' }}>
-            <Input
-              disabled={!supportsPlaylist}
-              maxLength={PLAYLIST_ID_LENGTH}
-              style={{ fontFamily: 'monospace' }}
-            />
-            <Button
-              disabled={!supportsPlaylist || generatePlaylistId.isPending}
-              loading={generatePlaylistId.isPending}
-              onClick={generatePlaylist}
-            >
-              {t('subscriptionsForm.generatePlaylistId')}
-            </Button>
-          </Space.Compact>
+          <Input
+            disabled={!supportsPlaylist}
+            maxLength={PLAYLIST_ID_LENGTH}
+            style={{ fontFamily: 'monospace' }}
+          />
+        </Form.Item>
+
+        {/*
+         * The generate button sits in a `Form.Item` of its own, the pattern the account form's
+         * password generator uses. It used to live inside a `Space.Compact` *as the child of the
+         * named `Form.Item`* - and a named item injects `value`/`onChange` into its direct child,
+         * which was the compact wrapper, a layout `div` that drops both. The `Input` therefore was
+         * never bound to the form at all, which is why the id the server returned never appeared:
+         * nothing was writing where the input read from.
+         */}
+        <Form.Item style={{ marginTop: -12 }}>
+          <Button
+            disabled={!supportsPlaylist || generatePlaylistId.isPending}
+            loading={generatePlaylistId.isPending}
+            onClick={generatePlaylist}
+          >
+            {t('subscriptionsForm.generatePlaylistId')}
+          </Button>
         </Form.Item>
 
         <Form.Item

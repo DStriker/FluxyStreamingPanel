@@ -2507,6 +2507,31 @@ async function main() {
     `rendered ${subscriptionFormHtml.length} bytes`,
   )
 
+  // The create form's own defaults, read through the rendered controls. `renderToStaticMarkup`
+  // runs no effects, so this shows what `initialValues` opens with - which is exactly the state
+  // the operator sees before touching anything.
+  const maxConnectionsValue = /id="maxConnections"[^>]*value="([^"]*)"/.exec(subscriptionFormHtml)
+
+  check(
+    'the create form opens max connections at one, not empty',
+    // The domain's floor is one, so a form that opened blank left the field *unset* rather than
+    // start at the smallest legal value: an operator who never touched it created a subscription
+    // with no ceiling at all.
+    maxConnectionsValue?.[1] === '1',
+    `the field opens at ${maxConnectionsValue?.[1] ?? 'nothing'}`,
+  )
+
+  check(
+    'the playlist field is bound to the form rather than wrapped in a layout child',
+    // The bug this catches: a named `Form.Item` whose child was `Space.Compact` injected
+    // `value`/`onChange` into a `div` and the `Input` inside never received either, so the id the
+    // server returned was written to a store no control read. A directly-bound input carries a
+    // `value` attribute in the static markup and a compact wrapper's does not.
+    /<input[^>]*id="playlistId"[^>]*value=""/.test(subscriptionFormHtml) ||
+      /<input[^>]*value=""[^>]*id="playlistId"/.test(subscriptionFormHtml),
+    `rendered ${subscriptionFormHtml.length} bytes`,
+  )
+
   // Every write button on a service strip is gated on `editSubscriptions`, and copy is not: a
   // view-only operator must see a greyed control with the reason rather than a live button whose
   // request the server refuses. `probe:render` lands before `getProfile` answers, so `canEdit` is

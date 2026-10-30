@@ -68,6 +68,19 @@ import { ApiError, messageForError, successTextFor, textForCode } from '../../ut
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000
 
+/**
+ * The directions a sortable header walks.
+ *
+ * **Three entries ending in `ascend`, not antd's default pair.** antd computes the next state as
+ * `sortDirections[indexOf(current) + 1]`, so a two-entry array answers `undefined` after `descend`
+ * - and the table's own handler reads "no order" as "go back to the default". The name column
+ * defaults to `createdAt desc`, so its very first click asked for `undefined`, the handler reset it
+ * to `desc`, and the column could never leave descending. Repeating `ascend` at the end makes the
+ * cycle `ascend → descend → ascend`, which is the real state space here: this table is *always*
+ * ordered by something (the pager depends on it), so "unsorted" is not a state it has.
+ */
+const SORT_DIRECTIONS: ('ascend' | 'descend')[] = ['ascend', 'descend', 'ascend']
+
 /** The five columns, in the order they are drawn. */
 type SubscriptionColumnKey = 'name' | 'expiry' | 'connections' | 'creator' | 'actions'
 
@@ -83,18 +96,28 @@ const COLUMN_KEYS: readonly SubscriptionColumnKey[] = [
  * The width each column starts at, summing to **1190**; the selection column takes them to the
  * same **1230** the other administrator tables reach.
  *
- * The name column takes everything the four fixed ones leave, because it is the two-line cell the
- * whole table is read by - owner, plan, creation date and the status tag - and it is the only one
- * that truncates no second time. The actions column is exactly as wide as the four buttons a row
- * draws (`actionsColumnWidth`).
+ * The name column takes everything the others leave, because it is the two-line cell the whole
+ * table is read by - owner, plan, creation date and the status tag - and it is the only one that
+ * truncates no second time. The actions column is exactly as wide as the buttons a row draws
+ * (`actionsColumnWidth`); see below for why its count is five.
  */
 const FIXED_COLUMN_WIDTHS = {
   expiry: 170,
-  connections: 150,
+  // Was 150 before the "Продлить" action arrived. The actions column grew by the fifth button and
+  // this column gave the room back, so the table keeps its 1190 total.
+  connections: 134,
   creator: 180,
 }
 
-const ACTIONS_WIDTH = actionsColumnWidth(4)
+/**
+ * The actions column is exactly as wide as the buttons a row draws.
+ *
+ * **Five**, not four: the button count is the formula's whole input, and leaving it at four was
+ * what clipped the added "Продлить" button - the column kept the width of a four-button cluster
+ * while the row drew five. `actionsColumnWidth` is the single place that knows a button is 24px and
+ * the gaps and padding, so the count is the only thing this page has to say.
+ */
+const ACTIONS_WIDTH = actionsColumnWidth(5)
 const TABLE_WIDTH = 1190
 
 const DEFAULT_COLUMN_WIDTHS: Record<SubscriptionColumnKey, number> = {
@@ -483,6 +506,32 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
     })
   }
 
+  /**
+   * Asks before prolonging, from a row or over a selection.
+   *
+   * A prolongation moves a date that may already have been extended on purpose, and clicking again
+   * does not undo it - the delete-confirm pattern of this page, for the same reason. The question
+   * names what will change rather than repeating the verb.
+   */
+  const confirmProlong = (subscription: Subscription) =>
+    modal.confirm({
+      title: t('subscriptions.prolongConfirmTitle'),
+      content: t('subscriptions.prolongConfirmBody', { name: subscription.username }),
+      okText: t('subscriptions.prolongConfirmOk'),
+      cancelText: t('actions.cancel'),
+      onOk: () => runAction(() => prolong.mutateAsync({ id: subscription.id }), subscription),
+    })
+
+  const confirmBulkProlong = () => {
+    modal.confirm({
+      title: t('subscriptions.bulk.prolongTitle', { count: selectedIds.length }),
+      content: t('subscriptions.bulk.prolongBody'),
+      okText: t('subscriptions.prolongConfirmOk'),
+      cancelText: t('actions.cancel'),
+      onOk: () => runBulk({ action: 'prolong' }),
+    })
+  }
+
   const onBulkMenu: MenuProps['onClick'] = ({ key }) => {
     switch (key as BulkSubscriptionAction) {
       case 'change-tariff':
@@ -504,7 +553,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
         runBulk({ action: 'delete-enigma2' })
         break
       case 'prolong':
-        runBulk({ action: 'prolong' })
+        confirmBulkProlong()
         break
       case 'block-owner':
         confirmBulkBlock()
@@ -620,6 +669,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       dataIndex: 'createdAt',
       width: widths.name,
       sorter: true,
+      sortDirections: SORT_DIRECTIONS,
       sortOrder: table.orderOf('createdAt'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('name'),
@@ -635,6 +685,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       key: 'expireAt',
       width: widths.expiry,
       sorter: true,
+      sortDirections: SORT_DIRECTIONS,
       sortOrder: table.orderOf('expireAt'),
       onHeaderCell: () => resizer('expiry'),
       render: (value: string | null) => expiryCell(value),
@@ -691,8 +742,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
                 : t('subscriptions.actions.extend'),
             icon: <CalendarOutlined />,
             disabled: !canEdit || busy || subscription.tariffPlanId === null,
-            onClick: () =>
-              runAction(() => prolong.mutateAsync({ id: subscription.id }), subscription),
+            onClick: () => confirmProlong(subscription),
           },
           // The streaming subsystem that would terminate connections does not exist yet: a greyed
           // button with a sentence says that before the click, where a live button answering 404

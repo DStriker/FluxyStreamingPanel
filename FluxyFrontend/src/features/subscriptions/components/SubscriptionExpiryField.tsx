@@ -41,6 +41,9 @@ export default function SubscriptionExpiryField({
             showTime={{ format: 'HH:mm' }}
             format="YYYY-MM-DD HH:mm"
             disabled={planed || neverExpires}
+            // No clear (×) affordance: the "never expires" switch below is the only way to remove
+            // an expiry, so a stray click on the picker cannot wipe a date the operator set.
+            allowClear={false}
             style={{ width: 240 }}
             placeholder={t('subscriptionsForm.expiryLabel')}
           />

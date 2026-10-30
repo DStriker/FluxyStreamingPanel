@@ -2118,6 +2118,12 @@ const en = {
     // one row is not a "selection", and telling an operator about "selected rows" after clearing
     // one service described a run that did not happen (design decision 16). One sentence only -
     // the toast has no title of its own, so a `lastServiceTitle` key was never read.
+    // The prolongation question. It names what will change (the date moves forward) rather than
+    // repeating the button, because a second prolongation is a real second extension.
+    prolongConfirmTitle: 'Extend this subscription?',
+    prolongConfirmBody:
+      'The expiry of "{{name}}" will move forward by the tariff plan\'s duration, keeping the time already left.',
+    prolongConfirmOk: 'Extend',
     lastServiceBody:
       'A subscription must keep at least one service. Add another one before removing this.',
     bulk: {
@@ -2132,6 +2138,10 @@ const en = {
       blockOwner: 'Block the owners',
       apply: 'Apply',
       extend: 'Extend',
+      // The prolongation question for a selection, worded like the other bulk confirms.
+      prolongTitle: 'Extend {{count}} subscriptions?',
+      prolongBody:
+        'Each selected subscription moves forward by its own plan\'s duration, keeping the time already left.',
       changeTariffTitle: 'Change the tariff plan',
       changeTariffPlaceholder: 'Choose a tariff plan',
       changeTariffHint:
