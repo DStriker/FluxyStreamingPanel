@@ -38,6 +38,7 @@ export type BulkSubscriptionAction =
   | 'delete-playlist'
   | 'delete-mag'
   | 'delete-enigma2'
+  | 'prolong'
   | 'block-owner'
 
 /** The body a bulk run sends: the action, the ids and the one value it writes. */
@@ -187,6 +188,27 @@ export const generatePlaylistId = ({
   csrfToken: string | null
 }): Promise<{ playlistId: string }> =>
   apiFetch('/admin/subscriptions/playlist-id', { method: 'POST', body: {}, csrfToken })
+
+/**
+ * Extends one subscription's period from its end by its plan's duration:
+ * `POST /admin/subscriptions/{id}/prolong`, answered `200 subscription_prolonged`.
+ *
+ * A state transition rather than a field write, which is why it is its own endpoint: the new date
+ * depends on the current one and the plan's length, and a PATCH would make the caller compute it.
+ * A subscription with no plan is `400 validation_failed` naming the plan field.
+ */
+export const prolongSubscription = ({
+  id,
+  csrfToken,
+}: {
+  id: string
+  csrfToken: string | null
+}): Promise<MessageResponse> =>
+  apiFetch(`/admin/subscriptions/${encodeURIComponent(id)}/prolong`, {
+    method: 'POST',
+    body: {},
+    csrfToken,
+  })
 
 /** Runs one operation over a selection: `POST /admin/subscriptions/bulk`. */
 export const bulkSubscriptions = ({

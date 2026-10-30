@@ -2430,14 +2430,34 @@ async function main() {
     subscriptionsHtml.includes('>Expires<') &&
       subscriptionsHtml.includes('>Max connections<') &&
       subscriptionsHtml.includes('>Issued by<') &&
-      subscriptionsHtml.includes('Search by playlist id or MAC') &&
+      subscriptionsHtml.includes('Search by playlist id, MAG MAC or Enigma2 MAC') &&
       subscriptionsHtml.includes('Any status') &&
       subscriptionsHtml.includes('Any owner') &&
       subscriptionsHtml.includes('Any issuer') &&
       // The auto-refresh toggle leads the toolbar, the same place the streams page puts it.
       subscriptionsHtml.includes('Pause auto refresh') &&
-      subscriptionsHtml.includes('Bulk actions'),
+      // The bulk menu uses the same label as every other table (owner item 1).
+      subscriptionsHtml.includes('Actions') &&
+      !subscriptionsHtml.includes('Bulk actions'),
     `rendered ${subscriptionsHtml.length} bytes`,
+  )
+
+  check(
+    'the subscriptions table has no expand column and its name header sorts the creation date',
+    // The empty chevron column was both the wide left gap and the width that pushed the table past
+    // the card (design decision 17). Both sortable headers are present.
+    !subscriptionsHtml.includes('ant-table-row-expand-icon-cell') &&
+      !subscriptionsHtml.includes('ant-table-row-expand-icon') &&
+      subscriptionsHtml.includes('>Expires<'),
+    `rendered ${subscriptionsHtml.length} bytes`,
+  )
+
+  check(
+    'the bulk menu carries an icon on every entry',
+    // Six items rendered through the menu's markup carry an antd icon class; a bare label item
+    // renders none. This is the owner's item 2, and it is invisible to typecheck.
+    (subscriptionsHtml.match(/anticon/g) ?? []).length >= 7,
+    `icons on the page: ${(subscriptionsHtml.match(/anticon/g) ?? []).length}`,
   )
 
   check(

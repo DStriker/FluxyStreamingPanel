@@ -100,7 +100,9 @@ export const toUpdateBody = (values: SubscriptionValues) => ({
   tariffPlanId: values.tariffPlanId ?? null,
   clearTariffPlan: values.tariffPlanId == null,
   maxConnections: values.maxConnections ?? null,
-  clearMaxConnections: values.maxConnections == null,
+  // The ceiling is plan-owned: a null while a plan is attached is the form *not sending* the
+  // field, not the operator asking for "unlimited". Only a plan-less save can clear it.
+  clearMaxConnections: values.tariffPlanId == null && values.maxConnections == null,
   isRestreamer: values.isRestreamer,
   ipWhitelist: values.ipWhitelist,
   userAgentWhitelist: values.userAgentWhitelist,

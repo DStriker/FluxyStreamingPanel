@@ -85,7 +85,9 @@ describe('toUpdateBody', () => {
   })
 
   it('treats an undefined ceiling as unlimited, which is what antd actually stores', () => {
-    const body = toUpdateBody(values({ maxConnections: undefined as unknown as null }))
+    const body = toUpdateBody(
+      values({ tariffPlanId: null, maxConnections: undefined as unknown as null }),
+    )
 
     expect(body.maxConnections).toBeNull()
     expect(body.clearMaxConnections).toBe(true)
@@ -99,7 +101,9 @@ describe('toUpdateBody', () => {
   })
 
   it('derives clearMaxConnections from an empty ceiling', () => {
-    const body = toUpdateBody(values({ maxConnections: null }))
+    // Without a plan the ceiling is the row's own, so an empty value is the operator asking for
+    // "unlimited".
+    const body = toUpdateBody(values({ tariffPlanId: null, maxConnections: null }))
 
     expect(body.maxConnections).toBeNull()
     expect(body.clearMaxConnections).toBe(true)
@@ -112,6 +116,15 @@ describe('toUpdateBody', () => {
     expect(body.clearMaxConnections).toBe(false)
   })
 
+  it('does not clear the ceiling while a plan owns it', () => {
+    // A plan-attached save drops the dependent fields, so its null ceiling is "not sent" rather
+    // than "unlimited". Sending the clear while a plan is attached would be a request about a
+    // field the plan already decides.
+    const body = toUpdateBody(values({ tariffPlanId: 'plan-1', maxConnections: null }))
+
+    expect(body.clearMaxConnections).toBe(false)
+  })
+
   it('keeps the two flags independent of each other', () => {
     // Clearing the plan does not clear the ceiling and the other way round: they are two fields
     // with two decisions, and one flag driven off the other would collapse them.
@@ -119,8 +132,8 @@ describe('toUpdateBody', () => {
     expect(planOnly.clearTariffPlan).toBe(true)
     expect(planOnly.clearMaxConnections).toBe(false)
 
-    const ceilingOnly = toUpdateBody(values({ tariffPlanId: 'plan-1', maxConnections: null }))
-    expect(ceilingOnly.clearTariffPlan).toBe(false)
+    const ceilingOnly = toUpdateBody(values({ tariffPlanId: null, maxConnections: null }))
+    expect(ceilingOnly.clearTariffPlan).toBe(true)
     expect(ceilingOnly.clearMaxConnections).toBe(true)
   })
 

@@ -4,6 +4,7 @@ import {
   deleteSubscription,
   generatePlaylistId,
   patchSubscription,
+  prolongSubscription,
   updateSubscription,
 } from '../api'
 import { useWrite } from '../../../hooks/useWrite'
@@ -20,6 +21,9 @@ export const useCreateSubscription = () => useWrite(createSubscription)
 export const useUpdateSubscription = () => useWrite(updateSubscription)
 export const useDeleteSubscription = () => useWrite(deleteSubscription)
 export const useBulkSubscriptions = () => useWrite(bulkSubscriptions)
+
+/** Extends one subscription's period. The row action and the bulk `prolong` both answer it. */
+export const useProlongSubscription = () => useWrite(prolongSubscription)
 
 /**
  * Changes one service field of a subscription.

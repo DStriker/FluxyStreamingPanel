@@ -149,14 +149,20 @@ export default function SubscriptionSubrows({ subscription }: { subscription: Su
   }
 
   return (
-    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-      {strips}
-      {addable.length > 0 && (
-        <Space size={8} wrap>
-          {addable}
-        </Space>
-      )}
-    </Space>
+    // Indented to line up with the "Subscription" column rather than flush with the row edge:
+    // with the expand column hidden (design decision 17) the strips are the only thing telling a
+    // reader these lines belong to the row above, and the indent is that statement. The cell
+    // inherits the row's highlight, so a selected subscription highlights its strips too.
+    <div style={{ width: '100%', paddingInlineStart: 16, paddingBlock: 4 }}>
+      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+        {strips}
+        {addable.length > 0 && (
+          <Space size={8} wrap>
+            {addable}
+          </Space>
+        )}
+      </Space>
+    </div>
   )
 }
 

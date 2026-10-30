@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Checkbox,
+  DatePicker,
   Divider,
   Form,
   Input,
@@ -179,6 +180,12 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
   // another one: a plan disables six fields, and a plan's support flags gate the three service
   // inputs.
   const tariffPlanId = Form.useWatch('tariffPlanId', form) ?? CREATE_VALUES.tariffPlanId
+  /** Whether the operator ticked "never expires", which is what sends the explicit clear. */
+  const [neverExpires, setNeverExpires] = useState(false)
+
+  // The picker's dayjs value is a moment; the contract takes an ISO 8601 date-time, so the
+  // conversion happens here, at the one boundary that knows both shapes.
+  const expireAtValue = Form.useWatch('expireAt', form) as unknown
 
   /** The plan the form currently has selected, or null when it has none. */
   const selectedPlan = useMemo(
@@ -219,6 +226,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     return {
       ...CREATE_VALUES,
       ...held,
+      expireAt: expireAtWire(expireAtValue, neverExpires),
       tariffPlanId: held.tariffPlanId ?? null,
       maxConnections: held.maxConnections ?? null,
     }
@@ -256,7 +264,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     form.setFieldsValue({
       userId: detail.userId,
       playlistId: detail.playlistId,
-      expireAt: detail.expireAt === null ? null : detail.expireAt.slice(0, 10),
+      expireAt: detail.expireAt,
       tariffPlanId: detail.tariffPlanId,
       maxConnections: detail.maxConnections,
       isRestreamer: detail.isRestreamer,
@@ -272,6 +280,25 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       bouquetIds: [...detail.bouquetIds],
     })
   }, [detail, form])
+
+  /**
+   * Clearing the plan re-activates the stored bouquet list, and an empty one is preselected
+   * again - the spec's "all preselected again". A subscription that always carried a plan never
+   * stored its own bouquets, so without this the select would open empty and the save would be
+   * refused by the minimum-one rule with nothing the operator could see.
+   */
+  useEffect(() => {
+    if (planed || bouquetOptions.length === 0) return
+
+    const held = form.getFieldValue('bouquetIds') as string[] | undefined
+
+    if (held && held.length > 0) return
+
+    form.setFieldValue(
+      'bouquetIds',
+      bouquetOptions.map((option) => option.value),
+    )
+  }, [planed, bouquetOptions, form])
 
   /**
    * The add form opens with every bouquet preselected.
@@ -325,12 +352,19 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       })
   }, [isEdit, minted, selectedPlan, form, generatePlaylistId])
 
-  /** Mints a fresh playlist id and puts it in the field. */
+  /**
+   * Mints a fresh playlist id and puts it in the field.
+   *
+   * The field is set from the generator's own answer rather than from a re-read, and the value is
+   * written with `setFieldsValue` so the controlled input repaints: `setFieldValue` alone updates
+   * the store but not always the touched field's displayed value when the form has never been
+   * submitted.
+   */
   const generatePlaylist = () => {
     void generatePlaylistId
       .mutateAsync({})
       .then((answer) => {
-        form.setFieldValue('playlistId', answer.playlistId)
+        form.setFieldsValue({ playlistId: answer.playlistId })
         setDirty(true)
       })
       .catch((error) => void message.error(messageForError(error)))
@@ -412,10 +446,6 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           </Form.Item>
         )}
 
-        <Divider titlePlacement="start" style={{ marginTop: 0 }}>
-          {t('subscriptionsForm.ownerSection')}
-        </Divider>
-
         {/* The owner is chosen only on create: it never changes after the subscription is issued,
             and the server ignores the field on a change. `planAvailableToOwner` re-filters the
             plan list when the owner is chosen, because a plan is only attachable while its groups
@@ -433,7 +463,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
                   },
                 ]
           }
-          extra={usersError ?? t('subscriptionsForm.ownerHint')}
+          extra={usersError ?? undefined}
           validateStatus={usersError ? 'warning' : undefined}
         >
           <Select
@@ -450,12 +480,10 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           />
         </Form.Item>
 
-        <Divider titlePlacement="start">{t('subscriptionsForm.planSection')}</Divider>
-
         <Form.Item
           name="tariffPlanId"
           label={t('subscriptionsForm.planLabel')}
-          extra={plansError ?? t('subscriptionsForm.planHint')}
+          extra={plansError ?? undefined}
           validateStatus={plansError ? 'warning' : undefined}
         >
           <Select
@@ -468,16 +496,36 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           />
         </Form.Item>
 
-        <Form.Item
-          name="expireAt"
-          label={t('subscriptionsForm.expiryLabel')}
-          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.expiryHint')}
-        >
-          {/* A date input rather than a picker dependency: the value travels as `yyyy-MM-dd`, and
-              a native date field is the smallest control that produces that string in the
-              browser's own language. Disabled while a plan is attached, because the plan computes
-              the expiry from the creation date. */}
-          <Input type="date" disabled={planed} />
+        {/* The expiry is a full moment, not a day: an operator selling an hour-long plan needs the
+            time. `DatePicker` with `showTime` is the project's antd control for it, and the value
+            travels as an ISO 8601 date-time.
+
+            "Never expires" is its own checkbox rather than an empty picker, because an empty
+            picker is too easy to read as "not filled in yet" - and on this API the two are
+            different requests (absent keeps, an explicit clear nulls it). */}
+        <Form.Item label={t('subscriptionsForm.expiryLabel')}>
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <Form.Item name="expireAt" noStyle>
+              <DatePicker
+                showTime={{ format: 'HH:mm' }}
+                format="YYYY-MM-DD HH:mm"
+                disabled={planed || neverExpires}
+                style={{ width: 240 }}
+                placeholder={t('subscriptionsForm.expiryLabel')}
+              />
+            </Form.Item>
+            <Checkbox
+              checked={neverExpires}
+              disabled={planed}
+              onChange={(event) => {
+                setNeverExpires(event.target.checked)
+                form.setFieldValue('expireAt', null)
+                setDirty(true)
+              }}
+            >
+              {t('subscriptionsForm.neverExpiresLabel')}
+            </Checkbox>
+          </Space>
         </Form.Item>
 
         <Divider titlePlacement="start">{t('subscriptionsForm.servicesSection')}</Divider>
@@ -536,11 +584,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
               },
             },
           ]}
-          extra={
-            supportsMag
-              ? t('subscriptionsForm.magHint')
-              : t('subscriptionsForm.magNeedsPlanSupport')
-          }
+          extra={supportsMag ? undefined : t('subscriptionsForm.magNeedsPlanSupport')}
         >
           <Input disabled={!supportsMag} placeholder="AA:BB:CC:DD:EE:FF" />
         </Form.Item>
@@ -560,11 +604,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
               },
             },
           ]}
-          extra={
-            supportsEnigma2
-              ? t('subscriptionsForm.enigma2Hint')
-              : t('subscriptionsForm.enigma2NeedsPlanSupport')
-          }
+          extra={supportsEnigma2 ? undefined : t('subscriptionsForm.enigma2NeedsPlanSupport')}
         >
           <Input disabled={!supportsEnigma2} placeholder="AA:BB:CC:DD:EE:FF" />
         </Form.Item>
@@ -812,6 +852,26 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       </Form>
     </Card>
   )
+}
+
+/**
+ * The expiry as the wire expects it, or null.
+ *
+ * The picker hands back a dayjs object (or null); the contract takes an ISO 8601 date-time string.
+ * A ticked "never expires" wins over whatever the picker still holds, because that checkbox is the
+ * operator's explicit statement and a leftover date behind a disabled control is not.
+ */
+function expireAtWire(value: unknown, never: boolean): string | null {
+  if (never || value === null || value === undefined) return null
+
+  // `toISOString` is the round-trippable form the backend parses, offset included.
+  if (typeof value === 'object' && value !== null && 'toISOString' in value) {
+    const iso = (value as { toISOString: () => string }).toISOString()
+
+    return typeof iso === 'string' ? iso : null
+  }
+
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 /**

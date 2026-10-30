@@ -2039,8 +2039,8 @@ const en = {
     save: 'Save',
     backToList: 'Back to the list',
     noPermission: 'Your group does not allow this.',
-    searchLabel: 'Search by playlist id or MAC',
-    searchPlaceholder: 'Playlist id or MAC',
+    searchLabel: 'Search by playlist id, MAG MAC or Enigma2 MAC',
+    searchPlaceholder: 'Playlist id, MAG MAC or Enigma2 MAC',
     // The three filters.
     filterAnyStatus: 'Any status',
     filterAnyOwner: 'Any owner',
@@ -2062,10 +2062,12 @@ const en = {
     // The two "no plan" and "no date" answers the table draws rather than a blank.
     noPlan: 'No tariff plan',
     neverExpires: 'never',
+    prolongNeedsPlan: 'Attach a tariff plan to prolong this subscription.',
     unlimited: 'unlimited',
     noCreator: 'deleted account',
     actions: {
       edit: 'Edit',
+      extend: 'Extend',
       killConnections: 'Kill active connections (not available yet)',
       blockOwner: 'Block the owner',
       delete: 'Delete',
@@ -2112,9 +2114,15 @@ const en = {
     resumeRefresh: 'Resume auto refresh',
     autoRefreshHint: 'Refreshes every {{seconds}} seconds',
     // The bulk menu's entry names and the dialogs behind the two that ask for a value.
+    // The single-row wording a subrow action uses. Deliberately not the bulk summary: a click on
+    // one row is not a "selection", and telling an operator about "selected rows" after clearing
+    // one service described a run that did not happen (design decision 16).
+    lastServiceTitle: 'Cannot remove the last service',
+    lastServiceBody:
+      'A subscription must keep at least one service. Add another one before removing this.',
     bulk: {
-      menu: 'Bulk actions',
-      menuWithCount: 'Bulk actions ({{count}})',
+      menu: 'Actions',
+      menuWithCount: 'Actions ({{count}})',
       changeTariff: 'Change the tariff plan',
       changeCreator: 'Change the issuer',
       delete: 'Delete',
@@ -2123,6 +2131,7 @@ const en = {
       deleteEnigma2: 'Clear the Enigma2 devices',
       blockOwner: 'Block the owners',
       apply: 'Apply',
+      extend: 'Extend',
       changeTariffTitle: 'Change the tariff plan',
       changeTariffPlaceholder: 'Choose a tariff plan',
       changeTariffHint:
@@ -2146,19 +2155,14 @@ const en = {
   // is and the form names what an operator is being asked to type.
   subscriptionsForm: {
     idLabel: 'ID',
-    ownerSection: 'Owner',
     ownerLabel: 'Owner',
     ownerRequired: 'Choose the owner.',
-    ownerHint: "The owner is chosen once and never changes after the subscription is issued.",
-    planSection: 'Tariff plan',
     planLabel: 'Tariff plan',
     planNone: 'No tariff plan',
-    planHint:
-      "A plan decides the connection ceiling, restreaming, formats, the device checks and the expiry. Leave it empty to set those here.",
     planUnavailable: 'The plans could not be read, so this picker offers nothing to pick.',
     expiryLabel: 'Expires',
-    expiryHint:
-      "With a plan the expiry is its creation date plus the plan's length. Without one, leave it empty for \"never\".",
+    neverExpiresLabel: 'Never expires',
+    expiryHint: "With a plan the expiry is its creation date plus the plan's length.",
     servicesSection: 'Services',
     servicesHint: 'A subscription has to deliver at least one service.',
     servicesRequired: 'Choose at least one service.',
@@ -2169,11 +2173,9 @@ const en = {
     generatePlaylistId: 'Generate',
     regeneratePlaylistId: 'Regenerate',
     magLabel: 'MAG MAC address',
-    magHint: 'Six pairs of hexadecimal digits.',
     magNeedsPlanSupport: 'The selected plan does not deliver to MAG devices.',
     magInvalid: 'Six pairs of hexadecimal digits, with ":" or "-" between them.',
     enigma2Label: 'Enigma2 MAC address',
-    enigma2Hint: 'Six pairs of hexadecimal digits.',
     enigma2NeedsPlanSupport: 'The selected plan does not deliver to Enigma2 devices.',
     enigma2Invalid: 'Six pairs of hexadecimal digits, with ":" or "-" between them.',
     formatsSection: 'Output formats',
@@ -2348,6 +2350,7 @@ const en = {
       subscription_created: 'The subscription has been created.',
       subscription_updated: 'The subscription has been updated.',
       subscription_deleted: 'The subscription has been deleted.',
+      subscription_prolonged: 'The subscription has been prolonged.',
       subscription_not_found: 'There is no subscription with that identifier.',
       subscription_already_exists:
         'Another subscription already holds that playlist id or device address.',

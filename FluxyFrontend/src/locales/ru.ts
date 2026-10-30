@@ -2036,8 +2036,8 @@ const ru: Translation = {
     save: 'Сохранить',
     backToList: 'К списку',
     noPermission: 'Ваша группа не разрешает это действие.',
-    searchLabel: 'Поиск по id плейлиста или MAC',
-    searchPlaceholder: 'ID плейлиста или MAC',
+    searchLabel: 'Поиск по ID плейлиста, MAC-адресу MAG или MAC-адресу Enigma2',
+    searchPlaceholder: 'ID плейлиста, MAC MAG или MAC Enigma2',
     filterAnyStatus: 'Любой статус',
     filterAnyOwner: 'Любой владелец',
     filterAnyCreator: 'Любой выдавший',
@@ -2056,10 +2056,12 @@ const ru: Translation = {
     },
     noPlan: 'Без тарифного плана',
     neverExpires: 'никогда',
+    prolongNeedsPlan: 'Чтобы продлить подписку, привяжите тарифный план.',
     unlimited: 'без ограничений',
     noCreator: 'удалённая учётная запись',
     actions: {
       edit: 'Изменить',
+      extend: 'Продлить',
       killConnections: 'Отключить активные подключения (пока недоступно)',
       blockOwner: 'Заблокировать владельца',
       delete: 'Удалить',
@@ -2101,9 +2103,15 @@ const ru: Translation = {
     pauseRefresh: 'Приостановить автообновление',
     resumeRefresh: 'Продолжить автообновление',
     autoRefreshHint: 'Обновляется каждые {{seconds}} секунд',
+    // Формулировка для действия одной строки. Намеренно не сводка массового действия: клик по
+    // одной строке — не «выделение», и сообщение о «выбранных строках» описывало прогон, которого
+    // не было (решение 16 в design.md).
+    lastServiceTitle: 'Нельзя удалить последнюю услугу',
+    lastServiceBody:
+      'У подписки должна остаться хотя бы одна услуга. Добавьте другую, прежде чем удалять эту.',
     bulk: {
-      menu: 'Массовые действия',
-      menuWithCount: 'Массовые действия ({{count}})',
+      menu: 'Действия',
+      menuWithCount: 'Действия ({{count}})',
       changeTariff: 'Изменить тарифный план',
       changeCreator: 'Изменить выдавшего',
       delete: 'Удалить',
@@ -2112,6 +2120,7 @@ const ru: Translation = {
       deleteEnigma2: 'Очистить устройства Enigma2',
       blockOwner: 'Заблокировать владельцев',
       apply: 'Применить',
+      extend: 'Продлить',
       changeTariffTitle: 'Изменение тарифного плана',
       changeTariffPlaceholder: 'Выберите тарифный план',
       changeTariffHint:
@@ -2135,19 +2144,14 @@ const ru: Translation = {
   },
   subscriptionsForm: {
     idLabel: 'ID',
-    ownerSection: 'Владелец',
     ownerLabel: 'Владелец',
     ownerRequired: 'Выберите владельца.',
-    ownerHint: 'Владелец выбирается один раз и не меняется после выдачи подписки.',
-    planSection: 'Тарифный план',
     planLabel: 'Тарифный план',
     planNone: 'Без тарифного плана',
-    planHint:
-      'План определяет лимит подключений, рестриминг, форматы, проверки устройств и срок действия. Оставьте пустым, чтобы задать их здесь.',
     planUnavailable: 'Тарифные планы не удалось прочитать, поэтому выбирать не из чего.',
     expiryLabel: 'Истекает',
-    expiryHint:
-      'С планом срок действия — дата создания плюс длительность плана. Без плана оставьте пустым для «никогда».',
+    neverExpiresLabel: 'Бессрочно',
+    expiryHint: 'С планом срок действия — дата создания плюс длительность плана.',
     servicesSection: 'Услуги',
     servicesHint: 'Подписка должна предоставлять хотя бы одну услугу.',
     servicesRequired: 'Выберите хотя бы одну услугу.',
@@ -2158,11 +2162,9 @@ const ru: Translation = {
     generatePlaylistId: 'Сгенерировать',
     regeneratePlaylistId: 'Перегенерировать',
     magLabel: 'MAC-адрес MAG',
-    magHint: 'Шесть пар шестнадцатеричных цифр.',
     magNeedsPlanSupport: 'Выбранный план не поддерживает устройства MAG.',
     magInvalid: 'Шесть пар шестнадцатеричных цифр через ":" или "-".',
     enigma2Label: 'MAC-адрес Enigma2',
-    enigma2Hint: 'Шесть пар шестнадцатеричных цифр.',
     enigma2NeedsPlanSupport: 'Выбранный план не поддерживает устройства Enigma2.',
     enigma2Invalid: 'Шесть пар шестнадцатеричных цифр через ":" или "-".',
     formatsSection: 'Форматы вывода',
@@ -2336,6 +2338,7 @@ const ru: Translation = {
       subscription_created: 'Подписка создана.',
       subscription_updated: 'Подписка изменена.',
       subscription_deleted: 'Подписка удалена.',
+      subscription_prolonged: 'Подписка продлена.',
       subscription_not_found: 'Подписки с таким идентификатором нет.',
       subscription_already_exists:
         'Другая подписка уже использует этот id плейлиста или адрес устройства.',

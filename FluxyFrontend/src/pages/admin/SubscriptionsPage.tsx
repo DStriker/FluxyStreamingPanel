@@ -1,19 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { App, Button, Card, Dropdown, Modal, Select, Space, Tag } from 'antd'
+import {
+  App,
+  Button,
+  Card,
+  Dropdown,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from 'antd'
 import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
+  CalendarOutlined,
+  ClockCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
   MoreOutlined,
   PauseCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   StopOutlined,
-  DeleteOutlined,
-  EditOutlined,
+  SwapOutlined,
+  TagOutlined,
+  UnorderedListOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons'
 import { SUBSCRIPTIONS_PAGE_SIZE } from '../../features/subscriptions/api'
+import { isMac } from '../../features/subscriptions/subscriptionRules'
 import type { BulkSubscriptionAction, SubscriptionSortField } from '../../features/subscriptions/api'
 import SubscriptionSubrows from '../../features/subscriptions/components/SubscriptionSubrows'
 import type {
@@ -30,6 +48,7 @@ import {
   useDeleteSubscription,
   useGeneratePlaylistId,
   usePatchSubscription,
+  useProlongSubscription,
 } from '../../features/subscriptions/hooks/mutations'
 import { useSubscriptions } from '../../features/subscriptions/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
@@ -44,7 +63,7 @@ import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../c
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 import { formatTimestamp } from '../../utils/dateFormat'
-import { messageForError, successTextFor, textForCode } from '../../utils/http'
+import { ApiError, messageForError, successTextFor, textForCode } from '../../utils/http'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
 const AUTO_REFRESH_MS = 30_000
@@ -197,6 +216,8 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const generatePlaylistId = useGeneratePlaylistId()
   const bulk = useBulkSubscriptions()
 
+  const prolong = useProlongSubscription()
+
   const { busyId, runAction, confirmDelete: askDelete } = useRowAction<Subscription>({
     refetch: () => void subscriptionsQuery.refetch(),
     rows: subscriptions?.items,
@@ -327,9 +348,30 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   }
 
   /**
+   * The last-service refusal, as a plain sentence.
+   *
+   * A subrow action is a click on **one** row, so the bulk "changed N of M, the rest were refused"
+   * summary is the wrong sentence for it (design decision 16). The server refuses this case with
+   * `validation_failed` naming the service fields, and the honest client answer is a message that
+   * says what happened rather than a report about a selection that was never made.
+   */
+  const refuseLastService = () =>
+    void message.error({
+      content: t('subscriptions.lastServiceBody'),
+      key: 'subscription-last-service',
+    })
+
+  /** Whether a refusal from a strip is the last-service one. */
+  const isLastServiceRefusal = (error: unknown): boolean =>
+    error instanceof ApiError &&
+    error.errors !== null &&
+    ['playlistId', 'magMac', 'enigma2Mac'].some((field) => field in error.errors!)
+
+  /**
    * The actions one row's service strips perform. Built once per render into a value the context
    * hands down, since `expandedRowRender` is a function of the row alone and has no prop path of
-   * its own.
+   * its own. Every one of them is the single-field patch, and every refusal is reported with
+   * single-row wording.
    */
   const listActions: SubscriptionsListActions = {
     canEdit,
@@ -344,22 +386,40 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       setMacValue(kind === 'mag' ? (subscription.magMac ?? '') : (subscription.enigma2Mac ?? ''))
     },
     // An empty string is "clear" on this API, which is what makes one request express both the
-    // removal and the change of a field.
+    // removal and the change of a field. A refusal is reported here rather than by
+    // `useRowAction`, because the last-service case has its own sentence.
     clearPlaylist: (subscription) =>
-      runAction(
-        () => patchField.mutateAsync({ id: subscription.id, patch: { playlistId: '' } }),
-        subscription,
-      ),
+      clearField(subscription, { playlistId: '' }),
     clearMag: (subscription) =>
-      runAction(
-        () => patchField.mutateAsync({ id: subscription.id, patch: { magMac: '' } }),
-        subscription,
-      ),
+      clearField(subscription, { magMac: '' }),
     clearEnigma2: (subscription) =>
-      runAction(
-        () => patchField.mutateAsync({ id: subscription.id, patch: { enigma2Mac: '' } }),
-        subscription,
-      ),
+      clearField(subscription, { enigma2Mac: '' }),
+  }
+
+  /**
+   * Clears one service field and reports the outcome in single-row words.
+   *
+   * `useRowAction` is deliberately not used here: its error path is a toast carrying the server's
+   * sentence, and the last-service refusal is better said as "the last service cannot be removed"
+   * than as a field-name validation message. A success is a toast from the answer's code, which is
+   * the same wording the addressed endpoint gives.
+   */
+  const clearField = async (
+    subscription: Subscription,
+    patch: { playlistId?: string; magMac?: string; enigma2Mac?: string },
+  ) => {
+    try {
+      const answer = await patchField.mutateAsync({ id: subscription.id, patch })
+      message.success(successTextFor(answer))
+      void subscriptionsQuery.refetch()
+    } catch (error) {
+      if (isLastServiceRefusal(error)) {
+        refuseLastService()
+        return
+      }
+
+      message.error(messageForError(error))
+    }
   }
 
   const saveMac = () => {
@@ -438,6 +498,9 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       case 'delete-enigma2':
         runBulk({ action: 'delete-enigma2' })
         break
+      case 'prolong':
+        runBulk({ action: 'prolong' })
+        break
       case 'block-owner':
         confirmBulkBlock()
         break
@@ -447,16 +510,25 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   /** The seven entries, in the order the menu draws them. */
   const bulkItems = useMemo<MenuProps['items']>(
     () => [
-      { key: 'change-tariff', icon: <EditOutlined />, label: t('subscriptions.bulk.changeTariff') },
+      { key: 'change-tariff', icon: <TagOutlined />, label: t('subscriptions.bulk.changeTariff') },
       {
         key: 'change-creator',
         icon: <UserSwitchOutlined />,
         label: t('subscriptions.bulk.changeCreator'),
       },
+      { key: 'prolong', icon: <CalendarOutlined />, label: t('subscriptions.bulk.extend') },
       { type: 'divider' },
-      { key: 'delete-playlist', label: t('subscriptions.bulk.deletePlaylist') },
-      { key: 'delete-mag', label: t('subscriptions.bulk.deleteMag') },
-      { key: 'delete-enigma2', label: t('subscriptions.bulk.deleteEnigma2') },
+      {
+        key: 'delete-playlist',
+        icon: <UnorderedListOutlined />,
+        label: t('subscriptions.bulk.deletePlaylist'),
+      },
+      { key: 'delete-mag', icon: <SwapOutlined />, label: t('subscriptions.bulk.deleteMag') },
+      {
+        key: 'delete-enigma2',
+        icon: <ClockCircleOutlined />,
+        label: t('subscriptions.bulk.deleteEnigma2'),
+      },
       { type: 'divider' },
       { key: 'block-owner', icon: <StopOutlined />, label: t('subscriptions.bulk.blockOwner') },
       {
@@ -479,9 +551,17 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
    * and a reader scanning the table reads them as one block.
    */
   const nameCell = (subscription: Subscription) => (
-    <Space direction="vertical" size={2} style={{ lineHeight: 1.4 }}>
+    <Space direction="vertical" size={2} style={{ lineHeight: 1.4, width: '100%' }}>
       <Space size={6} wrap>
-        <span style={{ fontWeight: 500 }}>{subscription.username}</span>
+        {/* The owner and the plan are links to the screens that own them: an operator looking at
+            a row is one click from the account and the price list rather than from a search. Both
+            are `extra` routes with no menu item of their own, which is exactly what a link is for. */}
+        <Typography.Link
+          onClick={() => navigate(`${area}/users/${subscription.userId}`)}
+          style={{ fontWeight: 500 }}
+        >
+          {subscription.username}
+        </Typography.Link>
         {subscription.status !== 'active' && (
           <Tag color={STATUS_COLOR[subscription.status]} style={{ marginInlineEnd: 0 }}>
             {t(`subscriptions.statuses.${subscription.status}`)}
@@ -489,7 +569,16 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
         )}
       </Space>
       <Space size={6} wrap style={{ opacity: 0.75, fontSize: 12 }}>
-        <span>{subscription.tariffPlanName ?? t('subscriptions.noPlan')}</span>
+        {subscription.tariffPlanId === null ? (
+          <span>{t('subscriptions.noPlan')}</span>
+        ) : (
+          <Typography.Link
+            onClick={() => navigate(`${area}/tariff-plans/${subscription.tariffPlanId}`)}
+            style={{ fontSize: 12, opacity: 0.9 }}
+          >
+            {subscription.tariffPlanName ?? t('subscriptions.noPlan')}
+          </Typography.Link>
+        )}
         <span>·</span>
         <span>{formatTimestamp(subscription.createdAt, language, timeZone)}</span>
       </Space>
@@ -518,11 +607,15 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
 
   const columns: TableColumnsType<Subscription> = [
     {
-      // The two-line cell the whole table is read by. Not sortable by itself: the two orders the
-      // endpoint offers are `createdAt` and `expireAt`, and the name cell carries neither.
+      // The two-line cell the whole table is read by, and the one that carries the creation date -
+      // so its header is what controls the `createdAt` order. The default order is `createdAt`
+      // desc; without this header no control reached it at all (design decision 17).
       title: t('subscriptions.columns.name'),
-      key: 'name',
+      key: 'createdAt',
+      dataIndex: 'createdAt',
       width: widths.name,
+      sorter: true,
+      sortOrder: table.orderOf('createdAt'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('name'),
       render: (_, subscription) => nameCell(subscription),
@@ -576,6 +669,21 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
             icon: <EditOutlined />,
             disabled: !canEdit,
             onClick: () => navigate(`${area}/subscriptions/${subscription.id}`),
+          },
+          // Prolongation needs a plan to take its length from, so a plan-less row draws the
+          // button disabled with the reason - the server refuses the same request with a
+          // validation error naming the plan field.
+          {
+            key: 'prolong',
+            label: !canEdit
+              ? t('subscriptions.noPermission')
+              : subscription.tariffPlanId === null
+                ? t('subscriptions.prolongNeedsPlan')
+                : t('subscriptions.actions.extend'),
+            icon: <CalendarOutlined />,
+            disabled: !canEdit || busy || subscription.tariffPlanId === null,
+            onClick: () =>
+              runAction(() => prolong.mutateAsync({ id: subscription.id }), subscription),
           },
           // The streaming subsystem that would terminate connections does not exist yet: a greyed
           // button with a sentence says that before the click, where a live button answering 404
@@ -657,6 +765,10 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
    */
   const expandable = useMemo(
     () => ({
+      // Forced-open strips with no toggle at all: the empty chevron column was the wide left gap
+      // *and* the extra width that pushed the table past the card's right edge (design decision
+      // 17). The strips are indented by their own cell instead.
+      showExpandColumn: false,
       expandedRowKeys: (subscriptions?.items ?? []).map((row) => row.id),
       expandIcon: () => null,
       expandRowByClick: false,
@@ -737,16 +849,23 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
               disabled={atDefaults}
               onClick={() => reset()}
             />
-            {hinted(
-              t('subscriptions.noPermission'),
+            {/* `hinted` only when the button is actually disabled: wrapping a working control in a
+                "your group does not allow this" tooltip claims a refusal that never happens. */}
+            {canEdit ? (
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                disabled={!canEdit}
                 onClick={() => navigate(`${area}/subscriptions/add`)}
               >
                 {t('subscriptions.addTitle')}
-              </Button>,
+              </Button>
+            ) : (
+              hinted(
+                t('subscriptions.noPermission'),
+                <Button type="primary" icon={<PlusOutlined />} disabled>
+                  {t('subscriptions.addTitle')}
+                </Button>,
+              )
             )}
           </Space>
         }
@@ -773,20 +892,47 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
           open={macDialog !== null}
           okText={t('subscriptions.changeMacOk')}
           cancelText={t('actions.cancel')}
-          onOk={saveMac}
+          onOk={() => {
+            const trimmed = macValue.trim()
+
+            if (trimmed.length > 0 && !isMac(trimmed)) return
+
+            saveMac()
+          }}
           onCancel={closeMacDialog}
         >
-          <label style={{ display: 'block' }}>
-            <span style={{ display: 'block', marginBottom: 4 }}>
-              {t('subscriptions.changeMacLabel')}
-            </span>
-            <input
-              className="ant-input"
-              value={macValue}
-              onChange={(event) => setMacValue(event.target.value)}
-              placeholder="AA:BB:CC:DD:EE:FF"
-            />
-          </label>
+          {/* An antd `Input` inside an antd `Form`, not a raw `<input>`: the project uses antd
+              controls only, and the form is what gives the field its label, its validation and its
+              refusal placement for free. The value is canonicalized on save (the server accepts
+              either separator and either case and stores `AA:BB:CC:DD:EE:FF`), and a blank value
+              clears the device. */}
+          <Form layout="vertical" onFinish={saveMac}>
+            <Form.Item
+              name="mac"
+              label={t('subscriptions.changeMacLabel')}
+              rules={[
+                {
+                  validator: (_, value: string | undefined) => {
+                    const trimmed = (value ?? '').trim()
+
+                    // Blank clears the device, so it is a valid answer rather than an error.
+                    if (trimmed.length === 0) return Promise.resolve()
+
+                    return isMac(trimmed)
+                      ? Promise.resolve()
+                      : Promise.reject(new Error(t('subscriptions.changeMacInvalid')))
+                  },
+                },
+              ]}
+            >
+              <Input
+                value={macValue}
+                onChange={(event) => setMacValue(event.target.value)}
+                placeholder="AA:BB:CC:DD:EE:FF"
+                maxLength={17}
+              />
+            </Form.Item>
+          </Form>
         </Modal>
 
         {/* The bulk plan change. The list is the one the filter loads, reused rather than asked
