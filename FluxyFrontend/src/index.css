@@ -472,6 +472,49 @@ body.table-col-resizing {
 }
 
 /*
+ * The service strips read as the bottom of their own row rather than as a second box under it.
+ *
+ * A forced-open expanded row is rc-table's answer to "draw something below this row", so absent
+ * this block it arrives as what it is: a separate `<tr>` across the whole table, painted with
+ * antd's `tableExpandedRowBg` (a grey tint on `colorFillAlter`), carrying the same 16px cell
+ * padding as a real row and separated from the row it belongs to by that row's bottom border.
+ * Three facts about the screen follow, and the owner named all three:
+ *
+ * 1. **No surface of its own.** The strip takes the table's own background, so the only thing
+ *    separating it from the row above is the content. `background: transparent` rather than a
+ *    colour: the row's cell is transparent too, so both resolve to whatever the table paints -
+ *    the card in light, `#141414`-ish in dark - and the merge survives a theme change without a
+ *    second rule for it.
+ * 2. **No rule against its own row.** A row's `border-bottom` is the line *between subscriptions*
+ *    only when a strip follows it, and an expanded row's bottom border is the line *below* the
+ *    strips. Here every row is force-expanded, so a row's bottom border is always the line between
+ *    a row and its own strip: it goes, and the strip's own bottom border is what separates one
+ *    subscription from the next. That is exactly the pair the owner asked for.
+ *
+ *    The selector is scoped to the card's own class (`.subscriptions-table`), because
+ *    `ant-table-expanded-row` is *antd's* class and a rule written against it unscoped would
+ *    change any table that ever grows an expanded row. rc-table does not put the page's
+ *    `rowClassName` on an expanded row, so the neighbour is reached by `:has()` - the row that is
+ *    followed by a strip - rather than by a class of its own. `:has()` is safe here: every browser
+ *    this app supports is a browser that ships it (2023 onwards), and the alternative is a
+ *    selector on a class rc-table never writes.
+ * 3. **Tighter padding.** The 16px the cell gives every row makes the strip look like a row of
+ *    its own; the strip's content already has 4px of its own padding. 4px here leaves the strip
+ *    sitting under its row while keeping its last line off the border below.
+ *
+ * The selection highlight is painted on the strip cell by the rules further down, which win over
+ * the transparent background because they carry the `[data-theme]` prefix (see their comment).
+ */
+.subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.ant-table-expanded-row > td {
+  background: transparent;
+  padding-block: 4px;
+}
+
+.subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.ant-table-row:has(+ tr.ant-table-expanded-row) > td {
+  border-bottom-width: 0;
+}
+
+/*
  * A selected subscription's strips follow its row.
  *
  * antd paints `tr.ant-table-expanded-row > td` with `tableExpandedRowBg` - a fixed surface that
@@ -490,28 +533,42 @@ body.table-col-resizing {
  * does not switch the theme. `documentElement.dataset.theme` is published by `App` for exactly
  * this; nothing here guesses which theme is on.
  *
- * The hover half is a real rule rather than dead code: antd's own selected-hover selector is
- * `tr.ant-table-row-selected > td.ant-table-cell-row-hover`, which matches the *cell* rc-table
- * marks while the pointer is over a row - so the state to answer is the hovered cell, not
- * `:hover` on the `<tr>`. Both halves carry the `[data-theme]` prefix, which is also what puts
- * these above antd's class-only selectors in the cascade.
+ * The hover half is driven by `:hover` on the row rather than by antd's `ant-table-cell-row-hover`
+ * class, and that is a correction rather than a preference. rc-table adds that class only to cells
+ * that carry a record (`Cell/useHoverState`), so the expanded `<tr>` - which has no record - never
+ * receives it. The old `.ant-table-cell-row-hover` selectors for the strip therefore matched
+ * nothing, and the mismatch was invisible while the strip had an opaque surface of its own: it
+ * simply kept antd's grey while the row tinted. With the strip transparent (see the merge rules
+ * above) the same dead selector leaves the strip *unchanged* under a hovered row, which reads as
+ * the strip not belonging to it. `:hover` is a state both rows can be in, so both halves are now
+ * painted from one condition. The selected and unselected cases are written as mutually exclusive
+ * (`:not(.subscription-row-selected)` and `.subscription-row-selected`) so specificity never
+ * decides which of them applies.
+ *
+ * The unselected hover colour is antd's own `--ant-table-row-hover-bg` rather than a hex value:
+ * it is the surface the row's own cells already take, so the strip follows the theme's ramp
+ * without a light/dark pair to keep in step.
  */
-[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
-[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
+.subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.ant-table-row:not(.subscription-row-selected):hover + tr.ant-table-expanded-row > td {
+  background: var(--ant-table-row-hover-bg);
+}
+
+[data-theme='light'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
+[data-theme='light'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
   background: #e6f4ff;
 }
 
-[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td.ant-table-cell-row-hover,
-[data-theme='light'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td.ant-table-cell-row-hover {
+[data-theme='light'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover > td,
+[data-theme='light'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover + tr.ant-table-expanded-row > td {
   background: #add8ff;
 }
 
-[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
-[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
   background: #213b5b;
 }
 
-[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td.ant-table-cell-row-hover,
-[data-theme='dark'] .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td.ant-table-cell-row-hover {
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover > td,
+[data-theme='dark'] .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover + tr.ant-table-expanded-row > td {
   background: #284f7e;
 }

@@ -2122,7 +2122,7 @@ const ru: Translation = {
       changeCreator: 'Изменить выдавшего',
       delete: 'Удалить',
       deletePlaylist: 'Очистить плейлист',
-      deleteMag: 'Очистить MAC-адреса',
+      deleteMag: 'Очистить устройства MAG',
       deleteEnigma2: 'Очистить устройства Enigma2',
       blockOwner: 'Заблокировать владельцев',
       apply: 'Применить',
@@ -2141,7 +2141,7 @@ const ru: Translation = {
       deleteBody: 'Каждая выбранная подписка и всё, что она содержит, будет удалено.',
       deletePlaylistTitle: 'Очистить плейлист у подписок ({{count}})?',
       deletePlaylistBody: 'Подписка, единственная услуга которой — плейлист, будет отклонена.',
-      deleteMagTitle: 'Очистить MAC-адреса у подписок ({{count}})?',
+      deleteMagTitle: 'Очистить устройства MAG у подписок ({{count}})?',
       deleteMagBody: 'Подписка, единственная услуга которой — MAG, будет отклонена.',
       deleteEnigma2Title: 'Очистить устройства Enigma2 у подписок ({{count}})?',
       deleteEnigma2Body:

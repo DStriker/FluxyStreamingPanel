@@ -17,17 +17,17 @@ import type { MenuProps, TableColumnsType } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   CalendarOutlined,
-  ClockCircleOutlined,
   DeleteOutlined,
+  DesktopOutlined,
   EditOutlined,
   MoreOutlined,
   PauseCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   StopOutlined,
-  SwapOutlined,
   TagOutlined,
   UnorderedListOutlined,
+  UsbOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons'
 import { SUBSCRIPTIONS_PAGE_SIZE } from '../../features/subscriptions/api'
@@ -577,10 +577,17 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
         icon: <UnorderedListOutlined />,
         label: t('subscriptions.bulk.deletePlaylist'),
       },
-      { key: 'delete-mag', icon: <SwapOutlined />, label: t('subscriptions.bulk.deleteMag') },
+      // The two device clears take the icons the sidebar's device entries used before those
+      // entries were folded into this list: a MAG box is a USB stick to this application and an
+      // Enigma2 receiver is a desktop machine. What they replaced said nothing about a device - a
+      // swap arrow reads as "move" and a clock reads as "schedule", which is the prolongation
+      // sitting three items above - and neither was distinguishable from the delete below it at a
+      // glance. `UsbOutlined`/`DesktopOutlined` are also different shapes from each other and from
+      // the trash can, which is the property the owner asked for.
+      { key: 'delete-mag', icon: <UsbOutlined />, label: t('subscriptions.bulk.deleteMag') },
       {
         key: 'delete-enigma2',
-        icon: <ClockCircleOutlined />,
+        icon: <DesktopOutlined />,
         label: t('subscriptions.bulk.deleteEnigma2'),
       },
       { type: 'divider' },
@@ -853,7 +860,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   return (
     <SubscriptionsListContext.Provider value={listActions}>
       <Card
-        className="page-card"
+        className="page-card subscriptions-table"
         title={t('subscriptions.listTitle')}
         styles={{ title: { whiteSpace: 'nowrap' } }}
         extra={

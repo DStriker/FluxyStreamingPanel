@@ -2478,6 +2478,16 @@ async function main() {
     `rendered ${subscriptionsHtml.length} bytes`,
   )
 
+  check(
+    'the subscription card carries its own scope class for the strip merge rules',
+    // The merge rules live in `index.css` and must not reach any other table's expanded row, so
+    // they are scoped by this class. Without it on the card the style block matches nothing and
+    // the strips silently go back to a grey band under every row - invisible to tsc, lint and the
+    // build, and invisible to every render assertion above.
+    subscriptionsHtml.includes('page-card subscriptions-table'),
+    subscriptionsHtml.match(/class="[^"]*page-card[^"]*"/)?.[0] ?? 'no page-card class',
+  )
+
   const subscriptionFormHtml = renderToStaticMarkup(
     withRouter('/admin/subscriptions/add', withQuery(
       <AntApp>
@@ -3325,6 +3335,57 @@ async function main() {
   // split: the rule in `index.css` exists, names the class antd uses, and says this theme's
   // own primary - the very blue the selected row underneath it is filled with.
   const railCss = readFileSync('src/index.css', 'utf8')
+
+  check(
+    'the two device-clear bulk entries name devices rather than MAC addresses, in both bundles',
+    // The owner's round-4 item 11.1. Read through i18next in both languages, because the wording
+    // this replaces lived in `ru.ts` alone: the render above draws whichever language is active
+    // and it would have passed while the Russian menu still said "Очистить MAC-адреса". The word
+    // "MAC" must be gone from *both*, and the playlist entry is asserted beside them so the three
+    // keep reading as one family.
+    //
+    // The **icons** for these two entries are deliberately not asserted: a `Dropdown` renders its
+    // menu on open, and `renderToStaticMarkup` never opens one, so `anticon-usb`/`anticon-desktop`
+    // appear in no markup this probe can reach. Reading the page's own source instead would only
+    // assert that the text matches itself. That half was verified in a browser.
+    i18n.t('subscriptions.bulk.deleteMag', { lng: 'en' }) === 'Clear the MAG devices' &&
+      i18n.t('subscriptions.bulk.deleteMag', { lng: 'ru' }) === 'Очистить устройства MAG' &&
+      !/MAC/i.test(i18n.t('subscriptions.bulk.deleteMag', { lng: 'en' })) &&
+      !/MAC/i.test(i18n.t('subscriptions.bulk.deleteMag', { lng: 'ru' })) &&
+      i18n.t('subscriptions.bulk.deletePlaylist', { lng: 'en' }) === 'Clear the playlist' &&
+      i18n.t('subscriptions.bulk.deletePlaylist', { lng: 'ru' }) === 'Очистить плейлист' &&
+      i18n.t('subscriptions.bulk.deleteEnigma2', { lng: 'en' }) === 'Clear the Enigma2 devices' &&
+      i18n.t('subscriptions.bulk.deleteEnigma2', { lng: 'ru' }) ===
+        'Очистить устройства Enigma2',
+    `en=${i18n.t('subscriptions.bulk.deleteMag', { lng: 'en' })}; ru=${i18n.t('subscriptions.bulk.deleteMag', { lng: 'ru' })}`,
+  )
+
+  check(
+    'the strip merge rules are scoped, drop the expanded surface, and answer the hover too',
+    // Three facts the browser measurement in round 4 established, none of which any other checker
+    // can see: the strip paints no surface of its own, the row/strip border goes while the strip
+    // keeps its own, and the hover is driven by `:hover` rather than by
+    // `ant-table-cell-row-hover` - rc-table adds that class only to cells that carry a record, so
+    // an expanded row never receives it and the earlier hover rule matched nothing at all.
+    /\.subscriptions-table[\s\S]{0,200}?tr\.ant-table-expanded-row > td \{[^}]*background: transparent;[^}]*padding-block: 4px;/.test(
+      railCss,
+    ) &&
+      /\.subscriptions-table[\s\S]{0,300}?tr\.ant-table-row:has\(\+ tr\.ant-table-expanded-row\) > td \{[^}]*border-bottom-width: 0;/.test(
+        railCss,
+      ) &&
+      /\.subscriptions-table[\s\S]{0,300}?tr\.ant-table-row:not\(\.subscription-row-selected\):hover \+ tr\.ant-table-expanded-row > td \{[^}]*var\(--ant-table-row-hover-bg\)/.test(
+        railCss,
+      ) &&
+      /\[data-theme=['"]light['"]\] \.subscriptions-table[\s\S]{0,300}?tr\.subscription-row-selected:hover \+ tr\.ant-table-expanded-row > td \{[^}]*#add8ff/.test(
+        railCss,
+      ) &&
+      /\[data-theme=['"]dark['"]\] \.subscriptions-table[\s\S]{0,300}?tr\.subscription-row-selected \+ tr\.ant-table-expanded-row > td \{[^}]*#213b5b/.test(
+        railCss,
+      ) &&
+      // The dead hover selector must be gone, not merely superseded.
+      !/tr\.ant-table-expanded-row > td\.ant-table-cell-row-hover/.test(railCss),
+    'the subscriptions strip rules are present in index.css',
+  )
 
   // The two halves of the compact card header, in the stylesheet that is the only thing that
   // can express them. At 1200 the wrapper turns into a column so the title gets a row of its
