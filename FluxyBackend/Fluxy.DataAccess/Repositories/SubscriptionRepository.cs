@@ -152,6 +152,8 @@ namespace Fluxy.DataAccess.Repositories
                     // The plan's length, for the prolongation dialog's projected date. Two more
                     // correlated reads rather than a join, exactly like the five above: the row
                     // set is one page of a hundred at most, and this keeps the projection flat.
+                    // This is the projection's only source for the pair - `Item` leaves the two
+                    // fields unset and the `with` below copies them across.
                     PlanDurationValue = subscription.TariffPlanId == null
                         ? null
                         : _context.TariffPlans
@@ -188,18 +190,9 @@ namespace Fluxy.DataAccess.Repositories
                                 .Where(plan => plan.Id == subscription.TariffPlanId)
                                 .Select(plan => plan.Name)
                                 .FirstOrDefault(),
-                        TariffPlanDurationValue = subscription.TariffPlanId == null
-                            ? null
-                            : _context.TariffPlans
-                                .Where(plan => plan.Id == subscription.TariffPlanId)
-                                .Select(plan => (int?)plan.DurationValue)
-                                .FirstOrDefault(),
-                        TariffPlanDurationUnit = subscription.TariffPlanId == null
-                            ? null
-                            : _context.TariffPlans
-                                .Where(plan => plan.Id == subscription.TariffPlanId)
-                                .Select(plan => (TariffPlanDurationUnit?)plan.DurationUnit)
-                                .FirstOrDefault(),
+                        // The plan's length is left unset here and filled from the anonymous pair
+                        // above in the `with` below: it is one fact with one source, and doing it
+                        // in both places was four correlated reads for two numbers.
                         CreatedAt = subscription.CreatedAt,
                         ExpireAt = subscription.ExpireAt,
                         IsTrial = false,

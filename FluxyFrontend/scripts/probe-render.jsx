@@ -3341,6 +3341,31 @@ async function main() {
   const railCss = readFileSync('src/index.css', 'utf8')
 
   check(
+    'the prolongation questions name the date where one can be computed, and a sentence where it cannot',
+    // The single-row body has to carry the two placeholders the dialog fills - the owner's name
+    // and the projected date - or the operator is asked to confirm a change they cannot see. The
+    // no-date branch gets its own sentence rather than repeating the title: a dialog whose body
+    // restates its heading says nothing, and it is the only line that can explain *why* no date is
+    // shown.
+    ['en', 'ru'].every((lng) => {
+      const body = i18n.t('subscriptions.prolongConfirmBody', { lng })
+      const fallback = i18n.t('subscriptions.prolongNoDateBody', { lng })
+      const title = i18n.t('subscriptions.prolongConfirmTitle', { lng })
+
+      return (
+        body.includes('{{name}}') &&
+        body.includes('{{expiry}}') &&
+        body.includes('{{plan}}') &&
+        fallback !== title &&
+        fallback.length > title.length &&
+        // The bulk body names the rule rather than a date: a selection has as many answers as rows.
+        !i18n.t('subscriptions.bulk.prolongBody', { lng }).includes('{{expiry}}')
+      )
+    }),
+    `en: "${i18n.t('subscriptions.prolongConfirmBody', { lng: 'en' })}"`,
+  )
+
+  check(
     'the two device-clear bulk entries name devices rather than MAC addresses, in both bundles',
     // The owner's round-4 item 11.1. Read through i18next in both languages, because the wording
     // this replaces lived in `ru.ts` alone: the render above draws whichever language is active

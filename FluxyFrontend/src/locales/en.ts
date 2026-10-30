@@ -2123,6 +2123,8 @@ const en = {
     prolongConfirmTitle: 'Extend this subscription?',
     prolongConfirmBody:
       'The subscription of {{name}} will be extended until {{expiry}} under the {{plan}} tariff plan.',
+    prolongNoDateBody:
+      'The expiry of "{{name}}" cannot be projected right now: the tariff plan length is missing, so the new date will be whatever the server computes.',
     prolongConfirmOk: 'Extend',
     lastServiceBody:
       'A subscription must keep at least one service. Add another one before removing this.',

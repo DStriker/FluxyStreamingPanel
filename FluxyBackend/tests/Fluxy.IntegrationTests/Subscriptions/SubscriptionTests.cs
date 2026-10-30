@@ -160,6 +160,35 @@ namespace Fluxy.IntegrationTests.Subscriptions
             Assert.True(row.GetProperty("supportsPlaylist").GetBoolean());
             Assert.False(row.GetProperty("supportsMag").GetBoolean());
             Assert.False(row.GetProperty("supportsEnigma2").GetBoolean());
+
+            // The plan's length travels with the row, so the prolongation dialog can project the
+            // new expiry without a second request. It is one fact from one source: the projection
+            // reads it from the plan once and copies it into the item.
+            Assert.Equal(1, row.GetProperty("tariffPlanDurationValue").GetInt32());
+            Assert.Equal("months", row.GetProperty("tariffPlanDurationUnit").GetString());
+        }
+
+        [Fact]
+        public async Task TheListCarriesNoPlanDurationForASubscriptionWithoutAPlan()
+        {
+            // The pair is nullable for exactly this state, which is also the one the row's prolong
+            // button is disabled in. A zero or an empty string here would be a length the dialog
+            // could project from, and it would promise a date no plan describes.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Basic");
+
+            await CreateSubscriptionAsync(Body(owner, playlistId: Playlist(), bouquetIds: [bouquet]));
+
+            using var list = await Client.GetAsync(
+                "/admin/subscriptions",
+                TestContext.Current.CancellationToken);
+            using var listBody = await ReadJsonAsync(list);
+            var row = listBody.RootElement.GetProperty("items")[0];
+
+            Assert.Equal(JsonValueKind.Null, row.GetProperty("tariffPlanDurationValue").ValueKind);
+            Assert.Equal(JsonValueKind.Null, row.GetProperty("tariffPlanDurationUnit").ValueKind);
         }
 
         [Fact]

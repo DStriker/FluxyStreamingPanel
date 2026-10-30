@@ -519,11 +519,22 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
    * The date is `projectedExpiry`'s: `max(now, the stored expiry) + the plan's duration`, the same
    * rule `SubscriptionRules.ProlongedExpiry` applies on the server, printed through
    * `formatTimestamp` in this account's zone and this page's language - exactly as the expiry cell
-   * behind the dialog prints it. The two are read at the same moment, so they can differ only by
-   * the seconds between the click and the request, which the format does not show.
+   * behind the dialog prints it.
+   *
+   * How close the preview lands depends on which side of `max` the row is on, and the two cases are
+   * not equally exact:
+   *
+   * - An **active** row previews *exactly*. Its floor is the stored expiry - a value the page and
+   *   the server both already hold - so the only input either side computes with is the plan's
+   *   duration, and both add it to the same instant.
+   * - An **expired** row previews from the moment this dialog computed `now`. The server's floor is
+   *   *its* request-time now, which is a few moments later, so the stored value lands later than
+   *   the promise by however long the operator leaves the dialog open. That dwell is unbounded, and
+   *   it is visible: the formatter prints seconds.
    *
    * The row's button is disabled without a plan (`prolongNeedsPlan`), so a projection here is
-   * always available; the null branch is the belt to that braces and would ask without a date.
+   * always available; the null branch is the belt to that braces and asks without a date rather
+   * than pretending to have one.
    */
   const confirmProlong = (subscription: Subscription) => {
     const projected = projectedExpiry(subscription, dayjs())
@@ -536,7 +547,10 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
             expiry: formatTimestamp(projected.toISOString(), language, timeZone),
             plan: subscription.tariffPlanName ?? t('subscriptions.noPlan'),
           })
-        : t('subscriptions.prolongConfirmTitle'),
+        : // Its own sentence, not the title again: a dialog whose body repeats its heading tells
+          // the operator nothing, and this line is the only place that can say *why* there is no
+          // date to show.
+          t('subscriptions.prolongNoDateBody', { name: subscription.username }),
       okText: t('subscriptions.prolongConfirmOk'),
       cancelText: t('actions.cancel'),
       onOk: () => runAction(() => prolong.mutateAsync({ id: subscription.id }), subscription),

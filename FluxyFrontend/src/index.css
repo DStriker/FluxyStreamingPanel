@@ -523,9 +523,11 @@ body.table-col-resizing {
  * air and the table showed fewer subscriptions on the screen than the card had room for. 8px keeps
  * a row's own two lines apart without padding the block twice.
  *
- * Written from the token rather than as the literal 8px, so the cell's inline padding keeps
- * following antd's own steps for the three table sizes (`cellPaddingBlock` / `-md` / `-sm` and
- * their horizontal pairs) while only the vertical amount changes.
+ * The value is the literal 8px because that is the number the owner named, and the property is
+ * `padding-block` rather than `padding`: naming only the vertical pair is what leaves the cell's
+ * *inline* padding on antd's own tokens, so the horizontal gap keeps following the table size
+ * (`cellPaddingInline` / `-md` / `-sm`) while the vertical amount is the one this page overrides.
+ * `padding: 8px` would have flattened both axes and lost that.
  */
 .subscriptions-table .ant-table-wrapper .ant-table-tbody > tr.ant-table-row > td {
   padding-block: 8px;
