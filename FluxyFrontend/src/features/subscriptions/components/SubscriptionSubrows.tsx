@@ -151,8 +151,12 @@ export default function SubscriptionSubrows({ subscription }: { subscription: Su
   return (
     // Indented to line up with the "Subscription" column rather than flush with the row edge:
     // with the expand column hidden (design decision 17) the strips are the only thing telling a
-    // reader these lines belong to the row above, and the indent is that statement. The cell
-    // inherits the row's highlight, so a selected subscription highlights its strips too.
+    // reader these lines belong to the row above, and the indent is that statement.
+    //
+    // The strips do **not** inherit the row's highlight on their own: antd paints the expanded
+    // `<tr>` with a fixed background. The page marks a selected row with `subscription-row-selected`
+    // and `index.css` repaints that row *and* the expanded row beside it, which is what makes the
+    // highlight reach here.
     <div style={{ width: '100%', paddingInlineStart: 16, paddingBlock: 4 }}>
       <Space direction="vertical" size={4} style={{ width: '100%' }}>
         {strips}

@@ -470,3 +470,20 @@ body.table-col-resizing {
   justify-content: center;
   padding: 24px;
 }
+
+/*
+ * A selected subscription's strips follow its row.
+ *
+ * antd paints `.ant-table-expanded-row > td` with a fixed background, so the strips under a
+ * selected row stayed unhighlighted even though the row itself was marked. The subscriptions page
+ * adds `subscription-row-selected` to the selected row and this repaints both halves with the
+ * selection colour, so the strips read as part of the row rather than as a detached band.
+ */
+.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected > td,
+.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected + tr.ant-table-expanded-row > td {
+  background: #e6f4ff;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr.subscription-row-selected:hover > td {
+  background: #bae0ff;
+}

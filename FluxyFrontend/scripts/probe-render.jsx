@@ -100,6 +100,17 @@ const withQuery = (children) => (
   <QueryClientProvider client={createQueryClient()}>{children}</QueryClientProvider>
 )
 
+// The same client with one query already answered, which is the only way a `renderToStaticMarkup`
+// can see a page *after* its data arrived: no effect runs, so nothing can fetch on its own. It
+// exists for the subscription edit form, whose whole point is what it draws from a populated row -
+// the empty-spinner render next to it cannot prove that a stored expiry reaches the picker.
+const withSeededQuery = (key, data, children) => {
+  const client = createQueryClient()
+  client.setQueryData(key, data)
+
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
 // One data router per render, built and thrown away inside the single synchronous call.
 // The probe has to go through one because the unsaved-changes guard on the three forms
 // reaches for `useBlocker`, which throws outside a data router - so a bare render of a
@@ -2561,6 +2572,65 @@ async function main() {
         ),
       },
     ]),
+  )
+
+  // The loaded state, from a seeded cache: the row has an expiry, a plan and two services.
+  const subscriptionPopulatedHtml = renderToStaticMarkup(
+    withRoutes('/admin/subscriptions/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/subscriptions/:id',
+        element: withSeededQuery(
+          ['subscription', '11111111-1111-1111-1111-111111111111'],
+          {
+            id: '11111111-1111-1111-1111-111111111111',
+            userId: '22222222-2222-2222-2222-222222222222',
+            username: 'subscriber',
+            resellerId: null,
+            creatorUsername: 'operator',
+            playlistId: '0123456789abcdef0123456789abcdef',
+            expireAt: '2027-03-04T15:30:00+00:00',
+            tariffPlanId: null,
+            tariffPlanName: null,
+            status: 'active',
+            maxConnections: 2,
+            isRestreamer: false,
+            ipWhitelist: [],
+            userAgentWhitelist: [],
+            isIspLock: false,
+            isCountryLock: false,
+            isTrial: false,
+            outputFormats: ['mpegTs'],
+            magMac: null,
+            isStbLock: false,
+            enigma2Mac: null,
+            bouquetIds: [],
+            createdAt: '2026-01-01T10:00:00+00:00',
+            derived: null,
+          },
+          <AntApp>
+            <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+
+  check(
+    'a populated subscription edit form draws its fields without throwing on the stored expiry',
+    // The regression this pins: `DatePicker` was handed the raw ISO string and threw
+    // `getUDayjs(...).isValid is not a function`, which took the whole form down. A form that
+    // renders its sections *and* draws the expiry control is the proof the conversion happens.
+    // What this can prove and what it cannot, stated plainly: `renderToStaticMarkup` runs no
+    // effects, so the `setFieldsValue` that fills the form never runs and the picker is drawn
+    // empty. What it *does* prove is the crash is gone - the form reaches its fields and draws the
+    // `DatePicker` from a row whose `expireAt` is a string, where handing that string straight to
+    // the control threw `isValid is not a function` and took the whole form down. The conversion
+    // itself is pinned by `expireAtPickerProps`'s unit test, which is the half a render cannot see.
+    subscriptionPopulatedHtml.includes('Edit subscription') &&
+      subscriptionPopulatedHtml.includes('MAG MAC address') &&
+      subscriptionPopulatedHtml.includes('ant-picker') &&
+      !subscriptionPopulatedHtml.includes('subscriptionsForm.'),
+    `rendered ${subscriptionPopulatedHtml.length} bytes from a populated row`,
   )
 
   check(

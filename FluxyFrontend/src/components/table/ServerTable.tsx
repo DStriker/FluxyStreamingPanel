@@ -80,6 +80,15 @@ interface ServerTableProps<Row extends object, SortField extends string> {
    * own body. Every other table leaves this undefined and draws no expand column at all.
    */
   expandable?: TableProps<Row>['expandable']
+  /**
+   * A class for each row, or nothing.
+   *
+   * One table needs it: the subscriptions list draws forced-open strips under every row, and a
+   * selected row has to carry its strips with it. antd paints an expanded row's own `<tr>` with a
+   * fixed background rather than inheriting the selection style, so the page marks the row and the
+   * stylesheet follows the mark.
+   */
+  rowClassName?: (row: Row) => string
 }
 
 /**
@@ -128,6 +137,7 @@ export default function ServerTable<Row extends object, SortField extends string
   showTotal,
   selection,
   expandable,
+  rowClassName,
 }: ServerTableProps<Row, SortField>) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [boxWidth, setBoxWidth] = useState<number | null>(null)
@@ -264,6 +274,7 @@ export default function ServerTable<Row extends object, SortField extends string
         scroll={{ x: fittedWidth + selectionWidth }}
         onChange={table.handleTableChange}
         expandable={expandable}
+        rowClassName={rowClassName ? (row: Row) => rowClassName(row) : undefined}
         locale={{ emptyText }}
         pagination={{
           ...table.pagination,

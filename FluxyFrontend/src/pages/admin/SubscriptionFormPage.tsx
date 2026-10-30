@@ -30,6 +30,7 @@ import {
   isUsableConnections,
 } from '../../features/subscriptions/subscriptionRules'
 import type { SubscriptionValues } from '../../features/subscriptions/api'
+import { expireAtPickerProps } from '../../features/subscriptions/subscriptionBody'
 import type { SubscriptionOutputFormat } from '../../features/subscriptions/types'
 import { SUBSCRIPTION_OUTPUT_FORMATS } from '../../features/subscriptions/subscriptionOptions'
 import {
@@ -128,7 +129,10 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
 
   const detailQuery = useSubscription(id)
   const detail = detailQuery.data ?? null
-  const loading = isEdit && (detailQuery.isPending || detailQuery.isFetching)
+  // `isPending` alone, which means "no answer yet". `isFetching` is true again on every background
+  // re-read, and a form that replaced itself with a spinner at that moment would drop whatever the
+  // operator had typed into it.
+  const loading = isEdit && detailQuery.isPending
   const loadError = isEdit && detailQuery.isError ? messageForError(detailQuery.error) : null
 
   // The pickers, each behind its own grant and its own request: an operator who may issue a
@@ -279,6 +283,11 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       enigma2Mac: detail.enigma2Mac,
       bouquetIds: [...detail.bouquetIds],
     })
+
+    // "Never expires" is a state of the form, not of the field, so it has to be seeded from the
+    // row as well: without this the checkbox would open unticked on a row that has no expiry and
+    // the first save would silently set one from an empty picker.
+    setNeverExpires(detail.expireAt === null)
   }, [detail, form])
 
   /**
@@ -505,7 +514,12 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
             different requests (absent keeps, an explicit clear nulls it). */}
         <Form.Item label={t('subscriptionsForm.expiryLabel')}>
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Form.Item name="expireAt" noStyle>
+            {/* The form stores the wire string, while `DatePicker` speaks `Dayjs`. Converting at
+                the field boundary - the pattern `VideoOnDemandFormPage` uses for its release date -
+                keeps every request and every `setFieldsValue` on the string shape the contract
+                uses, instead of leaking dayjs objects into the body mapping. Without it a populated
+                edit form hands a raw ISO string to the picker and it throws on `.isValid`. */}
+            <Form.Item name="expireAt" noStyle getValueProps={expireAtPickerProps}>
               <DatePicker
                 showTime={{ format: 'HH:mm' }}
                 format="YYYY-MM-DD HH:mm"
@@ -858,11 +872,19 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
  * The expiry as the wire expects it, or null.
  *
  * The picker hands back a dayjs object (or null); the contract takes an ISO 8601 date-time string.
- * A ticked "never expires" wins over whatever the picker still holds, because that checkbox is the
- * operator's explicit statement and a leftover date behind a disabled control is not.
+ *
+ * **The null-versus-empty sentinel is the whole point of this function, and it has bitten this
+ * form three times.** On `PATCH` the contract reads an absent or null expiry as *"leave it
+ * alone"*, and only the **empty string** means *"clear it"* - so a ticked "never expires" must
+ * send `''` or the clear is silently a keep. An empty picker is the other half of the rule: it is
+ * *not* a statement, so it answers null and the stored expiry stays (design decision 15).
  */
 function expireAtWire(value: unknown, never: boolean): string | null {
-  if (never || value === null || value === undefined) return null
+  // The explicit clear: the operator ticked the box, which is the only statement that removes an
+  // expiry. `null` here would be read as "keep" and the tick would do nothing.
+  if (never) return ''
+
+  if (value === null || value === undefined) return null
 
   // `toISOString` is the round-trippable form the backend parses, offset included.
   if (typeof value === 'object' && value !== null && 'toISOString' in value) {

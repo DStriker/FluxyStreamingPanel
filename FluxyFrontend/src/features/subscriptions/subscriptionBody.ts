@@ -1,3 +1,4 @@
+import dayjs from 'dayjs'
 import type { SubscriptionOutputFormat } from './types'
 
 /**
@@ -12,7 +13,13 @@ export interface SubscriptionValues {
   userId: string | null
   /** The playlist service's identifier, or null. */
   playlistId: string | null
-  /** Expiry as `yyyy-MM-dd`, or null for "never expires". */
+  /**
+   * Expiry as an ISO 8601 date-time, `''` to clear it, or null for "not stated".
+   *
+   * The three states are the contract's, not this form's invention: on a change an absent or null
+   * value keeps the stored expiry, and only the empty string clears it. A create treats `''` and
+   * null the same way (no expiry).
+   */
   expireAt: string | null
   /** The tariff plan it is sold under, or null. */
   tariffPlanId: string | null
@@ -55,7 +62,8 @@ export interface SubscriptionValues {
 export const toCreateBody = (values: SubscriptionValues) => ({
   userId: values.userId,
   playlistId: values.playlistId,
-  expireAt: values.expireAt,
+  // A create has no stored expiry to keep, so the empty-string clear collapses into "none" here.
+  expireAt: values.expireAt || null,
   tariffPlanId: values.tariffPlanId ?? null,
   maxConnections: values.maxConnections ?? null,
   isRestreamer: values.isRestreamer,
@@ -96,6 +104,8 @@ export const toCreateBody = (values: SubscriptionValues) => ({
  */
 export const toUpdateBody = (values: SubscriptionValues) => ({
   playlistId: values.playlistId,
+  // Passed through unchanged on purpose: `''` is the clear and null is "keep", and folding either
+  // into the other is exactly the bug this form has already shipped three times.
   expireAt: values.expireAt,
   tariffPlanId: values.tariffPlanId ?? null,
   clearTariffPlan: values.tariffPlanId == null,
@@ -114,4 +124,20 @@ export const toUpdateBody = (values: SubscriptionValues) => ({
   isStbLock: values.isStbLock,
   enigma2Mac: values.enigma2Mac,
   bouquetIds: values.bouquetIds,
+})
+
+/**
+ * The props antd's `DatePicker` needs, derived from the wire string the form stores.
+ *
+ * `DatePicker` requires a `Dayjs` object and calls `.isValid()` on whatever it is handed, so an
+ * ISO string passed straight through throws `getUDayjs(...).isValid is not a function` - which is
+ * exactly what a populated edit form did. Converting at the field boundary (the pattern
+ * `VideoOnDemandFormPage` uses for its release date) keeps the store on the contract's string shape
+ * while the control gets the type it can actually use.
+ *
+ * Extracted rather than written inline so a unit test can pin the conversion: every render of the
+ * page in `probe:render` lands before the row arrives, so a probe can never see this path.
+ */
+export const expireAtPickerProps = (value?: string | null): { value: dayjs.Dayjs | null } => ({
+  value: value ? dayjs(value) : null,
 })

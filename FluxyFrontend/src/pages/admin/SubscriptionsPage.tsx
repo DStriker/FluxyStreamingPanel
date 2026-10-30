@@ -232,6 +232,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   })
 
   /** The MAC dialog and the two bulk value dialogs. */
+  const [macForm] = Form.useForm<{ mac: string }>()
   const [macDialog, setMacDialog] = useState<MacDialogState | null>(null)
   const [macValue, setMacValue] = useState('')
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null)
@@ -241,6 +242,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const closeMacDialog = () => {
     setMacDialog(null)
     setMacValue('')
+    macForm.resetFields()
   }
 
   const closeBulkDialog = () => {
@@ -382,8 +384,11 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
     regenerate: (subscription) => mintPlaylist(subscription),
     addPlaylist: (subscription) => mintPlaylist(subscription),
     changeMac: (subscription, kind) => {
+      const current = kind === 'mag' ? (subscription.magMac ?? '') : (subscription.enigma2Mac ?? '')
+
       setMacDialog({ subscription, kind })
-      setMacValue(kind === 'mag' ? (subscription.magMac ?? '') : (subscription.enigma2Mac ?? ''))
+      setMacValue(current)
+      macForm.setFieldsValue({ mac: current })
     },
     // An empty string is "clear" on this API, which is what makes one request express both the
     // removal and the change of a field. A refusal is reported here rather than by
@@ -425,7 +430,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const saveMac = () => {
     if (!macDialog) return
 
-    const value = macValue.trim()
+    const value = (macForm.getFieldValue('mac') as string | undefined ?? macValue).trim()
 
     // A blank clears the device, which is the same field clear the strip's delete action performs.
     void runAction(
@@ -621,9 +626,13 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       render: (_, subscription) => nameCell(subscription),
     },
     {
+      // The key **is** the server's sort field, exactly as the name column's `createdAt` is. antd
+      // hands a sorter's `columnKey` over as `sortBy`, and `useServerTable` judges it against
+      // `['createdAt', 'expireAt']` - so `key: 'expiry'` was rejected and the request silently
+      // fell back to `createdAt` while the arrow never lit. `dataIndex` stays the data path.
       title: t('subscriptions.columns.expiry'),
       dataIndex: 'expireAt',
-      key: 'expiry',
+      key: 'expireAt',
       width: widths.expiry,
       sorter: true,
       sortOrder: table.orderOf('expireAt'),
@@ -763,6 +772,17 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
    * Every row is expanded and the expand column carries no chevron: the strips below a row are
    * part of it, not something hidden behind a disclosure.
    */
+  /**
+   * Marks a row that is selected so its strips can follow.
+   *
+   * antd gives an expanded row's `<tr>` its own fixed background instead of the selected-row
+   * paint, so the strips under a selected subscription stayed unhighlighted however the row was
+   * selected. The class is what the stylesheet keys on; both the main `<tr>` and the expanded one
+   * carry it, because the table spreads `rowClassName` over both.
+   */
+  const rowClassName = (subscription: Subscription) =>
+    selectedIds.some((id) => String(id) === subscription.id) ? 'subscription-row-selected' : ''
+
   const expandable = useMemo(
     () => ({
       // Forced-open strips with no toggle at all: the empty chevron column was the wide left gap
@@ -883,6 +903,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
           showTotal={(total, [from, to]) => t('subscriptions.range', { from, to, total })}
           selection={{ selectedRowKeys: selectedIds, onChange: setSelectedIds }}
           expandable={expandable}
+          rowClassName={rowClassName}
         />
 
         {/* The MAC dialog: one field, the row and the device kind it is about. A blank value
@@ -892,13 +913,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
           open={macDialog !== null}
           okText={t('subscriptions.changeMacOk')}
           cancelText={t('actions.cancel')}
-          onOk={() => {
-            const trimmed = macValue.trim()
-
-            if (trimmed.length > 0 && !isMac(trimmed)) return
-
-            saveMac()
-          }}
+          onOk={() => void macForm.submit()}
           onCancel={closeMacDialog}
         >
           {/* An antd `Input` inside an antd `Form`, not a raw `<input>`: the project uses antd
@@ -906,7 +921,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
               refusal placement for free. The value is canonicalized on save (the server accepts
               either separator and either case and stores `AA:BB:CC:DD:EE:FF`), and a blank value
               clears the device. */}
-          <Form layout="vertical" onFinish={saveMac}>
+          <Form form={macForm} layout="vertical" onFinish={saveMac}>
             <Form.Item
               name="mac"
               label={t('subscriptions.changeMacLabel')}

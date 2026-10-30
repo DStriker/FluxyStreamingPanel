@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  expireAtPickerProps,
   toCreateBody,
   toUpdateBody,
 } from '../../../src/features/subscriptions/subscriptionBody'
@@ -166,9 +167,48 @@ describe('toUpdateBody', () => {
     expect(body.outputFormats).toEqual(['hls'])
   })
 
+  it('sends the empty string to clear an expiry, because null means "keep" on PATCH', () => {
+    // The sentinel contract, pinned: an absent or null expiry keeps the stored one and only `''`
+    // clears it. A "never expires" tick that sent null would look like a successful save that
+    // changed nothing - the third time this form would have shipped that mistake.
+    const cleared = toUpdateBody(values({ expireAt: '' }))
+
+    expect(cleared.expireAt).toBe('')
+    expect(cleared.expireAt).not.toBeNull()
+
+    // An empty picker is *not* a statement, so it answers null and the row keeps its expiry.
+    const kept = toUpdateBody(values({ expireAt: null }))
+    expect(kept.expireAt).toBeNull()
+  })
+
+  it('folds the empty-string clear into "no expiry" on a create, which has nothing to keep', () => {
+    expect(toCreateBody(values({ expireAt: '' })).expireAt).toBeNull()
+    expect(toCreateBody(values({ expireAt: null })).expireAt).toBeNull()
+  })
+
   it('does not send the owner, which never changes after the subscription is issued', () => {
     const body = toUpdateBody(values())
 
     expect(body).not.toHaveProperty('userId')
+  })
+})
+
+describe('expireAtPickerProps', () => {
+  it('converts the stored ISO string to a Dayjs the picker can validate', () => {
+    // The regression this test exists for: handing `DatePicker` a raw string made a populated edit
+    // form throw `getUDayjs(...).isValid is not a function`. The value must be a Dayjs object, and
+    // it must be valid.
+    const props = expireAtPickerProps('2027-03-04T15:30:00Z')
+
+    expect(props.value).not.toBeNull()
+    expect(typeof props.value?.isValid).toBe('function')
+    expect(props.value?.isValid()).toBe(true)
+    expect(props.value?.toISOString()).toBe('2027-03-04T15:30:00.000Z')
+  })
+
+  it('answers null for an expiry the form has not set', () => {
+    expect(expireAtPickerProps(null).value).toBeNull()
+    expect(expireAtPickerProps(undefined).value).toBeNull()
+    expect(expireAtPickerProps('').value).toBeNull()
   })
 })

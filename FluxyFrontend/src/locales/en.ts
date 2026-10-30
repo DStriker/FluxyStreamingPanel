@@ -2116,8 +2116,8 @@ const en = {
     // The bulk menu's entry names and the dialogs behind the two that ask for a value.
     // The single-row wording a subrow action uses. Deliberately not the bulk summary: a click on
     // one row is not a "selection", and telling an operator about "selected rows" after clearing
-    // one service described a run that did not happen (design decision 16).
-    lastServiceTitle: 'Cannot remove the last service',
+    // one service described a run that did not happen (design decision 16). One sentence only -
+    // the toast has no title of its own, so a `lastServiceTitle` key was never read.
     lastServiceBody:
       'A subscription must keep at least one service. Add another one before removing this.',
     bulk: {
