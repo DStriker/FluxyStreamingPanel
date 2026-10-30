@@ -82,8 +82,10 @@ namespace Fluxy.Core.Subscriptions.Interfaces
         /// <param name="id">Identifier of the subscription to prolong.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// <see cref="SubscriptionAction.Prolonged"/> with the new expiry, a validation outcome
-        /// naming the plan field when there is no plan to prolong by, or not found.
+        /// <see cref="SubscriptionAction.Prolonged"/>, a validation outcome naming the plan field
+        /// when there is no plan to prolong by, or not found. The outcome carries no expiry: the
+        /// caller re-reads the subscription to learn the new one, the same way it does after any
+        /// other write.
         /// </returns>
         /// <remarks>
         /// The new expiry is <c>max(now, current expiry) + plan duration</c>: twenty days left plus

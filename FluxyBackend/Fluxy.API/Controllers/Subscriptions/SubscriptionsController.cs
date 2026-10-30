@@ -62,8 +62,10 @@ namespace Fluxy.API.Controllers.Subscriptions
         private const string OwnerHint =
             "The owner must be the identifier of an account, as a uuid.";
 
-        /// <summary>Sentence a date that is not <c>yyyy-MM-dd</c> gets.</summary>
-        private const string ExpireAtHint = "The expiry must be a date written as yyyy-MM-dd.";
+        /// <summary>Sentence an expiry that is neither an ISO date-time nor a bare date gets.</summary>
+        private const string ExpireAtHint =
+            "The expiry must be an ISO 8601 date-time (2027-01-31T14:30:00Z) " +
+            "or a date written as yyyy-MM-dd.";
 
         /// <summary>Sentence a format that names no member gets.</summary>
         private const string OutputFormatsHint =
@@ -409,9 +411,13 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <param name="id">Identifier of the subscription, in the path.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
-        /// 200 <c>subscription_prolonged</c> with the new expiry, 400 <c>validation_failed</c>
-        /// naming the plan field when the subscription has no plan to prolong by, or 404.
+        /// 200 <c>subscription_prolonged</c>, 400 <c>validation_failed</c> naming the plan field
+        /// when the subscription has no plan to prolong by, or 404.
         /// </returns>
+        /// <remarks>
+        /// The answer is the code and the sentence alone; the new expiry is read back from
+        /// <c>GET /admin/subscriptions/{id}</c>, which is what the table does after every write.
+        /// 
         /// <remarks>
         /// <para>
         /// <b>A recorded departure from the REST shape of this resource</b>, the one the accounts
