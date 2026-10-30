@@ -14,24 +14,33 @@ dayjs.extend(utc)
  * The preview has to agree with `SubscriptionRules.ProlongedExpiry`, which adds to a
  * `DateTimeOffset` whose fields are the stored UTC instant. dayjs in its default mode adds on the
  * *viewer's* calendar, so the two disagree at every month end and across every DST transition -
- * the dialog promising a date the server does not store. These tests therefore pin the viewer's
- * zone explicitly rather than inheriting whichever one the machine happens to have, and they
- * assert **UTC instants** (`toISOString`, `.utc().format`), which no zone can move.
+ * the dialog promising a date the server does not store. These tests assert **UTC instants** and
+ * `.utc()` formatting (`toISOString`), which no zone can move.
  *
  * The month-end and DST cases each do two things: they assert the right instant, and they assert
  * that the *local-mode* computation - the implementation this replaced - gives a **different** one.
  * The second half is what makes them regression tests rather than restatements: a revert to
  * `dayjs(...)` would satisfy neither.
  *
- * **Why `vi.stubEnv` and no restore.** Node caches the process time zone on first use, so putting
- * `TZ` back does not put the clock back (measured: `unstubAllEnvs` leaves the previous zone in
- * place). Each case therefore states the zone it needs instead of relying on a default, and the
- * file's final state does not matter because Vitest runs every test file in its own isolated
- * environment. Restoring would also mean reaching for `process` directly, which `tsconfig.json`
- * does not type for `tests/`.
+ * **Why every case pins its own zone rather than relying on the default.** These divergences only
+ * exist under a *particular* viewer zone - UTC+5 is what makes 23:00Z on 30 January read as the
+ * 31st, and New York is what puts a DST transition between two calendar days - so a test that
+ * inherited whatever zone the machine happens to run in would prove nothing on a UTC CI box and
+ * would change meaning on a developer's laptop. Each case therefore states the zone its assertion
+ * depends on. The assertions themselves stay in UTC instants and `.utc()` formatting, so they hold
+ * regardless of which zone was pinned; the zone only decides whether the *comparison against local
+ * mode* has anything to disagree about.
+ *
+ * Writing the zone is enough because Node honours a runtime `TZ` assignment immediately, in both
+ * directions. What it does **not** do is restore the system zone when the variable is *deleted*:
+ * `vi.unstubAllEnvs()` removes a variable that started undefined, which leaves the last explicitly
+ * set zone in effect rather than the machine's own. That is why no case relies on getting the
+ * default back - each names the zone it needs - and why this file's final zone does not matter:
+ * Vitest runs every test file in its own isolated environment. Restoring through `process` directly
+ * would also mean reaching for a global `tsconfig.json` does not type for `tests/`.
  */
 
-/** Pins the viewer's zone for the rest of this test; see the note above about not restoring. */
+/** Pins the viewer's zone for the rest of this test; see the note above on per-case zones. */
 const useZone = (zone: string) => vi.stubEnv('TZ', zone)
 
 const row = (
