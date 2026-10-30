@@ -30,6 +30,12 @@ namespace Fluxy.Core.Subscriptions.Enums
         /// <summary>Clear the Enigma2 MAC of every selected row. Already empty succeeds.</summary>
         DeleteEnigma2,
 
+        /// <summary>
+        /// Extend the period of every selected row from its end by its plan's duration. A row with
+        /// no plan is refused, because there is no duration to add.
+        /// </summary>
+        Prolong,
+
         /// <summary>Block the owner of every selected row through the account block.</summary>
         BlockOwner
     }

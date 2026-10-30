@@ -76,6 +76,23 @@ namespace Fluxy.Core.Subscriptions.Interfaces
         /// <returns>The outcome: deleted, or not found.</returns>
         Task<SubscriptionOutcome> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Extends the subscription's period from its end by its plan's duration.
+        /// </summary>
+        /// <param name="id">Identifier of the subscription to prolong.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// <see cref="SubscriptionAction.Prolonged"/> with the new expiry, a validation outcome
+        /// naming the plan field when there is no plan to prolong by, or not found.
+        /// </returns>
+        /// <remarks>
+        /// The new expiry is <c>max(now, current expiry) + plan duration</c>: twenty days left plus
+        /// one month is those twenty days and a month, and an expired subscription starts from now
+        /// again. A row with no plan has no duration to add, which is why the refusal names the
+        /// plan field rather than the expiry.
+        /// </remarks>
+        Task<SubscriptionOutcome> ProlongAsync(Guid id, CancellationToken cancellationToken = default);
+
         /// <summary>Mints a playlist id no subscription holds yet, without writing anything.</summary>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>A fresh 32-hex identifier.</returns>

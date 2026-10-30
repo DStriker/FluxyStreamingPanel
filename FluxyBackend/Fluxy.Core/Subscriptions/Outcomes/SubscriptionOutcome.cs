@@ -31,5 +31,6 @@ namespace Fluxy.Core.Subscriptions.Outcomes
         /// <see cref="SubscriptionAction.Created"/> of a generator request and nothing else.
         /// </summary>
         public string? PlaylistId { get; init; }
+
     }
 }

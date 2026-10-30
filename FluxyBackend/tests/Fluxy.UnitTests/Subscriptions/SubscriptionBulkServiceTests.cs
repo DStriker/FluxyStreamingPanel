@@ -1,4 +1,4 @@
-using Fluxy.Application.Subscriptions.Services;
+﻿using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Core.Subscriptions.Commands;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Interfaces;
@@ -273,6 +273,58 @@ namespace Fluxy.UnitTests.Subscriptions
         }
 
         [Fact]
+        public async Task AProlongDelegatesToTheSingleRowServiceAndReportsItsCode()
+        {
+            // The bulk action is the single-row write in a loop (design decision 14), so the row
+            // answers with `subscription_prolonged` and the no-plan refusal comes from the same
+            // service rather than a second copy of the rule.
+            var id = Guid.NewGuid();
+            var subscriptions = new FakeSubscriptions { Details = { [id] = [Detail(id)] } };
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                Operation(BulkSubscriptionAction.Prolong, [id]),
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Prolonged, outcome.Items[0].Action);
+            Assert.Contains(id, subscriptions.Prolonged);
+            Assert.DoesNotContain(id, subscriptions.Updated);
+        }
+
+        [Fact]
+        public async Task ABulkProlongOfAPlanLessRowReportsTheSingleRowRefusal()
+        {
+            var id = Guid.NewGuid();
+            var subscriptions = new FakeSubscriptions
+            {
+                ProlongOutcomes =
+                {
+                    [id] = new SubscriptionOutcome
+                    {
+                        Action = SubscriptionAction.Invalid,
+                        SubscriptionId = id,
+                        Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                        {
+                            ["TariffPlanId"] = ["A plan is required to prolong."]
+                        }
+                    }
+                }
+            };
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                Operation(BulkSubscriptionAction.Prolong, [id]),
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, outcome.Items[0].Action);
+            Assert.True(outcome.Items[0].Errors!.ContainsKey("TariffPlanId"));
+        }
+
+        [Fact]
         public async Task ADeleteReportsTheSingleRowCode()
         {
             var id = Guid.NewGuid();
@@ -364,9 +416,13 @@ namespace Fluxy.UnitTests.Subscriptions
 
             public Dictionary<Guid, SubscriptionOutcome> DeleteOutcomes { get; } = [];
 
+            public Dictionary<Guid, SubscriptionOutcome> ProlongOutcomes { get; } = [];
+
             public List<Guid> Updated { get; } = [];
 
             public List<Guid> Deleted { get; } = [];
+
+            public List<Guid> Prolonged { get; } = [];
 
             private readonly Dictionary<Guid, int> _reads = [];
 
@@ -445,6 +501,25 @@ namespace Fluxy.UnitTests.Subscriptions
                     : new SubscriptionOutcome
                     {
                         Action = SubscriptionAction.Deleted,
+                        SubscriptionId = id
+                    });
+            }
+
+            /// <summary>
+            /// Prolongation as the bulk layer sees it: delegated, so the fake answers the outcome a
+            /// test queued and records that the single-row service was asked.
+            /// </summary>
+            public Task<SubscriptionOutcome> ProlongAsync(
+                Guid id,
+                CancellationToken cancellationToken = default)
+            {
+                _inner.Prolonged.Add(id);
+
+                return Task.FromResult(_inner.ProlongOutcomes.TryGetValue(id, out var outcome)
+                    ? outcome
+                    : new SubscriptionOutcome
+                    {
+                        Action = SubscriptionAction.Prolonged,
                         SubscriptionId = id
                     });
             }

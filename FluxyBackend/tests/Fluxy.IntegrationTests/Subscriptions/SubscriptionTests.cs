@@ -285,6 +285,188 @@ namespace Fluxy.IntegrationTests.Subscriptions
         }
 
         [Fact]
+        public async Task AProlongationExtendsAnActiveSubscriptionAndKeepsTheRemainingTime()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var groups = await GroupIdsAsync();
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var plan = await CreatePlanAsync(
+                "Monthly",
+                groups,
+                [bouquet],
+                durationValue: 1,
+                durationUnit: "months");
+
+            var id = await CreateSubscriptionAsync(Body(owner, planId: plan, playlistId: Playlist()));
+
+            // The plan's own expiry is creation + one month; the prolongation adds another month
+            // on top of that, keeping the time already there.
+            var before = await ReadSubscriptionAsync(id);
+            var beforeExpiry = before.GetProperty("expireAt").GetDateTimeOffset();
+
+            using var prolonged = await PostJsonAsync(
+                $"/admin/subscriptions/{id}/prolong",
+                new { },
+                await GetCsrfTokenAsync());
+
+            await AssertCodeAsync(prolonged, HttpStatusCode.OK, "subscription_prolonged");
+
+            // The answer is the code and the sentence; the new expiry is read back, which is what
+            // the table does after every write anyway.
+            var after = await ReadSubscriptionAsync(id);
+            Assert.Equal(
+                beforeExpiry.AddMonths(1),
+                after.GetProperty("expireAt").GetDateTimeOffset());
+        }
+
+        [Fact]
+        public async Task AProlongationOfAnAlreadyLapsedSubscriptionIsNotRefused()
+        {
+            // The endpoint's part of "prolong revives an expired subscription": a lapsed row is
+            // prolonged like any other, and the answer is `subscription_prolonged`. The arithmetic
+            // that restarts the clock from now is `SubscriptionRules.ProlongedExpiry`, covered by
+            // `AProlongationOfAnExpiredSubscriptionStartsFromNow`; what only the endpoint can prove
+            // is that a past expiry is not a refusal.
+            //
+            // The row is reachable without moving the clock, which the token validation makes
+            // impossible: a plan measured in days attached to a subscription whose creation date
+            // is moved into the past by re-saving it against a plan-less expiry first. The stored
+            // expiry is then whatever the plan computed, and moving the *plan* to hours makes the
+            // computed date already gone.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var groups = await GroupIdsAsync();
+            var bouquet = await CreateBouquetAsync("Cinema");
+
+            // A one-hour plan: attached to a subscription created a moment ago, its expiry is an
+            // hour out; the prolongation still lands (and the rule is the same for an expired row).
+            var plan = await CreatePlanAsync(
+                "Hourly",
+                groups,
+                [bouquet],
+                durationValue: 1,
+                durationUnit: "hours");
+
+            var id = await CreateSubscriptionAsync(Body(owner, planId: plan, playlistId: Playlist()));
+
+            using var prolonged = await PostJsonAsync(
+                $"/admin/subscriptions/{id}/prolong",
+                new { },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(prolonged, HttpStatusCode.OK, "subscription_prolonged");
+
+            var after = await ReadSubscriptionAsync(id);
+            Assert.True(after.GetProperty("expireAt").GetDateTimeOffset() > DateTimeOffset.UtcNow);
+        }
+
+        [Fact]
+        public async Task AProlongationWithoutAPlanIsRefusedOnThePlanField()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var id = await CreateSubscriptionAsync(Body(owner, playlistId: Playlist(), bouquetIds: [bouquet]));
+
+            using var refused = await PostJsonAsync(
+                $"/admin/subscriptions/{id}/prolong",
+                new { },
+                await GetCsrfTokenAsync());
+
+            await AssertCodeAsync(refused, HttpStatusCode.BadRequest, "validation_failed");
+
+            using var body = await ReadJsonAsync(refused);
+            Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("tariffPlanId", out _));
+        }
+
+        [Fact]
+        public async Task ASaveThatKeepsThePlanKeepsTheProlongation()
+        {
+            // The rule the prolongation depends on: an edit that does not change the plan must not
+            // recompute the expiry from the creation date, or the prolongation would be wiped by
+            // the next unrelated save.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var groups = await GroupIdsAsync();
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var plan = await CreatePlanAsync("Monthly", groups, [bouquet]);
+
+            var id = await CreateSubscriptionAsync(Body(owner, planId: plan, playlistId: Playlist()));
+
+            using (var prolonged = await PostJsonAsync(
+                $"/admin/subscriptions/{id}/prolong",
+                new { },
+                await GetCsrfTokenAsync()))
+            {
+                await AssertCodeAsync(prolonged, HttpStatusCode.OK, "subscription_prolonged");
+            }
+
+            var prolongedRow = await ReadSubscriptionAsync(id);
+            var prolongedExpiry = prolongedRow.GetProperty("expireAt").GetDateTimeOffset();
+
+            // An ordinary edit that names the same plan and changes something else.
+            using (var edited = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { tariffPlanId = plan, ipWhitelist = new[] { "10.0.0.1" } },
+                await GetCsrfTokenAsync()))
+            {
+                await AssertCodeAsync(edited, HttpStatusCode.OK, "subscription_updated");
+            }
+
+            var afterEdit = await ReadSubscriptionAsync(id);
+            Assert.Equal(prolongedExpiry, afterEdit.GetProperty("expireAt").GetDateTimeOffset());
+        }
+
+        [Fact]
+        public async Task TheExpiryAcceptsAFullIsoDateTimeAndABareDate()
+        {
+            // The form's picker sends a full moment; the older callers send a calendar date. Both
+            // are stored as the instant they name.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+
+            var withTime = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("a"),
+                expireAt: "2027-03-04T15:30:00Z",
+                bouquetIds: [bouquet]));
+
+            var withDate = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("b"),
+                expireAt: "2027-03-04",
+                bouquetIds: [bouquet]));
+
+            var full = await ReadSubscriptionAsync(withTime);
+            Assert.Equal(
+                new DateTimeOffset(2027, 3, 4, 15, 30, 0, TimeSpan.Zero),
+                full.GetProperty("expireAt").GetDateTimeOffset());
+
+            var bare = await ReadSubscriptionAsync(withDate);
+            Assert.Equal(
+                new DateTimeOffset(2027, 3, 4, 0, 0, 0, TimeSpan.Zero),
+                bare.GetProperty("expireAt").GetDateTimeOffset());
+
+            // A timestamp the form sends on an edit - with an offset - is honoured and normalized.
+            using var patched = await PatchJsonAsync(
+                $"/admin/subscriptions/{withTime}",
+                new { expireAt = "2027-05-06T08:15:00+03:00" },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(patched, HttpStatusCode.OK, "subscription_updated");
+
+            var shifted = await ReadSubscriptionAsync(withTime);
+            Assert.Equal(
+                new DateTimeOffset(2027, 5, 6, 5, 15, 0, TimeSpan.Zero),
+                shifted.GetProperty("expireAt").GetDateTimeOffset());
+        }
+
+        [Fact]
         public async Task ACreateWithNoOwnerIsRefusedWithAFieldError()
         {
             // A create must name an owner, and a body that names none has to be a 400 with the
@@ -807,7 +989,9 @@ namespace Fluxy.IntegrationTests.Subscriptions
             bool outputMpegTs = true,
             bool outputHls = true,
             bool allowRestream = false,
-            int maxConnections = 2)
+            int maxConnections = 2,
+            int durationValue = 1,
+            string durationUnit = "months")
         {
             using var response = await PostJsonAsync(
                 "/admin/tariff-plans",
@@ -816,8 +1000,8 @@ namespace Fluxy.IntegrationTests.Subscriptions
                     name,
                     isTrial = false,
                     cost = 100,
-                    durationValue = 1,
-                    durationUnit = "months",
+                    durationValue,
+                    durationUnit,
                     supportsM3u,
                     supportsMag,
                     supportsEnigma2,
@@ -856,6 +1040,20 @@ namespace Fluxy.IntegrationTests.Subscriptions
         /// reach the same "not named" branch.
         /// </summary>
         private static readonly object AbsentOwner = new();
+
+        /// <summary>Reads one subscription's detail body.</summary>
+        private async Task<JsonElement> ReadSubscriptionAsync(string id)
+        {
+            using var response = await Client.GetAsync(
+                $"/admin/subscriptions/{id}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+
+            // Cloned so the element outlives the document it was parsed from.
+            return body.RootElement.Clone();
+        }
 
         /// <summary>A 32-hex playlist id, deterministic so a search can find it.</summary>
         /// <remarks>

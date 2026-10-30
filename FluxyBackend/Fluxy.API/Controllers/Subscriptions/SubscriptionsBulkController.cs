@@ -36,7 +36,7 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <summary>Names the operations a bulk body may ask for.</summary>
         private const string ActionHint =
             "The action must be 'change-tariff', 'change-creator', 'delete', 'delete-playlist', " +
-            "'delete-mag', 'delete-enigma2' or 'block-owner'.";
+            "'delete-mag', 'delete-enigma2', 'prolong' or 'block-owner'.";
 
         /// <summary>Sentence a plan that is not an identifier gets.</summary>
         private const string PlanHint =
@@ -193,6 +193,7 @@ namespace Fluxy.API.Controllers.Subscriptions
                 "delete-playlist" => BulkSubscriptionAction.DeletePlaylist,
                 "delete-mag" => BulkSubscriptionAction.DeleteMag,
                 "delete-enigma2" => BulkSubscriptionAction.DeleteEnigma2,
+                "prolong" => BulkSubscriptionAction.Prolong,
                 "block-owner" => BulkSubscriptionAction.BlockOwner,
                 _ => null
             };

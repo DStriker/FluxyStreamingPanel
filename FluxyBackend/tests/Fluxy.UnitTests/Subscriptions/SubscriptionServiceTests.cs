@@ -405,8 +405,10 @@ namespace Fluxy.UnitTests.Subscriptions
         }
 
         [Fact]
-        public async Task UpdateWithAPlanRecomputesTheExpiryFromTheCreationDate()
+        public async Task UpdateWithANewPlanRecomputesTheExpiryFromTheCreationDate()
         {
+            // The spec's "computed when the plan is set or changed": attaching a plan computes the
+            // period from the subscription's own creation date.
             var id = Guid.NewGuid();
             var createdAt = new DateTimeOffset(2026, 1, 31, 9, 0, 0, TimeSpan.Zero);
             var repository = new FakeSubscriptions
@@ -424,6 +426,131 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Equal(
                 new DateTimeOffset(2026, 2, 28, 9, 0, 0, TimeSpan.Zero),
                 repository.Updated!.ExpireAt);
+        }
+
+        [Fact]
+        public async Task UpdateKeepingThePlanKeepsTheStoredExpiry()
+        {
+            // The rule this change is about: a save that does not touch the plan leaves the expiry
+            // alone, or a prolongation would be wiped by the next unrelated edit.
+            var id = Guid.NewGuid();
+            var createdAt = new DateTimeOffset(2026, 1, 31, 9, 0, 0, TimeSpan.Zero);
+            var prolongedUntil = new DateTimeOffset(2027, 5, 20, 9, 0, 0, TimeSpan.Zero);
+
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id, planId: Plan, createdAt: createdAt) with
+                {
+                    ExpireAt = prolongedUntil
+                },
+                Plan = PlanContext()
+            };
+            var service = NewService(repository);
+
+            // The patch names the same plan and changes an unrelated field.
+            var outcome = await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { TariffPlanId = Plan, IpWhitelist = ["10.0.0.1"] },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Action);
+            Assert.Equal(prolongedUntil, repository.Updated!.ExpireAt);
+        }
+
+        [Fact]
+        public async Task UpdateKeepingThePlanIgnoresAnExpiryTheBodyNames()
+        {
+            // With a plan the plan decides the period, so a body's own expiry is dropped - the
+            // stored one stands. Without this, the form's date picker would silently overwrite a
+            // prolongation.
+            var id = Guid.NewGuid();
+            var createdAt = new DateTimeOffset(2026, 1, 31, 9, 0, 0, TimeSpan.Zero);
+            var prolongedUntil = new DateTimeOffset(2027, 5, 20, 9, 0, 0, TimeSpan.Zero);
+
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id, planId: Plan, createdAt: createdAt) with
+                {
+                    ExpireAt = prolongedUntil
+                },
+                Plan = PlanContext()
+            };
+            var service = NewService(repository);
+
+            await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { ExpireAt = "2026-03-01" },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(prolongedUntil, repository.Updated!.ExpireAt);
+        }
+
+        [Fact]
+        public async Task ProlongExtendsAnActiveSubscriptionFromItsEnd()
+        {
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id, planId: Plan) with
+                {
+                    ExpireAt = DateTimeOffset.UtcNow.AddDays(20)
+                },
+                Plan = PlanContext()
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.ProlongAsync(id, TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Prolonged, outcome.Action);
+            Assert.Equal(
+                repository.Existing!.ExpireAt!.Value.AddMonths(1),
+                repository.Updated!.ExpireAt);
+
+        }
+
+        [Fact]
+        public async Task ProlongRevivesAnExpiredSubscriptionFromNow()
+        {
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id, planId: Plan) with
+                {
+                    ExpireAt = DateTimeOffset.UtcNow.AddMonths(-2)
+                },
+                Plan = PlanContext()
+            };
+            var service = NewService(repository);
+
+            var outcome = await service.ProlongAsync(id, TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Prolonged, outcome.Action);
+            Assert.True(repository.Updated!.ExpireAt > DateTimeOffset.UtcNow.AddDays(27));
+            Assert.True(repository.Updated.ExpireAt < DateTimeOffset.UtcNow.AddDays(32));
+        }
+
+        [Fact]
+        public async Task ProlongWithoutAPlanIsRefusedOnThePlanField()
+        {
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions { Existing = Stored(id) };
+            var service = NewService(repository);
+
+            var outcome = await service.ProlongAsync(id, TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, outcome.Action);
+            Assert.True(outcome.Errors!.ContainsKey("TariffPlanId"));
+            Assert.Null(repository.Updated);
+        }
+
+        [Fact]
+        public async Task ProlongAnswersAnUnknownIdentifierAsNotFound()
+        {
+            var service = NewService(new FakeSubscriptions());
+
+            var outcome = await service.ProlongAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.NotFound, outcome.Action);
         }
 
         [Fact]

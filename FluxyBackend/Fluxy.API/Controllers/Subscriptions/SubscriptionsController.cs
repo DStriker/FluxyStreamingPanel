@@ -404,6 +404,46 @@ namespace Fluxy.API.Controllers.Subscriptions
         }
 
         /// <summary>
+        /// Extends the subscription's period from its end by its plan's duration.
+        /// </summary>
+        /// <param name="id">Identifier of the subscription, in the path.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// 200 <c>subscription_prolonged</c> with the new expiry, 400 <c>validation_failed</c>
+        /// naming the plan field when the subscription has no plan to prolong by, or 404.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>A recorded departure from the REST shape of this resource</b>, the one the accounts
+        /// area records for <c>POST {id}/block</c>: a prolongation is a state transition with rules
+        /// of its own - it reads the current expiry, keeps whatever time is left and refuses a
+        /// plan-less row - and putting that into a <c>PATCH</c> would make the caller responsible
+        /// for computing the new date. As its own action it can answer with its own code and its
+        /// own refusal.
+        /// </para>
+        /// <para>
+        /// The bulk endpoint's <c>prolong</c> action delegates here, so a row and a selection give
+        /// the same answer for the same subscription.
+        /// </para>
+        /// </remarks>
+        [HttpPost("{id:guid}/prolong")]
+        [Authorize(Policy = AuthenticationExtensions.EditSubscriptionsPolicy)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<MessageResponse>(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ProlongSubscription(
+            [FromRoute] Guid id,
+            CancellationToken cancellationToken)
+        {
+            if (await RejectsCsrfAsync() is { } csrfFailure)
+            {
+                return csrfFailure;
+            }
+
+            return Answer(await _subscriptions.ProlongAsync(id, cancellationToken));
+        }
+
+        /// <summary>
         /// Mints a playlist id no subscription holds yet, without writing anything.
         /// </summary>
         /// <param name="cancellationToken">Token to cancel the operation.</param>

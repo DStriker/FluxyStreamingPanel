@@ -116,6 +116,13 @@ namespace Fluxy.Application.Subscriptions.Services
                                 new SubscriptionPatch { Enigma2Mac = string.Empty },
                                 cancellationToken)),
 
+                    // The single-row action in a loop: the bulk run answers with the codes that
+                    // endpoint gives, including its "no plan to prolong by" refusal.
+                    BulkSubscriptionAction.Prolong =>
+                        await RunAsync(
+                            subscriptionId,
+                            () => _subscriptions.ProlongAsync(subscriptionId, cancellationToken)),
+
                     BulkSubscriptionAction.BlockOwner =>
                         await BlockOwnerAsync(
                             subscriptionId,

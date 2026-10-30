@@ -25,6 +25,9 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Code reported once a subscription has been deleted.</summary>
         public const string DeletedCode = "subscription_deleted";
 
+        /// <summary>Code reported once a subscription's period has been extended.</summary>
+        public const string ProlongedCode = "subscription_prolonged";
+
         /// <summary>Code reported when no subscription answers to that identifier.</summary>
         public const string NotFoundCode = "subscription_not_found";
 
@@ -55,6 +58,9 @@ namespace Fluxy.API.Contracts.Subscriptions
 
                 SubscriptionAction.Deleted =>
                     (StatusCodes.Status200OK, DeletedCode, "The subscription has been deleted."),
+
+                SubscriptionAction.Prolonged =>
+                    (StatusCodes.Status200OK, ProlongedCode, "The subscription has been prolonged."),
 
                 SubscriptionAction.NotFound =>
                     (StatusCodes.Status404NotFound,

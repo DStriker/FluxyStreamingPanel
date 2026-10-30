@@ -285,6 +285,42 @@ namespace Fluxy.IntegrationTests.Subscriptions
         }
 
         [Fact]
+        public async Task ABulkProlongDelegatesAndReportsEachRow()
+        {
+            // The bulk action is the single-row write in a loop (design decision 14), so a
+            // plan-less row answers the same refusal the addressed endpoint gives while the row
+            // that has a plan lands.
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var groups = await GroupIdsAsync();
+            var plan = await CreatePlanAsync("Monthly", groups, [bouquet]);
+
+            var withPlan = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("a"),
+                planId: plan));
+            var withoutPlan = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("b"),
+                bouquetIds: [bouquet]));
+
+            using var body = await ReadJsonAsync(await BulkAsync(
+                new { action = "prolong", ids = new[] { withPlan, withoutPlan } }));
+
+            var items = body.RootElement.GetProperty("items").EnumerateArray().ToList();
+
+            Assert.Equal(2, items.Count);
+            Assert.Equal("subscription_prolonged", items[0].GetProperty("code").GetString());
+            Assert.True(items[0].GetProperty("ok").GetBoolean());
+
+            Assert.Equal("validation_failed", items[1].GetProperty("code").GetString());
+            Assert.False(items[1].GetProperty("ok").GetBoolean());
+            Assert.True(items[1].GetProperty("errors").TryGetProperty("tariffPlanId", out _));
+        }
+
+        [Fact]
         public async Task ABulkBodyIsValidatedBeforeAnyRowIsRead()
         {
             await CreateAdminAndSignInAsync();
@@ -373,7 +409,9 @@ namespace Fluxy.IntegrationTests.Subscriptions
             IReadOnlyList<string> bouquetIds,
             bool supportsM3u = true,
             bool supportsMag = true,
-            bool supportsEnigma2 = true)
+            bool supportsEnigma2 = true,
+            int durationValue = 1,
+            string durationUnit = "months")
         {
             using var response = await PostJsonAsync(
                 "/admin/tariff-plans",
@@ -382,8 +420,8 @@ namespace Fluxy.IntegrationTests.Subscriptions
                     name,
                     isTrial = false,
                     cost = 100,
-                    durationValue = 1,
-                    durationUnit = "months",
+                    durationValue,
+                    durationUnit,
                     supportsM3u,
                     supportsMag,
                     supportsEnigma2,
@@ -423,13 +461,15 @@ namespace Fluxy.IntegrationTests.Subscriptions
             string? playlistId = "0123456789abcdef0123456789abcdef",
             string? magMac = null,
             string? enigma2Mac = null,
-            IReadOnlyList<string>? bouquetIds = null)
+            IReadOnlyList<string>? bouquetIds = null,
+            string? planId = null)
             => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["userId"] = owner.ToString(),
                 ["playlistId"] = playlistId,
                 ["magMac"] = magMac,
                 ["enigma2Mac"] = enigma2Mac,
+                ["tariffPlanId"] = planId,
                 ["maxConnections"] = 3,
                 ["isRestreamer"] = true,
                 ["ipWhitelist"] = Array.Empty<string>(),

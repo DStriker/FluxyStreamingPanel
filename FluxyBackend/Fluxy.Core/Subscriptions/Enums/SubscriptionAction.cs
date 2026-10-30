@@ -18,6 +18,9 @@ namespace Fluxy.Core.Subscriptions.Enums
         /// <summary>The subscription was deleted.</summary>
         Deleted,
 
+        /// <summary>The subscription's period was extended from its end by its plan's duration.</summary>
+        Prolonged,
+
         /// <summary>No subscription with that identifier.</summary>
         NotFound,
 

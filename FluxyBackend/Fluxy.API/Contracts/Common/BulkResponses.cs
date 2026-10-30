@@ -451,6 +451,9 @@ namespace Fluxy.API.Contracts.Common
                 BulkSubscriptionAction.Delete =>
                     $"{Landed(items)} of {items.Count} subscriptions deleted.",
 
+                BulkSubscriptionAction.Prolong =>
+                    $"{Landed(items)} of {items.Count} subscriptions prolonged.",
+
                 BulkSubscriptionAction.DeletePlaylist =>
                     $"{Landed(items)} of {items.Count} subscriptions had their playlist cleared.",
 

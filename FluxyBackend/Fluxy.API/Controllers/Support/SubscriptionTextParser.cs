@@ -131,10 +131,19 @@ namespace Fluxy.API.Controllers.Support
         /// </summary>
         /// <param name="value">Value from a body.</param>
         /// <remarks>
-        /// The invariant culture and no time, because an expiry is a calendar date: a bare date
-        /// lands at midnight UTC, and the whole day is what the operator meant. A value that does
-        /// not parse answers null, and the action refuses it under the field rather than storing a
-        /// date it guessed.
+        /// <b>Two accepted spellings, one answer.</b> An ISO 8601 date-time with or without an
+        /// offset (<c>2027-01-31T14:30:00Z</c>, <c>2027-01-31T14:30:00</c>) is the form the edit
+        /// form's date-time picker sends, and a bare <c>yyyy-MM-dd</c> still parses as that day's
+        /// midnight so the callers written against the date-only contract keep working.
+        ///
+        /// Parsed with the invariant culture - the wire format, never the server's locale - and
+        /// with an absent offset read as UTC rather than as the machine's zone, so the same body
+        /// means the same moment wherever the API runs. An offset that *is* present is honoured and
+        /// the result normalized to UTC, because a client that said <c>+03:00</c> meant that
+        /// instant.
+        ///
+        /// A value that does not parse answers null, and the action refuses it under the field
+        /// rather than storing a date it guessed.
         /// </remarks>
         public static DateTimeOffset? ParseExpireAt(string? value)
         {
@@ -143,8 +152,23 @@ namespace Fluxy.API.Controllers.Support
                 return null;
             }
 
+            var text = value.Trim();
+
+            // The round-trip form first, because it is the one .NET writes and therefore the one a
+            // stored value comes back as. `TryParse` below would accept it too; asking for it
+            // explicitly keeps that dependency from being implicit.
+            if (DateTimeOffset.TryParseExact(
+                text,
+                "O",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var roundTrip))
+            {
+                return roundTrip;
+            }
+
             return DateTimeOffset.TryParse(
-                value.Trim(),
+                text,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                 out var parsed)

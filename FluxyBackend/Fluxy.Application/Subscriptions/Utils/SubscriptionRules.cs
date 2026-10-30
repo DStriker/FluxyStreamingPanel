@@ -140,6 +140,18 @@ namespace Fluxy.Application.Subscriptions.Utils
             "A subscription may only be issued by an administrator or a reseller."
         ];
 
+        /// <summary>The sentence a prolongation of a plan-less subscription gets.</summary>
+        /// <remarks>
+        /// Keyed on the plan field rather than the expiry, because the plan is the thing that is
+        /// missing: the duration to extend by comes from it, and an operator told "the expiry is
+        /// wrong" would go looking at a date that is not the problem.
+        /// </remarks>
+        public static readonly string[] ProlongRequiresPlanRule =
+        [
+            "A subscription can only be prolonged while a tariff plan is attached: " +
+                "the plan supplies the length to extend it by."
+        ];
+
         /// <summary>
         /// Whether a tariff plan's parameters let it be attached to a subscription whose owner
         /// belongs to <paramref name="ownerGroupId"/>.
@@ -312,17 +324,63 @@ namespace Fluxy.Application.Subscriptions.Utils
         }
 
         /// <summary>
+        /// The moment a prolongation moves the expiry to: the later of now and the current expiry,
+        /// plus the plan's duration.
+        /// </summary>
+        /// <param name="now">The moment the prolongation runs.</param>
+        /// <param name="currentExpiry">
+        /// The stored expiry, or null. Null is read as <paramref name="now"/>, so a subscription
+        /// that never lapsed but somehow carries no expiry gets a full period rather than none.
+        /// </param>
+        /// <param name="plan">The plan whose duration is added.</param>
+        /// <remarks>
+        /// <b>From the end, never from now.</b> A subscription with twenty days left gains the
+        /// period on top of those twenty days rather than restarting from today - the subscriber
+        /// paid for both, and a prolongation that reset the clock would quietly take the remainder
+        /// away. The <c>max</c> is the same rule for the other side: an expired subscription has
+        /// nothing left, so it extends from now, which is what "revives it" means.
+        /// </remarks>
+        public static DateTimeOffset ProlongedExpiry(
+            DateTimeOffset now,
+            DateTimeOffset? currentExpiry,
+            SubscriptionPlanContext plan)
+        {
+            var from = currentExpiry is { } existing && existing > now ? existing : now;
+
+            return plan.DurationUnit switch
+            {
+                TariffPlanDurationUnit.Hours => from.AddHours(plan.DurationValue),
+                TariffPlanDurationUnit.Days => from.AddDays(plan.DurationValue),
+                TariffPlanDurationUnit.Months => from.AddMonths(plan.DurationValue),
+                TariffPlanDurationUnit.Years => from.AddYears(plan.DurationValue),
+
+                // Unreachable: the plan service refuses a unit that names no member, so a stored
+                // row cannot carry one.
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(plan),
+                    plan.DurationUnit,
+                    "Unknown tariff plan duration unit.")
+            };
+        }
+
+        /// <summary>
         /// The values a plan derives for a subscription: everything the plan owns, which a save
         /// with that plan writes instead of the request's values.
         /// </summary>
         /// <param name="plan">The attached plan.</param>
-        /// <param name="createdAt">Moment the subscription was issued, for the expiry.</param>
+        /// <param name="expireAt">
+        /// The expiry this save stores. A create or a plan change computes it with
+        /// <see cref="ExpiryOf"/>; a save that keeps its plan passes the stored one through, which
+        /// is what lets a prolongation survive a later edit.
+        /// </param>
         /// <remarks>
         /// One function rather than six lines repeated in the create and the change: the two must
         /// derive the same row from the same plan, and the third caller - the bulk plan change -
-        /// must derive it the same way again.
+        /// must derive it the same way again. The expiry travels in rather than being computed here
+        /// because the two callers disagree about where it comes from, and folding that decision
+        /// into this method would hide the rule this change is about.
         /// </remarks>
-        public static SubscriptionDerived Derive(SubscriptionPlanContext plan, DateTimeOffset createdAt)
+        public static SubscriptionDerived Derive(SubscriptionPlanContext plan, DateTimeOffset expireAt)
             => new(
                 plan.MaxConnections,
                 plan.AllowRestream,
@@ -333,6 +391,6 @@ namespace Fluxy.Application.Subscriptions.Utils
                 plan.SupportsM3u,
                 plan.SupportsMag,
                 plan.SupportsEnigma2,
-                ExpiryOf(createdAt, plan));
+                expireAt);
     }
 }

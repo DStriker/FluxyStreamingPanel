@@ -1,4 +1,4 @@
-using Fluxy.Application.Subscriptions.Utils;
+﻿using Fluxy.Application.Subscriptions.Utils;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Rows;
 using Fluxy.Core.Subscriptions.Utils;
@@ -127,6 +127,74 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Equal(
                 Created.AddDays(30),
                 SubscriptionRules.ExpiryOf(Created, Plan(30, TariffPlanDurationUnit.Days)));
+        }
+
+        [Fact]
+        public void AProlongationExtendsFromTheCurrentExpiryWhenTimeIsLeft()
+        {
+            // The scenario the specification names: twenty days left plus one month is those
+            // twenty days and a month, not a month from today.
+            var now = new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+            var current = now.AddDays(20);
+
+            Assert.Equal(
+                current.AddMonths(1),
+                SubscriptionRules.ProlongedExpiry(now, current, Plan(1, TariffPlanDurationUnit.Months)));
+        }
+
+        [Fact]
+        public void AProlongationOfAnExpiredSubscriptionStartsFromNow()
+        {
+            // The other scenario: nothing is left, so the new period runs from the moment of the
+            // prolongation - which is what "revives it" means.
+            var now = new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+            var expired = now.AddDays(-40);
+
+            Assert.Equal(
+                now.AddMonths(1),
+                SubscriptionRules.ProlongedExpiry(now, expired, Plan(1, TariffPlanDurationUnit.Months)));
+        }
+
+        [Fact]
+        public void AProlongationOfASubscriptionWithNoExpiryStartsFromNow()
+        {
+            var now = new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+
+            Assert.Equal(
+                now.AddMonths(1),
+                SubscriptionRules.ProlongedExpiry(now, null, Plan(1, TariffPlanDurationUnit.Months)));
+        }
+
+        [Fact]
+        public void AProlongationNeverShortensWhatIsLeft()
+        {
+            // A one-day plan on a subscription with twenty days left still moves it forward: the
+            // rule is "from the end", and a short period cannot turn into a loss.
+            var now = new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+            var current = now.AddDays(20);
+
+            var prolonged = SubscriptionRules.ProlongedExpiry(
+                now,
+                current,
+                Plan(1, TariffPlanDurationUnit.Days));
+
+            Assert.True(prolonged > current);
+            Assert.Equal(current.AddDays(1), prolonged);
+        }
+
+        [Fact]
+        public void AProlongationFollowsThePlansUnitForHoursAndYears()
+        {
+            var now = new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero);
+            var current = now.AddDays(20);
+
+            Assert.Equal(
+                current.AddHours(12),
+                SubscriptionRules.ProlongedExpiry(now, current, Plan(12, TariffPlanDurationUnit.Hours)));
+
+            Assert.Equal(
+                current.AddYears(1),
+                SubscriptionRules.ProlongedExpiry(now, current, Plan(1, TariffPlanDurationUnit.Years)));
         }
 
         [Fact]
@@ -286,7 +354,9 @@ namespace Fluxy.UnitTests.Subscriptions
                 allowMultipleCountries: false,
                 isTrial: true);
 
-            var derived = SubscriptionRules.Derive(plan, Created);
+            // The expiry is the caller's now, deliberately: a create computes it with `ExpiryOf`
+            // and a save that keeps its plan passes the stored one through.
+            var derived = SubscriptionRules.Derive(plan, SubscriptionRules.ExpiryOf(Created, plan));
 
             Assert.Equal(4, derived.MaxConnections);
             Assert.True(derived.IsRestreamer);

@@ -145,9 +145,12 @@ namespace Fluxy.Application.Subscriptions.Services
             // What the plan owns is derived before anything is validated, because the dependent
             // checks below must be skipped while a plan decides them: validating a value that is
             // never written would refuse a save for a field the operator cannot even edit.
+            //
+            // A create has no stored expiry, so the plan always computes one from the creation
+            // date - the spec's "expiry is computed when the plan is set".
             var derived = plan is null
                 ? null
-                : SubscriptionRules.Derive(plan, now);
+                : SubscriptionRules.Derive(plan, SubscriptionRules.ExpiryOf(now, plan));
 
             var playlistId = NormalizePlaylistId(input.PlaylistId, errors);
             var magMac = NormalizeMac(input.MagMac, errors, nameof(NewSubscription.MagMac));
@@ -341,9 +344,26 @@ namespace Fluxy.Application.Subscriptions.Services
             // Derived before the dependent checks, for the reason the create gives: a value the
             // plan owns is not written, so validating it would refuse a save the operator cannot
             // even edit.
+            //
+            // **The expiry is recomputed only when the plan is set or changed.** A save that keeps
+            // the plan passes the stored expiry through, because the alternative - recomputing from
+            // `created_at` on every save - would silently wipe a prolongation the moment an
+            // operator edited any other field. That is the rule the specification states as "a
+            // save that keeps the plan keeps its stored expiry", and it is what makes the prolong
+            // action worth having.
+            var planChanged = plan?.Id != current.TariffPlanId;
+
             var derived = plan is null
                 ? null
-                : SubscriptionRules.Derive(plan, current.CreatedAt);
+                : SubscriptionRules.Derive(
+                    plan,
+                    planChanged
+                        ? SubscriptionRules.ExpiryOf(current.CreatedAt, plan)
+                        : current.ExpireAt
+                            // A row whose plan was set without an expiry (possible only by hand)
+                            // gets the computed one rather than null: a plan always names a
+                            // period, and "keeps its stored expiry" has nothing to keep.
+                            ?? SubscriptionRules.ExpiryOf(current.CreatedAt, plan));
 
             var playlistId = patch.PlaylistId is null
                 ? current.PlaylistId
@@ -489,6 +509,66 @@ namespace Fluxy.Application.Subscriptions.Services
             return new SubscriptionOutcome
             {
                 Action = SubscriptionAction.Updated,
+                SubscriptionId = id
+            };
+        }
+
+        /// <inheritdoc />
+        public async Task<SubscriptionOutcome> ProlongAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            var current = await _subscriptions.FindForUpdateAsync(id, cancellationToken);
+
+            if (current is null)
+            {
+                return NotFound(id);
+            }
+
+            // A subscription with no plan has no duration to add, so there is nothing to prolong
+            // it by. The refusal names the plan field because that is the thing the operator has
+            // to set, not the expiry.
+            if (current.TariffPlanId is not { } planId)
+            {
+                return Invalid(
+                    new Dictionary<string, string[]>(StringComparer.Ordinal)
+                    {
+                        ["TariffPlanId"] = SubscriptionRules.ProlongRequiresPlanRule
+                    },
+                    id);
+            }
+
+            var plan = await _subscriptions.GetPlanContextAsync(planId, cancellationToken);
+
+            if (plan is null)
+            {
+                return Invalid(
+                    new Dictionary<string, string[]>(StringComparer.Ordinal)
+                    {
+                        ["TariffPlanId"] = SubscriptionRules.PlanNotFoundRule
+                    },
+                    id);
+            }
+
+            var prolonged = current with
+            {
+                ExpireAt = SubscriptionRules.ProlongedExpiry(
+                    _time.GetUtcNow(),
+                    current.ExpireAt,
+                    plan),
+                UpdatedAt = _time.GetUtcNow()
+            };
+
+            if (await _subscriptions.UpdateAsync(id, prolonged, cancellationToken) is false)
+            {
+                return NotFound(id);
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return new SubscriptionOutcome
+            {
+                Action = SubscriptionAction.Prolonged,
                 SubscriptionId = id
             };
         }
@@ -800,16 +880,18 @@ namespace Fluxy.Application.Subscriptions.Services
         }
 
         /// <summary>
-        /// Reads an expiry the caller sent as text: blank or unparseable clears it, a date sets it.
+        /// Reads an expiry the caller sent as text: blank or unparseable clears it, a date or an
+        /// ISO 8601 date-time sets it.
         /// </summary>
         /// <remarks>
-        /// Parsed with the invariant culture and no time, because the value is a calendar date the
-        /// operator chose rather than an instant: a bare date lands at midnight UTC, and the whole
-        /// day is what the operator meant.
+        /// Parsed with the invariant culture and with an absent offset read as UTC, because the
+        /// value is a wire format rather than a local time: a bare date lands at that day's
+        /// midnight and a full date-time keeps the moment the operator chose, while an offset that
+        /// is present is honoured and normalized to UTC.
         ///
         /// A value that does not parse answers <c>null</c>, which is the same thing a blank value
         /// answers - "no expiry". That is deliberate rather than a fallback: the transport refuses
-        /// a malformed date under its own field before this point, so a body reaching here with
+        /// a malformed value under its own field before this point, so a body reaching here with
         /// one is a body the caller built by hand, and the honest reading of an unusable expiry is
         /// no expiry rather than the date already on the row. Answering the row's own date would
         /// silently ignore a request the operator did make.
