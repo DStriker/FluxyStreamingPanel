@@ -122,6 +122,11 @@ const en = {
       // content sections because a guide is what the streams are filed against rather than a
       // fifth catalogue of content.
       epg: 'Programme guide',
+      // The three access-control blacklists, immediately after the programme guide because
+      // that is where the owner asked for them. One group rather than three, because the three
+      // lists are one resource behind one screen - the group is the family, the items are the
+      // lists.
+      blacklists: 'Blacklists',
       // The bouquets: the packages the four content sections above are delivered in. It sits
       // between the content sections and the guide, and it is a frame around them rather
       // than a fifth catalogue - which is why it has one entry and the sections have four.
@@ -182,6 +187,11 @@ const en = {
       // look at. The owner asked for these two words, so they are what the rail says.
       epgAdd: 'Add',
       epgManage: 'Manage',
+      // The three blacklist entries. Named in full rather than as bare "IP"/"ISP"/"UA", because
+      // a rail reading "IP" beside "Programme guide" says nothing about what the list is for.
+      blacklistIp: 'IP blacklist',
+      blacklistIsp: 'ISP blacklist',
+      blacklistUa: 'User-agent blacklist',
       // The bouquets section's one entry. Named for the verb like the two guild entries
       // above it, and for its object as well, because "Manage" alone under a heading called
       // "Bouquets" would read as a heading with no door.
@@ -555,6 +565,11 @@ const en = {
     editTariffPlans: 'Edit tariff plans',
     viewSubscriptions: 'View subscriptions',
     editSubscriptions: 'Edit subscriptions',
+    // The blacklist pair guards the three access-control lists - IP, ISP and user-agent - and
+    // the dialog behind them. One pair for all three because they are one resource: one table,
+    // one API and one screen family behind three menu entries.
+    viewBlacklists: 'View blacklists',
+    editBlacklists: 'Edit blacklists',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -1189,6 +1204,80 @@ const en = {
     range: '{{from}}вЂ“{{to}} of {{total}}',
     resizeColumn: 'Resize the {{column}} column',
     resetWidths: 'Reset widths',
+  },
+  // The three access-control blacklists: IP, ISP and user-agent. One block rather than three,
+  // because the three screens are one component behind three menu entries - a key per list
+  // lives under `titles`/`columns.value`/`blacklistsForm.*` and is chosen by the `type` the page
+  // mapped from its `sectionKey`.
+  blacklists: {
+    // The card's heading, one per list. A heading that said only "Blacklists" on all three
+    // would leave three identical screens with no way to tell which one is open.
+    titles: {
+      ip: 'IP blacklist',
+      isp: 'ISP blacklist',
+      'user-agent': 'User-agent blacklist',
+    },
+    columns: {
+      id: 'ID',
+      // The value column's heading is per-kind, because the three lists hold three different
+      // things: an address, a provider and a raw user agent string.
+      value: {
+        ip: 'IP address',
+        isp: 'Provider',
+        'user-agent': 'User agent',
+      },
+      blockedAttempts: 'Blocked',
+      createdAt: 'Added',
+      note: 'Note',
+      actions: 'Actions',
+    },
+    actions: {
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    addTitle: 'Add entry',
+    editTitle: 'Edit entry',
+    // The toolbar's destructive command, immediately left of the add button. Named for what it
+    // does to the list rather than to a row, because that is the whole difference between it
+    // and a row's delete.
+    clearAll: 'Clear all',
+    clearConfirmTitle: 'Clear "{{list}}"?',
+    clearConfirmText:
+      'Every entry of "{{list}}" will be removed, including any the current search hides. The other two lists are untouched. This cannot be undone.',
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by value or note',
+    searchPlaceholder: 'Search by value or note',
+    empty: 'No entries yet.',
+    noMatches: 'No entry matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    deleteConfirmTitle: 'Delete this entry?',
+    // The value is the whole of the rule, so the question names it rather than the row.
+    deleteConfirmBody:
+      '"{{name}}" will no longer be refused. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add/edit dialog of the blacklists. Its own block because the table names what a row is
+  // and the dialog names what an operator is being asked to type - and because the value's
+  // three labels are per-kind, chosen by the list the page is on.
+  blacklistsForm: {
+    valueLabel: {
+      ip: 'IP address',
+      isp: 'Provider',
+      'user-agent': 'User agent',
+    },
+    valueRequired: 'Enter a value',
+    valuePlaceholder: {
+      ip: '203.0.113.5',
+      isp: 'Provider name',
+      'user-agent': 'curl/8.0',
+    },
+    valueHint: {
+      ip: 'A single IPv4 or IPv6 address. Ranges are not supported yet.',
+    },
+    noteLabel: 'Note',
+    maxLength: 'Up to {{max}} characters.',
   },
   // The episodes of one series, reached from a row of the series table.
   seriesEpisodes: {
@@ -2495,6 +2584,18 @@ const en = {
       epg_source_already_exists: 'That guide source name is already taken.',
       epg_source_in_use:
         'Streams still read their guide from this source. Clear the programme guide on those streams first.',
+      // The blacklist resource: three shapes like the catalogues above, plus the refusal only a
+      // duplicate value inside one list can produce. The code says "value" rather than
+      // "entry" because the refusal is about a value, and the client branching on it knows it
+      // is looking at a blacklist without also having to know which one.
+      blacklist_entry_created: 'The entry has been created.',
+      blacklist_entry_updated: 'The entry has been updated.',
+      blacklist_entry_deleted: 'The entry has been deleted.',
+      // The clear-all command names a list rather than a row, so its success is a sentence
+      // about the list: "every entry of the list" is what was asked and what was done.
+      blacklist_entries_cleared: 'Every entry of the list has been deleted.',
+      blacklist_entry_not_found: 'There is no blacklist entry with that identifier.',
+      blacklist_value_exists: 'This list already holds that value.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

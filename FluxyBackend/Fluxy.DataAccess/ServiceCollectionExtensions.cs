@@ -1,5 +1,6 @@
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Repositories;
+using Fluxy.Core.Blacklists.Repositories;
 using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Epg.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
@@ -104,6 +105,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IBouquetRepository, BouquetRepository>();
             services.AddScoped<ITariffPlanRepository, TariffPlanRepository>();
             services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+            services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

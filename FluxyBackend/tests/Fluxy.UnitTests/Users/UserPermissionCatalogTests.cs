@@ -46,6 +46,28 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheBlacklistPairBelongsToTheAdministratorBaseGroup()
+        {
+            // One pair covers all three lists because they are one resource behind one API and
+            // one screen family. The seeder reconciles the base groups against this catalog on
+            // every start, and `AddBlacklistEntries` backfills the same pair for an installation
+            // that has been migrated but not yet restarted. Both decisions rest on this one: the
+            // pair is owned by Admin, so it is granted to the Administrators group and to nobody
+            // else.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewBlacklists, admin);
+            Assert.Contains(UserPermission.EditBlacklists, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewBlacklists,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.EditBlacklists,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -101,6 +123,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(8388608, (int)UserPermission.EditTariffPlans);
             Assert.Equal(16777216, (int)UserPermission.ViewSubscriptions);
             Assert.Equal(33554432, (int)UserPermission.EditSubscriptions);
+            Assert.Equal(67108864, (int)UserPermission.ViewBlacklists);
+            Assert.Equal(134217728, (int)UserPermission.EditBlacklists);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -167,10 +191,11 @@ namespace Fluxy.UnitTests.Users
 
             // A bit above the highest member the catalog names. It moved up when the bouquet
             // pair arrived (1 &lt;&lt; 20), again when the tariff plan pair took the next two
-            // slots, again when the subscription pair took the two after those, and it moves
-            // each time a permission takes one - which is exactly what this line is for.
+            // slots, again when the subscription pair took the two after those, again when the
+            // blacklist pair took 2^26 and 2^27, and it moves each time a permission takes one -
+            // which is exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 26)));
+                UserPermission.ViewClients | (UserPermission)(1 << 28)));
         }
 
         [Fact]

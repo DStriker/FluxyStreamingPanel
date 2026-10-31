@@ -201,6 +201,12 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<SubscriptionBouquetEntity> SubscriptionBouquets => Set<SubscriptionBouquetEntity>();
 
+        /// <summary>
+        /// Entries of the three access-control blacklists. The kind of list is a column of the
+        /// row, so one table holds the IP, ISP and user-agent entries.
+        /// </summary>
+        public DbSet<BlacklistEntryEntity> BlacklistEntries => Set<BlacklistEntryEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

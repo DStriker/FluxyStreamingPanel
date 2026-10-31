@@ -135,6 +135,50 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("audio_stream_sources", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.BlacklistEntryEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("BlockedAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("blocked_attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Type", "CreatedAt");
+
+                    b.HasIndex("Type", "Value")
+                        .IsUnique()
+                        .HasDatabaseName("ux_blacklist_entries_type_value");
+
+                    b.ToTable("blacklist_entries", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.BouquetAudioStreamEntity", b =>
                 {
                     b.Property<Guid>("Id")

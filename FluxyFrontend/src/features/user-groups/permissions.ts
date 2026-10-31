@@ -31,9 +31,11 @@ import type { Role, UserPermission } from '../../types'
  * - **The last pairs are not about accounts at all.** `viewStreams`/`editStreams`,
  *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries`,
  *   `viewEpgSources`/`editEpgSources`, `viewBouquets`/`editBouquets`,
- *   `viewTariffPlans`/`editTariffPlans` and `viewSubscriptions`/`editSubscriptions` name
+ *   `viewTariffPlans`/`editTariffPlans`, `viewSubscriptions`/`editSubscriptions` and
+ *   `viewBlacklists`/`editBlacklists` name
  *   content catalogues, guide sources, the packages content is delivered in, the price list a
- *   subscription is sold under and the issued rows themselves, so they sit
+ *   subscription is sold under, the issued rows themselves and the three access-control lists,
+ *   so they sit
  *   in `ALL_PERMISSIONS` (a group form has to offer them) but in
  *   neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account being acted
  *   on, and a stream, a video, a series, a bouquet or a plan has no such role). `canView` and
@@ -41,7 +43,8 @@ import type { Role, UserPermission } from '../../types'
  *   over the set. The audio pair is deliberately not the video pair, and neither is the series
  *   pair; the bouquet pair is a package *of* them rather than a fifth content kind, which is
  *   why it is its own grant rather than a reuse of any of the four, and the plan pair is the
- *   price list of the packages rather than a fifth package.
+ *   price list of the packages rather than a fifth package. The blacklist pair is one pair for
+ *   all three lists because they are one resource behind one screen family.
  * - **Unknown is not a case.** Every value is a member of the union, so there is no branch
  *   for a name that means nothing - the server answers `validation_failed` with the list that
  *   does exist if a body ever carries one, and that is where the refusal belongs.
@@ -73,6 +76,8 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editTariffPlans',
   'viewSubscriptions',
   'editSubscriptions',
+  'viewBlacklists',
+  'editBlacklists',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -101,6 +106,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editTariffPlans: 'Admin',
   viewSubscriptions: 'Admin',
   editSubscriptions: 'Admin',
+  viewBlacklists: 'Admin',
+  editBlacklists: 'Admin',
 }
 
 /**

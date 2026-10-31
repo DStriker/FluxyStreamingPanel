@@ -115,6 +115,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the subscriptions.</summary>
         public const string EditSubscriptionsPolicy = "Permission.EditSubscriptions";
 
+        /// <summary>Policy that accepts an operator who may read the blacklists.</summary>
+        public const string ViewBlacklistsPolicy = "Permission.ViewBlacklists";
+
+        /// <summary>Policy that accepts an operator who may change the blacklists.</summary>
+        public const string EditBlacklistsPolicy = "Permission.EditBlacklists";
+
         /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
@@ -318,7 +324,17 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditSubscriptions)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditSubscriptions)))
+                .AddPolicy(ViewBlacklistsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewBlacklists)))
+                .AddPolicy(EditBlacklistsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBlacklists)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

@@ -225,6 +225,24 @@ namespace Fluxy.Core.Users.Enums
         /// ids and clear their services. Separate from <see cref="ViewSubscriptions"/> for the
         /// reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditSubscriptions = 33554432
+        EditSubscriptions = 33554432,
+
+        /// <summary>
+        /// May read the three blacklists: the IP, ISP and user-agent entry tables and one entry
+        /// in full.
+        /// </summary>
+        /// <remarks>
+        /// One pair covers all three lists because they are one resource: one table, one API and
+        /// one screen behind three menu entries. Three pairs would be three grants nobody could
+        /// tell apart - nothing in the domain says "may edit the IP list but not the ISP one".
+        /// </remarks>
+        ViewBlacklists = 67108864,
+
+        /// <summary>
+        /// May change the blacklists: create, edit and delete entries of any of the three lists.
+        /// Separate from <see cref="ViewBlacklists"/> for the reason <see cref="EditStreams"/>
+        /// gives.
+        /// </summary>
+        EditBlacklists = 134217728
     }
 }

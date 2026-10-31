@@ -3,9 +3,11 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   CalendarOutlined,
+  CloudServerOutlined,
   CreditCardOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
+  DesktopOutlined,
   GlobalOutlined,
   HistoryOutlined,
   IdcardOutlined,
@@ -15,6 +17,7 @@ import {
   PlaySquareOutlined,
   PlusOutlined,
   ShoppingCartOutlined,
+  StopOutlined,
   TableOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -513,6 +516,42 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.epgManage',
           icon: TableOutlined,
           page: () => import('../pages/admin/EpgSourcesPage'),
+        },
+      ],
+    },
+    {
+      // The three access-control blacklists, immediately after the programme guide because
+      // that is where the owner asked for them. One item per list rather than one item with a
+      // filter: the three lists are separate questions an operator arrives with, and the rail
+      // is where that choice is made. All three open the same page with its own `sectionKey`.
+      //
+      // The icons describe the thing each list holds - a network address, a provider, a
+      // client - rather than repeating the group's stop sign three times, which would make
+      // the three entries look like one entry drawn thrice.
+      key: 'blacklists',
+      labelKey: 'nav.groups.blacklists',
+      icon: StopOutlined,
+      items: [
+        {
+          key: 'blacklistIp',
+          path: 'blacklists/ip',
+          labelKey: 'nav.items.blacklistIp',
+          icon: GlobalOutlined,
+          page: () => import('../pages/admin/BlacklistEntriesPage'),
+        },
+        {
+          key: 'blacklistIsp',
+          path: 'blacklists/isp',
+          labelKey: 'nav.items.blacklistIsp',
+          icon: CloudServerOutlined,
+          page: () => import('../pages/admin/BlacklistEntriesPage'),
+        },
+        {
+          key: 'blacklistUa',
+          path: 'blacklists/ua',
+          labelKey: 'nav.items.blacklistUa',
+          icon: DesktopOutlined,
+          page: () => import('../pages/admin/BlacklistEntriesPage'),
         },
       ],
     },

@@ -49,6 +49,10 @@ describe('ALL_PERMISSIONS', () => {
       // so it sits after the price list that decides what it delivers.
       'viewSubscriptions',
       'editSubscriptions',
+      // The blacklist pair is the last one: the three access-control lists are a resource of
+      // their own, behind one screen family and one API.
+      'viewBlacklists',
+      'editBlacklists',
     ])
   })
 })
@@ -120,6 +124,10 @@ describe('canViewAny / canEditAny', () => {
     expect(canEditAny(['viewTariffPlans', 'editTariffPlans'])).toBe(false)
     expect(canViewAny(['viewSubscriptions', 'editSubscriptions'])).toBe(false)
     expect(canEditAny(['viewSubscriptions', 'editSubscriptions'])).toBe(false)
+    // And the blacklist pair names the access-control lists rather than accounts, so it must
+    // not satisfy these gates either.
+    expect(canViewAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
+    expect(canEditAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

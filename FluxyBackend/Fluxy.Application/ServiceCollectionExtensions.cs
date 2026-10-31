@@ -1,5 +1,6 @@
 using Fluxy.Application.Authentication.Services;
 using Fluxy.Application.Authentication.Utils;
+using Fluxy.Application.Blacklists.Services;
 using Fluxy.Application.Content.Services;
 using Fluxy.Application.Email.Options;
 using Fluxy.Application.Epg.Services;
@@ -14,6 +15,7 @@ using Fluxy.Application.Users.Services;
 using Fluxy.Application.Vod.Services;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
+using Fluxy.Core.Blacklists.Interfaces;
 using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Epg.Interfaces;
@@ -164,6 +166,13 @@ namespace Fluxy.Application
             // row, and a client asking for that must not have to know which single-row method it
             // is built on.
             services.AddScoped<ISubscriptionBulkService, SubscriptionBulkService>();
+
+            // The three access-control blacklists: one resource behind two permissions and
+            // three menu entries. It is its own service because an entry has rules none of the
+            // resources above has - a value unique within its list, an address parsed as an
+            // address - and a service carrying those plus a subscription's would answer
+            // "whose row?" on every call.
+            services.AddScoped<IBlacklistEntryService, BlacklistEntryService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

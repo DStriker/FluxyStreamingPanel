@@ -62,6 +62,12 @@
  * while a subscription is one issued row that carries somebody's access, so pricing it and
  * issuing it are two different jobs. The backend keeps them at 16777216 and 33554432.
  *
+ * **The blacklist pair is the same question asked about the access-control lists.**
+ * `viewBlacklists` and `editBlacklists` gate the three blacklist tables - IP, ISP and
+ * user-agent - and the dialog behind them. One pair covers all three because they are one
+ * resource: one table, one API and one screen behind three menu entries. The backend keeps
+ * them at 67108864 and 134217728.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -91,4 +97,6 @@ export type UserPermission =
   | 'editTariffPlans'
   | 'viewSubscriptions'
   | 'editSubscriptions'
+  | 'viewBlacklists'
+  | 'editBlacklists'
 

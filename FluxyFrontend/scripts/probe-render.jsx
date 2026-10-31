@@ -48,6 +48,8 @@ import AudioStreamImportPage from '../src/pages/admin/AudioStreamImportPage'
 import EpgSourcesPage from '../src/pages/admin/EpgSourcesPage'
 import EpgSourceFormPage from '../src/pages/admin/EpgSourceFormPage'
 import EpgSourceChannelsPage from '../src/pages/admin/EpgSourceChannelsPage'
+import BlacklistEntriesPage from '../src/pages/admin/BlacklistEntriesPage'
+import BlacklistEntryFields from '../src/features/blacklists/components/BlacklistEntryFields'
 import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
@@ -1886,6 +1888,192 @@ async function main() {
     `rendered ${epgSourceChannelsHtml.length} bytes`,
   )
 
+  // --- The three access-control blacklists -----------------------------------
+  //
+  // One component behind three menu entries, so the thing worth asserting is that each of the
+  // three renderings is *its own*: its heading, the heading of its value column, and the `type`
+  // the section key maps to. A key renamed on the menu side only falls back to the IP list
+  // silently, which is exactly the drift this section exists to catch.
+  const renderBlacklist = (sectionKey, path) =>
+    renderToStaticMarkup(
+      withRouter(path, withQuery(
+        <AntApp>
+          <BlacklistEntriesPage sectionKey={sectionKey} />
+        </AntApp>,
+      )),
+    )
+
+  const blacklistIpHtml = renderBlacklist('nav.items.blacklistIp', '/admin/blacklists/ip')
+  const blacklistIspHtml = renderBlacklist('nav.items.blacklistIsp', '/admin/blacklists/isp')
+  const blacklistUaHtml = renderBlacklist('nav.items.blacklistUa', '/admin/blacklists/ua')
+
+  check(
+    'the IP blacklist draws its own heading and the IP heading over the value column',
+    blacklistIpHtml.includes('>IP blacklist<') &&
+      blacklistIpHtml.includes('>IP address<') &&
+      !blacklistIpHtml.includes('>ISP blacklist<') &&
+      !blacklistIpHtml.includes('>Provider<') &&
+      !blacklistIpHtml.includes('nav.items.blacklistIp'),
+    `rendered ${blacklistIpHtml.length} bytes with the entries still being fetched`,
+  )
+
+  check(
+    'the ISP blacklist draws its own heading and the provider heading over the value column',
+    blacklistIspHtml.includes('>ISP blacklist<') &&
+      blacklistIspHtml.includes('>Provider<') &&
+      !blacklistIspHtml.includes('>IP address<') &&
+      !blacklistIspHtml.includes('nav.items.blacklistIsp'),
+    `rendered ${blacklistIspHtml.length} bytes with the entries still being fetched`,
+  )
+
+  check(
+    'the user-agent blacklist draws its own heading and the agent heading over the value column',
+    blacklistUaHtml.includes('>User-agent blacklist<') &&
+      blacklistUaHtml.includes('>User agent<') &&
+      !blacklistUaHtml.includes('>IP address<') &&
+      !blacklistUaHtml.includes('nav.items.blacklistUa'),
+    `rendered ${blacklistUaHtml.length} bytes with the entries still being fetched`,
+  )
+
+  // The six columns, in order, at the widths the page declares - and no seventh: a selection
+  // column would double the table's width in a way typecheck cannot see.
+  const blacklistCols = [...blacklistIpHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const blacklistWidths = blacklistCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  check(
+    'the blacklist table draws its six columns at 110/340/160/180/260 and the actions width',
+    blacklistCols.length === 6 &&
+      blacklistWidths.slice(0, 5).join(',') === '110,340,160,180,260' &&
+      blacklistWidths[5] === '84',
+    `${blacklistCols.length} columns at ${blacklistWidths.join('/')}`,
+  )
+
+  check(
+    'the blacklist table carries no selection column, because it has no bulk actions',
+    !blacklistIpHtml.includes('ant-table-selection-column'),
+    `rendered ${blacklistIpHtml.length} bytes`,
+  )
+
+  check(
+    'the blacklist table offers its search, its width reset, the clear-all command and the add button',
+    blacklistIpHtml.includes('Search by value or note') &&
+      blacklistIpHtml.includes('Reset widths') &&
+      blacklistIpHtml.includes('Clear all') &&
+      blacklistIpHtml.includes('Add entry') &&
+      !/\bblacklists\.[a-zA-Z]/.test(blacklistIpHtml),
+    `rendered ${blacklistIpHtml.length} bytes`,
+  )
+
+  // The toolbar order the owner asked for: search, width reset, clear-all, add. Asserted by the
+  // index of the text rather than by the markup around it, because antd renders the `extra`
+  // through its own wrapper and a structural check would pin antd's nesting instead of this
+  // page's order. `Clear all` must sit strictly left of `Add entry`.
+  const blacklistToolbar = [
+    ['search', blacklistIpHtml.indexOf('Search by value or note')],
+    ['width reset', blacklistIpHtml.indexOf('Reset widths')],
+    ['clear all', blacklistIpHtml.indexOf('Clear all')],
+    ['add', blacklistIpHtml.indexOf('Add entry')],
+  ]
+  const blacklistToolbarOrdered = blacklistToolbar.every(
+    ([, position], index) => position >= 0 && (index === 0 || position > blacklistToolbar[index - 1][1]),
+  )
+  check(
+    'the clear-all button sits between the width reset and the add button',
+    blacklistToolbarOrdered,
+    blacklistToolbar.map(([name, position]) => `${name}@${position}`).join(', '),
+  )
+
+  // The dialog is portalled, so no static render of the page reaches it. The two fields are a
+  // component of their own for that reason, and drawing them here is what asserts the dialog
+  // asks for the value and the note and nothing else - no type picker, no counter, no date.
+  const blacklistFieldsHtml = renderToStaticMarkup(
+    <AntApp>
+      <Form>
+        <BlacklistEntryFields type="user-agent" />
+      </Form>
+    </AntApp>,
+  )
+  const blacklistFieldLabels = [...blacklistFieldsHtml.matchAll(/<label[^>]*>([^<]*)</g)]
+    .map((match) => match[1])
+  check(
+    'the add/edit dialog carries the value and the note fields only',
+    blacklistFieldLabels.length === 2 &&
+      blacklistFieldLabels[0] === 'User agent' &&
+      blacklistFieldLabels[1] === 'Note' &&
+      !blacklistFieldsHtml.includes('ISP') &&
+      !blacklistFieldsHtml.includes('Blocked') &&
+      !blacklistFieldsHtml.includes('blacklistsForm.'),
+    `${blacklistFieldLabels.length} fields: ${blacklistFieldLabels.join(', ')}`,
+  )
+
+  // The hint rule: the IP value input carries one, and nothing else on any of the three lists
+  // does. Rendered through the component rather than the dialog for the reason above, and
+  // asserted per type rather than by counting - a hint that leaked onto the note field would
+  // pass a count of "one" on the ISP list while breaking the rule the spec states.
+  const blacklistHintOf = (type) =>
+    renderToStaticMarkup(
+      <AntApp>
+        <Form>
+          <BlacklistEntryFields type={type} />
+        </Form>
+      </AntApp>,
+    )
+  const blacklistIpFieldsHtml = blacklistHintOf('ip')
+  const blacklistIspFieldsHtml = blacklistHintOf('isp')
+  const ipHintText = 'A single IPv4 or IPv6 address'
+
+  check(
+    'the IP dialog shows its value hint, and only there',
+    blacklistIpFieldsHtml.includes(ipHintText) &&
+      blacklistIpFieldsHtml.split(ipHintText).length - 1 === 1,
+    `${blacklistIpFieldsHtml.split(ipHintText).length - 1} occurrence(s) in ${blacklistIpFieldsHtml.length} bytes`,
+  )
+
+  check(
+    'the ISP and user-agent dialogs carry no hint under any field',
+    !blacklistIspFieldsHtml.includes(ipHintText) &&
+      !blacklistFieldsHtml.includes(ipHintText) &&
+      // antd draws an `extra` as `ant-form-item-extra`; none of the three ISP/UA fields has one.
+      !blacklistIspFieldsHtml.includes('ant-form-item-extra') &&
+      !blacklistFieldsHtml.includes('ant-form-item-extra'),
+    `ISP extra blocks: ${blacklistIspFieldsHtml.includes('ant-form-item-extra')}, UA extra blocks: ${blacklistFieldsHtml.includes('ant-form-item-extra')}`,
+  )
+
+  check(
+    'the note field carries no hint on any list',
+    // The note's own `extra` would appear after the note label; the guard is the count of the
+    // wrapper class across the IP render, which may only hold the value field's one.
+    blacklistIpFieldsHtml.split('ant-form-item-extra').length - 1 === 1,
+    `${blacklistIpFieldsHtml.split('ant-form-item-extra').length - 1} extra block(s) on the IP dialog`,
+  )
+
+  check(
+    'the value placeholders stay on all three lists',
+    blacklistIpFieldsHtml.includes('203.0.113.5') &&
+      blacklistIspFieldsHtml.includes('Provider name') &&
+      blacklistFieldsHtml.includes('curl/8.0'),
+    `IP/ISP/UA placeholders present: ${blacklistIpFieldsHtml.includes('203.0.113.5')}/${
+      blacklistIspFieldsHtml.includes('Provider name')
+    }/${blacklistFieldsHtml.includes('curl/8.0')}`,
+  )
+
+  const adminGroupKeysForBlacklists = NAVIGATION.Admin.map((group) => group.key)
+  const blacklistGroup = NAVIGATION.Admin.find((group) => group.key === 'blacklists')
+  const blacklistItemKeys = blacklistGroup?.items.map((item) => item.key) ?? []
+  check(
+    'the blacklists group sits directly under the programme guide, with its three items in order',
+    adminGroupKeysForBlacklists.indexOf('blacklists') ===
+      adminGroupKeysForBlacklists.indexOf('epg') + 1 &&
+      blacklistItemKeys.join(',') === 'blacklistIp,blacklistIsp,blacklistUa',
+    `the rail reads ${adminGroupKeysForBlacklists.join(', ')}; the group reads ${blacklistItemKeys.join(', ')}`,
+  )
+
+  check(
+    'each of the three blacklist entries opens the page',
+    blacklistGroup?.items.every((item) => item.page !== undefined) === true &&
+      blacklistGroup?.items.every((item) => item.path.startsWith('blacklists/')) === true,
+    `paths: ${blacklistGroup?.items.map((item) => item.path).join(', ') ?? 'none'}`,
+  )
+
   // --- The subscriptions section and its tariff plans -------------------------
   //
   // The section the owner asked for: five entries under one heading, four of them
@@ -2771,6 +2959,9 @@ async function main() {
     adminSessionsHtml,
     epgSourcesHtml,
     epgSourceChannelsHtml,
+    blacklistIpHtml,
+    blacklistIspHtml,
+    blacklistUaHtml,
     bouquetsHtml,
     bouquetContentHtml,
     subscriptionsHtml,

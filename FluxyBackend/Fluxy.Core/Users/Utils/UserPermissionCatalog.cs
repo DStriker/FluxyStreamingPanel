@@ -65,7 +65,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewTariffPlans,
             UserPermission.EditTariffPlans,
             UserPermission.ViewSubscriptions,
-            UserPermission.EditSubscriptions
+            UserPermission.EditSubscriptions,
+            UserPermission.ViewBlacklists,
+            UserPermission.EditBlacklists
         ];
 
         /// <summary>
@@ -121,7 +123,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewTariffPlans] = UserRole.Admin,
                 [UserPermission.EditTariffPlans] = UserRole.Admin,
                 [UserPermission.ViewSubscriptions] = UserRole.Admin,
-                [UserPermission.EditSubscriptions] = UserRole.Admin
+                [UserPermission.EditSubscriptions] = UserRole.Admin,
+                [UserPermission.ViewBlacklists] = UserRole.Admin,
+                [UserPermission.EditBlacklists] = UserRole.Admin
             };
 
         /// <summary>
