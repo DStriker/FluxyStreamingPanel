@@ -197,8 +197,8 @@ const en = {
       // MAG devices and Enigma2 devices - are gone: each of those is a field of a row on the
       // management list, and a second screen for one field would be a second place for the same
       // fact to disagree with itself.
-      subscriptionsAdd: 'Add',
-      subscriptionsManage: 'Manage',
+      subscriptionsAdd: 'Add subscription',
+      subscriptionsManage: 'Manage subscriptions',
       tariffPlans: 'Tariff plans',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the

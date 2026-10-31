@@ -1830,6 +1830,138 @@ Verified: `dotnet build` clean, **232** unit tests and **143** integration tests
 `dotnet ef migrations has-pending-model-changes` reports no changes, and the frontend passes
 `typecheck`, `lint`, `test`, `build`, `probe:render`, `probe:i18n` and `probe:paths`.
 
+## The subscriptions API: `admin/subscriptions`
+
+The subscription is the thing an operator issues to a user: its owner, its services (one playlist,
+one MAG, one Enigma2 device), its access parameters, its bouquets and its expiry. It is the second
+piece of the `Subscriptions` domain and consumes the tariff plan that piece defines.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/subscriptions` | `Permission.ViewSubscriptions` | page: `page`, `pageSize`, `search`, `ownerId`, `creatorId`, `status`, `sortBy`, `sortOrder` |
+| `GET /admin/subscriptions/{id}` | View | one subscription with derived values, whitelists and bouquets; `404 subscription_not_found` |
+| `POST /admin/subscriptions` | CSRF + `Permission.EditSubscriptions` | `201 subscription_created` + relative `Location` |
+| `PATCH /admin/subscriptions/{id}` | CSRF + Edit | `200 subscription_updated` |
+| `DELETE /admin/subscriptions/{id}` | CSRF + Edit | `200 subscription_deleted`, `404` on a second |
+| `POST /admin/subscriptions/playlist-id` | CSRF + Edit | `200` + `{ playlistId }` — the generator, writes nothing |
+| `POST /admin/subscriptions/{id}/prolong` | CSRF + Edit | `200 subscription_prolonged` (code + sentence; the new expiry is read back from the detail) |
+| `POST /admin/subscriptions/bulk` | CSRF + Edit | `200 subscription_bulk_completed`, one entry per identifier |
+
+- **One table plus one junction.** `subscriptions` carries every parameter as its own column —
+  `playlist_id`, `mag_mac`, `enigma2_mac` are nullable columns, not child tables, because each kind
+  is at most one per subscription and "delete the playlist" (single or bulk) is a field clear.
+  `subscription_bouquets` mirrors `tariff_plan_bouquets` (unique pair, cascade on both sides) and
+  holds the subscription's *own* bouquet list. `play_token` is a nullable column that nothing here
+  writes or reads: the streaming subsystem that will verify MAC access owns its lifecycle, and the
+  column exists now so that subsystem finds it where it expects to.
+- **A tariff plan is the single source of truth for what it owns.** With `tariff_plan_id` set, the
+  plan decides `max_connections`, `is_restreamer`, `output_formats`, `is_stb_lock`,
+  `is_country_lock` (= `!plan.AllowMultipleCountries`; `is_isp_lock` has no plan counterpart and is
+  always the operator's own), `is_trial` and which services may exist; the request's values for
+  those fields are not written and are not even validated. Clearing the plan nulls the reference
+  and the subscription's own stored values apply again. A plan may be attached only when its user
+  groups include the owner's group ("available to the owner").
+- **Expiry is computed, never guessed — and prolongable.** With a plan: `expire_at = created_at + DurationValue` in
+  the plan's unit (`AddMonths`/`AddYears` are calendar-aware), computed when the plan is **set or
+  changed** in a save — deliberately from `created_at`, so the answer is deterministic even when it
+  lands in the past and the row shows `expired`. A save that keeps the plan keeps the stored expiry:
+  recomputing on *every* save would silently wipe a prolongation. **Prolong** is its own operation
+  (`POST .../{id}/prolong`, bulk `prolong` delegating to it): the new expiry is
+  `max(now, current expiry) + plan duration`, so remaining time is kept and a short plan can never
+  shorten what is left; without a plan there is no duration to add and the row is refused on
+  `tariffPlanId`. The list item carries `tariffPlanDurationValue` / `tariffPlanDurationUnit`
+  (absent without a plan) so the admin UI can preview the new expiry in its confirmation dialog
+  without a second request. Without a plan the expiry is the operator's own moment — the contract accepts an
+  ISO 8601 date-time and a bare `yyyy-MM-dd` (that day's midnight), `null` meaning "never expires".
+  The status itself is never stored: `SubscriptionStatusComposition` computes `expired` (expiry in
+  the past) > `blocked` (the owner's effective status, own or group) > `trial` > `active`, and the
+  list filter translates into the same predicate before `CountAsync`, so the tag and the filter
+  cannot disagree.
+- **Services: dropped, not refused, and at least one must survive.** A service the effective plan
+  does not support is cleared on save (the video streams' "a payload the chosen kind cannot use is
+  dropped" rule), and a save that would leave no service at all is refused with the error keyed
+  under `playlistId`, `magMac` *and* `enigma2Mac`. Without a plan the bouquet list is written and
+  at least one bouquet is required; with a plan the stored list lies dormant and is re-activated —
+  all bouquets preselected when it is empty — the moment the plan goes.
+- **The three identifiers are unique and system-generated where they are generated.** A playlist id
+  is 32 hex characters from `RandomNumberGenerator`; the generator endpoint loops against
+  `PlaylistIdExistsAsync` until it finds an unused one, and the create form auto-generates one only
+  when the selected plan supports playlists and nothing else. A MAC is canonicalised to uppercase
+  `XX:XX:XX:XX:XX:XX` (input may use `-` or either case). The three partial unique indexes
+  (`IX_subscriptions_playlist_id`, `IX_subscriptions_mag_mac`, `IX_subscriptions_enigma2_mac`,
+  each `WHERE ... IS NOT NULL`) are matched **by name** and answer `409 subscription_already_exists`
+  naming the field; anything else is rethrown. The duplicate probe runs **after** the plan-clearing,
+  so a value the plan drops is never refused as a duplicate.
+- **The owner is chosen once; the creator is provenance.** `user_id` is picked at creation from all
+  users and never changes (`ON DELETE CASCADE` — an account's subscriptions go with the account);
+  `reseller_id` is stamped with the acting admin/reseller and may be reassigned only to an Admin or
+  Reseller role (`ON DELETE SET NULL`, the column is nullable).
+- **Whitelists travel as `text[]`**, like VOD `cast`/`genres`: 20 entries each, an IP entry must
+  parse as an IPv4/IPv6 address or CIDR range, a user-agent entry is free text capped at 200
+  chars, and an empty list means no restriction. PATCH list semantics are the usual ones: absent
+  keeps, `[]` clears, a list replaces.
+- **Bulk is the eight single-row writes in a loop**, behind its own controller
+  (`SubscriptionsBulkController`, the request names a set the table assembled): `change-tariff`,
+  `change-creator`, `prolong`, `delete`, `delete-playlist`, `delete-mag`, `delete-enigma2`,
+  `block-owner`.
+  The body is validated before any row is read (1..1000 uuids, duplicates collapse), the answer is
+  the partial-success report every other bulk endpoint answers, and a plan change that cleared a
+  service reports it as a warning (`subscription_playlist_cleared` / `..._mag_cleared` /
+  `..._enigma2_cleared`) — warnings are not failures. `block-owner` calls
+  `IUserAdminService.SetBlockedAsync`, so it blocks the account and revokes its sessions exactly
+  as `POST /admin/users/{id}/block` does; it is idempotent and `cannot_block_self` refuses the
+  acting user's own row. Clearing an already-empty service field succeeds as a no-op.
+- **`POST /admin/subscriptions/playlist-id` is a recorded REST departure**, in the list above: it
+  mints a value rather than writing a resource, the same reasoning as `POST /auth/csrf`, and the
+  form fills its read-only field from it. The alternative — a `PATCH` flag that meant "generate
+  something" — would have made a field write answer with a value the request did not name.
+- **The permissions are `ViewSubscriptions = 16777216` and `EditSubscriptions = 33554432`**, the
+  two free flag values. As with the tariff pair, no grant migration is strictly needed (the seeder
+  reconciles the base groups), but `20261029152000_GrantSubscriptionPermissions` exists anyway,
+  mirroring `GrantTariffPlanPermissions`, for an installation that migrates without restarting; a
+  custom administrator group still has to be granted the pair by hand.
+- **Deleting a tariff plan a subscription uses is refused**: `409 tariff_plan_in_use` with
+  `SubscriptionsUsing` on the outcome (`TariffPlanAction.InUse`), the `epg_source_in_use` shape.
+  The FK is `RESTRICT` and `TariffPlanService` therefore reads `ISubscriptionRepository` —
+  Application to a Core interface, which is the layering rule. Without the check, deleting a plan
+  would silently re-mean every derived parameter the plan was the only record of.
+- **`FluxyDbContext` now takes a `TimeProvider`.** The expiry is `created_at + duration` while
+  `created_at` is stamped by the context, and two clocks measuring one instant disagree — a 9.6 s
+  gap was measured before the seam. The context stamps its audit columns from the injected
+  provider, the service derives from the same one, and the design-time factory passes
+  `TimeProvider.System`. `CreateAsync` reads the clock once for the derivation and the model
+  stamps; the residual microsecond skew to the context's own `created_at` is documented in its
+  remarks. A composition root that calls `AddDataAccess` must have registered a `TimeProvider`
+  (`AddApplicationServices` does).
+
+**Codes:** `subscription_created|updated|deleted|not_found|already_exists|prolonged`, plus
+`subscription_playlist_cleared|mag_cleared|enigma2_cleared` as bulk warnings and
+`tariff_plan_in_use` on the plans side — all translated in both locale bundles.
+
+Layering follows the usual split: `Subscription` in `Fluxy.Core/Subscriptions/Models/`,
+`SubscriptionListItem` / `SubscriptionDetail` / `SubscriptionPage` / `SubscriptionDerivedValues`
+in `ReadModels/`, `SubscriptionPlanContext` / `SubscriptionOwnerContext` in `Rows/` (the two
+projections the service reads before it writes), `NewSubscription` / `SubscriptionPatch` /
+`BulkSubscriptionOperation` in `Commands/`, `SubscriptionOutcome` / `BulkSubscriptionOutcome` /
+`BulkSubscriptionItemResult` in `Outcomes/`, `SubscriptionStatus` / `SubscriptionAction` /
+`BulkSubscriptionAction` / `SubscriptionBulkWarning` / `SubscriptionOutputFormat` and the sort
+pair in `Enums/`, `SubscriptionStatusComposition` / `SubscriptionLimits` /
+`SubscriptionListLimits` / `SubscriptionBulkLimits` in `Utils/`, `ISubscriptionService` /
+`ISubscriptionBulkService` and `ISubscriptionRepository`; `SubscriptionService` /
+`SubscriptionBulkService` and `SubscriptionRules` in `Fluxy.Application/Subscriptions/`; the two
+entities, their configurations and `SubscriptionRepository` in `Fluxy.DataAccess` (migrations
+`AddSubscriptions`, `GrantSubscriptionPermissions`); the contracts in
+`Fluxy.API/Contracts/Subscriptions/`; and `SubscriptionsController` +
+`SubscriptionsBulkController` in `Fluxy.API/Controllers/Subscriptions/`.
+
+Verified: `dotnet build` clean, **426** unit tests and **196** integration tests green (the
+subscriptions suite covering CRUD, plan derivation and clearing, expiry arithmetic and the
+kept-plan rule that preserves a prolongation, prolongation itself, the min-one-service and
+min-one-bouquet refusals, uniqueness mapping and rethrow, list search/filter/sort/paging refusals,
+every bulk action with partial success and warnings, CSRF and permissions), `dotnet ef migrations
+has-pending-model-changes` reports no changes, and the frontend passes
+`typecheck`, `lint`, `test`, `build`, `probe:render`, `probe:i18n` and `probe:paths`.
+
 ## Conventions
 
 - Block-scoped namespaces (`namespace X { ... }` with the type indented inside) and `using` directives at the top of the file — not file-scoped namespaces. Current root namespace is `Fluxy.API`; the old `Refluxy.*` rename is complete.
