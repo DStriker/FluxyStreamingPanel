@@ -193,11 +193,16 @@ export const appTheme = (dark: boolean): AppTheme => {
         },
         Table: {
           // antd tints every body cell of the sorted column (`td.ant-table-column-sort`)
-          // as well as its header. The header is where the sort state belongs - the arrow
-          // and the tint read as one control - while a wash down the column makes the rows
-          // look striped for a reason the visitor did not choose. The header keeps its
-          // `headerSortActiveBg`; only `bodySortBg` is cleared, so row hover and selection
-          // still paint over these cells as they do over every other row.
+          // as well as its header. Neither tint is wanted here: a wash down the column makes
+          // the rows look striped for a reason the visitor did not choose, and a header that
+          // changes colour on sort reads as a second control beside the arrow. The sort state
+          // is the arrow alone, so `headerSortActiveBg` takes the very token the resting
+          // header is painted with - `headerBg` is `colorFillAlter` flattened over
+          // `colorBgContainer`, which is what the header already sits on - and the body tint
+          // is cleared instead, so row hover and selection still paint over those cells as
+          // they do over every other row. `headerSortHoverBg` is left alone: an unsorted
+          // sortable header hovers to it too.
+          headerSortActiveBg: derived.colorFillAlter,
           bodySortBg: 'transparent',
         },
       },

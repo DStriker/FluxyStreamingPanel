@@ -3445,6 +3445,31 @@ async function main() {
   const darkTheme = appTheme(true)
   const lightTheme = appTheme(false)
 
+  // A sorted column is told apart by its arrow and by nothing else. antd tints a sorted
+  // header (`headerSortActiveBg` = `colorFillSecondary`) and every body cell of the column
+  // (`bodySortBg` = `colorFillAlter`) unless it is told otherwise, so the theme hands the
+  // sorted header the very token the resting header is painted from and clears the body
+  // tint. The token, not a hex: `headerBg` is `colorFillAlter` flattened over
+  // `colorBgContainer`, which is what the header sits on, so the two come out one colour in
+  // either theme - and this check would fail if either half of that were ever unwound.
+  check(
+    'a sorted column is marked by its arrow, not by a tint in either theme',
+    [lightTheme, darkTheme].every(
+      (t) =>
+        t.config.components.Table.headerSortActiveBg === t.derived.colorFillAlter &&
+        t.config.components.Table.bodySortBg === 'transparent',
+    ),
+    [
+      ['light', lightTheme],
+      ['dark', darkTheme],
+    ]
+      .map(
+        ([name, t]) =>
+          `${name}: sorted header ${t.config.components.Table.headerSortActiveBg} vs resting ${t.derived.colorFillAlter}, body ${t.config.components.Table.bodySortBg}`,
+      )
+      .join('; '),
+  )
+
   check(
     'the dark rail overrides the selected category with the primary it renders with',
     titleColor === darkTheme.derived.colorPrimary,
