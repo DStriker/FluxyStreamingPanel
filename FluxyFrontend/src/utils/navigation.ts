@@ -455,11 +455,38 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           // `tariff-plans` rather than `subscriptions/tariff-plans`: the address mirrors the
           // backend's own route (`admin/tariff-plans`), so the page, the API and the menu entry
           // name one resource the same way.
+          //
+          // It sits above the two connection-log entries on the owner's correction: a plan is
+          // what a subscription is *sold under*, so it belongs beside the list that shows what
+          // was sold, and the log - the record of what those subscriptions then did - follows.
           key: 'tariffPlans',
           path: 'tariff-plans',
           labelKey: 'nav.items.tariffPlans',
           icon: TagsOutlined,
           page: () => import('../pages/admin/TariffPlansPage'),
+        },
+        {
+          // The connection log, as two entries rather than one screen with a switch: "what is
+          // running right now" and "what was watched" are the two questions an operator arrives
+          // with, and the rail is where that choice is made. Both open the same page with its own
+          // `sectionKey` - exactly the shape the three blacklists use - and the mode the key names
+          // is what decides the state filter, the end column and whether a kill action is drawn.
+          //
+          // Each has an address of its own rather than a child of the other (`live-connections`
+          // and `connection-logs` are siblings): one path cannot be two pages, and the activity
+          // page is the one the subscriptions row's "Show activity" action links to.
+          key: 'liveConnections',
+          path: 'live-connections',
+          labelKey: 'nav.items.liveConnections',
+          icon: GlobalOutlined,
+          page: () => import('../pages/admin/ConnectionLogsPage'),
+        },
+        {
+          key: 'subscriptionActivity',
+          path: 'connection-logs',
+          labelKey: 'nav.items.subscriptionActivity',
+          icon: HistoryOutlined,
+          page: () => import('../pages/admin/ConnectionLogsPage'),
         },
       ],
     },

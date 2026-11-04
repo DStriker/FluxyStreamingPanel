@@ -54,6 +54,9 @@ import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
+import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
+import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
+import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -62,6 +65,7 @@ import LastSeenCell from '../src/features/users/components/LastSeenCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import AudioStreamStateCell from '../src/features/audio-streams/components/StreamStateCell'
 import { RowActions } from '../src/components/table'
+import UserAgentCell from '../src/components/table/UserAgentCell'
 import TimeZoneCard from '../src/features/profile/components/TimeZoneCard'
 import LoginGuardCard from '../src/features/profile/components/LoginGuardCard'
 import ConfirmCodeForm from '../src/features/auth/components/ConfirmCodeForm'
@@ -341,38 +345,51 @@ async function main() {
   // What keeps a long provider name from dragging the table sideways. A column with no width
   // of its own grows to fit its widest cell, and the network column is the one with no natural
   // bound - an organisation name is whatever the registry called the company, and can run to
-  // sixty characters. Fixed layout, a width on each of the five columns and a body that scrolls
+  // sixty characters. Fixed layout, a width on each of the three columns and a body that scrolls
   // instead of stretching are three separate facts, and dropping any one of them lets the
   // content set the width again. None of that is visible to typecheck, lint or the build.
+  //
+  // Three columns on the owner's round-3 correction, where there were five: ip, country and
+  // network became one cell - the same one the connection logs draw - and its own invariant is
+  // 1140, not the 1190 the administration tables reach with columns this page does not have.
   const sessionsCols = [...sessionsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const sessionsWidths = sessionsCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const sessionsTotal = sessionsWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
   check(
-    'the visit history table is fixed-layout with a width on each column',
+    'the visit history table is fixed-layout with its three merged columns summing to 1140',
     /table-layout:\s*fixed/.test(sessionsHtml) &&
-      sessionsCols.length === 5 &&
-      ['300px', '170px', '150px', '240px', '280px'].every((w) =>
-        sessionsCols.some((col) => col.includes(`width:${w}`)),
-      ),
-    `${sessionsCols.length} columns: ${sessionsCols.join(' ')}`,
+      sessionsWidths.join(',') === '300,440,400' &&
+      sessionsTotal === 1140,
+    `${sessionsCols.length} columns: [${sessionsWidths.join(', ')}] = ${sessionsTotal}px`,
+  )
+
+  check(
+    'the visit history draws one network column instead of separate IP, Country and Network ones',
+    sessionsHtml.includes('>Network<') &&
+      sessionsHtml.includes('>User agent<') &&
+      !sessionsHtml.includes('>IP address<') &&
+      !sessionsHtml.includes('>Country<'),
+    `rendered ${sessionsHtml.length} bytes`,
   )
 
   // The resize handles, and the fact that they are the whole of the resizing feature. They are
   // produced by `ResizableHeaderCell` through `components.header.cell` from props supplied by
-  // `onHeaderCell` on each of the five columns, and every link in that chain is invisible to
-  // typecheck, lint and the build: break any one of them and the table still draws five perfect
+  // `onHeaderCell` on each of the three columns, and every link in that chain is invisible to
+  // typecheck, lint and the build: break any one of them and the table still draws three perfect
   // columns with nothing on them to drag and nothing focusable for a keyboard to reach.
   //
   // The last condition is the one that caught a real bug. `aria-label` cannot simply be passed
   // through `onHeaderCell`, because `useSorter` writes that attribute onto a sortable header
-  // cell itself, *after* what the column returned - so the two sortable columns came back
-  // labelled "When" and "IP address" while the other three said "Resize the Country column",
-  // and the table was perfectly well formed and named two of its handles wrong. Only the
-  // rendered markup shows that; the types are satisfied either way.
+  // cell itself, *after* what the column returned - so the sortable columns came back labelled
+  // with the column's own name rather than "Resize the …", and the table was perfectly well
+  // formed and named two of its handles wrong. Only the rendered markup shows that; the types
+  // are satisfied either way.
   const sessionHandles = [...sessionsHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
     (m) => m[0],
   )
   check(
     'every visit history column carries a keyboard-reachable resize handle, named for resizing',
-    sessionHandles.length === 5 &&
+    sessionHandles.length === 3 &&
       sessionHandles.every(
         (handle) =>
           handle.includes('role="separator"') &&
@@ -388,14 +405,19 @@ async function main() {
   // to sort, and the handle used to take both of them for itself - which left the header
   // unfocusable and keyboard sorting gone, with nothing anywhere in the output saying so. The
   // handle having a label is not enough: the column still needs its own.
+  //
+  // The sortable column is now the *network* one: it was the address column, and the address is
+  // the first line of the merged cell, so the sorter travelled with it rather than being lost
+  // when the column was merged.
   const sessionHeaderCells = [...sessionsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
   check(
     'a sortable visit history header keeps its own access to sorting',
     sessionHeaderCells.some(
-      (th) => th.includes('aria-label="When"') && th.includes('tabindex="0"'),
+      (th) => th.includes('aria-label="Network"') && th.includes('tabindex="0"'),
     ),
     `${sessionHeaderCells.length} header cells, sortable one: ${
-      sessionHeaderCells.find((th) => th.includes('aria-label="When"'))?.slice(0, 220) ?? 'none'
+      sessionHeaderCells.find((th) => th.includes('aria-label="Network"'))?.slice(0, 220) ??
+      'none'
     }`,
   )
 
@@ -2092,8 +2114,9 @@ async function main() {
   )
 
   check(
-    'the subscriptions section carries the add form, the management list and the price list',
-    subscriptionItemKeys.join(',') === 'subscriptionsAdd,subscriptionsManage,tariffPlans',
+    'the subscriptions section carries the add form, the management list, the price list and the two log entries',
+    subscriptionItemKeys.join(',') ===
+      'subscriptionsAdd,subscriptionsManage,tariffPlans,liveConnections,subscriptionActivity',
     `the section reads ${subscriptionItemKeys.join(', ')}`,
   )
 
@@ -2340,7 +2363,7 @@ async function main() {
   //
   // The account's own history answered over every account the operator may read, so it gets
   // the same three assertions that one does - a heading of its own, a table drawn before any
-  // row arrives, seven widths that keep it the same size as the two tables beside it in the
+  // row arrives, five widths that keep it the same size as the two tables beside it in the
   // rail - plus the two this page adds: the account filter, which is read out of the address
   // on the way in, and the account column, which is the whole difference between the two.
   const adminSessionsHtml = renderToStaticMarkup(
@@ -2373,15 +2396,28 @@ async function main() {
     (sum, width) => sum + (Number(width) || 0),
     0,
   )
-  // Seven columns and no selection column in front of them - there is nothing here to
-  // select - so the seven alone are the 1230 that the accounts table and the group table
+  // Five columns and no selection column in front of them - there is nothing here to
+  // select - so the five alone are the 1230 that the accounts table and the group table
   // reach only with their checkbox. All three then fit the same space beside the sidebar.
+  //
+  // Five on the round-3 correction, where there were seven: ip, country and network became one
+  // cell drawn by the same component the connection logs use, and its room went to that cell and
+  // to the user agent.
   check(
-    'the visit-history table is fixed-layout with its seven deliberate widths, in order',
+    'the visit-history table is fixed-layout with its five deliberate widths, in order',
     /table-layout:\s*fixed/.test(adminSessionsHtml) &&
-      adminSessionsWidths.join(',') === '170,250,150,120,190,230,120' &&
+      adminSessionsWidths.join(',') === '170,250,340,350,120' &&
       adminSessionsTotal === 1230,
     `${adminSessionsCols.length} columns: [${adminSessionsWidths.join(', ')}] = ${adminSessionsTotal}px`,
+  )
+
+  check(
+    'the installation visit history draws one network column instead of separate IP, Country and Network ones',
+    adminSessionsHtml.includes('>Network<') &&
+      adminSessionsHtml.includes('>User agent<') &&
+      !adminSessionsHtml.includes('>IP address<') &&
+      !adminSessionsHtml.includes('>Country<'),
+    `rendered ${adminSessionsHtml.length} bytes`,
   )
 
   const adminSessionsHandles = [
@@ -2389,7 +2425,7 @@ async function main() {
   ].map((m) => m[0])
   check(
     'every visit-history column carries a keyboard-reachable resize handle, named for resizing',
-    adminSessionsHandles.length === 7 &&
+    adminSessionsHandles.length === 5 &&
       adminSessionsHandles.every(
         (handle) =>
           handle.includes('role="separator"') &&
@@ -2401,15 +2437,18 @@ async function main() {
     }`,
   )
 
-  // Only "When" and "IP address" carry a sorter, for the same reason the account's own
-  // history offers those two and no more: they are the stored columns. The three geo fields
-  // are resolved from GeoIP while a page is built and the account column is a join, so there
-  // is nothing in the row for the endpoint to order by.
+  // Only "When" and the network cell carry a sorter, for the same reason the account's own
+  // history offers those two and no more: they are the stored columns - the network cell because
+  // its first line is the address. The other geo fields are resolved from GeoIP while a page is
+  // built and the account column is a join, so there is nothing in the row for the endpoint to
+  // order by.
   const adminSessionsHeaders = [...adminSessionsHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
   check(
     'a sortable visit-history header keeps its own access to sorting',
-    adminSessionsHeaders.length === 7 &&
-      adminSessionsHeaders.some((th) => th.includes('aria-label="When"') && th.includes('tabindex="0"')),
+    adminSessionsHeaders.length === 5 &&
+      adminSessionsHeaders.some(
+        (th) => th.includes('aria-label="Network"') && th.includes('tabindex="0"'),
+      ),
     `${adminSessionsHeaders.length} header cells`,
   )
 
@@ -2617,6 +2656,11 @@ async function main() {
     )),
   )
 
+  // The page's own source, read once here because two separate checks below assert things no
+  // static render can draw: a row action's order, the drill-down it opens, and the link on the
+  // active-connections count. Every render on this page lands before the first row arrives.
+  const subscriptionsPageSource = readFileSync('src/pages/admin/SubscriptionsPage.tsx', 'utf8')
+
   check(
     'the subscriptions table draws its own heading and its table before any rows arrive',
     subscriptionsHtml.includes('>Subscriptions<') &&
@@ -2626,8 +2670,9 @@ async function main() {
   )
 
   check(
-    'the subscriptions table offers its five columns, the three filters and the search',
+    'the subscriptions table offers its six columns, the three filters and the search',
     subscriptionsHtml.includes('>Expires<') &&
+      subscriptionsHtml.includes('>Active connections<') &&
       subscriptionsHtml.includes('>Max connections<') &&
       subscriptionsHtml.includes('>Issued by<') &&
       subscriptionsHtml.includes('Search by playlist id, MAG MAC or Enigma2 MAC') &&
@@ -2640,6 +2685,50 @@ async function main() {
       subscriptionsHtml.includes('Actions') &&
       !subscriptionsHtml.includes('Bulk actions'),
     `rendered ${subscriptionsHtml.length} bytes`,
+  )
+
+  // The active-connections column sits **before** the ceiling, on the owner's correction: the
+  // two are read together ("3 of 5"), and the count is the half that moves. Asserted by heading
+  // order because a column moved on the page side only is invisible to every other checker.
+  check(
+    'the active-connections column is drawn before the max-connections column',
+    subscriptionsHtml.indexOf('>Active connections<') >= 0 &&
+      subscriptionsHtml.indexOf('>Active connections<') <
+        subscriptionsHtml.indexOf('>Max connections<'),
+    `active@${subscriptionsHtml.indexOf('>Active connections<')}, max@${subscriptionsHtml.indexOf('>Max connections<')}`,
+  )
+
+  // The six columns, in order, at the widths the page declares - and the sum still 1190, which is
+  // the contract every table in this administration shares. The selection column takes them to
+  // 1230 and is not one of the page's own.
+  const subscriptionCols = [...subscriptionsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const subscriptionWidths = subscriptionCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const subscriptionTotal = subscriptionWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the subscriptions table draws seven columns (six plus the selection) totalling 1230',
+    subscriptionCols.length === 7 && subscriptionTotal === 1230,
+    `${subscriptionCols.length} columns: [${subscriptionWidths.join(', ')}] = ${subscriptionTotal}px`,
+  )
+
+  // The two connection columns are read as one sentence ("3 of 5"), so the owner asked for them
+  // to be the same width. Their positions are the 3rd and 4th of the page's own six (the
+  // selection column shifts them to 4 and 5 in the rendered `<colgroup>`), and a pair that
+  // drifts apart by a few pixels compiles and renders perfectly.
+  check(
+    'the active-connections and max-connections columns have the same width',
+    subscriptionWidths[3] === subscriptionWidths[4] && subscriptionWidths[3] !== undefined,
+    `active ${subscriptionWidths[3]}, max ${subscriptionWidths[4]}`,
+  )
+
+  // The active count is a **link** into the live page filtered to that subscription, not just a
+  // number. No row is drawn in a static render, so this half is read off the page's own source
+  // - the same treatment the row-action order gets - and pins both the target and the param.
+  // (The source is read where the row-action check reads it, further down this section.)
+  check(
+    'the active-connections count links into the live page filtered to that subscription',
+    /live-connections\?subscriptionId=\$\{subscription\.id\}/.test(subscriptionsPageSource) &&
+      /activeConnectionCount[\s\S]{0,900}?noActiveConnections/.test(subscriptionsPageSource),
+    'the count is not wired to the live page, or its zero state lost its accessible name',
   )
 
   check(
@@ -2780,6 +2869,7 @@ async function main() {
             isTrial: false,
             status: 'active',
             maxConnections: 2,
+            activeConnectionCount: 1,
             playlistId: '0123456789abcdef0123456789abcdef',
             magMac: 'AA:BB:CC:DD:EE:FF',
             enigma2Mac: null,
@@ -2945,6 +3035,363 @@ async function main() {
     `rendered ${subscriptionEditFormHtml.length} bytes with the spinner up`,
   )
 
+  // --- The connection log: one component behind two menu entries --------------
+  //
+  // The two addresses differ in the slice of the log they read and in the columns they draw,
+  // and both arrive through `sectionKey` - so the thing worth asserting is that each of the
+  // two renderings is *its own*: its heading, its column set, its widths, and the two facts
+  // that separate the modes (an end column and no actions column on the activity view; no end
+  // column and a disabled kill on the live one).
+  //
+  // `?subscriptionId=` is in the live render because that is how the subscriptions table's
+  // "Show activity" row action opens the page, and the drill-down must arrive filtered rather
+  // than looking as if the click had done nothing.
+  const liveLogsHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/live-connections?subscriptionId=11111111-1111-1111-1111-111111111111',
+      withQuery(
+        <AntApp>
+          <ConnectionLogsPage sectionKey="nav.items.liveConnections" />
+        </AntApp>,
+      ),
+    ),
+  )
+  const activityLogsHtml = renderToStaticMarkup(
+    withRouter('/admin/connection-logs', withQuery(
+      <AntApp>
+        <ConnectionLogsPage sectionKey="nav.items.subscriptionActivity" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the live connection log draws its own heading and its table before any rows arrive',
+    liveLogsHtml.includes('>Live connections<') &&
+      liveLogsHtml.includes('ant-table') &&
+      !liveLogsHtml.includes('>Connection logs<') &&
+      !liveLogsHtml.includes('nav.items.liveConnections'),
+    `rendered ${liveLogsHtml.length} bytes with the connections still being fetched`,
+  )
+
+  check(
+    'the activity log draws its own heading and its table before any rows arrive',
+    // The heading is "Connection logs"/"Логи подключений" on the owner's rename, and the *menu
+    // item* now says the same words - the rail and the card name one resource. Two keys remain
+    // so either can still be worded alone.
+    activityLogsHtml.includes('>Connection logs<') &&
+      activityLogsHtml.includes('ant-table') &&
+      !activityLogsHtml.includes('>Live connections<') &&
+      !activityLogsHtml.includes('nav.items.subscriptionActivity'),
+    `rendered ${activityLogsHtml.length} bytes with the connections still being fetched`,
+  )
+
+  // The seven columns of the live view and the seven of the activity view, in order, from the
+  // `<colgroup>` antd draws - and the sums that keep both tables the same width as every other
+  // administration table. The live view is the only one of the two that draws an actions column;
+  // the activity view ends at the end time, and the widths it keeps sum to the same 1190.
+  //
+  // Seven on the round-3 corrections: the log's own identifier went, the subscription and the
+  // user became two columns, and the user agent joined beside the network cell.
+  const liveLogCols = [...liveLogsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const liveLogWidths = liveLogCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const liveLogTotal = liveLogWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the live log draws seven columns totalling 1190, with no end column and its actions cell',
+    liveLogCols.length === 7 && liveLogTotal === 1190,
+    `${liveLogCols.length} columns: [${liveLogWidths.join(', ')}] = ${liveLogTotal}px`,
+  )
+
+  const activityLogCols = [...activityLogsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const activityLogWidths = activityLogCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const activityLogTotal = activityLogWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the activity log draws seven columns totalling 1190, with the end column and no actions column',
+    activityLogCols.length === 7 && activityLogTotal === 1190,
+    `${activityLogCols.length} columns: [${activityLogWidths.join(', ')}] = ${activityLogTotal}px`,
+  )
+
+  check(
+    'the live log ends with its actions cell and the activity log ends with the end time',
+    // The last column of each table by width: the live one is the kill stub's own measurement
+    // plus the owner's 45 (`actionsColumnWidth(1) + 45` = 101) and the activity one is the end
+    // column.
+    liveLogWidths[6] === '101' && activityLogWidths[6] === '200',
+    `live last ${liveLogWidths[6]}, activity last ${activityLogWidths[6]}`,
+  )
+
+  // The round-3 column corrections, asserted as the headers and as the arithmetic: the id column
+  // is gone, the subscription and the user are two columns of their own, and the user agent has
+  // one of its own - in *both* modes, because the two screens read the same row.
+  check(
+    'neither log mode draws the log identifier, and both draw Subscription, User and User agent',
+    !liveLogsHtml.includes('>ID<') &&
+      !activityLogsHtml.includes('>ID<') &&
+      liveLogsHtml.includes('>Subscription<') &&
+      liveLogsHtml.includes('>User<') &&
+      liveLogsHtml.includes('>User agent<') &&
+      activityLogsHtml.includes('>Subscription<') &&
+      activityLogsHtml.includes('>User<') &&
+      activityLogsHtml.includes('>User agent<'),
+    `live id ${liveLogsHtml.includes('>ID<')}, activity id ${activityLogsHtml.includes('>ID<')}`,
+  )
+
+  check(
+    "the actions column grew by the owner's 45 and the stream column gave it up",
+    // 101 = `actionsColumnWidth(1)` (56) + 45, and 299 = the 344 the title had - 45.
+    liveLogWidths[6] === '101' && liveLogWidths[2] === '299',
+    `actions ${liveLogWidths[6]}, stream ${liveLogWidths[2]}`,
+  )
+
+  // The owner's rebalancing, asserted as the relationship rather than as seven magic numbers:
+  // `startedAt` and `endedAt` are the 6th and 7th `<col>` of the activity table and must be
+  // **equal**, and the address/user-agent pair (the 4th and 5th of either) carries the owner's
+  // round-4 split. Both are invisible to typecheck, lint and the build - seven valid numbers
+  // that no longer mean what the owner asked for compile perfectly.
+  check(
+    'the activity log gives the start and end columns equal widths',
+    activityLogWidths[5] === activityLogWidths[6] && activityLogWidths[5] !== undefined,
+    `started ${activityLogWidths[5]}, ended ${activityLogWidths[6]}`,
+  )
+
+  check(
+    'the address column starts at 160 and the user agent at 170, the pair unchanged in both modes',
+    // The owner's round-4 correction as two numbers and a sum: the address took 40 px from the
+    // user agent, and the pair still spends 330 in both tables because the two screens read the
+    // same row. A render is the only place this is visible - seven valid numbers compile fine.
+    liveLogWidths[3] === '160' &&
+      liveLogWidths[4] === '170' &&
+      activityLogWidths[3] === '160' &&
+      activityLogWidths[4] === '170',
+    `live ${liveLogWidths[3]}/${liveLogWidths[4]}, activity ${activityLogWidths[3]}/${activityLogWidths[4]}`,
+  )
+
+  check(
+    'the activity log draws no actions column and no kill stub at all',
+    activityLogsHtml.includes('>Ended<') &&
+      !activityLogsHtml.includes('>Actions<') &&
+      !activityLogsHtml.includes('Kill active connections (not available yet)') &&
+      liveLogsHtml.includes('>Actions<'),
+    `activity actions: ${activityLogsHtml.includes('>Actions<')}, live actions: ${liveLogsHtml.includes('>Actions<')}`,
+  )
+
+  check(
+    'the live log has no end column and the activity log has one',
+    liveLogsHtml.includes('>Started<') &&
+      !liveLogsHtml.includes('>Ended<') &&
+      activityLogsHtml.includes('>Started<') &&
+      activityLogsHtml.includes('>Ended<'),
+    `live ends: ${liveLogsHtml.includes('>Ended<')}, activity ends: ${activityLogsHtml.includes('>Ended<')}`,
+  )
+
+  // The kill stub lives on the live view and nowhere else. A static render draws no cell `render`
+  // at all - antd calls one only when a row exists, and every render here lands before the first
+  // answer - so this half is read off the page's own source, exactly as the subscriptions
+  // row-action order is. What it pins is the rule rather than the markup: the guard that draws
+  // the stub, the reason the stub carries, and the `disabled` that makes the button tell the
+  // truth before the click.
+  const connectionLogsPageSource = readFileSync(
+    'src/pages/admin/ConnectionLogsPage.tsx',
+    'utf8',
+  )
+  check(
+    'the live log draws the kill stub disabled with its reason, and the activity log has no actions column',
+    /spec\.showsEnd\s*\n?\s*\?\s*\[\]/.test(connectionLogsPageSource) &&
+      connectionLogsPageSource.includes("label: t('subscriptions.actions.killConnections')") &&
+      /key: 'kill',[\s\S]{0,200}?disabled: true/.test(connectionLogsPageSource),
+    'the mode gate, the reason or the disabled state is missing from the actions column',
+  )
+
+  // The "Live" tag: a row whose end time is null must not draw a dash in the end cell. No row is
+  // rendered here, so this half is read off the source too - the guard, and the locale key it
+  // draws - plus the key's presence in both bundles through i18next.
+  check(
+    "an open session's end cell draws the Live tag rather than a dash",
+    /if \(value === null\)[\s\S]{0,300}?t\('connectionLogs\.live'\)/.test(connectionLogsPageSource) &&
+      i18n.getResource('en', 'translation', 'connectionLogs.live') === 'Live' &&
+      i18n.getResource('ru', 'translation', 'connectionLogs.live') === 'Live',
+    `en ${i18n.getResource('en', 'translation', 'connectionLogs.live')}, ru ${i18n.getResource('ru', 'translation', 'connectionLogs.live')}`,
+  )
+
+  // The sorting regression, caught at the seam where it happened. A column whose default order is
+  // descending could never leave it: antd's two-entry cycle answers `undefined` after `descend`,
+  // the table reads that as "no order" and writes the default back, so every click on the
+  // connection log's Started header asked for the page already on screen. The cycle itself is
+  // asserted by `tests/utils/tableSort.test.ts`; what a render cannot see, and this pins, is that
+  // `ServerTable` actually hands the cycle to antd for every table it draws. Without this line the
+  // constant could be perfect and unused.
+  const serverTableSource = readFileSync('src/components/table/ServerTable.tsx', 'utf8')
+  check(
+    'the table frame gives every sortable header the three-entry cycle, so a descending default can toggle',
+    /sortDirections=\{SORT_DIRECTIONS\}/.test(serverTableSource) &&
+      /from '\.\.\/\.\.\/utils\/tableSort'/.test(serverTableSource),
+    'ServerTable does not pass the shared sort cycle - every column falls back to the two-entry pair',
+  )
+
+  check(
+    'the connection log keeps its sortable headers controlled, so the arrow matches the order the server applied',
+    /sortOrder: table\.orderOf\('startedAt'\)/.test(connectionLogsPageSource) &&
+      /sortOrder: table\.orderOf\('endedAt'\)/.test(connectionLogsPageSource),
+    'a sortable header lost its controlled order and would show no arrow over ordered rows',
+  )
+
+  check(
+    'the live log offers the auto-refresh, the owner and stream pickers, the medium switch, the search and the clear command',
+    liveLogsHtml.includes('Pause auto refresh') &&
+      liveLogsHtml.includes('Any owner') &&
+      liveLogsHtml.includes('Any stream') &&
+      liveLogsHtml.includes('>Video<') &&
+      liveLogsHtml.includes('>Audio<') &&
+      liveLogsHtml.includes('Search by IP address, user agent or provider') &&
+      liveLogsHtml.includes('Reset widths') &&
+      liveLogsHtml.includes('Clear all logs'),
+    `rendered ${liveLogsHtml.length} bytes`,
+  )
+
+  // The toolbar order the specification names, asserted by the index of the text: auto-refresh,
+  // the search box, then the three filters, the width reset, and the clear command.
+  const logToolbar = [
+    ['auto-refresh', liveLogsHtml.indexOf('Pause auto refresh')],
+    ['search', liveLogsHtml.indexOf('Search by IP address, user agent or provider')],
+    ['owner', liveLogsHtml.indexOf('Any owner')],
+    ['stream', liveLogsHtml.indexOf('Any stream')],
+    ['medium', liveLogsHtml.indexOf('>Video<')],
+    ['width reset', liveLogsHtml.indexOf('Reset widths')],
+    ['clear', liveLogsHtml.indexOf('Clear all logs')],
+  ]
+  const logToolbarOrdered = logToolbar.every(
+    ([, position], index) => position >= 0 && (index === 0 || position > logToolbar[index - 1][1]),
+  )
+  check(
+    'the connection-log toolbar runs auto-refresh, search, owner, stream, medium, width reset, clear',
+    logToolbarOrdered,
+    logToolbar.map(([name, position]) => `${name}@${position}`).join(', '),
+  )
+
+  // The `subscriptionId` the address arrived with is drawn as a closable tag - it is a filter
+  // the page was opened with, and a visitor who cannot see it cannot remove it.
+  check(
+    'the subscription the page was opened at arrives as a closable filter tag',
+    liveLogsHtml.includes('Subscription: 11111111') &&
+      liveLogsHtml.includes('ant-tag-close-icon'),
+    `rendered ${liveLogsHtml.length} bytes with the drill-down filter`,
+  )
+
+  // A key renamed on the menu side only must fail loudly. `renderToStaticMarkup` throws out of
+  // a throwing component, so the presence of an error is the assertion.
+  let unknownSectionKeyThrew = false
+  try {
+    renderToStaticMarkup(
+      withRouter('/admin/live-connections', withQuery(
+        <AntApp>
+          <ConnectionLogsPage sectionKey="nav.items.notAConnectionLog" />
+        </AntApp>,
+      )),
+    )
+  } catch {
+    unknownSectionKeyThrew = true
+  }
+  check(
+    'an unknown section key fails the render rather than falling back to one of the two modes',
+    unknownSectionKeyThrew,
+    unknownSectionKeyThrew ? 'the render threw' : 'THE RENDER SUCCEEDED - a key is being guessed',
+  )
+
+  // **The two modes must not share a component instance.** Both menu entries render this one
+  // module, so react-router changes the props of a mounted component rather than remounting it:
+  // every `useState` inside survived the switch, and the width state did too - which is how the
+  // activity table came to be drawn with the live mode's column list and then persist it under
+  // its own key. The page splits into a shell that resolves the key and a screen keyed by the
+  // mode; these two facts are what a static render *can* see about that, and are asserted as
+  // source because the failure is a mounting behaviour no markup shows.
+  check(
+    'the two modes are two component instances, so no width or refresh state can leak between them',
+    /<ConnectionLogScreen key=\{mode\} mode=\{mode\} \/>/.test(connectionLogsPageSource) &&
+      /function ConnectionLogScreen\(\{ mode \}/.test(connectionLogsPageSource),
+    'the page draws one instance for both modes - state (widths, auto-refresh) survives the switch',
+  )
+
+  // The width hook is given the mode's own three inputs. A call site that reached for
+  // `spec.showsEnd ? … : …` was exactly the shape that could read one mode's column list with
+  // the other's defaults, so the assertion is that all three come from the one spec entry.
+  check(
+    'each mode hands the width hook its own columns, defaults and storage key',
+    /keys: spec\.columns/.test(connectionLogsPageSource) &&
+      /defaults: spec\.widths/.test(connectionLogsPageSource) &&
+      /storageKey: spec\.storageKey/.test(connectionLogsPageSource),
+    'the width hook is reading from more than one mode at once',
+  )
+
+  check(
+    'the activity menu item carries the renamed label, in both bundles',
+    // The owner renamed the heading and then the rail entry to match it: one screen wearing two
+    // names was the complaint. Both are asserted as strings because a missing translation would
+    // degrade to the raw key in the rail, and nothing in typecheck, lint or the build sees it.
+    i18n.getResource('en', 'translation', 'nav.items.subscriptionActivity') ===
+      'Connection logs' &&
+      i18n.getResource('ru', 'translation', 'nav.items.subscriptionActivity') ===
+        'Логи подключений' &&
+      i18n.getResource('en', 'translation', 'connectionLogs.titles.activity') ===
+        'Connection logs' &&
+      i18n.getResource('ru', 'translation', 'connectionLogs.titles.activity') ===
+        'Логи подключений',
+    `en ${i18n.getResource('en', 'translation', 'nav.items.subscriptionActivity')}, ru ${i18n.getResource('ru', 'translation', 'nav.items.subscriptionActivity')}`,
+  )
+
+  check(
+    'the two modes store their widths under different keys',
+    COLUMN_WIDTHS_KEYS.live !== COLUMN_WIDTHS_KEYS.activity &&
+      COLUMN_WIDTHS_KEYS.live.includes('live') &&
+      COLUMN_WIDTHS_KEYS.activity.includes('activity') &&
+      COLUMN_WIDTHS_KEYS.live.endsWith('.v2') &&
+      COLUMN_WIDTHS_KEYS.activity.endsWith('.v2'),
+    `${COLUMN_WIDTHS_KEYS.live} vs ${COLUMN_WIDTHS_KEYS.activity}`,
+  )
+
+  // The two menu entries sit in the subscriptions group, and the owner's order is: the list,
+  // the price list, then the two log entries - tariffs above live connections.
+  const logGroup = NAVIGATION.Admin.find((group) => group.key === 'subscriptions')
+  const connectionLogItems = (logGroup?.items ?? []).map((item) => item.key)
+  check(
+    'the subscriptions group carries the price list above the two connection-log entries',
+    connectionLogItems.indexOf('tariffPlans') ===
+      connectionLogItems.indexOf('subscriptionsManage') + 1 &&
+      connectionLogItems.indexOf('liveConnections') ===
+        connectionLogItems.indexOf('tariffPlans') + 1 &&
+      connectionLogItems.indexOf('subscriptionActivity') ===
+        connectionLogItems.indexOf('liveConnections') + 1,
+    `items: ${connectionLogItems.join(', ')}`,
+  )
+
+  check(
+    'the live log and the activity log have addresses of their own',
+    menuPath('Admin', 'live-connections') === '/admin/live-connections' &&
+      menuPath('Admin', 'connection-logs') === '/admin/connection-logs',
+    `entries open ${menuPath('Admin', 'live-connections')} and ${menuPath('Admin', 'connection-logs')}`,
+  )
+
+  // The row actions of the subscriptions table, in the order the specification names them, and
+  // the drill-down the "Show activity" one opens. No row exists in a static render, so the
+  // order is read off the page's own source - the one thing a probe can see about a `render`
+  // that runs only for a row. (`subscriptionsPageSource` above is the same read.)
+  const rowActionsBlock =
+    /const actions: RowAction\[\] = \[([\s\S]*?)return <RowActions actions=\{actions\} \/>/
+      .exec(subscriptionsPageSource)?.[1] ?? ''
+  const subscriptionActionKeys = [
+    ...rowActionsBlock.matchAll(/key: '([a-z-]+)',/g),
+  ].map((match) => match[1])
+  check(
+    'the subscription row actions run edit, prolong, show-activity, kill, block-owner, delete',
+    subscriptionActionKeys.join(',') ===
+      'edit,prolong,show-activity,kill,block-owner,delete',
+    `actions: ${subscriptionActionKeys.join(', ') || 'none found'}`,
+  )
+
+  check(
+    'the Show activity action opens the activity page filtered by that subscription',
+    subscriptionsPageSource.includes('/connection-logs?subscriptionId=${subscription.id}'),
+    'the drill-down target is missing from the subscriptions page',
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -2965,6 +3412,8 @@ async function main() {
     bouquetsHtml,
     bouquetContentHtml,
     subscriptionsHtml,
+    liveLogsHtml,
+    activityLogsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(
@@ -3063,6 +3512,119 @@ async function main() {
     'a row-action cluster draws one icon-only button per action, disabled and danger kept',
     rowActionItems === 3 && rowActionDisabled && rowActionDanger,
     `${rowActionItems} item(s), disabled ${rowActionDisabled}, danger ${rowActionDanger}: ${rowActionsHtml.slice(0, 200)}`,
+  )
+
+  // The network cell is the same kind of unreachable render - its three facts are drawn by a
+  // column `render`, which needs a row. It is rendered here directly for two reasons the owner
+  // reported as bugs: the flag has a URL that must be the working one (the old host answers a
+  // Cloudflare challenge for every image, so every cell silently fell back to two letters), and
+  // only the ISP is meant to be set smaller while the flag and the address keep the cell's size.
+  //
+  // The stylesheet is read here rather than borrowed from the later `railCss`, because the rule
+  // that keeps the address at the cell's size lives there and is half of what this asserts.
+  const networkCellHtml = renderToStaticMarkup(
+    <AntApp>
+      <ConnectionNetworkCell
+        log={{
+          id: '11111111-1111-1111-1111-111111111111',
+          subscriptionId: '22222222-2222-2222-2222-222222222222',
+          ownerId: '33333333-3333-3333-3333-333333333333',
+          username: 'subscriber',
+          streamKind: 'video',
+          streamId: '44444444-4444-4444-4444-444444444444',
+          streamTitle: 'News',
+          ip: '203.0.113.9',
+          userAgent: null,
+          countryCode: 'DE',
+          isp: 'Example ISP',
+          startedAt: '2026-05-01T10:00:00+00:00',
+          endedAt: null,
+          broadcastPid: null,
+        }}
+        locale="en"
+        onFilter={() => undefined}
+      />
+    </AntApp>,
+  )
+  const flagSrc = /<img[^>]*src="([^"]*)"/.exec(networkCellHtml)?.[1] ?? ''
+  check(
+    'the network cell points its flag at the host that answers a PNG, with the code in lower case',
+    // The host was measured: the old one answers 403 with a Cloudflare page, this one 200 image/png.
+    flagSrc === 'https://www.iptrackeronline.com/flags/de.png',
+    `the flag loads ${flagSrc || 'nothing'}`,
+  )
+  check(
+    'only the provider is set smaller: the address and the flag inherit the cell size',
+    // The cell states **one** font size - the provider's 12.
+    /font-size:12px[^>]*>[\s\S]{0,200}?Example ISP/.test(networkCellHtml) &&
+      // The address is plain text on the owner's round-3 correction: no `<code>` wrapper and no
+      // size of its own, so it reads like the subscription link and the start time beside it.
+      // It is still the click target that writes the `ip` filter, which is why it is a link.
+      /<a [^>]*aria-label="Filter by 203\.0\.113\.9"[^>]*>203\.0\.113\.9<\/a>/.test(
+        networkCellHtml,
+      ) &&
+      !/<code[^>]*>203\.0\.113\.9/.test(networkCellHtml) &&
+      !/font-size:1[01](\.\d+)?px[^>]*>[\s\S]{0,120}?203\.0\.113\.9/.test(networkCellHtml),
+    `rendered ${networkCellHtml.length} bytes`,
+  )
+
+  // The shared cell is the same rendering in the three tables, and the visit histories cannot
+  // filter by any of its three facts: their endpoint resolves geo fields while a page is built.
+  // So the cell has to degrade to plain text there rather than offer a click that writes nothing.
+  const networkCellUnfilteredHtml = renderToStaticMarkup(
+    <AntApp>
+      <ConnectionNetworkCell
+        log={{
+          ip: '203.0.113.9',
+          countryCode: 'DE',
+          organization: 'Example ISP',
+          autonomousSystemNumber: 15169,
+        }}
+        locale="en"
+      />
+    </AntApp>,
+  )
+  check(
+    'without a filter callback the network cell draws the same three facts and no click targets',
+    networkCellUnfilteredHtml.includes('203.0.113.9') &&
+      networkCellUnfilteredHtml.includes('Example ISP · AS15169') &&
+      networkCellUnfilteredHtml.includes('flags/de.png') &&
+      !networkCellUnfilteredHtml.includes('<button') &&
+      !networkCellUnfilteredHtml.includes('<a ') &&
+      !networkCellUnfilteredHtml.includes('Filter by'),
+    `rendered ${networkCellUnfilteredHtml.length} bytes`,
+  )
+
+  // The user-agent cell is the fourth unreachable render: three tables draw it, one of them as
+  // the way to narrow the log by that exact client, and a static page render draws no cell at
+  // all. It is rendered directly here so the summary, the raw tooltip and the click are visible.
+  const agentCellHtml = renderToStaticMarkup(
+    <AntApp>
+      <UserAgentCell
+        value="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+        onFilter={() => undefined}
+      />
+    </AntApp>,
+  )
+  check(
+    'the user-agent cell summarises the string, keeps it whole, and links it as a filter',
+    agentCellHtml.includes('Chrome 140 (Windows 10, x64)') &&
+      /<a [^>]*aria-label="Filter by Mozilla\/5\.0/.test(agentCellHtml),
+    `rendered ${agentCellHtml.length} bytes: ${agentCellHtml.slice(0, 200)}`,
+  )
+
+  check(
+    'the network cell puts the flag and the address on one line and the provider on the next',
+    // Asserted structurally rather than visually: the cell is a column of exactly two children,
+    // the first a row holding the flag button and the address, the second the provider. A
+    // provider left on the first line is the layout the owner asked to change, and it is
+    // invisible to every other checker.
+    /flex-direction:column[^>]*>[\s\S]{0,400}?<button[\s\S]{0,600}?203\.0\.113\.9[\s\S]{0,600}?Example ISP/.test(
+      networkCellHtml,
+    ) &&
+      // Exactly one flex row inside the cell - the first line - so the provider cannot be in it.
+      (networkCellHtml.match(/display:flex;align-items:center/g) ?? []).length === 1,
+    `rendered ${networkCellHtml.length} bytes`,
   )
 
   // The same failure the profile item's check below exists for: `sectionRoutes` falls back

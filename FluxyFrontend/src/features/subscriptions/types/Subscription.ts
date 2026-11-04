@@ -44,6 +44,14 @@ export interface Subscription {
   status: SubscriptionStatus
   /** Effective connection ceiling, or null for unlimited. */
   maxConnections: number | null
+  /**
+   * How many connections are running right now - `connection_logs` rows for this subscription
+   * whose end time is null.
+   *
+   * The server counts it per page with one grouped query, so the number costs the table no extra
+   * request; the live mode of the connection log shows the same rows one by one.
+   */
+  activeConnectionCount: number
   /** The playlist service's identifier, or null. */
   playlistId: string | null
   /** The MAG device's MAC, or null. */

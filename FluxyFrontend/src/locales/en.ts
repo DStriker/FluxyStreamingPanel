@@ -20,6 +20,12 @@ const en = {
   // which page it is about to draw.
   common: {
     loading: 'Loading',
+    // The accessible name of a table fact that narrows the table by the value it shows - the
+    // address and the provider in the shared network cell, the user agent in the shared agent
+    // cell. `{{value}}` is the fact itself, so a screen reader announces "Filter by 10.0.0.4"
+    // rather than only the number. It lives here rather than under one domain because the two
+    // cells are shared by the connection log and both visit histories.
+    filterBy: 'Filter by {{value}}',
   },
   // The shared wording of a bulk run's summary. It belongs to no page because every bulk
   // table reads its answer through the same hook: the title says how much landed, and the
@@ -209,6 +215,13 @@ const en = {
       // fact to disagree with itself.
       subscriptionsAdd: 'Add subscription',
       subscriptionsManage: 'Manage subscriptions',
+      // The connection log, as two entries: what is running right now and what was watched
+      // before. Named for what the screen shows rather than for the table they share, because
+      // "Live connections" names the state and "Connection logs" names the record - and the
+      // owner renamed both the second entry and the page heading to the same words, so the rail
+      // and the card now agree instead of the menu keeping the old "Subscription activity".
+      liveConnections: 'Live connections',
+      subscriptionActivity: 'Connection logs',
       tariffPlans: 'Tariff plans',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
@@ -315,11 +328,15 @@ const en = {
     // the width. `{{column}}` is that column's own name - a separator a screen reader cannot
     // name is a separator it can only find by tabbing into it blindly.
     resizeColumn: 'Resize the {{column}} column',
-    // Puts all five columns back to the widths they ship with. Offered next to the search
+    // Puts all three columns back to the widths they ship with. Offered next to the search
     // rather than in a menu, because the widths it undoes are set by hand in the first place.
     resetWidths: 'Reset widths',
     columns: {
       when: 'When',
+      // The visit history's table no longer has separate address and country columns - the
+      // three network facts are one cell now - but this block also labels the field list of
+      // each card on the active sessions page, where they are still two rows of a `Descriptions`.
+      // Removing them with the table columns would leave those two rows showing raw keys.
       ip: 'IP address',
       country: 'Country',
       network: 'Network',
@@ -749,8 +766,6 @@ const en = {
       // visitor.
       user: 'Account',
       when: 'When',
-      ip: 'IP address',
-      country: 'Country',
       network: 'Network',
       agent: 'User agent',
       actions: 'Actions',
@@ -2137,6 +2152,10 @@ const en = {
     columns: {
       name: 'Subscription',
       expiry: 'Expires',
+      // The count of connections running *right now*, read off `connection_logs` where the end
+      // time is null. It sits before `connections` because the two are read together: "3 of 5
+      // used" only means something with the ceiling beside it, and the count is the live fact.
+      activeConnections: 'Active connections',
       connections: 'Max connections',
       creator: 'Issued by',
       actions: 'Actions',
@@ -2154,9 +2173,18 @@ const en = {
     prolongNeedsPlan: 'Attach a tariff plan to prolong this subscription.',
     unlimited: 'unlimited',
     noCreator: 'deleted account',
+    // The accessible name of the "0" in the active-connections column. That cell is the one
+    // number on the row that is a link when it is non-zero and plain text when it is zero, so a
+    // screen reader hears a bare "0" with nothing saying what it counts; the live page's own
+    // filter tag and this sentence are the two places the fact is spelled out.
+    noActiveConnections: 'No connections are running',
     actions: {
       edit: 'Edit',
       extend: 'Extend',
+      // The read of one row's connection history. It sits beside the kill stub and is not gated
+      // on `editSubscriptions`, because looking at what a subscription was used for changes
+      // nothing.
+      showActivity: 'Show activity',
       killConnections: 'Kill active connections (not available yet)',
       blockOwner: 'Block the owner',
       delete: 'Delete',
@@ -2250,6 +2278,89 @@ const en = {
       blockOwnerTitle: 'Block the owner of {{count}} subscriptions?',
       blockOwnerBody: 'Each account is blocked and its sessions ended. Your own is refused.',
       partialTitle: 'Changed {{done}} of {{total}}. Some rows were refused:',
+    },
+  },
+  // The connection log: one component behind two menu entries. Its own block because the page
+  // names what a row of the log is - a session, its subscription, its stream and its network -
+  // and none of those words belongs to the subscriptions table beside it.
+  connectionLogs: {
+    // The card's heading, one per mode, and deliberately separate keys from the menu items
+    // (`nav.items.liveConnections`, `nav.items.subscriptionActivity`). Both now say "Connection
+    // logs" for the activity mode - the owner renamed the heading and then the menu item to
+    // match, because a rail saying "Subscription activity" over a card saying "Connection logs"
+    // was the same screen wearing two names. Two keys rather than one string used twice keeps
+    // that agreement a choice rather than an accident: either can be renamed alone, and the
+    // live heading still happens to word the same as its own menu item, which is a coincidence
+    // this comment records so nobody "fixes" it.
+    titles: {
+      live: 'Live connections',
+      activity: 'Connection logs',
+    },
+    // The seven columns; `endedAt` exists only on the activity view.
+    //
+    // The rows are: which subscription, whose it is, what was playing, from where, with what
+    // client, and when. The log's own identifier is deliberately not a column - it names a row
+    // nobody refers to, and the room it took is where the owner's two links live.
+    columns: {
+      subscription: 'Subscription',
+      user: 'User',
+      stream: 'Stream',
+      network: 'Network',
+      agent: 'User agent',
+      startedAt: 'Started',
+      endedAt: 'Ended',
+      actions: 'Actions',
+    },
+    // The two media the segmented control switches between.
+    kindLabel: 'Medium',
+    kinds: {
+      video: 'Video',
+      audio: 'Audio',
+    },
+    // The toolbar's two pickers and the search box.
+    filterAnyOwner: 'Any owner',
+    filterAnyStream: 'Any stream',
+    searchLabel: 'Search by IP address, user agent or provider',
+    searchPlaceholder: 'IP address, user agent or provider',
+    // An active filter as a closable tag. Each names the parameter it is, so a row with two
+    // tags reading "DE" and "FR" cannot be mistaken for one filter applied twice.
+    filters: {
+      country: 'Country: {{value}}',
+      ip: 'IP: {{value}}',
+      isp: 'Provider: {{value}}',
+      userAgent: 'User agent: {{value}}',
+      subscription: 'Subscription: {{value}}',
+      owner: 'Owner: {{value}}',
+      stream: 'Stream: {{value}}',
+    },
+    empty: 'No connections recorded yet.',
+    noMatches: 'No connection matches these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    // The tag an open session's end cell draws instead of a dash: a finished connection has a
+    // time, and one that has not finished is *live* - which is the word the menu entry and this
+    // table's own heading already use for that state.
+    live: 'Live',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded as the other tables' is: the action and the interval,
+    // because the button is icon-only and this string is its whole accessible name.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The whole-table clear. Both sentences state the scope, because the button's own words are
+    // a promise about the log and not about the rows the filters admit.
+    clearAll: 'Clear all logs',
+    clearConfirmTitle: 'Clear the whole connection log?',
+    clearConfirmBody:
+      'Every connection is deleted - live and finished alike, both media, whatever the filters show. This cannot be undone.',
+    clearConfirmOk: 'Clear everything',
+    noPermission: 'Your group does not allow this.',
+    // The three short unit words the duration helper joins, in the page's language. Short rather
+    // than long because the duration sits in parentheses inside one table cell.
+    duration: {
+      hour: 'h',
+      minute: 'min',
+      second: 's',
     },
   },
   // The add and edit form for one subscription. Its own block because the table names what a row
@@ -2596,6 +2707,9 @@ const en = {
       blacklist_entries_cleared: 'Every entry of the list has been deleted.',
       blacklist_entry_not_found: 'There is no blacklist entry with that identifier.',
       blacklist_value_exists: 'This list already holds that value.',
+      // The connection log's one write. It names the table rather than a row: the command wipes
+      // everything, and the sentence says so.
+      connection_logs_cleared: 'Every connection log entry has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

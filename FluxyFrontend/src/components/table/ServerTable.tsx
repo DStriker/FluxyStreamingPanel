@@ -3,6 +3,7 @@ import type { TableColumnsType, TablePaginationConfig, TableProps } from 'antd'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Key } from 'react'
 import type { useServerTable } from '../../hooks/table'
+import { SORT_DIRECTIONS } from '../../utils/tableSort'
 import { MIN_COLUMN_WIDTH, distributeWidths } from '../../utils/tableWidths'
 import LoadErrorAlert from './LoadErrorAlert'
 import ResizableHeaderCell from './ResizableHeaderCell'
@@ -262,6 +263,7 @@ export default function ServerTable<Row extends object, SortField extends string
         dataSource={rows}
         loading={loading}
         components={{ header: { cell: ResizableHeaderCell } }}
+        sortDirections={SORT_DIRECTIONS}
         rowSelection={
           selection
             ? {

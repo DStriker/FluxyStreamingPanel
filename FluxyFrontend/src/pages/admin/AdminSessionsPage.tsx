@@ -7,10 +7,11 @@ import { hinted } from '../../utils/hinted'
 import { messageForError, textForCode } from '../../utils/http'
 import { formatTimestamp } from '../../utils/dateFormat'
 import { tableResults } from '../../utils/tableResults'
-import { agentCell, countryCell, dashedCell, ipCell, networkCell } from '../../utils/tableCells'
+import { agentCell, dashedCell } from '../../utils/tableCells'
 import { withFilter } from '../../utils/tableParams'
 import { ResetColumnWidths, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps } from '../../components/table'
+import ConnectionNetworkCell from '../../features/connection-logs/components/ConnectionNetworkCell'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useRevokeAdminSession } from '../../features/sessions/hooks/mutations'
 import { useAdminSessionHistory } from '../../features/sessions/hooks/queries'
@@ -18,21 +19,12 @@ import { useAllUsers } from '../../features/users/hooks/queries'
 import { useColumnWidths, useServerTable } from '../../hooks/table'
 import type { AdminSessionVisit } from '../../features/sessions/types'
 
-/** The seven columns, in the order they are drawn, named by their own keys. */
-type AdminSessionColumnKey =
-  | 'user'
-  | 'when'
-  | 'ip'
-  | 'country'
-  | 'network'
-  | 'agent'
-  | 'actions'
+/** The five columns, in the order they are drawn, named by their own keys. */
+type AdminSessionColumnKey = 'user' | 'when' | 'network' | 'agent' | 'actions'
 
 const COLUMN_KEYS: readonly AdminSessionColumnKey[] = [
   'user',
   'when',
-  'ip',
-  'country',
   'network',
   'agent',
   'actions',
@@ -42,28 +34,27 @@ const COLUMN_KEYS: readonly AdminSessionColumnKey[] = [
  * The width each column starts at, and the width it goes back to when asked to reset.
  *
  * Every column has a width of its own rather than letting the browser work it out, for the
- * reason the visit history's five do: a column with no width grows to fit its widest cell,
+ * reason the visit history's columns do: a column with no width grows to fit its widest cell,
  * so sixty characters of registry name or an IPv6 address would widen the table and push
- * everything after it sideways. These seven sum to **1230**, the same as the accounts table
- * and the group table beside it in the same rail - a visitor who can read one whole should
- * be able to read the other, and 1230 is what still fits beside the sidebar on one Full HD
- * screen with the action buttons at the far right inside the viewport.
+ * everything after it sideways. These five sum to **1230**, the same as the accounts table and
+ * the group table beside it in the same rail - a visitor who can read one whole should be able
+ * to read the other, and 1230 is what still fits beside the sidebar on one Full HD screen with
+ * the action buttons at the far right inside the viewport. This table has no selection column,
+ * so its own five are the whole 1230.
  *
- * The account column is where the width was found: it carries a name and nothing else, and
- * the server bounds a username at twenty characters, so 170 is what a name needs and the
- * twenty it does not take go to the user agent, which is a sentence. The country column is
- * 120 rather than the 150 the account's own history gives it, because that table has no
- * account column to pay for and this one does - what it loses it keeps in a tooltip.
+ * **Five columns on the owner's correction**, where there were seven: the address, the country
+ * and the provider are one cell now - the same one the connection logs draw - because they are
+ * one fact about one network. The room the two removed columns gave up went to the network cell
+ * and to the user agent, which are the two cells that have something long to say; the account
+ * column keeps its 170 and the action column is still exactly as wide as its one button.
  *
  * These are *starting* widths, not the answer - see `useColumnWidths`.
  */
 const DEFAULT_COLUMN_WIDTHS: Record<AdminSessionColumnKey, number> = {
   user: 170,
   when: 250,
-  ip: 150,
-  country: 120,
-  network: 190,
-  agent: 230,
+  network: 340,
+  agent: 350,
   actions: 120,
 }
 
@@ -71,10 +62,10 @@ const DEFAULT_COLUMN_WIDTHS: Record<AdminSessionColumnKey, number> = {
  * Where the widths are remembered between visits.
  *
  * Only here, and under a key of this table's own: a width stored under the history's key
- * would be a claim about five columns that have since become seven, and the reset would
+ * would be a claim about three columns that have since become five, and the reset would
  * undo one table's arrangement from another's button.
  */
-const COLUMN_WIDTHS_KEY = 'fluxy.adminSessions.columnWidths'
+const COLUMN_WIDTHS_KEY = 'fluxy.adminSessions.columnWidths.v2'
 
 /**
  * One entry of the account filter: the identifier the query string needs and the name the
@@ -145,7 +136,10 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   const table = useServerTable<AdminSessionVisit, SessionSortField>({
     defaultSort: { by: 'visitedAt', order: 'desc' },
     sortFields: ['visitedAt', 'ip'],
-    sortFieldOf: (columnKey) => (columnKey === 'ip' ? 'ip' : 'visitedAt'),
+    // The merged network cell is keyed `network` while the endpoint's field for the address in
+    // it is `ip` - the only geo field it can order by, because the others are resolved while a
+    // page is built. Anything else came from "When".
+    sortFieldOf: (columnKey) => (columnKey === 'network' ? 'ip' : 'visitedAt'),
   })
 
   /**
@@ -213,7 +207,7 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
   }))
 
   /**
-   * The seven widths: their state, their memory between visits, and the drag that changes
+   * The five widths: their state, their memory between visits, and the drag that changes
    * them. All of that lives in `useColumnWidths`, which the account and group tables call
    * too - the handle, the listeners and the clamp are the part of a table that reads as if
    * it were simple and is not, and two copies of those rules would be two places for one of
@@ -353,41 +347,23 @@ export default function AdminSessionsPage(_props: AdminSessionsPageProps) {
       ),
     },
     {
-      title: t('adminSessions.columns.ip'),
-      dataIndex: 'ip',
-      key: 'ip',
-      width: widths.ip,
-      sorter: true,
-      sortOrder: table.orderOf('ip'),
-      ellipsis: { showTitle: false },
-      onHeaderCell: () => resizer('ip'),
-      render: ipCell,
-    },
-    {
-      // A name rather than the code GeoIP produces, for the reason the account's own
-      // history gives: nobody reads `DE` as a country - they read Germany, or `Германия` on
-      // a Russian page. The name is looked up where the names live (`countryName`, which is
-      // the platform's own table), and a null is a dash rather than an error - a loopback
-      // address or a missing `.mmdb` is unknown, not broken.
-      title: t('adminSessions.columns.country'),
-      dataIndex: 'countryCode',
-      key: 'country',
-      width: widths.country,
-      ellipsis: { showTitle: false },
-      onHeaderCell: () => resizer('country'),
-      render: (value: string | null) => countryCell(value, locale),
-    },
-    {
-      // The one column whose content the server does not bound. An organisation name is a
-      // registry's idea of a company and can run to sixty characters, so this is where an
-      // unbounded column would have widened the whole table - the width above and the
-      // truncation below are what keep the answer to that in this cell and nowhere else.
+      // The address, the country and the provider in one cell, drawn by the same component the
+      // connection logs use - the owner asked for the same rendering in both tables. It carries
+      // **no filter callbacks**: this endpoint resolves its geo fields while a page is built and
+      // takes no `ip`/`country`/`isp` parameter, so a clickable cell here would be a control
+      // that writes nothing.
       title: t('adminSessions.columns.network'),
       key: 'network',
       width: widths.network,
+      // Still sortable, and still by the address: `ip` is the only geo field the endpoint can
+      // order by (the other two are resolved while a page is built), and the address is now the
+      // first line of this cell. The page had this sorter before the columns were merged, and
+      // merging them must not quietly remove it.
+      sorter: true,
+      sortOrder: table.orderOf('ip'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('network'),
-      render: (_, visit) => networkCell(visit),
+      render: (_, visit) => <ConnectionNetworkCell log={visit} locale={locale} />,
     },
     {
       // The summary replaces the raw string rather than joining it, and the tooltip carries

@@ -173,11 +173,32 @@ body {
 
 /* `flex: 1` rather than antd's `flex: auto` on purpose: the workspace must be sized by the
    space left over, not by what it happens to contain, or a wide widget would push its own
-   base size into the row and the sidebar would share a viewport it is supposed to own. */
+   base size into the row and the sidebar would share a viewport it is supposed to own.
+
+   `scrollbar-gutter: stable` is a correctness rule here, not tidying. `ServerTable` measures
+   this box with a `ResizeObserver` and divides the table's widths into whatever it measures,
+   so the measurement must be a fact about the window and not about whether a scrollbar is
+   currently showing. Without it the two are coupled: a table that overflows horizontally
+   makes `.ant-table-content` taller by its scrollbar's height, that height can cross the
+   viewport threshold, this element then grows a classic space-taking scrollbar, its content
+   box narrows by those pixels, the fit is recomputed narrower, the horizontal scrollbar is no
+   longer needed, its height goes away, the vertical one goes away, the box widens - and the
+   cycle can repeat. Reserving the gutter always breaks that coupling at its first step.
+
+   **What was and was not verified.** Headless Chromium draws overlay scrollbars, so this
+   feedback cannot be reproduced there at all - the owner's "the page flickers under RU" was
+   observed in a desktop browser, and the RU bundles are what make it likely rather than
+   certain (longer strings wrap the toolbar onto a second row, which is what brings the table's
+   height across the threshold). The state that *was* reproduced and fixed is the one that made
+   the page unusable first: the two modes shared a mounted component, so the activity table was
+   drawn with the live mode's widths and then persisted them (see `ConnectionLogsPage`). This
+   property is the second half of the fix, and it is the one the mechanism calls for whether or
+   not that was the whole of the owner's report. */
 .layout-shell .layout-shell__content {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 24px;
 }
 

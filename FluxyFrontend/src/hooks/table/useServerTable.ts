@@ -180,6 +180,11 @@ export function useServerTable<Row, SortField extends string>({
         // for no order in particular. The default is then what the server is being sent, and
         // the header has to say so - a table that quietly applies its default while no arrow
         // is showing would tell them the column is unsorted when it is not.
+        //
+        // This branch is normally unreachable from a click: `ServerTable` gives every header the
+        // three-entry cycle in `src/utils/tableSort.ts`, precisely so a click always names a
+        // direction. It stays because the address is shareable and hand-editable, and a link
+        // that names no order has to draw the table the server is actually answering with.
         put(params, 'sortBy', defaultSort.by, defaultSort.by)
         put(params, 'sortOrder', defaultSort.order, defaultSort.order)
         return

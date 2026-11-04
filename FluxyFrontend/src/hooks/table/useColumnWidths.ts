@@ -99,9 +99,40 @@ export function useColumnWidths<K extends string>({
   defaults,
   storageKey,
 }: UseColumnWidthsOptions<K>): ColumnWidthsHandle<K> {
-  const [widths, setWidths] = useState<Record<K, number>>(() =>
-    readWidths(keys, defaults, storageKey),
-  )
+  /**
+   * The widths, remembered together with the key they were read for.
+   *
+   * The key travels with the value because **the same component can be asked for a different
+   * table** - the connection log's two modes are two routes into one component, so React keeps
+   * the instance and only changes its props. A `useState` initializer runs once, so without
+   * this pairing the second table would be handed the first one's arrangement: five stored
+   * numbers read into a six-column table, with the missing `endedAt` left at a default the
+   * other mode never had. That is the bug this shape fixes, and it is fixed here rather than
+   * at the call site because a hook that silently answers a question about another table is
+   * wrong wherever it is used.
+   */
+  const [state, setState] = useState<{ storageKey: string; widths: Record<K, number> }>(() => ({
+    storageKey,
+    widths: readWidths(keys, defaults, storageKey),
+  }))
+
+  /**
+   * A different table arrived on this instance, so the widths are rebuilt **during render**.
+   *
+   * This is React's documented "adjusting state when a prop changes" pattern rather than an
+   * effect: an effect would paint one frame of the old arrangement over the new columns before
+   * correcting itself, and a table whose widths jump a frame after it appears is exactly the
+   * "the look breaks on load" the owner reported. The state write below is the same call React
+   * re-runs before committing, so no frame escapes.
+   */
+  let widths = state.widths
+
+  if (state.storageKey !== storageKey) {
+    widths = readWidths(keys, defaults, storageKey)
+    setState({ storageKey, widths })
+  }
+
+  const setWidths = (next: Record<K, number>) => setState({ storageKey, widths: next })
 
   // The drag that is in progress, if any, so that leaving the page mid-drag still ends it.
   // The listeners live on `window` and would otherwise outlive this component until the next
@@ -127,7 +158,10 @@ export function useColumnWidths<K extends string>({
   }, [widths, keys, defaults, storageKey])
 
   const setWidth = (key: K, next: number) =>
-    setWidths((previous) => ({ ...previous, [key]: clampWidth(next) }))
+    setState((previous) => ({
+      storageKey,
+      widths: { ...previous.widths, [key]: clampWidth(next) },
+    }))
 
   /**
    * Starts a drag, from the handle to `window`.

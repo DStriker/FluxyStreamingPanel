@@ -21,6 +21,7 @@ import {
   DeleteOutlined,
   DesktopOutlined,
   EditOutlined,
+  HistoryOutlined,
   MoreOutlined,
   PauseCircleOutlined,
   PlusOutlined,
@@ -65,6 +66,7 @@ import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../c
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 import { formatTimestamp } from '../../utils/dateFormat'
+import { SORT_DIRECTIONS } from '../../utils/tableSort'
 import { ApiError, messageForError, successTextFor, textForCode } from '../../utils/http'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
@@ -73,22 +75,24 @@ const AUTO_REFRESH_MS = 30_000
 /**
  * The directions a sortable header walks.
  *
- * **Three entries ending in `ascend`, not antd's default pair.** antd computes the next state as
- * `sortDirections[indexOf(current) + 1]`, so a two-entry array answers `undefined` after `descend`
- * - and the table's own handler reads "no order" as "go back to the default". The name column
- * defaults to `createdAt desc`, so its very first click asked for `undefined`, the handler reset it
- * to `desc`, and the column could never leave descending. Repeating `ascend` at the end makes the
- * cycle `ascend → descend → ascend`, which is the real state space here: this table is *always*
- * ordered by something (the pager depends on it), so "unsorted" is not a state it has.
+ * **Three entries ending in `ascend`, not antd's default pair.** `ServerTable` now sets this
+ * cycle as the frame's own default, and this file imports it rather than writing a second copy:
+ * one rule, one place to fix. The reason it cannot be antd's pair is written on the constant.
  */
-const SORT_DIRECTIONS: ('ascend' | 'descend')[] = ['ascend', 'descend', 'ascend']
 
-/** The five columns, in the order they are drawn. */
-type SubscriptionColumnKey = 'name' | 'expiry' | 'connections' | 'creator' | 'actions'
+/** The six columns, in the order they are drawn. */
+type SubscriptionColumnKey =
+  | 'name'
+  | 'expiry'
+  | 'activeConnections'
+  | 'connections'
+  | 'creator'
+  | 'actions'
 
 const COLUMN_KEYS: readonly SubscriptionColumnKey[] = [
   'name',
   'expiry',
+  'activeConnections',
   'connections',
   'creator',
   'actions',
@@ -101,25 +105,38 @@ const COLUMN_KEYS: readonly SubscriptionColumnKey[] = [
  * The name column takes everything the others leave, because it is the two-line cell the whole
  * table is read by - owner, plan, creation date and the status tag - and it is the only one that
  * truncates no second time. The actions column is exactly as wide as the buttons a row draws
- * (`actionsColumnWidth`); see below for why its count is five.
+ * (`actionsColumnWidth`); see below for why its count is six.
+ *
+ * **`activeConnections` and `connections` are the same width**, on the owner's correction: the
+ * two are read as one thought ("3 of 5"), they hold the same kind of value - one small integer -
+ * and a pair of columns that differ by fourteen pixels makes a sentence out of two numbers that
+ * are meant to be one. One number, `CONNECTIONS_COLUMN_WIDTH`, feeds both, so they cannot drift.
+ *
+ * `activeConnections` was carved out of the name column rather than added beside the table: the
+ * owner asked for it before the ceiling, and the total may not grow.
  */
+const CONNECTIONS_COLUMN_WIDTH = 134
+
 const FIXED_COLUMN_WIDTHS = {
   expiry: 170,
   // Was 150 before the "Продлить" action arrived. The actions column grew by the fifth button and
   // this column gave the room back, so the table keeps its 1190 total.
-  connections: 134,
+  connections: CONNECTIONS_COLUMN_WIDTH,
+  // The count beside it, at exactly the same width - see above.
+  activeConnections: CONNECTIONS_COLUMN_WIDTH,
   creator: 180,
 }
 
 /**
  * The actions column is exactly as wide as the buttons a row draws.
  *
- * **Five**, not four: the button count is the formula's whole input, and leaving it at four was
- * what clipped the added "Продлить" button - the column kept the width of a four-button cluster
- * while the row drew five. `actionsColumnWidth` is the single place that knows a button is 24px and
- * the gaps and padding, so the count is the only thing this page has to say.
+ * **Six**, not five: the button count is the formula's whole input, and leaving it at five was
+ * what clipped the added "Show activity" button - the column kept the width of a five-button
+ * cluster while the row drew six. The 28px the sixth button takes comes out of the name column
+ * by construction (it is the table's remainder, and it is the column that truncates into a
+ * tooltip), so the table keeps its 1190 total.
  */
-const ACTIONS_WIDTH = actionsColumnWidth(5)
+const ACTIONS_WIDTH = actionsColumnWidth(6)
 const TABLE_WIDTH = 1190
 
 const DEFAULT_COLUMN_WIDTHS: Record<SubscriptionColumnKey, number> = {
@@ -749,6 +766,49 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       render: (value: string | null) => expiryCell(value),
     },
     {
+      // The count of connections running now, from the server's grouped query. It sits before the
+      // ceiling the row was already showing: the two are read as one thought ("3 of 5"), and this
+      // is the fact that changes while the page is open - which is why the auto-refresh above
+      // re-reads the list.
+      //
+      // **It is the row's one count that is also a link.** An operator who sees "3" wants the
+      // three rows, and the live table is exactly those rows; sending them there with the filter
+      // already in the address is the difference between a number and a question answered. It is
+      // a read, so it is not gated on `editSubscriptions` - the same rule the "Show activity"
+      // action follows - and it points at the **live** page rather than the activity one, because
+      // `activeConnectionCount` counts open sessions (`ended_at IS NULL`), which is what the live
+      // mode lists.
+      title: t('subscriptions.columns.activeConnections'),
+      dataIndex: 'activeConnectionCount',
+      key: 'activeConnections',
+      width: widths.activeConnections,
+      align: 'center',
+      onHeaderCell: () => resizer('activeConnections'),
+      render: (value: number, subscription: Subscription) => {
+        // Zero is a fact worth printing rather than a dash: it means "none are running", which is
+        // different from "the server did not say". It is also deliberately **not** a link: a
+        // link to a filtered list that says "no matches" is a control whose only outcome is an
+        // empty table, and there is nothing behind it to go and read.
+        if (value === 0) {
+          return (
+            <span style={{ opacity: 0.75 }} aria-label={t('subscriptions.noActiveConnections')}>
+              {value}
+            </span>
+          )
+        }
+
+        return (
+          <Typography.Link
+            onClick={() =>
+              navigate(`${area}/live-connections?subscriptionId=${subscription.id}`)
+            }
+          >
+            {value}
+          </Typography.Link>
+        )
+      },
+    },
+    {
       title: t('subscriptions.columns.connections'),
       dataIndex: 'maxConnections',
       key: 'connections',
@@ -801,6 +861,16 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
             icon: <CalendarOutlined />,
             disabled: !canEdit || busy || subscription.tariffPlanId === null,
             onClick: () => confirmProlong(subscription),
+          },
+          // Reading what a subscription has been used for is a read, so it is not gated on
+          // `editSubscriptions`: an operator who may only view the list may see the log of it.
+          // It sits before the kill stub because it is the action that works, and a working
+          // control should not come after one that cannot.
+          {
+            key: 'show-activity',
+            label: t('subscriptions.actions.showActivity'),
+            icon: <HistoryOutlined />,
+            onClick: () => navigate(`${area}/connection-logs?subscriptionId=${subscription.id}`),
           },
           // The streaming subsystem that would terminate connections does not exist yet: a greyed
           // button with a sentence says that before the click, where a live button answering 404
