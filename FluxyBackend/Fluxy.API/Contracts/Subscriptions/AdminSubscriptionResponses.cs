@@ -66,6 +66,12 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Effective connection ceiling, or null for unlimited.</summary>
         public int? MaxConnections { get; init; }
 
+        /// <summary>
+        /// How many connections are running right now: the subscription's <c>connection_logs</c>
+        /// rows whose end time is null.
+        /// </summary>
+        public int ActiveConnectionCount { get; init; }
+
         /// <summary>The playlist service's identifier, or null.</summary>
         public string? PlaylistId { get; init; }
 

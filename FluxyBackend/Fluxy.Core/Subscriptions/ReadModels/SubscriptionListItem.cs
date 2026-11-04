@@ -76,6 +76,25 @@ namespace Fluxy.Core.Subscriptions.ReadModels
         /// <summary>Effective connection ceiling, or null for unlimited.</summary>
         public int? MaxConnections { get; init; }
 
+        /// <summary>
+        /// How many connections are running right now: the subscription's
+        /// <c>connection_logs</c> rows whose end time is null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Read from the log rather than from the subscription, because it is a fact about what is
+        /// happening rather than about what was configured. The two numbers are drawn side by side
+        /// ("3 of 5"), and only this one changes while the page is open - which is why the screen
+        /// that shows it already re-reads itself every thirty seconds.
+        /// </para>
+        /// <para>
+        /// It is filled by one grouped query over the page's identifiers, never by a count per row:
+        /// a page of a hundred subscriptions would otherwise be a hundred round trips to answer one
+        /// integer. See <c>SubscriptionRepository.GetPageAsync</c>.
+        /// </para>
+        /// </remarks>
+        public int ActiveConnectionCount { get; init; }
+
         /// <summary>The playlist service's identifier, or null when none is attached.</summary>
         public string? PlaylistId { get; init; }
 

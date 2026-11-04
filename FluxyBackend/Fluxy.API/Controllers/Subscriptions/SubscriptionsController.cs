@@ -666,6 +666,7 @@ namespace Fluxy.API.Controllers.Subscriptions
             IsTrial = item.IsTrial,
             Status = SubscriptionTextParser.NameOf(item.Status),
             MaxConnections = item.MaxConnections,
+            ActiveConnectionCount = item.ActiveConnectionCount,
             PlaylistId = item.PlaylistId,
             MagMac = item.MagMac,
             Enigma2Mac = item.Enigma2Mac,

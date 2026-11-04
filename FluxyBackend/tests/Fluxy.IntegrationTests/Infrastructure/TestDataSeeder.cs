@@ -1,10 +1,20 @@
 using Fluxy.Application.Users.Utils;
+using Fluxy.Core.Content.Commands;
+using Fluxy.Core.Content.Enums;
+using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Streams.Commands;
+using Fluxy.Core.Streams.Enums;
+using Fluxy.Core.Streams.Repositories;
+using Fluxy.Core.Subscriptions.Commands;
+using Fluxy.Core.Subscriptions.Enums;
+using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Users.Utils;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Fluxy.IntegrationTests.Infrastructure
 {
@@ -149,6 +159,217 @@ namespace Fluxy.IntegrationTests.Infrastructure
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return id;
+        }
+
+        /// <summary>
+        /// Creates a subscription owned by <paramref name="ownerId"/> and issued by
+        /// <paramref name="issuerId"/>, carrying a playlist and no bouquets.
+        /// </summary>
+        /// <remarks>
+        /// Planted through the Core repository, like every other row this class writes. The
+        /// service's minimum-one-bouquet rule is a rule of the service, not of the table, and a
+        /// test that only needs an owner for a connection has no reason to walk the bouquet
+        /// surface to get one.
+        /// </remarks>
+        public static async Task<Guid> CreateSubscriptionAsync(
+            IServiceProvider services,
+            Guid ownerId,
+            Guid issuerId,
+            CancellationToken cancellationToken = default)
+        {
+            var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var id = await subscriptions.AddAsync(
+                new NewSubscription
+                {
+                    UserId = ownerId,
+                    ResellerId = issuerId,
+                    PlaylistId = Convert.ToHexStringLower(Guid.NewGuid().ToByteArray()),
+                    BouquetIds = []
+                },
+                [],
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>
+        /// Creates a video stream of the installation's own, under a category of the kind.
+        /// </summary>
+        /// <remarks>
+        /// A connection names its stream by an opaque identifier with no foreign key, so the title
+        /// a page draws is resolved from this row when it exists - which is exactly what these
+        /// helpers exist to plant, and why the category has to exist first.
+        /// </remarks>
+        public static async Task<Guid> CreateVideoStreamAsync(
+            IServiceProvider services,
+            string name,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var streams = services.GetRequiredService<IVideoStreamRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Video {Guid.NewGuid():N}",
+                    Type = ContentType.VideoStream
+                },
+                1,
+                cancellationToken);
+
+            var id = await streams.AddAsync(
+                new VideoStreamWrite
+                {
+                    Name = name,
+                    Type = VideoStreamType.Permanent,
+                    Status = VideoStreamStatus.Running,
+                    CategoryId = categoryId,
+                    DelayMinutes = 0,
+                    ArchiveDays = 0,
+                    VodItems = [],
+                    Sources = ["http://example.test/stream"],
+                    Files = []
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Creates an audio stream of the installation's own, under a category of the kind.</summary>
+        public static async Task<Guid> CreateAudioStreamAsync(
+            IServiceProvider services,
+            string name,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var streams = services.GetRequiredService<IAudioStreamRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Audio {Guid.NewGuid():N}",
+                    Type = ContentType.AudioStream
+                },
+                1,
+                cancellationToken);
+
+            var id = await streams.AddAsync(
+                new AudioStreamWrite
+                {
+                    Name = name,
+                    Type = AudioStreamType.OnDemand,
+                    Status = AudioStreamStatus.Running,
+                    CategoryId = categoryId,
+                    Sources = ["http://example.test/audio"]
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>
+        /// Plants one connection log row directly, and returns its identifier.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="subscriptionId">Subscription the connection was made under.</param>
+        /// <param name="streamKind">Which medium it delivered.</param>
+        /// <param name="streamId">Opaque identifier of the stream.</param>
+        /// <param name="startedAt">When the session opened.</param>
+        /// <param name="endedAt">When it finished, or null while it is live.</param>
+        /// <param name="ip">Address the session came from.</param>
+        /// <param name="userAgent">User agent the session presented, or null.</param>
+        /// <param name="countryCode">Stored upper-case country, or null.</param>
+        /// <param name="isp">Stored provider, or null.</param>
+        /// <param name="broadcastPid">Reported process identifier, or null.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <para>
+        /// <b>A deliberate SQL fixture.</b> A connection log row has no capture path in this pass -
+        /// the process that relays a stream will own it - and the row itself carries nothing but
+        /// stored values, so it is written as a plain statement naming exactly the columns the
+        /// assertion reads.
+        /// </para>
+        /// <para>
+        /// The insert intent that does exist, <see cref="IConnectionLogRepository.AddRangeAsync"/>,
+        /// cannot serve this fixture: it answers <c>int</c> - how many rows it staged - and the row's
+        /// identifier is generated inside the entity, so the caller never learns the id a test has
+        /// to assert a filtered page against. Its remarks also place it with the Development trial
+        /// seeder, and no production endpoint reaches it. The statement below is what gives the
+        /// test the id it needs.
+        /// </para>
+        /// <para>
+        /// It names the table and its columns, exactly as the expired-registration-code fixture
+        /// names <c>users</c>, and never an entity, a context or any other persistence type - the
+        /// rule the test project follows. Everything the row points at - the account, the
+        /// subscription, the stream - is planted through its Core repository above.
+        /// </para>
+        /// </remarks>
+        public static async Task<Guid> PlantConnectionLogAsync(
+            NpgsqlConnection connection,
+            Guid subscriptionId,
+            ConnectionStreamKind streamKind,
+            Guid streamId,
+            DateTimeOffset startedAt,
+            DateTimeOffset? endedAt = null,
+            string ip = "203.0.113.9",
+            string? userAgent = "Mozilla/5.0 (Test)",
+            string? countryCode = "DE",
+            string? isp = "Example ISP",
+            int? broadcastPid = null,
+            CancellationToken cancellationToken = default)
+        {
+            var id = Guid.NewGuid();
+
+            await using var command = new NpgsqlCommand(
+                "insert into connection_logs " +
+                "(id, subscription_id, stream_kind, stream_id, ip, user_agent, country_code, " +
+                "isp, started_at, ended_at, broadcast_pid, created_at, updated_at) " +
+                "values (@id, @subscription_id, @stream_kind, @stream_id, @ip, @user_agent, " +
+                "@country_code, @isp, @started_at, @ended_at, @broadcast_pid, @now, @now)",
+                connection);
+
+            var now = DateTimeOffset.UtcNow;
+
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("subscription_id", subscriptionId);
+            command.Parameters.AddWithValue("stream_kind", (short)streamKind);
+            command.Parameters.AddWithValue("stream_id", streamId);
+            command.Parameters.AddWithValue("ip", ip);
+            command.Parameters.AddWithValue("user_agent", (object?)userAgent ?? DBNull.Value);
+            command.Parameters.AddWithValue("country_code", (object?)countryCode ?? DBNull.Value);
+            command.Parameters.AddWithValue("isp", (object?)isp ?? DBNull.Value);
+            command.Parameters.AddWithValue("started_at", startedAt);
+            command.Parameters.AddWithValue("ended_at", (object?)endedAt ?? DBNull.Value);
+            command.Parameters.AddWithValue("broadcast_pid", (object?)broadcastPid ?? DBNull.Value);
+            command.Parameters.AddWithValue("now", now);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Counts the connection log rows, so a test can prove a refusal wrote nothing.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<int> CountConnectionLogsAsync(
+            NpgsqlConnection connection,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select count(*) from connection_logs",
+                connection);
+
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
         }
     }
 }

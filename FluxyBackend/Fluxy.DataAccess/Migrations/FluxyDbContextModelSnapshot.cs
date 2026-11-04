@@ -362,6 +362,85 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("bouquet_vod_items", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.ConnectionLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("BroadcastPid")
+                        .HasColumnType("integer")
+                        .HasColumnName("broadcast_pid");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("country_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("Isp")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("isp");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stream_id");
+
+                    b.Property<short>("StreamKind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("stream_kind");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CountryCode");
+
+                    b.HasIndex("Ip");
+
+                    b.HasIndex("Isp");
+
+                    b.HasIndex("UserAgent");
+
+                    b.HasIndex("StartedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("StreamKind", "StreamId");
+
+                    b.HasIndex("SubscriptionId", "StartedAt");
+
+                    b.ToTable("connection_logs", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.ContentCategoryEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1677,6 +1756,15 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Bouquet");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.ConnectionLogEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.SubscriptionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgDataEntity", b =>

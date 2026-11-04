@@ -167,6 +167,19 @@ namespace Fluxy.Application
             // is built on.
             services.AddScoped<ISubscriptionBulkService, SubscriptionBulkService>();
 
+            // The log of the connections made under those subscriptions: read-only, plus the one
+            // whole-table clear. It is its own service rather than a method on the subscription
+            // one because a connection is not the subscription - it is what was watched under it -
+            // and this pass has no write path at all: the relaying process owns the capture.
+            services.AddScoped<IConnectionLogService, ConnectionLogService>();
+
+            // Trial rows for that log, in Development only and only into an empty table. It reads
+            // its prerequisites through Core repositories because the rows must name real
+            // subscriptions and streams - the foreign key refuses an invented one - and it is
+            // gated on IHostEnvironment so the Testing host that runs the integration suite is a
+            // no-op rather than a second seeder the fixtures would have to undo.
+            services.AddScoped<IConnectionLogSeeder, DevelopmentConnectionLogSeeder>();
+
             // The three access-control blacklists: one resource behind two permissions and
             // three menu entries. It is its own service because an entry has rules none of the
             // resources above has - a value unique within its list, an address parsed as an
@@ -244,16 +257,25 @@ namespace Fluxy.Application
         }
 
         /// <summary>
-        /// Runs <see cref="IUserSeeder.SeedAsync"/> in a scope of its own, so it can be called
-        /// from the composition root without resolving anything there.
+        /// Runs <see cref="IUserSeeder.SeedAsync"/> and <see cref="IConnectionLogSeeder.SeedAsync"/>
+        /// in a scope of their own, so they can be called from the composition root without
+        /// resolving anything there.
         /// </summary>
         /// <param name="services">Provider built by the host.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <remarks>
+        /// <para>
         /// This is an explicit call rather than an <see cref="IHostedService"/> on purpose:
         /// hosted services start in registration order, so the web server could already accept
         /// requests while the schema is still missing. An awaited call runs before
         /// <c>app.Run()</c> and before the first request is served.
+        /// </para>
+        /// <para>
+        /// The connection-log seeder runs **after** the user seeder because the schema and the
+        /// first account are what it reads its prerequisites against - and because its own
+        /// Development gate makes it a no-op everywhere else, including the Testing host the
+        /// integration suite runs on.
+        /// </para>
         /// </remarks>
         public static async Task SeedDatabaseAsync(
             this IServiceProvider services,
@@ -264,6 +286,10 @@ namespace Fluxy.Application
             var seeder = scope.ServiceProvider.GetRequiredService<IUserSeeder>();
 
             await seeder.SeedAsync(cancellationToken);
+
+            var logs = scope.ServiceProvider.GetRequiredService<IConnectionLogSeeder>();
+
+            await logs.SeedAsync(cancellationToken);
         }
     }
 }

@@ -202,6 +202,13 @@ namespace Fluxy.DataAccess.Context
         public DbSet<SubscriptionBouquetEntity> SubscriptionBouquets => Set<SubscriptionBouquetEntity>();
 
         /// <summary>
+        /// One streaming session: which subscription watched which stream, from where, on what
+        /// device, and for how long. Written by the relaying process when it arrives; read and
+        /// cleared by the admin log in this pass.
+        /// </summary>
+        public DbSet<ConnectionLogEntity> ConnectionLogs => Set<ConnectionLogEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

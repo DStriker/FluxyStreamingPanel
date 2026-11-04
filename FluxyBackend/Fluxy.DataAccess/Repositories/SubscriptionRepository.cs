@@ -227,6 +227,22 @@ namespace Fluxy.DataAccess.Repositories
                 })
                 .ToList();
 
+            var activeCounts = await ReadActiveConnectionCountsAsync(
+                items.Select(item => item.Id),
+                cancellationToken);
+
+            if (activeCounts.Count > 0)
+            {
+                items = items
+                    .Select(item => item with
+                    {
+                        ActiveConnectionCount = activeCounts.TryGetValue(item.Id, out var count)
+                            ? count
+                            : 0
+                    })
+                    .ToList();
+            }
+
             return new SubscriptionPage
             {
                 Items = items,
@@ -234,6 +250,53 @@ namespace Fluxy.DataAccess.Repositories
                 Page = page,
                 PageSize = pageSize
             };
+        }
+
+        /// <summary>
+        /// Counts the live connections of one page's subscriptions, in one query.
+        /// </summary>
+        /// <param name="subscriptionIds">Identifiers the page actually carries.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>Counts by subscription; an identifier absent from the map has none running.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>One grouped query per page, keyed by the identifiers the page holds</b> - the same
+        /// shape the accounts table uses for the visits of its page and the connection log uses for
+        /// the titles of its page. A correlated subquery in the projection would be a count per row,
+        /// which is the N+1 this repository's reads exist to avoid; a join would multiply the page's
+        /// rows by its connections and force a <c>Distinct</c> that the pager cannot trust.
+        /// </para>
+        /// <para>
+        /// "Live" is <c>ended_at IS NULL</c> and nothing else, which is the same predicate the
+        /// connection log's <c>state=live</c> filter and the partial index
+        /// <c>IX_connection_logs_live_started_at</c> are built on. A row that names a subscription
+        /// outside this page is filtered out by the <c>IN</c> before it is grouped, so the query's
+        /// cost is bounded by the page rather than by the table.
+        /// </para>
+        /// <para>
+        /// <c>total</c> is deliberately untouched: this is a per-row fact, not a filter, so the
+        /// pager still counts the subscriptions the same predicate admits.
+        /// </para>
+        /// </remarks>
+        private async Task<IReadOnlyDictionary<Guid, int>> ReadActiveConnectionCountsAsync(
+            IEnumerable<Guid> subscriptionIds,
+            CancellationToken cancellationToken)
+        {
+            var wanted = subscriptionIds.Distinct().ToList();
+
+            if (wanted.Count == 0)
+            {
+                return new Dictionary<Guid, int>();
+            }
+
+            var counts = await _context.ConnectionLogs
+                .AsNoTracking()
+                .Where(log => log.EndedAt == null && wanted.Contains(log.SubscriptionId))
+                .GroupBy(log => log.SubscriptionId)
+                .Select(group => new { SubscriptionId = group.Key, Count = group.Count() })
+                .ToListAsync(cancellationToken);
+
+            return counts.ToDictionary(row => row.SubscriptionId, row => row.Count);
         }
 
         /// <inheritdoc />

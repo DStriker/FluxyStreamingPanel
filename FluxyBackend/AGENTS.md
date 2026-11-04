@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend for the `Refluxy` monorepo. Git root is 
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 227 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 136 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 363 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 526 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 228 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 754 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -61,17 +61,19 @@ Fluxy.API ──┬──> Fluxy.Application ──┐
 
 ```
 Fluxy.Core/
-  Persistence/       Base 1 · Interfaces 2 · Exceptions 1
+  Persistence/       Base 1 · Exceptions 1 · Interfaces 2 · Utils 1
   Security/          Models 1 · Interfaces 2 · Enums 1
   Email/             Commands 1 · Interfaces 1 · Enums 1
-  GeoIp/             ReadModels 1 · Interfaces 1 · Utils 1
-  Users/             Models 5 · Rows 4 · ReadModels 8 · Commands 9 · Outcomes 9 · Enums 17 · Utils 8 · Interfaces 7 · Repositories 4
-  Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1
-  Content/           Models 1 · Commands 3 · Enums 3 · Utils 1 · Interfaces 1 · Repositories 1
+  GeoIp/             ReadModels 1 · Interfaces 1 · Utils 2
+  Users/             Models 5 · Rows 4 · ReadModels 8 · Commands 9 · Outcomes 9 · Enums 18 · Utils 8 · Interfaces 8 · Repositories 4 · Exceptions 1
+  Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1 · Options 1
+  Content/           Models 2 · Commands 7 · Enums 5 · ReadModels 3 · Utils 2 · Interfaces 2 · Repositories 2
   Streams/           Models 2 · Rows 2 · ReadModels 4 · Commands 13 · Outcomes 11 · Enums 17 · Utils 10 · Interfaces 6 · Repositories 2
   Vod/               Models 1 · Rows 1 · ReadModels 3 · Commands 5 · Outcomes 6 · Enums 9 · Utils 4 · Interfaces 4 · Repositories 1
   Series/            Models 2 · ReadModels 7 · Commands 9 · Outcomes 8 · Enums 12 · Utils 7 · Interfaces 6 · Repositories 2
   Epg/               Models 2 · ReadModels 4 · Commands 3 · Outcomes 1 · Enums 5 · Utils 3 · Interfaces 1 · Repositories 1
+  Blacklists/        Models 1 · ReadModels 2 · Commands 3 · Outcomes 1 · Enums 4 · Utils 2 · Interfaces 1 · Repositories 1
+  Subscriptions/     Models 3 · Rows 2 · ReadModels 9 · Commands 6 · Outcomes 4 · Enums 14 · Utils 7 · Interfaces 5 · Repositories 3
 ```
 
 **The domain is decided by what the type is about, not by who reads it.** `IGeoIpResolver` is GeoIP because it answers a question about an address; `ILoginGuardService` is Users because the allow lists belong to an account and GeoIP is only where the answer comes from; `ITokenRevocationStore` is Authentication because it ends a session, not because it is a "security" thing.
@@ -93,7 +95,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else.** It has **fourteen** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing — *a projection shaped for a single query* — and it survives only in `Rows/`.
+**`Models/` holds the business model and nothing else.** It has **fifteen** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `ConnectionLog` (Subscriptions). Everything that is not one of those is a projection, a read model, a command or a result, and lives in the folder that says so. The `Stored` prefix now means exactly one thing - *a projection shaped for a single query* - and it survives only in `Rows/`.
 
 **One type per file.** Twelve files used to hold two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -132,11 +134,16 @@ Fluxy.API/
 Fluxy.Application/
   ServiceCollectionExtensions.cs   the assembly's DI surface: AddApplicationServices
   Authentication/  Services 6 · Utils 2
-  Content/         Services 1
+  Blacklists/      Services 1 · Utils 1
+  Content/         Services 2 · Utils 2
   Email/           Services 1 · Options 1
+  Epg/             Services 1 · Utils 1
   Security/        Services 1 · Options 1
+  Series/          Services 6 · Utils 3
   Streams/         Services 6 · Utils 2
+  Subscriptions/   Services 5 · Utils 4
   Users/           Services 9 · Utils 8 · Options 1
+  Vod/             Services 4 · Utils 1
 ```
 
 **The domain is the same domain it is in Core.** A service that ends a session is Authentication even though the row it writes is a refresh token; a service that replaces an account's allow lists is Users even though the answer to the question is GeoIP. The two layers answer the same question in the same place, so a type's domain never depends on the layer it sits in.
@@ -1961,6 +1968,115 @@ min-one-bouquet refusals, uniqueness mapping and rethrow, list search/filter/sor
 every bulk action with partial success and warnings, CSRF and permissions), `dotnet ef migrations
 has-pending-model-changes` reports no changes, and the frontend passes
 `typecheck`, `lint`, `test`, `build`, `probe:render`, `probe:i18n` and `probe:paths`.
+
+## The connection logs API: `admin/connection-logs`
+
+The record of what was watched under which subscription, from where, and for how long. Two
+endpoints, because nothing here captures a connection: the process that relays a stream will own the
+write path, and a `POST`, a `PATCH` or a `DELETE {id}` declared now would be a route with no rule
+behind it.
+
+| Endpoint | Auth | Answer |
+| --- | --- | --- |
+| `GET /admin/connection-logs` | `Permission.ViewSubscriptions` | page: `page`, `pageSize`, `search`, `kind`, `state`, `subscriptionId`, `ownerId`, `streamId`, `ip`, `country`, `isp`, `userAgent`, `sortBy`, `sortOrder` |
+| `DELETE /admin/connection-logs` | CSRF + `Permission.EditSubscriptions` | `200 connection_logs_cleared`; wipes the whole table |
+
+- **Country and provider are stored columns, and that is the deliberate divergence from the visit
+  history.** `refresh_tokens` resolves GeoIP while a page is built because it stores no second copy
+  of a fact the database could later answer differently - and that is exactly why it cannot filter by
+  country or provider. This table is filtered and counted by both, so the snapshot is taken when the
+  session opens and kept as it was. **Nothing on the read path calls `IGeoIpResolver`**: a lookup
+  there would answer a different value from the one the filter just ran against.
+- **`ip`, `isp` and `userAgent` are exact filters and `country` is canonicalised.** An absent or
+  blank value means "no filter"; a present one is compared against the stored column as it reads.
+  The user agent is **case sensitive** (`CURL/8.5.0` and `curl/8.5.0` are two clients), because it
+  is a client's own string and folding its case would answer rows for a client that never sent it.
+  `country` is the exception only because its column is upper-case by construction - a typed `de`
+  is folded to `DE` rather than dropping the filter. `total` is counted under the same predicate as
+  the page, so a filtered list's pages sum to it.
+- **`ix_connection_logs_user_agent` (`AddConnectionLogUserAgentIndex`) is what keeps the exact
+  user-agent filter one index read.** The column has always been stored and read; the filter that
+  compares it arrived with the screen's click-through, and a table that grows forever should not be
+  scanned for a value that is already indexed. The scaffolded index is a plain b-tree, so unlike the
+  partial live index there is nothing hand-written in that migration.
+- **The subscription is an `ON DELETE CASCADE` foreign key; the stream is opaque.** Deleting a
+  subscription deletes the connections it carried - the log is evidence about a subscription, and
+  removing the subject is what the operator asked for. `stream_id` has **no** FK, because the
+  relaying process may report a stream row this installation never recorded (the same rule
+  `VideoStream.SeriesId` follows); the read path resolves the title from `video_streams` or
+  `audio_streams` by the kind, and answers null when the row is gone.
+- **The subscriptions list carries `activeConnectionCount`.** Each `SubscriptionListItem` reports how many of its `connection_logs` rows have `ended_at IS NULL` - the same predicate the log's `state=live` filter and the partial `IX_connection_logs_live_started_at` index are built on. `SubscriptionRepository.GetPageAsync` fills it with **one grouped `IN` query over the identifiers the page actually holds**, never a count per row: a correlated subquery in the projection would be an N+1 over a page of a hundred subscriptions, and a join would multiply the page's rows by their connections and force a `Distinct` the pager could not trust. `total` is deliberately untouched - this is a per-row fact, not a filter, so the pager still counts the subscriptions the same predicate admits. The admin table draws the number beside the ceiling ("3 of 5") and links a non-zero value into the live log filtered to that subscription.
+- **The join rule.** The page is cut from the log alone - every filter and the order are columns of
+  that table - and only then joined to `subscriptions` and `users` for the owner's name and
+  identifier. The title cannot join the same way (two tables, one kind at a time), so it is read as
+  a keyed set for the identifiers the page actually carries. That is also why only `startedAt` and
+  `endedAt` are sortable: an order on the owner or the title would order a page already cut.
+- **`kind` is required and defaults to `video`; `state` is `live` or `all` and defaults to `all`.**
+  `live` is exactly `ended_at IS NULL` - one predicate, and the one the hand-written partial index
+  `IX_connection_logs_live_started_at` is built on, because "live" is a small tail of a table that
+  grows forever. A value that names nothing is `400 validation_failed`, never "no filter": the
+  screen draws one medium and one state at a time.
+- **The bounds are refused, not clamped**: `page < 1` and `pageSize` outside `1..1000` are
+  `validation_failed`, and a search above 200 characters is refused under `errors.search`.
+  `total` is counted under the same predicate as the page, so pages sum to it and every page
+  reports the same one.
+- **The permission pair is reused, not multiplied.** Reading the log is reading the subscription
+  surface (`viewSubscriptions`); wiping it destroys the evidence that surface is about
+  (`editSubscriptions` plus a fresh antiforgery pair). A third pair would split one screen's access
+  into two grants an operator has to reason about, and the owner ratified the reuse explicitly.
+- **The clear ignores the screen's filters on purpose.** The button says "clear all logs", so the
+  whole table goes - both media, live and finished alike - whatever the reader had narrowed the
+  table to; a delete that obeyed a filter the caller happened not to send would wipe a different set
+  from the one it named. An empty table answers 200 with a count of zero: the second press of a
+  button that already did its job is not an error. `ExecuteDelete` is immediate and outside the unit
+  of work, which the interface's remarks say.
+- **There is no kill endpoint.** The row's "kill active connections" action stays the disabled stub
+  it has always been, and the new page draws it disabled with the same reason. The streaming
+  subsystem that would obey one does not exist.
+- **The migration `20261102162452_AddConnectionLogs`** creates the table, **six** model indexes and
+  one index written by hand - the partial `(started_at DESC, id DESC) WHERE ended_at IS NULL` -
+  because EF Core's model index has no filter; it is created in `Up` and dropped in `Down`, the same
+  treatment the subscriptions' partial unique indexes get. The six model indexes are the default
+  order, the subscription drill-down, the stream lookup and the three exact filters the table stored
+  at the time (`ip`, `country_code`, `isp`). `20261103190533_AddConnectionLogUserAgentIndex` adds the
+  **fourth exact filter** and with it the seventh published index: the plain b-tree behind
+  `?userAgent=`, scaffolded rather than hand-written because a plain index is something the model
+  can describe. That makes **eight** indexes on the table in total - seven EF `HasIndex` entries in
+  the snapshot plus the hand-written partial one.
+- **The Development trial seeder** (`DevelopmentConnectionLogSeeder`, behind `IConnectionLogSeeder`,
+  run from `SeedDatabaseAsync()` after `DefaultUserSeeder`) fills an empty log so the two screens have
+  something to draw. It is Development-only through `IHostEnvironment`, idempotent through a
+  `CountAsync` probe, and it writes nothing without at least one subscription, one video stream and
+  one audio stream - logging one line either way. Its rows name **real** records, because the
+  subscription FK refuses a fabricated identifier and the title is resolved from a real stream row;
+  it covers both media, at least one open session with a process id, at least one finished session,
+  and three distinct countries and providers, so the filters and the click-through have data.
+  **The insert intent on `IConnectionLogRepository` exists for this caller alone** - storage
+  plumbing, not capture: the integration host's `TestUserSeeder` does not run it, and the Testing
+  environment makes it a no-op.
+- **`ConnectionLogEntity.ToModel`/`FromModel` are unused on purpose.** This pass has no production
+  write path, so no endpoint reaches either; they stay beside each other (with remarks saying so)
+  because the capture that arrives with the relaying process will need the same pair every other
+  entity carries rather than a second, divergent mapping.
+
+Layering follows the usual split: `ConnectionLog` in `Fluxy.Core/Subscriptions/Models/`,
+`NewConnectionLog` in `Commands/`, `ConnectionLogListItem` / `ConnectionLogPage` in `ReadModels/`,
+`ConnectionStreamKind` / `ConnectionLogSortField` / `ConnectionLogSortOrder` in `Enums/`,
+`ConnectionLogListLimits` / `ConnectionLogQuery` / `ConnectionLogQueryText` in `Utils/`,
+`IConnectionLogService` / `IConnectionLogSeeder` in `Interfaces/` and `IConnectionLogRepository` in
+`Repositories/`; `ConnectionLogService` and `DevelopmentConnectionLogSeeder` in
+`Fluxy.Application/Subscriptions/Services/`; the entity, configuration and repository in
+`Fluxy.DataAccess`; the contracts in `Fluxy.API/Contracts/Subscriptions/`; the query parser in
+`Controllers/Support/`; and `ConnectionLogsController` in `Fluxy.API/Controllers/Subscriptions/`.
+
+Verified: `dotnet build` clean, **526** unit tests green (the connection-log suite covering the query
+parser's defaults and every refusal - including the exact, case-sensitive `userAgent` filter - and the
+list limits), `dotnet ef migrations has-pending-model-changes` reports no changes, and the frontend
+passes `typecheck`, `lint`, `test`, `build`, `probe:render`, `probe:i18n` and `probe:paths`. The
+integration suite (`ConnectionLogTests`) pins the untouched page and its fields, the state and kind
+filters, every filter narrowing the total (the user agent exactly, and its case included), the
+bounds, the page turn, the end-time order with live sessions last, the clear with a deliberately
+filtered query string, the cascade on subscription delete, and the role and permission gates.
 
 ## Conventions
 
