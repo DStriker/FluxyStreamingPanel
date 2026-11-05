@@ -1,0 +1,27 @@
+> Part of the FluxyBackend AGENTS.md instruction set — read on demand. Back to [AGENTS.md](../AGENTS.md).
+
+## The admin users API: `admin/users`
+
+One resource, eight endpoints, owned by `UsersController` (`[Route("admin/users")]`, `[Authorize(Policy = AdminPolicy)]`, deriving from `ApiControllerBase` for `NoStore()` and the antiforgery helper).
+
+| Endpoint | Answer |
+| --- | --- |
+| `GET /admin/users` | page: `page`, `pageSize`, `search`, `role`, `status`, `sortBy`, `sortOrder` |
+| `GET /admin/users/{id}` | one account with its login guard; `404 user_not_found` |
+| `POST /admin/users` | `201` + relative `Location: /admin/users/{id}` |
+| `PATCH /admin/users/{id}` | partial update; `404 user_not_found` |
+| `POST /admin/users/{id}/confirm-registration` | `registration_confirmed` |
+| `POST /admin/users/{id}/block` / `…/unblock` | `user_blocked` / `user_unblocked` |
+| `DELETE /admin/users/{id}` | `user_deleted` |
+
+- **`Location` is honest here**, unlike on `POST /auth/registrations`: the row exists and `/admin/users/{id}` answers `200` for its own owner immediately — no mailed code between creation and addressability, and the caller is an administrator who already knows the account.
+- **No captcha and no attempt window, deliberately.** Every write is behind an `AdminOnly` session *and* a fresh antiforgery token (`RejectsCsrfAsync()` first, before any body is read), so the expensive steps are already gated by something stronger than a throttle; reCAPTCHA cannot be minted outside a page anyway. A recorded departure (see the REST section in AGENTS.md); the reason lives in the controller's remarks.
+- **No data annotations on the requests on purpose.** Framework model validation runs *before* the action, which would answer a stale token with `400 validation_failed` instead of `csrf_invalid`; every field check happens in the action/service after the antiforgery call. Field errors come back keyed by the camelCase JSON name (`username`, `password`, `role`, `status`, `loginGuard.…`).
+- **`search` is a case-insensitive substring of username or email**, `role`/`status` filter by enum member name (unknown member → `validation_failed`, *not* "no filter"), and `total` is counted before paging under the same predicate — the same "the pager must not lie" rule the session history follows. Sort fields: `username` (default, asc), `email`, `role`, `status`, `lastSeenAt`, `ip`, each tie-broken by username then id, parsed from plain text case-insensitively so `sortBy=IP` and `sortOrder=desc` both work.
+- **`lastSeenAt` and `ip` are correlated subqueries** over the freshest `refresh_tokens` row, and `ChainNullsLast` groups never-signed-in accounts to the end of *both* directions: plain PostgreSQL `DESC` treats null as larger than any value, which would open a "newest activity first" page with accounts nobody has ever seen. (Both translate — verified against the compose postgres, SQL in the log: `ORDER BY (SELECT max(r.created_at) … WHERE r.user_id = u.id) DESC, u.username DESC`.) The page then reads the visits in memory, one `IN` query per page.
+- **Status transitions are the service's rules, not the controller's**: `RegisteredAt` is stamped when status becomes non-`Unregistered` and cleared when it returns to it; `unblock` restores `Unregistered` if `RegisteredAt` is null, else `Registered`; `confirm` and `unblock` refuse a row not in the expected state with `409 invalid_status`; `block` is idempotent; going to `Blocked`/`Unregistered` (or changing a password) revokes the account's sessions. **Self-protection is refused by the service with `actingUserId`**, so `cannot_delete_self`, `cannot_block_self`, `cannot_demote_self` cannot depend on the controller remembering to pass who is asking.
+- The login guard here is edited **without** the caller-address anti-lock rule: that rule stops an administrator from locking *themselves* out of *their own* account, and an admin editing someone else's allow lists is not on those lists.
+
+Layering follows the usual split: `AdminUser` / `AdminUserPage` / `AdminUserDetail` in `Fluxy.Core/Users/ReadModels/`, `NewUser` / `UserPatch` in `Fluxy.Core/Users/Commands/`, `AdminUserSortField` / `AdminUserSortOrder` in `Fluxy.Core/Users/Enums/`, `AdminUserListLimits` in `Fluxy.Core/Users/Utils/`, `IUserAdminService` in `Fluxy.Core/Users/Interfaces/`, `UserAdminService` in `Fluxy.Application/Users/Services/` (Scoped), the shared `LoginGuardNormalizer`/`LoginGuardStore` and `TimeZonePolicy` beside it (extracted from `ProfileService` so both flows agree on what a valid guard and time zone are), and the contracts in `Fluxy.API/Contracts/Users/`.
+
+Verified against a running instance (four scripted batches, all green): list with all six sort keys, filters, search, paging and each of the seven parameter refusals; `201`+`Location`, `409 user_already_exists` naming the offending field, `400 validation_failed` for missing and weak values, `400 csrf_invalid` with genuinely no header; detail/patch/confirm/block/unblock/delete each `404 user_not_found` on an unused id; PATCH persisting username, email, role, a cleared time zone, the guard, `status=Blocked` keeping `registeredAt` and `status=Unregistered` clearing it; block → `200` twice (idempotent) → the victim's own `POST /auth/refresh` answering `401 session_expired`; the three self-protections; `403` for a signed-in Client and `401` anonymous; a rotated password signing in while the old one is refused; and every fixture deleted with no orphaned guard rules left behind.
