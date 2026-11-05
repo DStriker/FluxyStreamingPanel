@@ -147,4 +147,112 @@ Two things it had to get right, both of which produced a false failure before be
 
 And one that produced a false **hang**: `main()` ends with an explicit `process.exit(failed === 0 ? 0 : 1)`, and that is load-bearing rather than tidy. Every query the pages create keeps its garbage-collection timer alive — TanStack Query's default `gcTime` is five minutes — and `renderToStaticMarkup` never unmounts anything, so nothing ever cancels those timers. Without the exit the probe prints its full verdict and then sits through the whole five minutes before the process dies, which reads as a hang (and did: the probe "hung" for a day before this was traced with `process.getActiveResourcesInfo()` to a lone `Timeout`).
 
+### A browser check with Playwright, and a screenshot
+
+`probe:render` proves the markup renders; it cannot see layout. A change that adds or moves a
+**page, table, form, toolbar control or any other visible element** is therefore opened once in a
+real browser through Playwright and captured as a screenshot, and the screenshot is read for
+obvious defects: a missing or zero-width page title, controls overlapping or leaving the
+viewport, a heading wrapped to a letter, an empty card head, a filter control in the wrong row, a
+form field sharing its row with another, duplicated or explanatory text the rule forbids (see
+[ui-rules.md](ui-rules.md)), and text in the wrong language.
+
+- The browser runner is **not** a dependency of this package. Use the Playwright automation the
+  agent has (its `playwright`/`browser` tools) against the running dev server; adding
+  `@playwright/test` or another runner to `package.json` needs the owner's explicit approval.
+- The screenshot is **in addition to** `probe:render`, `probe:i18n` and `probe:paths` — those
+  stay the committed, CI-run checks and this one never replaces them.
+- Captures go under `.tmp-runtime/` (gitignored) and are named in the report by path; they are
+  not committed.
+- If the automation is unavailable, the report says so and records the manual fallback. A
+  missing check is a stated gap, not a silent pass.
+
+### A throwaway account for a check that needs a sign-in
+
+Do not go looking for the seeded administrator's password, and do not guess an existing one.
+When a browser check needs a signed-in visitor, create a temporary account **directly in
+PostgreSQL**, in the base group of the role the screen needs, and delete it when the check ends —
+on success, on failure, and before reporting either.
+
+The three base groups are fixed identifiers (`Fluxy.Core/Users/Utils/BaseUserGroups.cs`), so no
+lookup is needed:
+
+| Role | Base group id |
+| --- | --- |
+| Client | `00000000-0000-0000-0000-000000000001` |
+| Reseller | `00000000-0000-0000-0000-000000000002` |
+| Admin | `00000000-0000-0000-0000-000000000003` |
+
+The password column holds a BCrypt hash, so the check needs one. Generate it with the same
+library the application verifies with — the package is already in the local NuGet cache, and
+loading the assembly directly means no restore and no network. An `.fsx` script is the simplest
+way to load it (piping into `dotnet fsi` does not reliably pick the `#r` up):
+
+```powershell
+$dll = "$env:USERPROFILE\.nuget\packages\bcrypt.net-next\4.2.0\lib\net10.0\BCrypt-Net-Next.dll"
+$fsx = Join-Path $env:TEMP 'fluxy-hash.fsx'
+@"
+#r @"$dll"
+printfn "%s" (BCrypt.Net.BCrypt.HashPassword("probe-pass"))
+"@ | Set-Content -Path $fsx -Encoding UTF8
+dotnet fsi $fsx
+Remove-Item $fsx
+```
+
+Then insert, use and delete (compose publishes postgres on 5432, and the socket inside the
+container is `trust`, so `docker exec` needs no password):
+
+```powershell
+# hash = the line fsi printed; keep the $ of the salt fragment inside single quotes in SQL
+docker exec -i postgres psql -U fluxy -d fluxy -c "
+insert into users (id, username, email, password_hash, status, registered_at,
+                   created_at, updated_at, group_id, geo_protection_enabled, bind_session_to_ip)
+values ('11111111-1111-1111-1111-111111111111', 'probe_temp', 'probe_temp@localhost',
+        '<hash>', 1, now(), now(), now(),
+        '00000000-0000-0000-0000-000000000003', false, false);"
+
+# ... run the Playwright check as probe_temp / probe-pass ...
+
+docker exec -i postgres psql -U fluxy -d fluxy -c "
+delete from users where id = '11111111-1111-1111-1111-111111111111';"
+```
+
+Signing in through a browser is the normal path; the signed-in shell then opens the address the
+check needs directly. The antiforgery pair is the part that is easy to get wrong: mint with
+`GET /auth/csrf`, then send the returned value as **`X-CSRF-Token`** (the name `csrfHeader`
+uses; `X-XSRF-TOKEN` gets `csrf_invalid` on an otherwise perfect request). A Playwright context
+needs `ignoreHTTPSErrors: true` for the dev server's self-signed certificate, and the sign-in
+form's inputs carry `id="username"` and `id="password"`:
+
+```js
+const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1600, height: 1100 } })
+const p = await ctx.newPage()
+await p.goto('https://localhost:5173/admin/login', { waitUntil: 'networkidle' })
+await p.locator('#username').fill('probe_temp')
+await p.locator('#password').fill('probe-pass')
+await p.getByRole('button', { name: 'Войти' }).click()   // 'Sign in' on the EN locale
+await p.waitForURL(/\/admin\//)
+```
+
+Rules that make this safe and repeatable:
+
+- **Always delete the row**, including when the check fails. Everything that references an
+  account cascades or detaches by design: `refresh_tokens`, `pending_changes`,
+  `user_login_guard_rules` and the account's own `subscriptions` rows cascade, while a
+  subscription the account created as a reseller keeps its row with `reseller_id` set to null.
+  A throwaway account therefore leaves nothing behind, but do not let one create content the
+  check does not need — the cleanup is a delete of the account, not of the whole database.
+- **Pick the narrowest role that can open the screen.** A client area does not need an
+  administrator, and an administrator's group grants every permission — a permission refusal
+  cannot be observed through it.
+- **Do not create a group for the check.** The three base groups already exist and are
+  reconciled by the startup seeder; an extra group is a row somebody has to remember to remove.
+- The sign-in itself spends one of the five per-15-minute permits of its role and address. A
+  `429` is the throttle working, not a defect in the page — the key is
+  `fluxy:throttle:login:<Role>:<address>` (`fluxy:throttle:login:Admin:::1` on loopback, with
+  the role spelled as the enum member). The application's redis user may `DEL` a key but may not
+  run `KEYS`, so name the key you mean:
+  `docker exec redis redis-cli --user fluxy -a <password> DEL fluxy:throttle:login:Admin:::1`.
+  Wait out the window rather than reporting a failure.
+
 All five guest pages have a footer, and what each one carries is a fact about the app rather than an oversight. `ClientLoginPage` and `RegisterPage` carry the cross-link between registration and sign-in; `ResellerLoginPage` and `AdminLoginPage` were extended to offer the password-reset link (they had no footer at all before that, which is what an earlier version of this note recorded); `ForgotPasswordPage` carries "back to sign in" in all three of its states. `probe-render.jsx` asserts `hasFooter: true` for all five, so a `footer` prop that silently renders nothing fails there — that is the check, and asserting a footer *absent* on any of them would now be the wrong expectation.

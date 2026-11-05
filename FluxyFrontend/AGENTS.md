@@ -61,6 +61,16 @@ Full tree, shells, tables and per-page rules: the topic files below. These twelv
 
 Env vars, run order, caveats and what each probe has caught: [docs/probes.md](docs/probes.md). Vitest never renders; probes bundle the real `src/` with esbuild and print PASS/FAIL per check.
 
+## UI rules that govern every page
+
+The full text, with the reasoning: [docs/ui-rules.md](docs/ui-rules.md). The five rules, in short:
+
+- **The page title is always visible in the page card.** Every routed page's `Card` carries a `title` — in loading, failed-read and empty states too — and it must stay readable, not merely present: the `page-card` class and the pinned `styles={{ title: { whiteSpace: 'nowrap' } }}` are what stop antd from shrinking it to zero width beside a wide toolbar. The menu names how the visitor arrived; the card names what they are looking at, and the two may differ.
+- **A long filter control gets its own row above the table, outside the card head.** `DatePicker.RangePicker` (and a long multi-select or month picker) is rendered in the card **body**, one control per row, left-aligned, above the tag row and the table — never in the card's `extra`/head, where it pushes the title aside or wraps the toolbar. The card still frames the page; only the head is reserved for the title and the toolbar. Its value still lives in the address. `ConnectionLogsPage`'s activity start-time range is the reference placement.
+- **A form says each thing once, one field per row.** No `Row`/`Col` pairing; no placeholder that repeats its label; no `extra` sentence for an obvious field; no `Divider`/section for name, category or title. A placeholder adds a format, an `extra` states a rule the visitor cannot infer ("leave empty to keep the current password"), and a section is only for a genuinely separate concern (the login-guard block).
+- **Every new page or UI element is checked in a browser with a screenshot.** Playwright against the running dev server, capture under `.tmp-runtime/`, and read the image for layout defects — in addition to `probe:render`, never instead of it. `@playwright/test` is not a dependency here and is not to be added without the owner's approval; `docs/probes.md` has the recipe.
+- **A check that needs a sign-in uses a throwaway PostgreSQL account, never a password hunt.** Create the account in the base group of the narrowest role that can open the screen, run the check, delete the account on success and on failure alike. Identifiers, the BCrypt hash command and the SQL are in `docs/probes.md`; the seeded administrator's password is not to be searched for.
+
 ## Gotchas that govern every task
 
 Two apply everywhere; the rest are per area in [docs/gotchas.md](docs/gotchas.md).
@@ -82,5 +92,6 @@ Each lives in `docs\`; each links back here.
 | [docs/pages-accounts-and-sessions.md](docs/pages-accounts-and-sessions.md) | SessionsPage, ActiveSessionsPage, AdminSessionsPage, Users/UserForm, UserGroups/UserGroupForm, permissions UI, `userStatus`, login-guard form |
 | [docs/pages-content.md](docs/pages-content.md) | ContentCategoriesPage (drag order, `SECTION_TYPES`), video/audio stream tables + forms/imports, VOD pages, `SourceListEditor` |
 | [docs/pages-subscriptions-epg-logs.md](docs/pages-subscriptions-epg-logs.md) | subscriptions feature (`api.ts`, `subscriptionBody`, `prolongPreview`) & its pages, connection-log pages (`ConnectionLogsPage`, incl. the activity-only start-time range on its own row) and its `startRange.ts`, EPG feature |
-| [docs/probes.md](docs/probes.md) | before running any probe: `npm run probe`/`probe:session`/`probe:groups`/`probe:i18n`/`probe:paths`/`probe:render`, `FLUXY_API`/`FLUXY_MAIL_DIR`/`FLUXY_PROBE_DEBUG`, run order, caveats, what each probe catches |
+| [docs/ui-rules.md](docs/ui-rules.md) | any new page, card, toolbar, filter row, form or other visible element — page-title rule, long-filter-on-its-own-row-inside-the-card-body rule, one-thing-once form rule, Playwright screenshot check, throwaway PostgreSQL account for sign-in |
+| [docs/probes.md](docs/probes.md) | before running any probe: `npm run probe`/`probe:session`/`probe:groups`/`probe:i18n`/`probe:paths`/`probe:render`, `FLUXY_API`/`FLUXY_MAIL_DIR`/`FLUXY_PROBE_DEBUG`, run order, caveats, what each probe catches; also the Playwright screenshot check and the throwaway-account recipe |
 | [docs/gotchas.md](docs/gotchas.md) | area gotchas: i18n keys, routing, env/config, login endpoints, profile/login guard, role URLs, captcha, CSRF freshness, assets, `dist/`, comment language |
