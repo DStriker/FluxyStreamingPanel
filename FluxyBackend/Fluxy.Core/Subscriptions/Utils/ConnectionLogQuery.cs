@@ -35,6 +35,16 @@ namespace Fluxy.Core.Subscriptions.Utils
     /// sent that string. It is the same rule <c>ip</c> and <c>isp</c> follow; only <c>country</c>
     /// is canonicalised, because its column is canonical by construction.
     /// </para>
+    /// <para>
+    /// <b>The start-time range has two independent, inclusive bounds.</b> <c>startedFrom</c> keeps
+    /// rows whose <c>started_at</c> is greater than or equal to it and <c>startedTo</c> keeps rows
+    /// whose <c>started_at</c> is less than or equal to it; either may be absent, which means no
+    /// bound on that side. Both ends are inclusive because the screen's picker names whole days:
+    /// an end the operator picked as "the 1st" that dropped everything started during the 1st
+    /// would answer a list narrower than the one the control shows. A bound that is blank is
+    /// "no bound"; one that is present but not an ISO 8601 date is refused under its own
+    /// parameter, never read as "no bound".
+    /// </para>
     /// </remarks>
     public sealed class ConnectionLogQuery
     {
@@ -48,6 +58,8 @@ namespace Fluxy.Core.Subscriptions.Utils
             string? countryCode,
             string? isp,
             string? userAgent,
+            DateTimeOffset? startedFrom,
+            DateTimeOffset? startedTo,
             ConnectionLogSortField sortBy,
             ConnectionLogSortOrder sortOrder)
         {
@@ -60,6 +72,8 @@ namespace Fluxy.Core.Subscriptions.Utils
             CountryCode = countryCode;
             Isp = isp;
             UserAgent = userAgent;
+            StartedFrom = startedFrom;
+            StartedTo = startedTo;
             SortBy = sortBy;
             SortOrder = sortOrder;
         }
@@ -91,6 +105,12 @@ namespace Fluxy.Core.Subscriptions.Utils
         /// <summary>User agent to keep, compared exactly, or null.</summary>
         public string? UserAgent { get; }
 
+        /// <summary>Earliest <c>started_at</c> to keep, inclusive, or null for no lower bound.</summary>
+        public DateTimeOffset? StartedFrom { get; }
+
+        /// <summary>Latest <c>started_at</c> to keep, inclusive, or null for no upper bound.</summary>
+        public DateTimeOffset? StartedTo { get; }
+
         /// <summary>Column to order by. <c>startedAt</c> when the caller named none.</summary>
         public ConnectionLogSortField SortBy { get; }
 
@@ -110,6 +130,8 @@ namespace Fluxy.Core.Subscriptions.Utils
         /// <param name="country">Country as typed, any case, or null.</param>
         /// <param name="isp">Provider to keep exactly, or null.</param>
         /// <param name="userAgent">User agent to keep exactly, or null.</param>
+        /// <param name="startedFrom">Earliest start instant, inclusive, or null.</param>
+        /// <param name="startedTo">Latest start instant, inclusive, or null.</param>
         /// <param name="sortBy">Column as typed; <c>startedAt</c> when absent or blank.</param>
         /// <param name="sortOrder">Direction as typed; <c>desc</c> when absent or blank.</param>
         /// <param name="errors">Rejected parameters, keyed by the query-string name.</param>
@@ -129,6 +151,8 @@ namespace Fluxy.Core.Subscriptions.Utils
             string? country,
             string? isp,
             string? userAgent,
+            string? startedFrom,
+            string? startedTo,
             string? sortBy,
             string? sortOrder,
             out Dictionary<string, string[]> errors)
@@ -176,6 +200,8 @@ namespace Fluxy.Core.Subscriptions.Utils
             var stream = ParseIdentifier(streamId, "streamId", errors);
 
             var wantedCountry = ParseCountry(country, errors);
+            var from = ParseInstant(startedFrom, "startedFrom", errors);
+            var to = ParseInstant(startedTo, "startedTo", errors);
 
             if (errors.Count > 0)
             {
@@ -192,6 +218,8 @@ namespace Fluxy.Core.Subscriptions.Utils
                 wantedCountry,
                 Trimmed(isp),
                 Trimmed(userAgent),
+                from,
+                to,
                 wantedField!.Value,
                 wantedOrder!.Value);
         }
@@ -247,6 +275,39 @@ namespace Fluxy.Core.Subscriptions.Utils
             }
 
             return normalized;
+        }
+
+        /// <summary>
+        /// Reads an optional start-time bound: blank is "no bound", a value must be an ISO 8601
+        /// date or date-time.
+        /// </summary>
+        /// <remarks>
+        /// A blank value is no bound and an unparseable one is a refusal - never the other way
+        /// round, because a bound read as absent would answer a list wider than the caller asked
+        /// for. The check is therefore "blank first, then parse", the same order the country and
+        /// identifier rules follow above.
+        /// </remarks>
+        private static DateTimeOffset? ParseInstant(
+            string? value,
+            string parameter,
+            Dictionary<string, string[]> errors)
+        {
+            if (IsBlank(value))
+            {
+                return null;
+            }
+
+            var parsed = ConnectionLogQueryText.ParseInstant(value);
+
+            if (parsed is null)
+            {
+                errors[parameter] =
+                [
+                    "The bound must be an ISO 8601 date or date-time, for example 2026-05-01T10:00:00Z."
+                ];
+            }
+
+            return parsed;
         }
 
         private static string? Trimmed(string? value)

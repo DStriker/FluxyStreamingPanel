@@ -1,3 +1,4 @@
+using System.Globalization;
 using Fluxy.Core.GeoIp.Utils;
 using Fluxy.Core.Subscriptions.Enums;
 
@@ -29,6 +30,21 @@ namespace Fluxy.Core.Subscriptions.Utils
     /// </remarks>
     public static class ConnectionLogQueryText
     {
+        /// <summary>
+        /// The ISO 8601 spellings <see cref="ParseInstant"/> accepts. The offset is optional and,
+        /// when absent, means UTC - the wire convention the subscription expiry already follows.
+        /// </summary>
+        private static readonly string[] InstantFormats =
+        [
+            "yyyy-MM-dd",
+            "yyyy-MM-dd'T'HH:mm",
+            "yyyy-MM-dd'T'HH:mmK",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ssK",
+            "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF",
+            "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK"
+        ];
+
         /// <summary>Turns <c>video</c> / <c>audio</c> into the medium it names, or null.</summary>
         /// <param name="value">Value from a query string.</param>
         public static ConnectionStreamKind? ParseStreamKind(string? value) =>
@@ -84,6 +100,55 @@ namespace Fluxy.Core.Subscriptions.Utils
         /// </remarks>
         public static string? NormalizeCountry(string? value)
             => string.IsNullOrWhiteSpace(value) ? null : CountryCodes.Normalize(value);
+
+        /// <summary>
+        /// Reads an optional start-time bound: a blank value is "no bound", a value must be an ISO
+        /// 8601 date or date-time.
+        /// </summary>
+        /// <param name="value">Value from a query string.</param>
+        /// <returns>The instant the text names, or null when it is blank or not a date.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>Parsed with the invariant culture, and an absent offset means UTC</b>, exactly like
+        /// the subscription expiry: a value is a wire format, never the server's locale, so the
+        /// same query means the same instant wherever the API runs. A present offset is honoured
+        /// and the result normalized to UTC, because a caller that said <c>+03:00</c> meant that
+        /// instant.
+        /// </para>
+        /// <para>
+        /// <b>The spelling is ISO 8601 and deliberately narrow.</b> A bare date is that day's
+        /// midnight UTC; a date-time may carry an offset, a fractional part and a lower-case
+        /// <c>t</c>/<c>z</c>, because that is the same moment spelled by a machine and refusing it
+        /// would teach callers to re-case one request. A locale-dependent form such as
+        /// <c>05/01/2026</c> names no single instant and is refused. Null is answered both for a
+        /// blank value and for an unparseable one - the caller distinguishes them with
+        /// <see cref="ConnectionLogQuery.IsBlank"/> before treating null as "no filter".
+        /// </para>
+        /// </remarks>
+        public static DateTimeOffset? ParseInstant(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            // ISO 8601's separators may be spelled in either case. Normalizing them is what makes
+            // `2026-05-01t10:00:00z` the same request as `2026-05-01T10:00:00Z`, while the format
+            // list below still refuses anything that is not a date.
+            var text = value
+                .Trim()
+                .Replace('t', 'T')
+                .Replace('z', 'Z');
+
+            return DateTimeOffset.TryParseExact(
+                text,
+                InstantFormats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed)
+                ? parsed
+                : null;
+        }
 
         /// <summary>The name a client reads a medium by: the spelling the filter accepts.</summary>
         /// <param name="kind">Medium to name.</param>

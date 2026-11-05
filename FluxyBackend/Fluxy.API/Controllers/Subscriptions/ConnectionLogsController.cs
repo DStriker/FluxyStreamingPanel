@@ -103,6 +103,8 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <param name="country">Country to keep, any case, or null.</param>
         /// <param name="isp">Provider to keep, compared exactly, or null.</param>
         /// <param name="userAgent">User agent to keep, compared exactly, or null.</param>
+        /// <param name="startedFrom">Earliest start instant to keep, inclusive, or null.</param>
+        /// <param name="startedTo">Latest start instant to keep, inclusive, or null.</param>
         /// <param name="sortBy">Column to order by; <c>startedAt</c> when absent.</param>
         /// <param name="sortOrder">Direction; <c>desc</c> when absent.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -128,6 +130,18 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <c>total</c> is counted under the same predicate as the page, so a filtered list's pages
         /// sum to its <c>total</c> and every page reports the same one.
         /// </para>
+        /// <para>
+        /// <b>The start-time range has two independent, inclusive bounds.</b> <c>startedFrom</c>
+        /// keeps rows that started at or after the instant, <c>startedTo</c> keeps rows that
+        /// started at or before it, and either may be absent. Both are inclusive because the
+        /// screen's picker names whole days: an end the operator picked as "the 1st" that dropped
+        /// everything started during the 1st would answer a list narrower than the control shows.
+        /// A value is an ISO 8601 date or date-time; an absent offset means UTC, and a present one
+        /// is honoured, the same convention the subscription expiry follows. A blank value is
+        /// "no bound" and an unparseable one is refused under its own parameter - never read as
+        /// "no bound", which would widen the list silently. No new index is needed: the existing
+        /// <c>(started_at DESC, id DESC)</c> index answers a range scan on <c>started_at</c>.
+        /// </para>
         /// </remarks>
         [HttpGet]
         [Authorize(Policy = AuthenticationExtensions.ViewSubscriptionsPolicy)]
@@ -146,6 +160,8 @@ namespace Fluxy.API.Controllers.Subscriptions
             [FromQuery] string? country = null,
             [FromQuery] string? isp = null,
             [FromQuery] string? userAgent = null,
+            [FromQuery] string? startedFrom = null,
+            [FromQuery] string? startedTo = null,
             [FromQuery] string? sortBy = "startedAt",
             [FromQuery] string? sortOrder = "desc",
             CancellationToken cancellationToken = default)
@@ -173,6 +189,8 @@ namespace Fluxy.API.Controllers.Subscriptions
                 country,
                 isp,
                 userAgent,
+                startedFrom,
+                startedTo,
                 sortBy,
                 sortOrder,
                 out var queryErrors);
@@ -197,6 +215,8 @@ namespace Fluxy.API.Controllers.Subscriptions
                 query.CountryCode,
                 query.Isp,
                 query.UserAgent,
+                query.StartedFrom,
+                query.StartedTo,
                 query.SortBy,
                 query.SortOrder,
                 cancellationToken);

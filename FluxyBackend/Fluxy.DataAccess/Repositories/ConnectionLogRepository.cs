@@ -60,6 +60,8 @@ namespace Fluxy.DataAccess.Repositories
             string? countryCode,
             string? isp,
             string? userAgent,
+            DateTimeOffset? startedFrom,
+            DateTimeOffset? startedTo,
             ConnectionLogSortField sortBy,
             ConnectionLogSortOrder sortOrder,
             CancellationToken cancellationToken = default)
@@ -126,6 +128,21 @@ namespace Fluxy.DataAccess.Repositories
             if (!string.IsNullOrEmpty(userAgent))
             {
                 query = query.Where(log => log.UserAgent == userAgent);
+            }
+
+            // The start-time range, both ends inclusive and either one optional. Inclusive
+            // because the control names whole days: a `to` bound read as exclusive would drop the
+            // rows started during the very day the operator picked. The column is covered by the
+            // default `(started_at DESC, id DESC)` index, so this is a range scan rather than a
+            // reason for another index.
+            if (startedFrom is { } from)
+            {
+                query = query.Where(log => log.StartedAt >= from);
+            }
+
+            if (startedTo is { } to)
+            {
+                query = query.Where(log => log.StartedAt <= to);
             }
 
             // Counted under the same predicate the page is cut from, and before the order is

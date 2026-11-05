@@ -37,6 +37,8 @@ namespace Fluxy.API.Controllers.Support
         /// <param name="country">Country as typed, any case, or null.</param>
         /// <param name="isp">Provider to keep exactly, or null.</param>
         /// <param name="userAgent">User agent to keep exactly, or null.</param>
+        /// <param name="startedFrom">Earliest start instant, inclusive, as typed, or null.</param>
+        /// <param name="startedTo">Latest start instant, inclusive, as typed, or null.</param>
         /// <param name="sortBy">Column as typed; <c>startedAt</c> when absent.</param>
         /// <param name="sortOrder">Direction as typed; <c>desc</c> when absent.</param>
         /// <param name="errors">Rejected parameters, keyed by the query-string name.</param>
@@ -50,6 +52,8 @@ namespace Fluxy.API.Controllers.Support
             string? country,
             string? isp,
             string? userAgent,
+            string? startedFrom,
+            string? startedTo,
             string? sortBy,
             string? sortOrder,
             out Dictionary<string, string[]> errors)
@@ -63,6 +67,8 @@ namespace Fluxy.API.Controllers.Support
                 country,
                 isp,
                 userAgent,
+                startedFrom,
+                startedTo,
                 sortBy,
                 sortOrder,
                 out errors);

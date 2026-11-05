@@ -1,3 +1,4 @@
+using System.Globalization;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Utils;
 
@@ -135,6 +136,41 @@ namespace Fluxy.UnitTests.Subscriptions
             // send it again unchanged.
             Assert.Equal(expected, ConnectionLogQueryText.NameOf(kind));
             Assert.Equal(kind, ConnectionLogQueryText.ParseStreamKind(expected));
+        }
+
+        [Theory]
+        [InlineData("2026-05-01T10:00:00Z", "2026-05-01T10:00:00.0000000+00:00")]
+        [InlineData("2026-05-01t10:00:00z", "2026-05-01T10:00:00.0000000+00:00")]
+        [InlineData("2026-05-01T10:00:00+03:00", "2026-05-01T07:00:00.0000000+00:00")]
+        [InlineData("2026-05-01T10:00:00", "2026-05-01T10:00:00.0000000+00:00")]
+        [InlineData("2026-05-01T10:00", "2026-05-01T10:00:00.0000000+00:00")]
+        [InlineData("2026-05-01", "2026-05-01T00:00:00.0000000+00:00")]
+        [InlineData("2026-05-01T10:00:00.123Z", "2026-05-01T10:00:00.1230000+00:00")]
+        [InlineData(" 2026-05-01T10:00:00Z ", "2026-05-01T10:00:00.0000000+00:00")]
+        public void AnInstantIsReadAsTheMomentItNames(string text, string expected)
+        {
+            // The absent offset means UTC and a present one is honoured, so the same query means
+            // the same instant wherever the API runs. The expected value is the round-trip form,
+            // which is what the parser normalizes to.
+            Assert.Equal(
+                DateTimeOffset.Parse(expected, CultureInfo.InvariantCulture),
+                ConnectionLogQueryText.ParseInstant(text));
+        }
+
+        [Theory]
+        [InlineData("not-a-date")]
+        [InlineData("05/01/2026")]
+        [InlineData("May 1 2026")]
+        [InlineData("2026-13-01T10:00:00Z")]
+        [InlineData("2026-05-01T10:00:00+3")]
+        [InlineData("")]
+        [InlineData("   ")]
+        [InlineData(null)]
+        public void AnInstantThatNamesNoMomentIsNull(string? text)
+        {
+            // Null is the only refusal signal here; the query parser decides whether null means
+            // "blank, therefore no bound" or "broken, therefore refused".
+            Assert.Null(ConnectionLogQueryText.ParseInstant(text));
         }
     }
 }

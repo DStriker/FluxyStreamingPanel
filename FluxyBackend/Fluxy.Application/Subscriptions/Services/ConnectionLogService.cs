@@ -54,6 +54,8 @@ namespace Fluxy.Application.Subscriptions.Services
             string? countryCode,
             string? isp,
             string? userAgent,
+            DateTimeOffset? startedFrom,
+            DateTimeOffset? startedTo,
             ConnectionLogSortField sortBy,
             ConnectionLogSortOrder sortOrder,
             CancellationToken cancellationToken = default)
@@ -70,6 +72,8 @@ namespace Fluxy.Application.Subscriptions.Services
                 countryCode,
                 isp,
                 userAgent,
+                startedFrom,
+                startedTo,
                 sortBy,
                 sortOrder,
                 cancellationToken);

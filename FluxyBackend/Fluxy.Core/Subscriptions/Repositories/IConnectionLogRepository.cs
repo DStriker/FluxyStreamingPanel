@@ -41,6 +41,8 @@ namespace Fluxy.Core.Subscriptions.Repositories
         /// <param name="countryCode">Upper-case ISO alpha-2 country to keep, or null.</param>
         /// <param name="isp">Provider to keep, compared exactly, or null.</param>
         /// <param name="userAgent">User agent to keep, compared exactly, or null.</param>
+        /// <param name="startedFrom">Earliest <c>started_at</c> to keep, inclusive, or null.</param>
+        /// <param name="startedTo">Latest <c>started_at</c> to keep, inclusive, or null.</param>
         /// <param name="sortBy">Column to order by.</param>
         /// <param name="sortOrder">Which way to run.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -57,6 +59,8 @@ namespace Fluxy.Core.Subscriptions.Repositories
             string? countryCode,
             string? isp,
             string? userAgent,
+            DateTimeOffset? startedFrom,
+            DateTimeOffset? startedTo,
             ConnectionLogSortField sortBy,
             ConnectionLogSortOrder sortOrder,
             CancellationToken cancellationToken = default);

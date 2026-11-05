@@ -27,6 +27,8 @@ namespace Fluxy.UnitTests.Subscriptions
             string? country = null,
             string? isp = null,
             string? userAgent = null,
+            string? startedFrom = null,
+            string? startedTo = null,
             string? sortBy = null,
             string? sortOrder = null)
         {
@@ -40,6 +42,8 @@ namespace Fluxy.UnitTests.Subscriptions
                 country,
                 isp,
                 userAgent,
+                startedFrom,
+                startedTo,
                 sortBy,
                 sortOrder,
                 out var errors);
@@ -64,6 +68,8 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Null(query.CountryCode);
             Assert.Null(query.Isp);
             Assert.Null(query.UserAgent);
+            Assert.Null(query.StartedFrom);
+            Assert.Null(query.StartedTo);
             Assert.Equal(ConnectionLogSortField.StartedAt, query.SortBy);
             Assert.Equal(ConnectionLogSortOrder.Descending, query.SortOrder);
         }
@@ -71,10 +77,18 @@ namespace Fluxy.UnitTests.Subscriptions
         [Fact]
         public void AnEmptyValueMeansTheSameAsAnAbsentOne()
         {
-            var query = Parse(kind: "", state: "   ", sortBy: "", sortOrder: " ");
+            var query = Parse(
+                kind: "",
+                state: "   ",
+                startedFrom: " ",
+                startedTo: "",
+                sortBy: "",
+                sortOrder: " ");
 
             Assert.Equal(ConnectionStreamKind.VideoStream, query.StreamKind);
             Assert.False(query.LiveOnly);
+            Assert.Null(query.StartedFrom);
+            Assert.Null(query.StartedTo);
             Assert.Equal(ConnectionLogSortField.StartedAt, query.SortBy);
             Assert.Equal(ConnectionLogSortOrder.Descending, query.SortOrder);
         }
@@ -96,6 +110,8 @@ namespace Fluxy.UnitTests.Subscriptions
                 country: "de",
                 isp: " Example ISP ",
                 userAgent: " Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140 ",
+                startedFrom: "2026-05-01T00:00:00Z",
+                startedTo: "2026-05-02T00:00:00+03:00",
                 sortBy: "endedAt",
                 sortOrder: "asc");
 
@@ -110,6 +126,14 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Equal(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140",
                 query.UserAgent);
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                query.StartedFrom);
+            // An offset that is present is honoured and normalized to UTC, because the caller
+            // meant that instant rather than a wall-clock reading of the server's zone.
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 21, 0, 0, TimeSpan.Zero),
+                query.StartedTo);
             Assert.Equal(ConnectionLogSortField.EndedAt, query.SortBy);
             Assert.Equal(ConnectionLogSortOrder.Ascending, query.SortOrder);
         }
@@ -127,6 +151,11 @@ namespace Fluxy.UnitTests.Subscriptions
         [InlineData("streamId", "not-a-uuid")]
         [InlineData("country", "XX")]
         [InlineData("country", "Germany")]
+        [InlineData("startedFrom", "not-a-date")]
+        [InlineData("startedFrom", "05/01/2026")]
+        [InlineData("startedFrom", "2026-13-01T10:00:00Z")]
+        [InlineData("startedTo", "tomorrow")]
+        [InlineData("startedTo", "2026-05-01T10:00:00+3")]
         public void AValueThatNamesNothingIsRefusedUnderItsOwnParameter(
             string parameter,
             string value)
@@ -141,6 +170,8 @@ namespace Fluxy.UnitTests.Subscriptions
                 parameter == "country" ? value : null,
                 null,
                 null,
+                parameter == "startedFrom" ? value : null,
+                parameter == "startedTo" ? value : null,
                 parameter == "sortBy" ? value : null,
                 parameter == "sortOrder" ? value : null,
                 out var errors);
@@ -159,6 +190,8 @@ namespace Fluxy.UnitTests.Subscriptions
             var query = ConnectionLogQuery.TryParse(
                 "streamkind",
                 "finished",
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -193,6 +226,70 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Null(query.CountryCode);
             Assert.Null(query.Isp);
             Assert.Null(query.UserAgent);
+        }
+
+        [Fact]
+        public void EitherBoundOfTheRangeMayBeGivenWithoutTheOther()
+        {
+            // Two independent bounds, not one interval object: a caller asking for "everything
+            // since the 1st" must be able to say exactly that.
+            var fromOnly = Parse(startedFrom: "2026-05-01T00:00:00Z");
+
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                fromOnly.StartedFrom);
+            Assert.Null(fromOnly.StartedTo);
+
+            var toOnly = Parse(startedTo: "2026-05-01T00:00:00Z");
+
+            Assert.Null(toOnly.StartedFrom);
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                toOnly.StartedTo);
+        }
+
+        [Fact]
+        public void ABareDateIsThatDaysMidnightUtcAndACaseFoldedInstantIsTheSameMoment()
+        {
+            // A bare date is the day's midnight UTC - the convention the subscription expiry
+            // already follows - and ISO 8601's `t`/`z` separators may be spelled in either case.
+            var bareDate = Parse(startedFrom: "2026-05-01");
+
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                bareDate.StartedFrom);
+
+            var folded = Parse(startedFrom: "2026-05-01t10:00:00z");
+
+            Assert.Equal(
+                new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero),
+                folded.StartedFrom);
+        }
+
+        [Fact]
+        public void TwoBrokenBoundsAreReportedUnderTheirOwnParameters()
+        {
+            // The range is sent as one control but parsed as two parameters, and a caller wrong
+            // about both must be told both - the rule every other parameter here follows.
+            var query = ConnectionLogQuery.TryParse(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "yesterday",
+                "tomorrow",
+                null,
+                null,
+                out var errors);
+
+            Assert.Null(query);
+            Assert.True(errors.ContainsKey("startedFrom"));
+            Assert.True(errors.ContainsKey("startedTo"));
         }
 
         [Fact]

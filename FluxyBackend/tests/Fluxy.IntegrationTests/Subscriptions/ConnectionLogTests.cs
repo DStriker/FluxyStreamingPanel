@@ -239,6 +239,151 @@ namespace Fluxy.IntegrationTests.Subscriptions
         }
 
         [Fact]
+        public async Task TheStartTimeRangeNarrowsTheListAndTheTotalWithEachBoundOptional()
+        {
+            var (_, subscription) = await ArrangeAsync();
+            var stream = await CreateVideoStreamAsync("News");
+
+            await using var connection = await Fixture.OpenConnectionAsync();
+
+            // Three rows one hour apart: 09:00, 10:00 and 11:00 on the same day. The range is
+            // asserted against these three so that a bound off by one row - the classic
+            // inclusive/exclusive mistake - is told apart from the right answer.
+            var early = await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(9),
+                EndedAt(9));
+            var middle = await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(10),
+                EndedAt(10));
+            var late = await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(11),
+                EndedAt(11));
+
+            // From only, from boundary inclusive: the row started exactly at the bound stays.
+            await AssertRangeAsync("?startedFrom=2026-05-01T10:00:00Z", late, middle);
+
+            // To only, to boundary inclusive: the row started exactly at the bound stays.
+            await AssertRangeAsync("?startedTo=2026-05-01T10:00:00Z", middle, early);
+
+            // Both bounds, inclusive on each end.
+            await AssertRangeAsync(
+                "?startedFrom=2026-05-01T10:00:00Z&startedTo=2026-05-01T10:00:00Z",
+                middle);
+
+            // The whole day, as the screen's picker sends it: the inclusive upper bound is the
+            // last representable instant of the day rather than its midnight.
+            await AssertRangeAsync(
+                "?startedFrom=2026-05-01T00:00:00Z&startedTo=2026-05-01T23:59:59.999Z",
+                late,
+                middle,
+                early);
+
+            // An offset that is present is honoured: 13:00+03:00 is the same instant as 10:00Z.
+            await AssertRangeAsync("?startedFrom=2026-05-01T13:00:00%2B03:00", late, middle);
+
+            // A bare date is that day's midnight UTC on either side, which is exactly why the
+            // screen sends the *last millisecond* of the day it picked as the end: "from 1 May"
+            // admits the whole day, while "until 1 May" stops at its midnight.
+            await AssertRangeAsync("?startedFrom=2026-05-01", late, middle, early);
+            await AssertRangeAsync("?startedTo=2026-05-01");
+
+            // An inverted range is not refused as a conflict: it is a predicate nothing
+            // satisfies, so the answer is an empty page with a total of zero - the same answer
+            // any other filter that matches nothing gives.
+            await AssertRangeAsync(
+                "?startedFrom=2026-05-02T00:00:00Z&startedTo=2026-05-01T00:00:00Z");
+        }
+
+        [Fact]
+        public async Task AStartTimeRangeCombinesWithTheOtherFilters()
+        {
+            var (_, subscription) = await ArrangeAsync();
+            var stream = await CreateVideoStreamAsync("News");
+
+            await using var connection = await Fixture.OpenConnectionAsync();
+
+            // Two rows inside the range, one outside it, and the in-range rows differ by their
+            // stored country. The combined request must answer only the intersection: a range
+            // that replaced the other predicate rather than joining it would return both rows
+            // inside the range, and one applied after paging would answer the wrong total.
+            var insideDe = await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(10),
+                EndedAt(10),
+                countryCode: "DE");
+            var insideFr = await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(11),
+                EndedAt(11),
+                countryCode: "FR");
+            await PlantAsync(
+                connection,
+                subscription,
+                ConnectionStreamKind.VideoStream,
+                stream,
+                StartedAt(8),
+                EndedAt(8),
+                countryCode: "DE");
+
+            using var response = await GetAsync(
+                "/admin/connection-logs?startedFrom=2026-05-01T09:00:00Z&country=DE");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(1, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(insideDe, FirstId(body.RootElement));
+
+            _ = insideFr;
+        }
+
+        [Fact]
+        public async Task AStartTimeBoundThatNamesNoInstantIsRefusedUnderItsOwnParameter()
+        {
+            await ArrangeAsync();
+
+            foreach (var (parameter, value) in new[]
+            {
+                ("startedFrom", "not-a-date"),
+                ("startedFrom", "05/01/2026"),
+                ("startedFrom", "2026-13-01T10:00:00Z"),
+                ("startedTo", "tomorrow"),
+                ("startedTo", "2026-05-01T10:00:00%2B3")
+            })
+            {
+                using var refused = await GetAsync($"/admin/connection-logs?{parameter}={value}");
+                await AssertCodeAsync(refused, HttpStatusCode.BadRequest, "validation_failed");
+
+                using var refusedBody = await ReadJsonAsync(refused);
+                Assert.True(
+                    refusedBody.RootElement.GetProperty("errors").TryGetProperty(parameter, out _),
+                    $"no errors.{parameter} for {parameter}={value}: {refusedBody.RootElement}");
+            }
+
+            // A blank bound is absent rather than a refusal, the same rule every other filter
+            // follows: an empty value names no instant and is not a broken one.
+            using var blank = await GetAsync("/admin/connection-logs?startedFrom=&startedTo=%20");
+            Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+        }
+
+        [Fact]
         public async Task EveryFilterNarrowsTheListAndTheTotal()
         {
             var (_, subscription) = await ArrangeAsync();
@@ -879,6 +1024,22 @@ namespace Fluxy.IntegrationTests.Subscriptions
             using var body = await ReadJsonAsync(response);
             Assert.Equal(1, body.RootElement.GetProperty("total").GetInt32());
             Assert.Equal(expectedId, FirstId(body.RootElement));
+        }
+
+        /// <summary>
+        /// Asserts that a range query answers exactly the named rows, in order, and that `total`
+        /// carries the same count - the half a page-only assertion cannot see.
+        /// </summary>
+        private async Task AssertRangeAsync(string query, params Guid[] expectedIds)
+        {
+            using var response = await GetAsync($"/admin/connection-logs{query}");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(expectedIds.Length, body.RootElement.GetProperty("total").GetInt32());
+            Assert.Equal(
+                expectedIds,
+                Ids(body.RootElement.GetProperty("items")));
         }
 
         private Task<HttpResponseMessage> GetAsync(string path)

@@ -269,4 +269,4 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/admin-series.md](docs/admin-series.md) | `admin/series` and `/episodes` CRUD, add-season folder scan (`series_season_created`), series/episode bulk |
 | [docs/admin-epg-sources.md](docs/admin-epg-sources.md) | `admin/epg-sources` programme guide source CRUD, `/channels` stream join, `days_keep`/`epg_source_in_use` |
 | [docs/admin-subscriptions.md](docs/admin-subscriptions.md) | `admin/subscriptions` CRUD, tariff-plan derivation and clearing, expiry/prolong arithmetic, subscription bulk |
-| [docs/admin-connection-logs.md](docs/admin-connection-logs.md) | `admin/connection-logs` list/filters, clear-all `DELETE`, `activeConnectionCount` on subscriptions |
+| [docs/admin-connection-logs.md](docs/admin-connection-logs.md) | `admin/connection-logs` list/filters (including the inclusive `startedFrom`/`startedTo` range), clear-all `DELETE`, `activeConnectionCount` on subscriptions |
