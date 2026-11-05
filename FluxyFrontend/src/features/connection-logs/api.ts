@@ -37,7 +37,8 @@ export const CONNECTION_LOGS_PAGE_SIZE = 20
  *
  * All eight are optional and each is a value the endpoint compares exactly, except `search`,
  * which is the shared free-text box. `country` is stored upper case on the row and matched
- * case-insensitively by the server; `userAgent` is matched exactly, case included.
+ * case-insensitively by the server; `userAgent` is matched exactly, case included. The two
+ * start-time bounds narrow the row's own `started_at` and are inclusive on both ends.
  */
 export interface ConnectionLogFilters {
   /** Subscription to keep, or null/absent for every subscription. */
@@ -61,6 +62,20 @@ export interface ConnectionLogFilters {
    * follow beside it.
    */
   userAgent?: string | null
+  /**
+   * Earliest start instant to keep, inclusive, as an ISO 8601 date-time.
+   *
+   * Written by the toolbar's range picker as the first millisecond of the chosen day in the
+   * account's zone (see `startRange.ts`); absent means no lower bound.
+   */
+  startedFrom?: string | null
+  /**
+   * Latest start instant to keep, inclusive, as an ISO 8601 date-time.
+   *
+   * The last millisecond of the chosen day in the account's zone, so the day the operator
+   * picked as the end is not lost; absent means no upper bound.
+   */
+  startedTo?: string | null
 }
 
 /** Everything one page request carries. */
@@ -96,6 +111,8 @@ export const getConnectionLogs = ({
   country,
   isp,
   userAgent,
+  startedFrom,
+  startedTo,
   sortBy,
   sortOrder,
   signal,
@@ -117,6 +134,8 @@ export const getConnectionLogs = ({
   if (country) query.set('country', country)
   if (isp) query.set('isp', isp)
   if (userAgent) query.set('userAgent', userAgent)
+  if (startedFrom) query.set('startedFrom', startedFrom)
+  if (startedTo) query.set('startedTo', startedTo)
 
   return apiGet<ConnectionLogList>(`/admin/connection-logs?${query.toString()}`, signal)
 }

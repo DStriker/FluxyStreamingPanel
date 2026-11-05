@@ -3247,8 +3247,44 @@ async function main() {
     `rendered ${liveLogsHtml.length} bytes`,
   )
 
+  // The range is the activity view's alone: the live page is "every session still open", so a
+  // start bound there would narrow the list with no control on screen saying so. Both the picker
+  // and its tag must be absent - and the page must not send the two parameters either, which
+  // `startRangeForMode` pins in `tests/features/connection-logs/startRange.test.ts` because a
+  // render never sees the request.
+  check(
+    'the live log draws no start-time range control and no range tag',
+    !liveLogsHtml.includes('Started from') &&
+      !liveLogsHtml.includes('Started until') &&
+      !liveLogsHtml.includes('Started:') &&
+      !liveLogsHtml.includes('ant-picker-range'),
+    `rendered ${liveLogsHtml.length} bytes with no range control`,
+  )
+
+  // A stale or hand-edited live address carrying the two bounds must be **ignored**, not honoured
+  // and not stripped: no control is drawn, no tag appears, and - because the page reads the range
+  // through `startRangeForMode` - the request is the plain live one.
+  const staleLiveRangeHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/live-connections?startedFrom=2026-05-01T00%3A00%3A00.000Z&startedTo=2026-05-03T23%3A59%3A59.999Z',
+      withQuery(<AntApp>
+        <ConnectionLogsPage sectionKey="nav.items.liveConnections" />
+      </AntApp>),
+    ),
+  )
+  check(
+    'a stale range in a live address draws no control and no tag',
+    staleLiveRangeHtml.includes('>Live connections<') &&
+      !staleLiveRangeHtml.includes('Started from') &&
+      !staleLiveRangeHtml.includes('Started:') &&
+      /startRangeForMode\(searchParams, spec\.showsStartRange\)/.test(connectionLogsPageSource),
+    `rendered ${staleLiveRangeHtml.length} bytes with a stale range in the address`,
+  )
+
   // The toolbar order the specification names, asserted by the index of the text: auto-refresh,
-  // the search box, then the three filters, the width reset, and the clear command.
+  // the search box, the owner and stream pickers, the medium switch, the width reset, and the
+  // clear command. The start-time range is **not** in this row any more - it is the secondary
+  // row below, and the next check pins that placement.
   const logToolbar = [
     ['auto-refresh', liveLogsHtml.indexOf('Pause auto refresh')],
     ['search', liveLogsHtml.indexOf('Search by IP address, user agent or provider')],
@@ -3265,6 +3301,55 @@ async function main() {
     'the connection-log toolbar runs auto-refresh, search, owner, stream, medium, width reset, clear',
     logToolbarOrdered,
     logToolbar.map(([name, position]) => `${name}@${position}`).join(', '),
+  )
+
+  // The range's own row: after the card head (whose last control is "Clear all logs") and inside
+  // the card body before the table, which is the owner's "separate line above the table" rather
+  // than a control squeezed into the heading. Index order is enough: the head, the body's first
+  // child (the picker), then the tag row and the table.
+  check(
+    'the activity log draws the start-time range on its own row between the card head and the table',
+    activityLogsHtml.includes('ant-card-head') &&
+      activityLogsHtml.indexOf('Started from') > activityLogsHtml.indexOf('Clear all logs') &&
+      activityLogsHtml.indexOf('Started from') > activityLogsHtml.indexOf('ant-card-body') &&
+      activityLogsHtml.indexOf('Started from') < activityLogsHtml.indexOf('ant-table'),
+    `range@${activityLogsHtml.indexOf('Started from')}, head clear@${activityLogsHtml.indexOf('Clear all logs')}, body@${activityLogsHtml.indexOf('ant-card-body')}, table@${activityLogsHtml.indexOf('ant-table')}`,
+  )
+
+  // The range is a filter like every other one: a range in the address must be drawn back into
+  // the picker and shown as a closable tag. `?startedFrom=` is in the render because that is
+  // what a hand-edited link or a saved address carries, and the control must not look empty over
+  // a filtered list.
+  const rangedLogsHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/connection-logs?startedFrom=2026-05-01T00%3A00%3A00.000Z&startedTo=2026-05-03T23%3A59%3A59.999Z',
+      withQuery(
+        <AntApp>
+          <ConnectionLogsPage sectionKey="nav.items.subscriptionActivity" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'a start-time range in the address is drawn as a closable filter tag',
+    rangedLogsHtml.includes('Started:') &&
+      rangedLogsHtml.includes('ant-tag-close-icon'),
+    `rendered ${rangedLogsHtml.length} bytes with the range filter`,
+  )
+
+  // Both bounds are one control over two parameters, so closing its tag must clear both. The
+  // clear is one `chooseRange(null)` call, which writes both keys: two separate `choose` calls
+  // would read the half-written range in between. No click runs under `renderToStaticMarkup`, so
+  // this half is read off the page's source - the same treatment the kill stub gets.
+  check(
+    'the range tag clears both bounds in one navigation',
+    /key: 'startedRange',[\s\S]{0,400}?clear: \(\) => chooseRange\(null\)/.test(
+      connectionLogsPageSource,
+    ) &&
+      /const chooseRange = \(value[\s\S]{0,600}?withFilter\(searchParams, STARTED_FROM_KEY[\s\S]{0,300}?withFilter\(withFrom, STARTED_TO_KEY/.test(
+        connectionLogsPageSource,
+      ),
+    'the range tag and the single-write range update are both present',
   )
 
   // The `subscriptionId` the address arrived with is drawn as a closable tag - it is a filter

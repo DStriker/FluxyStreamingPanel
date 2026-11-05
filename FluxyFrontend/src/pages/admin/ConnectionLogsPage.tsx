@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { App, Button, Card, Segmented, Select, Space, Tag, Typography } from 'antd'
+import { App, Button, Card, DatePicker, Segmented, Select, Space, Tag, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
+import type { Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { ClearOutlined, PauseCircleOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons'
 import { CONNECTION_LOGS_PAGE_SIZE } from '../../features/connection-logs/api'
 import type { ConnectionLogSortField, ConnectionLogState } from '../../features/connection-logs/api'
 import type { ConnectionLog, ConnectionStreamKind } from '../../features/connection-logs/types'
 import { durationText } from '../../features/connection-logs/duration'
+import {
+  STARTED_FROM_KEY,
+  STARTED_TO_KEY,
+  rangeFromPicker,
+  rangePickerValue,
+  startRangeForMode,
+} from '../../features/connection-logs/startRange'
 import {
   ACTIVITY_COLUMN_KEYS,
   ACTIVITY_COLUMN_WIDTHS,
@@ -29,7 +37,7 @@ import type { ResizableHeaderCellProps, RowAction } from '../../components/table
 import { useColumnWidths, useServerTable } from '../../hooks/table'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
-import { formatTimestamp } from '../../utils/dateFormat'
+import { formatDay, formatTimestamp } from '../../utils/dateFormat'
 import { hinted } from '../../utils/hinted'
 import { messageForError, successTextFor } from '../../utils/http'
 import { enumParam, withFilter } from '../../utils/tableParams'
@@ -62,23 +70,34 @@ const SECTION_MODES: Record<string, ConnectionLogMode> = {
 }
 
 /**
- * What each mode asks the endpoint for, and the column set and widths it draws.
+ * What each mode asks the endpoint for, and the controls, column set and widths it draws.
  *
  * The numbers it carries come from `features/connection-logs/layout.ts` rather than being
- * written here: the two modes disagree about all three of the column list, the starting
- * widths and the storage key, and a page that held them inline was a page where changing one
- * of the three could not be checked from outside. See that module for the widths themselves
- * and for the invariant the unit test pins.
+ * written here: the two modes disagree about the column list, the starting widths and the
+ * storage key, and a page that held them inline was a page where changing one of them could
+ * not be checked from outside. See that module for the widths themselves and for the invariant
+ * the unit test pins. `showsStartRange` is the fourth difference and lives here rather than in
+ * `layout.ts` because it is a control's presence, not a measurement.
  */
 interface ConnectionLogModeSpec {
   /** The `state` parameter: live is `endedAt IS NULL`, activity is everything. */
   state: ConnectionLogState
   /**
-   * Whether this is the activity mode: it draws the end column, and it draws **no** actions
-   * column (a finished session has nothing to end). The live mode is the exact opposite on both
-   * counts, which is why one flag answers both questions rather than two that could disagree.
+   * Whether this mode draws the end column, and **no** actions column (a finished session has
+   * nothing to end). The live mode is the exact opposite on both counts, which is why one flag
+   * answers both questions rather than two that could disagree.
    */
   showsEnd: boolean
+  /**
+   * Whether this mode draws the start-time range control and sends its two bounds.
+   *
+   * **Only the activity view does.** The live view is "every session still open", and a start
+   * bound on it would narrow that to "still open and started since…" on a screen that shows no
+   * control saying so. A `startedFrom`/`startedTo` in a live address is therefore **ignored**
+   * rather than stripped - see `startRangeForMode` - and no range tag is drawn either, because
+   * the tag's only source is the range this flag admits.
+   */
+  showsStartRange: boolean
   /** The columns this mode draws, in order. */
   columns: readonly ConnectionLogColumnKey[]
   /** The width each of those columns starts at. */
@@ -91,6 +110,7 @@ const MODE_SPECS: Record<ConnectionLogMode, ConnectionLogModeSpec> = {
   live: {
     state: 'live',
     showsEnd: false,
+    showsStartRange: false,
     columns: LIVE_COLUMN_KEYS,
     widths: LIVE_COLUMN_WIDTHS,
     storageKey: COLUMN_WIDTHS_KEYS.live,
@@ -98,6 +118,7 @@ const MODE_SPECS: Record<ConnectionLogMode, ConnectionLogModeSpec> = {
   activity: {
     state: 'all',
     showsEnd: true,
+    showsStartRange: true,
     columns: ACTIVITY_COLUMN_KEYS,
     widths: ACTIVITY_COLUMN_WIDTHS,
     storageKey: COLUMN_WIDTHS_KEYS.activity,
@@ -223,6 +244,12 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     FILTER_KEYS.map((key) => [key, searchParams.get(key) || null]),
   ) as Record<FilterKey, string | null>
 
+  // The start-time range is two parameters but one control, so it is read and written as a
+  // pair rather than through `FILTER_KEYS`: closing its tag must clear both sides in one write.
+  // Read through the mode gate: the live view has no range control, so it sends no bounds even
+  // when the address carries them (they are ignored rather than stripped - see the module).
+  const startedRange = startRangeForMode(searchParams, spec.showsStartRange)
+
   const logsQuery = useConnectionLogs({
     kind,
     state: spec.state,
@@ -234,6 +261,8 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     country: filters.country,
     isp: filters.isp,
     userAgent: filters.userAgent,
+    startedFrom: startedRange.from,
+    startedTo: startedRange.to,
   })
   const { data: logs, loadError, loading } = tableResults(logsQuery)
 
@@ -328,6 +357,20 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     next.delete('streamId')
 
     setSearchParams(next, { replace: true })
+  }
+
+  /**
+   * Writes the whole start-time range in one navigation.
+   *
+   * The two bounds are one control, so they are one write: two `choose` calls would produce a
+   * read of the half-written range in between. Both writes drop `page`, which is why the second
+   * `withFilter` starts from the address the first one produced rather than from the original.
+   */
+  const chooseRange = (value: [Dayjs | null, Dayjs | null] | null) => {
+    const range = value ? rangeFromPicker(value, timeZone) : { from: null, to: null }
+    const withFrom = withFilter(searchParams, STARTED_FROM_KEY, range.from)
+
+    setSearchParams(withFilter(withFrom, STARTED_TO_KEY, range.to), { replace: true })
   }
 
   /**
@@ -541,8 +584,33 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
    * Every active filter as a closable tag, in a fixed order rather than the order they were
    * applied: a toolbar whose tags moved around as they were removed would be a row the visitor
    * has to re-read each time.
+   *
+   * A tag may carry its own `clear` when it stands for more than one parameter: the start-time
+   * range is one control but two query-string keys, and closing its tag must remove both in one
+   * navigation or the list would be re-read against half a range.
    */
-  const activeFilters: { key: FilterKey; label: string }[] = []
+  const activeFilters: { key: string; label: string; clear?: () => void }[] = []
+
+  // `startedRange` is already the mode-gated value (`startRangeForMode`), so the live view can
+  // never reach this branch: a screen with no picker shows no tag for a range it is not applying.
+  if (startedRange.from || startedRange.to) {
+    const from = formatDay(startedRange.from, locale, timeZone)
+    const to = formatDay(startedRange.to, locale, timeZone)
+
+    // A single-sided range names only the side that is set: a tag reading "– 1 May" would
+    // suggest the other end had been cleared rather than never given.
+    const label = from && to
+      ? t('connectionLogs.filters.startedRange', { from, to })
+      : from
+        ? t('connectionLogs.filters.startedRangeFrom', { from })
+        : t('connectionLogs.filters.startedRangeTo', { to })
+
+    activeFilters.push({
+      key: 'startedRange',
+      label,
+      clear: () => chooseRange(null),
+    })
+  }
 
   if (filters.country) {
     activeFilters.push({
@@ -595,7 +663,7 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
    * What the auto-refresh button says while it is greyed *or* live.
    *
    * It is the button's whole accessible name and its tooltip, because the control is icon-only:
-   * the row already shares its line with a medium switch, two pickers and the clear command,
+   * the heading already shares its line with a medium switch, two pickers and the clear command,
    * and a worded label would push the table sideways for a control that is one glyph wide.
    */
   const refreshTip = `${t(autoRefresh ? 'connectionLogs.pauseRefresh' : 'connectionLogs.resumeRefresh')} (${t('connectionLogs.autoRefreshHint', { seconds: AUTO_REFRESH_MS / 1000 })})`
@@ -686,6 +754,31 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
         </Space>
       }
     >
+      {/* The start-time range is a row of its own, under the card head and above the tag row and
+          the table: it is the one filter whose control is too wide to share the toolbar without
+          pushing the owner picker, the stream picker and the medium switch onto a second line
+          *inside* the heading. **The activity view alone draws it** - the live view is "every
+          session still open", and a start bound would narrow that on a screen showing no control
+          that says so (`spec.showsStartRange`, read by `startRangeForMode` too). The value is
+          derived from the address rather than held in state, so a drill-down link that already
+          carries a range arrives showing it; the conversion to the account's zone lives in
+          `startRange.ts`. */}
+      {spec.showsStartRange && (
+        <div style={{ marginBottom: 12 }}>
+          <DatePicker.RangePicker
+            allowClear
+            aria-label={t('connectionLogs.filterStartedRange')}
+            style={{ width: 250 }}
+            value={rangePickerValue(startedRange, timeZone)}
+            placeholder={[
+              t('connectionLogs.filterStartedFrom'),
+              t('connectionLogs.filterStartedTo'),
+            ]}
+            onChange={(value) => chooseRange(value as [Dayjs | null, Dayjs | null] | null)}
+          />
+        </div>
+      )}
+
       {activeFilters.length > 0 && (
         <Space wrap size={4} style={{ marginBottom: 12 }}>
           {activeFilters.map((filter) => (
@@ -694,6 +787,12 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
               closable
               onClose={(event) => {
                 event.preventDefault()
+
+                if (filter.clear) {
+                  filter.clear()
+                  return
+                }
+
                 choose(filter.key, null)
               }}
             >

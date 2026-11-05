@@ -2320,6 +2320,12 @@ const en = {
     // The toolbar's two pickers and the search box.
     filterAnyOwner: 'Any owner',
     filterAnyStream: 'Any stream',
+    // The start-time range control, on a row of its own above the table and on the activity
+    // view only: one accessible name for the pair, and the two sides' placeholders. The range
+    // is filtered on when the connection *started*.
+    filterStartedRange: 'Started between',
+    filterStartedFrom: 'Started from',
+    filterStartedTo: 'Started until',
     searchLabel: 'Search by IP address, user agent or provider',
     searchPlaceholder: 'IP address, user agent or provider',
     // An active filter as a closable tag. Each names the parameter it is, so a row with two
@@ -2332,6 +2338,11 @@ const en = {
       subscription: 'Subscription: {{value}}',
       owner: 'Owner: {{value}}',
       stream: 'Stream: {{value}}',
+      // The start-time range is one control over two parameters, so its tag names both ends in
+      // one label; a single-sided range names only the side that is set.
+      startedRange: 'Started: {{from}} – {{to}}',
+      startedRangeFrom: 'Started from: {{from}}',
+      startedRangeTo: 'Started until: {{to}}',
     },
     empty: 'No connections recorded yet.',
     noMatches: 'No connection matches these filters.',

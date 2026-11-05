@@ -17,6 +17,13 @@
 const dateFormatters = new Map<string, Intl.DateTimeFormat | null>()
 
 /**
+ * Day formatters, cached for the same reason the timestamp ones are: a toolbar filter tag is
+ * rebuilt on every list answer, and the expensive half is the constructor rather than the
+ * format.
+ */
+const dayFormatters = new Map<string, Intl.DateTimeFormat | null>()
+
+/**
  * A formatter for this locale and zone, or `null` when the zone cannot be formatted in.
  *
  * The refusal is cached as well as the answer: a zone stored by an older build, or one this
@@ -72,4 +79,52 @@ export function formatTimestamp(
     dateFormatterFor(locale, timeZone ?? undefined) ?? dateFormatterFor(locale, undefined)
 
   return formatter ? formatter.format(date) : '—'
+}
+
+/**
+ * One instant as the day it falls on, in the page's language and the account's zone - the label
+ * a date-range filter tag carries, where a time of day would be noise.
+ *
+ * The same two fallbacks as `formatTimestamp`, in the same order: a zone this ICU build rejects
+ * falls back to the browser's, and an unreadable value is answered as itself rather than as a
+ * dash, so a hand-edited tag still names what the address holds.
+ */
+export function formatDay(
+  value: string | null | undefined,
+  locale: string,
+  timeZone: string | null | undefined,
+): string {
+  if (!value) return ''
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const formatter =
+    dayFormatterFor(locale, timeZone ?? undefined) ?? dayFormatterFor(locale, undefined)
+
+  return formatter ? formatter.format(date) : value
+}
+
+/** A date-only formatter for this locale and zone, or `null` when the zone cannot be used. */
+function dayFormatterFor(
+  locale: string,
+  timeZone: string | undefined,
+): Intl.DateTimeFormat | null {
+  const key = `${locale}|${timeZone ?? ''}`
+  const cached = dayFormatters.get(key)
+  if (cached !== undefined) return cached
+
+  let formatter: Intl.DateTimeFormat | null = null
+
+  try {
+    formatter = new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      ...(timeZone ? { timeZone } : {}),
+    })
+  } catch {
+    formatter = null
+  }
+
+  dayFormatters.set(key, formatter)
+  return formatter
 }
