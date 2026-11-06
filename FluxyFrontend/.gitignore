@@ -6,6 +6,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Browser-check captures (docs/probes.md): read, reported, never committed.
+.tmp-runtime
+
 # logs
 logs
 *.log

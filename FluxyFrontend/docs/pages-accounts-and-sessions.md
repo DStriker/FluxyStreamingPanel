@@ -20,3 +20,37 @@
 - `src/features/user-groups/permissions.ts` holds `ALL_PERMISSIONS`, `OWNER` and `permissionsForRole` — the frontend's copy of which permissions each role owns, mirroring `UserPermissionCatalog` on the backend. It is what makes "a Client group has no boxes" a decision taken *before* a request rather than a refusal explained after one. All twenty-four permissions are owned by `Admin` today, so `permissionsForRole` answers `[]` for Client and Reseller; a permission added on the server must be added here and to the two locale `permissions.*` blocks, or its checkbox label degrades to the raw key. `probe:render` calls it directly — no render reaches it, since the add form opens at `Client` — and asserts Admin gets all of them while the other two get none, which is the precondition that keeps the bulk buttons from being dead code everywhere. **The last five pairs are the content resources' grants** — `viewStreams`/`editStreams`, `viewAudioStreams`/`editAudioStreams`, `viewVideoOnDemand`/`editVideoOnDemand`, `viewSeries`/`editSeries` and `viewEpgSources`/`editEpgSources` — and they are deliberately **not** the same pair: a group that may read the video streams may not read the audio ones, and a group that may read the catalogue may change neither.
 - `src/features/users/userStatus.ts` holds `combineStatus` — the frontend's copy of `UserStatusComposition.Combine`. An account's **effective** status is the most restrictive of its own and its group's (`Blocked` > `Unregistered` > `Registered`), and it is what the accounts list shows. The local `RESTRICTIVENESS` map exists because the `UserStatus` enum's *numbers* are in the wrong order for this question (`Unregistered=0, Registered=1, Blocked=2`) — comparing them directly would rank an unregistered account above a registered one. The map is written out rather than derived for exactly that reason: a numeric comparison here would compile, pass a glance, and be wrong.
 - `src/features/profile/loginGuardForm.ts` holds `GuardFieldValues`, `guardToFormValues` and `formValuesToGuard` — extracted out of `LoginGuardFields.tsx` because both flows (the profile card and this form) share them, and `react-refresh/only-export-components` flags non-component exports in a component's file. One conversion point so the two call sites cannot drift; the component file now exports only its component.
+
+- **The credit balance lives on three surfaces, and each states one of its rules.** The
+  reseller's own header chip (`AccountHeader`, `.layout-shell__credits`) draws the value from
+  the shared `['profile']` query and only for `session.role === 'Reseller'` - the two other
+  roles draw nothing, not a zero - and it is a `span`, not a control: the balance is a
+  statement. Its own class is what keeps it out of the `≤768px` rule that hides the username,
+  so the number survives the narrow bar. The accounts table draws it as a **second line inside
+  the group cell** (`features/users/components/UserGroupCell.tsx`) - one fact with the group it
+  belongs to, not a ninth column, which is what keeps the pinned 1190 sum - and only when the
+  row's role is `Reseller`; `0` is drawn and any other role draws nothing, not a dash. The form
+  (`UserFormPage`) has one `InputNumber` (`min={0}`, `precision={0}`, 200 px wide) directly
+  after the group select: enabled only while the watched group's role is `Reseller`, disabled
+  with `users.creditsHint` otherwise, keeping the typed value in the store while leaving it out
+  of the body, and its validator is `isCreditAmount` in `features/users/creditsField.ts`
+  (`validation.creditsInvalid`). The server keys its own refusal `credits`, which is the field's
+  name.
+
+- **`features/credit-logs/` is the balance's audit trail** (`GET`/`DELETE /admin/credit-logs`,
+  read behind `viewResellers`, wiped behind `editResellers`). `layout.ts` holds the five column
+  keys and widths (170/110/170/540/200 = **1190**), the storage key
+  `fluxy.creditLogs.columnWidths`, and the one key-to-field mapping the table needs: the
+  "Credits" header is keyed `credits` while the request says `sortBy=amount`. `creditLogActor.ts`
+  is the "Issued by" rule (an issuer on the row wins, so an admin-panel decrease names the admin;
+  a negative row with no issuer names the reseller, which is the future reseller-spent row; a
+  zero-or-positive row with no issuer is an em dash, the deleted-issuer case) and the tone
+  (`amount > 0` green, zero and negatives red), both unit-tested. The page is
+  `pages/admin/CreditLogsPage.tsx`: one `page-card` with a search / reseller picker / width reset
+  / danger clear in the head, the `RangePicker` on its own row in the body (`dateFrom`/`dateTo`,
+  inclusive, account-zone days via the shared `utils/dateRange.ts`), a closable range tag and a
+  closable reseller tag, and the reseller cell navigating to that reseller's edit form
+  (`${area}/users/${resellerId}`, the accounts table's own edit target) rather than filtering
+  again. Clear-all is gated on `editResellers` and never on data state, behind one
+  `modal.confirm` that names the whole table. `features/connection-logs/startRange.ts` is now a
+  thin wrapper over `utils/dateRange.ts` - the account-zone arithmetic the two tables share.
