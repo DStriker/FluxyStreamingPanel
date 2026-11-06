@@ -8,6 +8,7 @@ import {
   isMac,
   isPlaylistId,
   isUsableConnections,
+  replacesPlaylistId,
 } from '../../../src/features/subscriptions/subscriptionRules'
 
 /**
@@ -30,6 +31,19 @@ describe('isPlaylistId', () => {
     expect(isPlaylistId('0123456789ABCDEF0123456789ABCDEF')).toBe(false)
     expect(isPlaylistId('zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz')).toBe(false)
     expect(isPlaylistId('')).toBe(false)
+  })
+})
+
+describe('replacesPlaylistId', () => {
+  it('is false when there is no playlist id yet, which is the first generation', () => {
+    expect(replacesPlaylistId(null)).toBe(false)
+    expect(replacesPlaylistId(undefined)).toBe(false)
+    expect(replacesPlaylistId('')).toBe(false)
+    expect(replacesPlaylistId('   ')).toBe(false)
+  })
+
+  it('is true when an id is already there, so minting would replace it', () => {
+    expect(replacesPlaylistId('0123456789abcdef0123456789abcdef')).toBe(true)
   })
 })
 

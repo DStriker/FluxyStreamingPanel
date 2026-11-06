@@ -30,6 +30,20 @@ export const SUBSCRIPTION_CONNECTIONS_MAX = 10000
 export const isPlaylistId = (value: string): boolean => /^[0-9a-f]{32}$/.test(value)
 
 /**
+ * Whether minting a playlist id would replace one the subscription already holds.
+ *
+ * The first generation is not a replacement and asks no question: the strip offers it on a row
+ * with no playlist, and the create form mints one for a plan whose only service is the playlist.
+ * Only a row that already carries an id loses something when a new one is minted - the old id stops
+ * resolving the moment the patch lands - so that is the one path the confirmation guards.
+ *
+ * A blank string counts as "no playlist": an empty field is how the form says "not set", and the
+ * server stores `''` as a clear.
+ */
+export const replacesPlaylistId = (value: string | null | undefined): boolean =>
+  typeof value === 'string' && value.trim() !== ''
+
+/**
  * Whether a MAC is six pairs of hex digits with `:` or `-` between them.
  *
  * The server accepts either separator and either case and stores the canonical uppercase

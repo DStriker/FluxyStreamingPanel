@@ -27,6 +27,7 @@ import {
   isMac,
   isPlaylistId,
   isUsableConnections,
+  replacesPlaylistId,
 } from '../../features/subscriptions/subscriptionRules'
 import type { SubscriptionValues } from '../../features/subscriptions/api'
 import type { SubscriptionOutputFormat } from '../../features/subscriptions/types'
@@ -125,7 +126,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
 
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const session = useSession()
   const [form] = Form.useForm<SubscriptionValues>()
 
@@ -377,15 +378,38 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
    * alike - went somewhere no control read from. The `Input` is now the direct child of the named
    * item (the generate button lives in a `Form.Item` of its own), which is what makes any of these
    * writers visible.
+   *
+   * **The button asks before it replaces an id and mints silently when the field is empty.** The
+   * field is empty only on a first generation, which loses nothing; an id already typed or stored
+   * stops resolving the moment it is overwritten, so that path goes through the same question the
+   * table's strip asks. `replacesPlaylistId` holds the distinction.
    */
   const generatePlaylist = () => {
-    void generatePlaylistId
-      .mutateAsync({})
-      .then((answer) => {
-        form.setFields([{ name: 'playlistId', value: answer.playlistId, errors: [] }])
-        setDirty(true)
-      })
-      .catch((error) => void message.error(messageForError(error)))
+    const current = form.getFieldValue('playlistId') as string | null | undefined
+
+    const run = () => {
+      void generatePlaylistId
+        .mutateAsync({})
+        .then((answer) => {
+          form.setFields([{ name: 'playlistId', value: answer.playlistId, errors: [] }])
+          setDirty(true)
+        })
+        .catch((error) => void message.error(messageForError(error)))
+    }
+
+    if (!replacesPlaylistId(current)) {
+      run()
+      return
+    }
+
+    modal.confirm({
+      title: t('subscriptions.playlistRegenerateConfirmTitle'),
+      content: t('subscriptions.playlistRegenerateConfirmBody', { playlistId: current }),
+      okText: t('subscriptions.playlistRegenerateConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('actions.cancel'),
+      onOk: run,
+    })
   }
 
   const handleFinish = async (values: SubscriptionValues) => {

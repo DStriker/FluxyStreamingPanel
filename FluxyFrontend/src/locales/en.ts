@@ -2213,6 +2213,10 @@ const en = {
     generatePlaylist: 'Generate a playlist id',
     regeneratePlaylist: 'Regenerate',
     playlistIdLabel: 'Playlist id',
+    playlistRegenerateConfirmTitle: 'Generate a new playlist id?',
+    playlistRegenerateConfirmBody:
+      'The current id "{{playlistId}}" will stop working, and every device configured with it will lose access. A new id will be generated and saved in its place.',
+    playlistRegenerateConfirmOk: 'Regenerate',
     deleteConfirmTitle: 'Delete this subscription?',
     deleteConfirmBody:
       'The subscription of "{{name}}" and everything it carries will be removed. This cannot be undone.',

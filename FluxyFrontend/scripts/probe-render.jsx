@@ -2732,6 +2732,24 @@ async function main() {
   )
 
   check(
+    'the playlist regeneration asks first only when an id would be replaced',
+    // Both minting paths - the row strip's regenerate and the form's generate button - branch on
+    // `replacesPlaylistId` before opening the question, so the first generation stays one click.
+    // A static render draws neither dialog, so this reads the two sources the way the row-action
+    // order is read.
+    /if \(!replacesPlaylistId\(currentPlaylistId\)\) \{[\s\S]{0,120}?return/.test(
+      subscriptionsPageSource,
+    ) &&
+      /modal\.confirm\(\{[\s\S]{0,200}?playlistRegenerateConfirmTitle/.test(
+        subscriptionsPageSource,
+      ) &&
+      /if \(!replacesPlaylistId\(current\)\) \{[\s\S]{0,80}?return/.test(
+        readFileSync('src/pages/admin/SubscriptionFormPage.tsx', 'utf8'),
+      ),
+    'a mint path does not branch on replacesPlaylistId, or its question is not a modal.confirm',
+  )
+
+  check(
     'the subscriptions table has no expand column and its name header sorts the creation date',
     // The empty chevron column was both the wide left gap and the width that pushed the table past
     // the card (design decision 17). Both sortable headers are present.
@@ -4177,6 +4195,22 @@ async function main() {
   // split: the rule in `index.css` exists, names the class antd uses, and says this theme's
   // own primary - the very blue the selected row underneath it is filled with.
   const railCss = readFileSync('src/index.css', 'utf8')
+
+  check(
+    'the playlist regeneration question names the id that stops working, in both bundles',
+    // The dialog cannot be opened by a static render, so the wording is read through i18next: the
+    // body must carry the id placeholder (a question that does not say *what* disappears is not a
+    // confirmation), must differ from the title, and the same three keys are asserted in Russian
+    // because that bundle is the one a missing key silently falls back from.
+    ['en', 'ru'].every((lng) => {
+      const body = i18n.t('subscriptions.playlistRegenerateConfirmBody', { lng })
+      const title = i18n.t('subscriptions.playlistRegenerateConfirmTitle', { lng })
+      const ok = i18n.t('subscriptions.playlistRegenerateConfirmOk', { lng })
+
+      return body.includes('{{playlistId}}') && body !== title && ok !== title
+    }),
+    `en: "${i18n.t('subscriptions.playlistRegenerateConfirmBody', { lng: 'en' })}"`,
+  )
 
   check(
     'the prolongation questions name the date where one can be computed, and a sentence where it cannot',

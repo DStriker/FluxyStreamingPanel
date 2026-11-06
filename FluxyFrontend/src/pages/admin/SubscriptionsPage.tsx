@@ -33,7 +33,7 @@ import {
   UserSwitchOutlined,
 } from '@ant-design/icons'
 import { SUBSCRIPTIONS_PAGE_SIZE } from '../../features/subscriptions/api'
-import { isMac } from '../../features/subscriptions/subscriptionRules'
+import { isMac, replacesPlaylistId } from '../../features/subscriptions/subscriptionRules'
 import { projectedExpiry } from '../../features/subscriptions/prolongPreview'
 import type { BulkSubscriptionAction, SubscriptionSortField } from '../../features/subscriptions/api'
 import SubscriptionSubrows from '../../features/subscriptions/components/SubscriptionSubrows'
@@ -377,18 +377,47 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
    * The mint is its own request and the store is a field patch, because the two are different
    * things: the generator writes nothing, and the patch changes one field without touching the
    * ones a row strip never saw.
+   *
+   * **Replacing an existing id asks first; the first generation does not.** A row that already
+   * holds a playlist loses something the moment the patch lands - the old id stops resolving and
+   * every device still configured with it loses access - so the operator is told which id goes
+   * before it goes. The add line only ever appears on a row with no playlist, so that path is
+   * untouched by the question. The rule itself is `replacesPlaylistId` in `subscriptionRules`,
+   * unit-tested there; the branch below is only its call site.
    */
   const mintPlaylist = (subscription: Subscription) => {
-    void generatePlaylistId
-      .mutateAsync({})
-      .then((answer) =>
-        patchField.mutateAsync({
+    const currentPlaylistId = subscription.playlistId
+
+    const run = async () => {
+      try {
+        const answer = await generatePlaylistId.mutateAsync({})
+
+        await patchField.mutateAsync({
           id: subscription.id,
           patch: { playlistId: answer.playlistId },
-        }),
-      )
-      .then(() => void subscriptionsQuery.refetch())
-      .catch((error) => void message.error(messageForError(error)))
+        })
+
+        void subscriptionsQuery.refetch()
+      } catch (error) {
+        message.error(messageForError(error))
+      }
+    }
+
+    if (!replacesPlaylistId(currentPlaylistId)) {
+      void run()
+      return
+    }
+
+    modal.confirm({
+      title: t('subscriptions.playlistRegenerateConfirmTitle'),
+      content: t('subscriptions.playlistRegenerateConfirmBody', {
+        playlistId: currentPlaylistId,
+      }),
+      okText: t('subscriptions.playlistRegenerateConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('actions.cancel'),
+      onOk: run,
+    })
   }
 
   /**

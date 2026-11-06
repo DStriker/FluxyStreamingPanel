@@ -2198,6 +2198,10 @@ const ru: Translation = {
     generatePlaylist: 'Сгенерировать ID плейлиста',
     regeneratePlaylist: 'Перегенерировать',
     playlistIdLabel: 'ID плейлиста',
+    playlistRegenerateConfirmTitle: 'Сгенерировать новый ID плейлиста?',
+    playlistRegenerateConfirmBody:
+      'ID «{{playlistId}}» будет заменён новым. Устройства, настроенные на старый ID, потеряют доступ.',
+    playlistRegenerateConfirmOk: 'Сгенерировать',
     deleteConfirmTitle: 'Удалить подписку?',
     deleteConfirmBody:
       'Подписка «{{name}}» и всё, что она содержит, будет удалена. Это действие необратимо.',
