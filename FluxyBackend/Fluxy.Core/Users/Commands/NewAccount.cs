@@ -51,5 +51,11 @@ namespace Fluxy.Core.Users.Commands
 
         /// <summary>Whether a session is bound to the address it was opened from.</summary>
         public bool BindSessionToIp { get; init; }
+
+        /// <summary>
+        /// Initial credit balance, or zero when the caller names none. Every role stores the
+        /// column; only a reseller is ever given a non-zero value.
+        /// </summary>
+        public int Credits { get; init; }
     }
 }

@@ -22,6 +22,9 @@ namespace Fluxy.API.Contracts.Profile
         /// <summary>Access level of the account, as the name of the enum member.</summary>
         public required string Role { get; init; }
 
+        /// <summary>Credit balance of the account. Zero for every role but a reseller.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>
         /// Everything the account's group allows it to do, each as the name a client sends
         /// back: <c>viewClients</c>, <c>editGroups</c>-style camelCase, in catalog order.

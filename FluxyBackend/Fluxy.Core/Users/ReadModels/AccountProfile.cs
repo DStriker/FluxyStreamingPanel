@@ -31,6 +31,9 @@ namespace Fluxy.Core.Users.ReadModels
         /// <summary>Access level of the account.</summary>
         public required UserRole Role { get; init; }
 
+        /// <summary>Credit balance of the account, zero for every role but a reseller.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>
         /// IANA identifier of the chosen display time zone, or null when the visitor has not
         /// chosen one. Not required, so a profile always renders even before one exists.

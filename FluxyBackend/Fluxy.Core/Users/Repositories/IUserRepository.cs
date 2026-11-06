@@ -236,6 +236,22 @@ namespace Fluxy.Core.Users.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Stages a new credit balance on the account's row.
+        /// </summary>
+        /// <remarks>
+        /// The repository writes the value it is given; whether the value is non-negative, and
+        /// whether a reseller is the only role that may hold a non-zero one, are rules of the
+        /// service and are checked there before this is called.
+        /// </remarks>
+        /// <param name="userId">Account being changed.</param>
+        /// <param name="credits">Balance the row must carry.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task SetCreditsAsync(
+            Guid userId,
+            int credits,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Stages a new password hash on the account's row.
         /// </summary>
         /// <param name="userId">Account being changed.</param>

@@ -52,5 +52,11 @@ namespace Fluxy.Core.Users.Commands
         /// caller never speaks would be a guard nobody can read.
         /// </summary>
         public LoginGuardSettings? LoginGuard { get; init; }
+
+        /// <summary>
+        /// New credit balance, or null to leave it alone. A value is accepted only for an account
+        /// that is (or is being moved to) a reseller group.
+        /// </summary>
+        public int? Credits { get; init; }
     }
 }

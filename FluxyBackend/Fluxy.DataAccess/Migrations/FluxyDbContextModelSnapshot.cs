@@ -479,6 +479,49 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("content_categories", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.CreditLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<Guid?>("IssuedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issued_by_id");
+
+                    b.Property<Guid>("ResellerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reseller_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuedById");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("ResellerId", "CreatedAt");
+
+                    b.ToTable("credit_logs", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.EpgDataEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1180,6 +1223,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("Credits")
+                        .HasColumnType("integer")
+                        .HasColumnName("credits");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
@@ -1763,6 +1810,20 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasOne("Fluxy.DataAccess.Entities.SubscriptionEntity", null)
                         .WithMany()
                         .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.CreditLogEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ResellerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

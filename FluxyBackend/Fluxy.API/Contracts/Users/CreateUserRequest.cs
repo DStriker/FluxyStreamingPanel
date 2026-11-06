@@ -52,5 +52,11 @@ namespace Fluxy.API.Contracts.Users
         /// Login guard to create the account with, or null to leave every list empty.
         /// </summary>
         public PatchLoginGuardRequest? LoginGuard { get; init; }
+
+        /// <summary>
+        /// Initial credit balance, or null when the form named none. Accepted only when the
+        /// account joins a reseller group; a negative value is refused.
+        /// </summary>
+        public int? Credits { get; init; }
     }
 }

@@ -576,6 +576,7 @@ namespace Fluxy.UnitTests.Subscriptions
 
             public Task<AdminUserOutcome> CreateAsync(
                 Core.Users.Commands.NewUser user,
+                Guid actingUserId,
                 IReadOnlySet<UserPermission> granted,
                 CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();

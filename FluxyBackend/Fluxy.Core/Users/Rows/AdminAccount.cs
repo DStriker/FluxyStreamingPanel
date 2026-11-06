@@ -41,5 +41,8 @@ namespace Fluxy.Core.Users.Rows
 
         /// <summary>State of the group, which combines with the account's own.</summary>
         public required UserStatus GroupStatus { get; init; }
+
+        /// <summary>Stored credit balance, which is what an update compares against.</summary>
+        public required int Credits { get; init; }
     }
 }

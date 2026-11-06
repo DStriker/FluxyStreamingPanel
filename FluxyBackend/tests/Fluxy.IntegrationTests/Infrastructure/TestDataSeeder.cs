@@ -102,6 +102,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
             string? timeZone = null,
             bool geoProtectionEnabled = false,
             bool bindSessionToIp = false,
+            int credits = 0,
             CancellationToken cancellationToken = default)
         {
             var users = services.GetRequiredService<IUserRepository>();
@@ -119,7 +120,8 @@ namespace Fluxy.IntegrationTests.Infrastructure
                     RegisteredAt = status is UserStatus.Unregistered ? null : now,
                     TimeZone = timeZone,
                     GeoProtectionEnabled = geoProtectionEnabled,
-                    BindSessionToIp = bindSessionToIp
+                    BindSessionToIp = bindSessionToIp,
+                    Credits = credits
                 },
                 cancellationToken);
 
@@ -370,6 +372,114 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 connection);
 
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        /// <summary>
+        /// Plants one credit log row directly, and returns its identifier.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="resellerId">Reseller whose balance the row moved.</param>
+        /// <param name="issuedById">Issuer, or null on a reseller-spent row.</param>
+        /// <param name="amount">Signed change.</param>
+        /// <param name="description">English sentence of the change.</param>
+        /// <param name="createdAt">Creation instant, so an ordering or a range can be pinned.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>A deliberate SQL fixture.</b> The production write path is the account service, and
+        /// it stamps <c>created_at</c> with the request's own clock; a test that has to pin two
+        /// rows to the same instant, or to place one outside a chosen range, cannot reach that
+        /// instant through the API. The statement names the table and its columns - never an
+        /// entity or a context - which is the rule the connection log fixture follows too.
+        /// </remarks>
+        public static async Task<Guid> PlantCreditLogAsync(
+            NpgsqlConnection connection,
+            Guid resellerId,
+            Guid? issuedById,
+            int amount,
+            string description,
+            DateTimeOffset createdAt,
+            CancellationToken cancellationToken = default)
+        {
+            var id = Guid.NewGuid();
+
+            await using var command = new NpgsqlCommand(
+                "insert into credit_logs " +
+                "(id, reseller_id, issued_by_id, amount, description, created_at, updated_at) " +
+                "values (@id, @reseller_id, @issued_by_id, @amount, @description, @created_at, @created_at)",
+                connection);
+
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("reseller_id", resellerId);
+            command.Parameters.AddWithValue("issued_by_id", (object?)issuedById ?? DBNull.Value);
+            command.Parameters.AddWithValue("amount", amount);
+            command.Parameters.AddWithValue("description", description);
+            command.Parameters.AddWithValue("created_at", createdAt);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Counts the credit log rows, so a test can prove a refusal wrote nothing.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<int> CountCreditLogsAsync(
+            NpgsqlConnection connection,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select count(*) from credit_logs",
+                connection);
+
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        /// <summary>
+        /// Installs a trigger that refuses every credit log insert, so a test can force the save to
+        /// fail after a balance change was staged.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name of the trigger, so it can be dropped afterwards.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>The only way to prove atomicity from outside.</b> The balance change and its log row
+        /// are staged in one save, so the interesting failure is one the database raises between
+        /// staging and committing. A trigger is that failure, and it is installed under a name the
+        /// test controls so it can be dropped in a <c>finally</c>.
+        /// </remarks>
+        public static async Task InstallCreditLogFailureTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"create or replace function {triggerName}_fn() returns trigger as $$ " +
+                "begin " +
+                "raise exception 'forced credit log failure'; " +
+                "end; $$ language plpgsql; " +
+                $"drop trigger if exists {triggerName} on credit_logs; " +
+                $"create trigger {triggerName} before insert on credit_logs " +
+                $"for each row execute function {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>Removes a trigger installed by <see cref="InstallCreditLogFailureTriggerAsync"/>.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name the trigger was installed under.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task DropCreditLogFailureTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"drop trigger if exists {triggerName} on credit_logs; " +
+                $"drop function if exists {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 }

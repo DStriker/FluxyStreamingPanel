@@ -173,6 +173,11 @@ namespace Fluxy.Application
             // and this pass has no write path at all: the relaying process owns the capture.
             services.AddScoped<IConnectionLogService, ConnectionLogService>();
 
+            // The audit trail of reseller credit: read, plus the one whole-table clear. Entries
+            // are written by the account service in the same save as the balance they explain, so
+            // this service has no write path at all - only a reader and the wipe.
+            services.AddScoped<ICreditLogService, CreditLogService>();
+
             // Trial rows for that log, in Development only and only into an empty table. It reads
             // its prerequisites through Core repositories because the rows must name real
             // subscriptions and streams - the foreign key refuses an invented one - and it is

@@ -36,6 +36,9 @@ namespace Fluxy.API.Contracts.Users
         /// <summary>State of the account, as the name of the enum member.</summary>
         public required string Status { get; init; }
 
+        /// <summary>Credit balance of the account. Zero for every role but a reseller.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>When the account last signed in or refreshed, or null when it never has.</summary>
         public DateTimeOffset? LastSeenAt { get; init; }
 

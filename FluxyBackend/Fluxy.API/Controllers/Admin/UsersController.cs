@@ -377,9 +377,22 @@ namespace Fluxy.API.Controllers.Admin
                 errors[nameof(CreateUserRequest.Status)] = [StatusHint];
             }
 
+            // The sign is a rule about the body alone, so it is answered here beside the other
+            // field checks. Whether the target group is a reseller is a fact about the row and is
+            // decided by the service, which has the group in hand.
+            if (request.Credits is < 0)
+            {
+                errors[nameof(CreateUserRequest.Credits)] = ["Credits cannot be negative."];
+            }
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
+            }
+
+            if (User.UserId() is not { } actingUserId)
+            {
+                return ApiResults.Anonymous();
             }
 
             var outcome = await _users.CreateAsync(
@@ -391,8 +404,10 @@ namespace Fluxy.API.Controllers.Admin
                     GroupId = groupId,
                     Status = status,
                     TimeZone = request.TimeZone,
-                    LoginGuard = ToSettings(request.LoginGuard)
+                    LoginGuard = ToSettings(request.LoginGuard),
+                    Credits = request.Credits
                 },
+                actingUserId,
                 await _standing.ReadGrantsAsync(User),
                 cancellationToken);
 
@@ -493,6 +508,13 @@ namespace Fluxy.API.Controllers.Admin
                 }
             }
 
+            // The sign is a rule about the body alone; whether the account may hold credits is
+            // decided by the service, which knows the role it holds after the patch.
+            if (request.Credits is < 0)
+            {
+                errors[nameof(UpdateUserRequest.Credits)] = ["Credits cannot be negative."];
+            }
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -508,7 +530,8 @@ namespace Fluxy.API.Controllers.Admin
                     GroupId = groupId,
                     Status = status,
                     TimeZone = request.TimeZone,
-                    LoginGuard = ToSettings(request.LoginGuard)
+                    LoginGuard = ToSettings(request.LoginGuard),
+                    Credits = request.Credits
                 },
                 actingUserId,
                 await _standing.ReadGrantsAsync(User),
@@ -859,6 +882,7 @@ namespace Fluxy.API.Controllers.Admin
             GroupId = item.GroupId.ToString(),
             GroupName = item.GroupName,
             Status = item.Status.ToString(),
+            Credits = item.Credits,
             LastSeenAt = item.LastSeenAt,
             LastIp = item.LastIp
         };
@@ -874,6 +898,7 @@ namespace Fluxy.API.Controllers.Admin
             Status = detail.Status.ToString(),
             EffectiveStatus = detail.EffectiveStatus.ToString(),
             TimeZone = detail.TimeZone,
+            Credits = detail.Credits,
             RegisteredAt = detail.RegisteredAt,
             CreatedAt = detail.CreatedAt,
             LastSeenAt = detail.LastSeenAt,

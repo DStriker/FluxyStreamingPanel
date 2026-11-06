@@ -62,6 +62,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IUserRepository _users;
         private readonly IUserGroupRepository _groups;
         private readonly ILoginGuardRepository _guards;
+        private readonly ICreditLogRepository _creditLogs;
         private readonly ITokenService _tokenService;
         private readonly TimeProvider _timeProvider;
         private readonly IUnitOfWork _unitOfWork;
@@ -73,6 +74,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="users">Repository holding the account rows.</param>
         /// <param name="groups">Repository holding the groups accounts join.</param>
         /// <param name="guards">Repository that replaces an account's allow lists.</param>
+        /// <param name="creditLogs">Repository the credit changes are recorded in.</param>
         /// <param name="tokenService">Ends the sessions a state change takes with it.</param>
         /// <param name="timeProvider">Clock, so a stamp is not wall time hard coded into a rule.</param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
@@ -81,6 +83,7 @@ namespace Fluxy.Application.Users.Services
             IUserRepository users,
             IUserGroupRepository groups,
             ILoginGuardRepository guards,
+            ICreditLogRepository creditLogs,
             ITokenService tokenService,
             TimeProvider timeProvider,
             IUnitOfWork unitOfWork,
@@ -89,6 +92,7 @@ namespace Fluxy.Application.Users.Services
             _users = users;
             _groups = groups;
             _guards = guards;
+            _creditLogs = creditLogs;
             _tokenService = tokenService;
             _timeProvider = timeProvider;
             _unitOfWork = unitOfWork;
@@ -155,6 +159,7 @@ namespace Fluxy.Application.Users.Services
         /// <inheritdoc />
         public async Task<AdminUserOutcome> CreateAsync(
             NewUser user,
+            Guid actingUserId,
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default)
         {
@@ -181,6 +186,12 @@ namespace Fluxy.Application.Users.Services
                 // no business learning whether the name they typed is already taken.
                 return Denied();
             }
+
+            // The credit rule needs the group's role, which is now known. A value on a target
+            // that is not a reseller is refused rather than stored and ignored: the form that
+            // sent it believes it did something.
+            var credits = user.Credits ?? 0;
+            ValidateCredits(errors, group?.Role, user.Credits);
 
             if (errors.Count > 0)
             {
@@ -215,6 +226,10 @@ namespace Fluxy.Application.Users.Services
                 GroupId = group!.Id,
                 Status = user.Status,
 
+                // The balance is stored on every role, zero unless a reseller was given one.
+                // The role rule above has already refused a named value on a non-reseller.
+                Credits = credits,
+
                 // A row handed over already activated carries the stamp from the start: the
                 // status says "registered", so the moment it left Unregistered has to be now.
                 // Unregistered stays null, which is also what lets a later unblock know the
@@ -226,6 +241,23 @@ namespace Fluxy.Application.Users.Services
             };
 
             var userId = await _users.AddAsync(account, cancellationToken);
+
+            // A reseller always gets one ledger line, even when the initial balance is zero: the
+            // account was created with a balance, and the record says so. It is staged here and
+            // committed by the same save as the account, so the row and the balance it describes
+            // cannot diverge.
+            if (group.Role is UserRole.Reseller)
+            {
+                await _creditLogs.AddAsync(
+                    new NewCreditLog
+                    {
+                        ResellerId = userId,
+                        IssuedById = actingUserId,
+                        Amount = credits,
+                        Description = CreditLogDescriptions.ResellerCreated(credits)
+                    },
+                    cancellationToken);
+            }
 
             // The guard is staged before the one save rather than written by a second one:
             // the account and the lists it starts with are one operation, and a failure on
@@ -347,6 +379,13 @@ namespace Fluxy.Application.Users.Services
                 }
             }
 
+            // Credits are judged against the role the account holds *after* the patch: a value on
+            // an account that is not (or is not becoming) a reseller is refused rather than stored
+            // and ignored. The balance the row already holds survives a move away from reseller
+            // untouched and unlogged - the account keeps what it had, and nothing about that value
+            // changed in this request.
+            ValidateCredits(errors, groupAfter.Role, patch.Credits);
+
             if (errors.Count > 0)
             {
                 return new AdminUserOutcome
@@ -448,6 +487,42 @@ namespace Fluxy.Application.Users.Services
             if (statusChanged)
             {
                 await _users.SetStatusAsync(userId, resolvedStatus, registeredAt, cancellationToken);
+            }
+
+            // A balance the caller named, on an account that is a reseller after the patch, and
+            // that differs from the stored one, is one operation: the new value on the row and
+            // exactly one ledger line explaining it, staged before the same save. An unchanged
+            // value writes nothing - a line saying "5 → 5" would be noise in a table an operator
+            // reads to find out what actually moved. The role clause is explicit even though
+            // ValidateCredits already refused a named value on a non-reseller: the write rule is
+            // stated here as the handoff states it, not inferred from a neighbouring check.
+            var creditsChanged = groupAfter.Role is UserRole.Reseller
+                && patch.Credits is { } wantedCredits
+                && wantedCredits != user.Credits;
+
+            if (creditsChanged)
+            {
+                var wanted = patch.Credits!.Value;
+
+                await _users.SetCreditsAsync(userId, wanted, cancellationToken);
+
+                var delta = wanted - user.Credits;
+
+                await _creditLogs.AddAsync(
+                    new NewCreditLog
+                    {
+                        ResellerId = userId,
+
+                        // Every row the admin panel writes names the administrator who wrote it,
+                        // whatever the sign of the delta: a decrease is still an admin edit, and
+                        // showing the reseller in "Issued by" would misattribute it. Null is
+                        // reserved for the future reseller-initiated spend, whose write path does
+                        // not exist yet.
+                        IssuedById = actingUserId,
+                        Amount = delta,
+                        Description = CreditLogDescriptions.CreditsChanged(user.Credits, wanted)
+                    },
+                    cancellationToken);
             }
 
             // Staged before the one save, so the account and the lists that guard it are one
@@ -777,6 +852,42 @@ namespace Fluxy.Application.Users.Services
                 Length: >= RegistrationLimits.UsernameMinLength
                     and <= RegistrationLimits.UsernameMaxLength
             };
+
+        /// <summary>
+        /// Applies the two credit rules: the value may not be negative, and only a reseller may
+        /// hold (or be given) one.
+        /// </summary>
+        /// <param name="errors">Map of rejected fields, into which the credit error goes.</param>
+        /// <param name="role">Role the account holds after the request, or null when the group
+        /// the body named does not exist.</param>
+        /// <param name="named">The value the body named, or null when it named none.</param>
+        /// <remarks>
+        /// A negative balance cannot happen through this path and is refused under its own field,
+        /// so a form that sent one is told what it did rather than silently corrected. The role
+        /// rule is checked only when a value was named: an account that is not a reseller simply
+        /// keeps the zero it was created with, and an update that moves a reseller away keeps the
+        /// balance it already had without being refused for it.
+        /// </remarks>
+        private static void ValidateCredits(
+            Dictionary<string, string[]> errors,
+            UserRole? role,
+            int? named)
+        {
+            if (named is < 0)
+            {
+                errors[nameof(NewUser.Credits)] = ["Credits cannot be negative."];
+
+                return;
+            }
+
+            // A group that does not exist has no role to judge, and the group's own error already
+            // says what is wrong. Adding "credits apply only to resellers" there would blame the
+            // balance for a group identifier that named nothing.
+            if (named is not null && role is not null && role is not UserRole.Reseller)
+            {
+                errors[nameof(NewUser.Credits)] = ["Credits apply only to reseller accounts."];
+            }
+        }
 
         /// <summary>
         /// Folds the guard's own errors into the map and hands back the value to store when

@@ -41,6 +41,9 @@ namespace Fluxy.Core.Users.ReadModels
         /// <summary>Current state of the account, combining its own row with its group's.</summary>
         public required UserStatus Status { get; init; }
 
+        /// <summary>Credit balance of the account. Zero for every role but a reseller.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>
         /// When the account last signed in or refreshed, or null when it never has.
         /// </summary>

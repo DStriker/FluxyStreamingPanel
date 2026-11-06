@@ -35,6 +35,9 @@ namespace Fluxy.Core.Users.ReadModels
         /// <summary>Display name of that group.</summary>
         public required string GroupName { get; init; }
 
+        /// <summary>Credit balance of the account, as the edit form reads it.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>
         /// The state stored on the account's own row, which is the value the form edits.
         /// </summary>

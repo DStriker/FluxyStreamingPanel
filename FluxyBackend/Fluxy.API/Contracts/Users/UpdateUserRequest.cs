@@ -55,5 +55,11 @@ namespace Fluxy.API.Contracts.Users
         /// never speaks would be a guard nobody can read.
         /// </summary>
         public PatchLoginGuardRequest? LoginGuard { get; init; }
+
+        /// <summary>
+        /// New credit balance, or null to keep the stored one. Accepted only for an account that
+        /// is, or is being moved to, a reseller group; a negative value is refused.
+        /// </summary>
+        public int? Credits { get; init; }
     }
 }

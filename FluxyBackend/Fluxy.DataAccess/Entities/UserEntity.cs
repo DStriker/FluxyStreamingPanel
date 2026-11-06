@@ -87,6 +87,18 @@ namespace Fluxy.DataAccess.Entities
         public bool BindSessionToIp { get; set; }
 
         /// <summary>
+        /// Integer credit balance of the account. Never negative, and only a reseller ever
+        /// carries a non-zero value.
+        /// </summary>
+        /// <remarks>
+        /// Stored, not derived: the balance is read on every screen that draws a reseller, and
+        /// summing the audit log would cost more with every adjustment ever recorded. The
+        /// <c>credit_logs</c> table is the trail of how it got here; this column is the value
+        /// itself. Every write goes through the admin service, which refuses a negative result.
+        /// </remarks>
+        public int Credits { get; set; }
+
+        /// <summary>
         /// Builds the business model out of this row and the group it belongs to.
         /// </summary>
         /// <exception cref="InvalidOperationException">
@@ -117,6 +129,7 @@ namespace Fluxy.DataAccess.Entities
                 TimeZone = TimeZone,
                 GeoProtectionEnabled = GeoProtectionEnabled,
                 BindSessionToIp = BindSessionToIp,
+                Credits = Credits,
                 CreatedAt = CreatedAt,
                 UpdatedAt = UpdatedAt
             };

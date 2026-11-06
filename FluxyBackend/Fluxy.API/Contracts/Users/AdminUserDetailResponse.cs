@@ -62,6 +62,9 @@ namespace Fluxy.API.Contracts.Users
         /// <summary>Display name of that group.</summary>
         public required string GroupName { get; init; }
 
+        /// <summary>Credit balance of the account. Zero for every role but a reseller.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>
         /// The state written on the account's own row, which is what the form's status control
         /// edits.

@@ -67,6 +67,29 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the groups.</summary>
         public const string EditUserGroupsPolicy = "Permission.EditUserGroups";
 
+        /// <summary>
+        /// Policy that accepts an operator who may read resellers, and therefore the credit log
+        /// that belongs to them.
+        /// </summary>
+        /// <remarks>
+        /// A new constant, not a new permission. The credit log is the reseller surface's audit
+        /// trail, so reading it is covered by the grant that already lets an operator read
+        /// resellers; a separate pair would split one screen's access into two grants nobody
+        /// asked to reason about.
+        /// </remarks>
+        public const string ViewResellersPolicy = "Permission.ViewResellers";
+
+        /// <summary>
+        /// Policy that accepts an operator who may change resellers, and therefore wipe their
+        /// credit log.
+        /// </summary>
+        /// <remarks>
+        /// Wiping the ledger destroys evidence about a reseller's balance, so it needs the write
+        /// grant of the reseller surface - the same reuse <see cref="ViewResellersPolicy"/>
+        /// records.
+        /// </remarks>
+        public const string EditResellersPolicy = "Permission.EditResellers";
+
         /// <summary>Policy that accepts an operator who may read the configured video streams.</summary>
         public const string ViewStreamsPolicy = "Permission.ViewStreams";
 
@@ -236,6 +259,21 @@ namespace Fluxy.API.Extensions
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditUserGroups)))
+
+                // The two reseller policies exist for the credit log: reading a reseller's balance
+                // history is reading the reseller surface, and wiping that history is writing it.
+                // They name the existing grants rather than introducing a permission, so no
+                // catalog, migration or frontend mirror changes with them.
+                .AddPolicy(ViewResellersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewResellers)))
+                .AddPolicy(EditResellersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditResellers)))
 
                 // The stream policies are single-key rather than "any of", the way the group
                 // ones are: there is one list per medium and one screen that draws it, so

@@ -154,6 +154,7 @@ namespace Fluxy.DataAccess.Repositories
                 Role = account.Role,
                 Status = account.Status,
                 TimeZone = account.TimeZone,
+                Credits = account.Credits,
                 Permissions = entity.Group!.Permissions
                     .Select(grant => grant.Permission)
                     .ToHashSet()
@@ -258,7 +259,8 @@ namespace Fluxy.DataAccess.Repositories
                 RegisteredAt = account.RegisteredAt,
                 TimeZone = account.TimeZone,
                 GeoProtectionEnabled = account.GeoProtectionEnabled,
-                BindSessionToIp = account.BindSessionToIp
+                BindSessionToIp = account.BindSessionToIp,
+                Credits = account.Credits
             };
 
             _context.Users.Add(entity);
@@ -344,6 +346,20 @@ namespace Fluxy.DataAccess.Repositories
             if (entity is not null)
             {
                 entity.PasswordHash = passwordHash;
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task SetCreditsAsync(
+            Guid userId,
+            int credits,
+            CancellationToken cancellationToken = default)
+        {
+            var entity = await FindTrackedAsync(userId, cancellationToken);
+
+            if (entity is not null)
+            {
+                entity.Credits = credits;
             }
         }
 
@@ -454,7 +470,8 @@ namespace Fluxy.DataAccess.Repositories
                     GroupName = entry.Group!.Name,
                     Role = entry.Group!.Role,
                     OwnStatus = entry.Status,
-                    GroupStatus = entry.Group.Status
+                    GroupStatus = entry.Group.Status,
+                    Credits = entry.Credits
                 })
                 .Skip((int)Math.Min((long)(page - 1) * pageSize, int.MaxValue))
                 .Take(pageSize)
@@ -485,7 +502,8 @@ namespace Fluxy.DataAccess.Repositories
                     GroupId = entry.GroupId,
                     GroupName = entry.Group!.Name,
                     Role = entry.Group!.Role,
-                    GroupStatus = entry.Group.Status
+                    GroupStatus = entry.Group.Status,
+                    Credits = entry.Credits
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -526,6 +544,7 @@ namespace Fluxy.DataAccess.Repositories
                 Status = user.Status,
                 EffectiveStatus = UserStatusComposition.Combine(user.Status, group.Status),
                 TimeZone = user.TimeZone,
+                Credits = user.Credits,
                 RegisteredAt = user.RegisteredAt,
                 CreatedAt = user.CreatedAt,
                 LastSeenAt = visit?.CreatedAt,
@@ -590,7 +609,8 @@ namespace Fluxy.DataAccess.Repositories
                     GroupId = row.GroupId,
                     GroupName = row.GroupName,
                     Role = row.Role,
-                    Status = UserStatusComposition.Combine(row.OwnStatus, row.GroupStatus)
+                    Status = UserStatusComposition.Combine(row.OwnStatus, row.GroupStatus),
+                    Credits = row.Credits
                 })
                 .ToList();
 
@@ -806,6 +826,7 @@ namespace Fluxy.DataAccess.Repositories
             public UserRole Role { get; init; }
             public UserStatus OwnStatus { get; init; }
             public UserStatus GroupStatus { get; init; }
+            public int Credits { get; init; }
         }
     }
 }

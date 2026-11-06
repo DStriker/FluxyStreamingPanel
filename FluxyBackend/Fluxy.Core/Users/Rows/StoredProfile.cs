@@ -29,6 +29,9 @@ namespace Fluxy.Core.Users.Rows
         /// <summary>IANA identifier of the chosen display time zone, or null when not set.</summary>
         public string? TimeZone { get; init; }
 
+        /// <summary>Stored credit balance of the account.</summary>
+        public required int Credits { get; init; }
+
         /// <summary>Every permission the account's group currently grants.</summary>
         public IReadOnlySet<UserPermission> Permissions { get; init; } =
             new HashSet<UserPermission>();

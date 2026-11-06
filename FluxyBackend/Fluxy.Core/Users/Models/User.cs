@@ -104,6 +104,19 @@ namespace Fluxy.Core.Users.Models
         /// </summary>
         public bool BindSessionToIp { get; init; }
 
+        /// <summary>
+        /// Credit balance of the account. Never negative, and meaningful only for a reseller:
+        /// every other role carries the zero its row was created with.
+        /// </summary>
+        /// <remarks>
+        /// The balance is an integer because credits are whole units - there is no fractional
+        /// credit anywhere in the product - and it is stored rather than derived from the log,
+        /// because a page that read it by summing every log row would cost more with every
+        /// adjustment ever made. The log is the audit trail of how the balance got here; this
+        /// is the balance itself.
+        /// </remarks>
+        public int Credits { get; init; }
+
         /// <summary>Creation timestamp of the account.</summary>
         public required DateTimeOffset CreatedAt { get; init; }
 

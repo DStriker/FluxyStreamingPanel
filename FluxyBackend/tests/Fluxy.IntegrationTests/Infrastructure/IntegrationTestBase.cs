@@ -56,7 +56,8 @@ namespace Fluxy.IntegrationTests.Infrastructure
             string? email = null,
             UserStatus status = UserStatus.Registered,
             string? timeZone = null,
-            Guid? groupId = null)
+            Guid? groupId = null,
+            int credits = 0)
         {
             await using var scope = Fixture.Factory.Services.CreateAsyncScope();
 
@@ -69,6 +70,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 groupId: groupId,
                 email: email,
                 timeZone: timeZone,
+                credits: credits,
                 cancellationToken: TestContext.Current.CancellationToken);
         }
 

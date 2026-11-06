@@ -51,5 +51,11 @@ namespace Fluxy.Core.Users.Commands
         /// Login guard to create the account with, or null to leave every list empty.
         /// </summary>
         public LoginGuardSettings? LoginGuard { get; init; }
+
+        /// <summary>
+        /// Initial credit balance, or null when the body named none (which stores zero). A value
+        /// is accepted only for an account joining a reseller group.
+        /// </summary>
+        public int? Credits { get; init; }
     }
 }

@@ -91,6 +91,8 @@ namespace Fluxy.Core.Users.Interfaces
         /// Creates an account from what the form sent.
         /// </summary>
         /// <param name="user">The account to create.</param>
+        /// <param name="actingUserId">Account the request arrived with, recorded as the issuer
+        /// on every credit log row this operation writes.</param>
         /// <param name="granted">Permissions the caller's group holds.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
@@ -104,9 +106,17 @@ namespace Fluxy.Core.Users.Interfaces
         /// The permission is checked as soon as the target group has been read and before
         /// anything else is looked up, so an operator without the grant cannot learn whether a
         /// username is already taken.
+        ///
+        /// <b>A reseller always gets one credit log row.</b> The row is staged beside the account
+        /// and committed by the same save, so an account and the record of the balance it started
+        /// with cannot disagree. Its amount is the initial balance - zero included - and its
+        /// issuer is <paramref name="actingUserId"/>; a role other than reseller carries no log and
+        /// refuses a balance the caller named. Every admin-panel row names its administrator this
+        /// way; a null issuer means a reseller-spent row or an issuer deleted since.
         /// </remarks>
         Task<AdminUserOutcome> CreateAsync(
             NewUser user,
+            Guid actingUserId,
             IReadOnlySet<UserPermission> granted,
             CancellationToken cancellationToken = default);
 
@@ -115,7 +125,8 @@ namespace Fluxy.Core.Users.Interfaces
         /// </summary>
         /// <param name="userId">Identifier of the account to change.</param>
         /// <param name="patch">The fields to change. Absent fields are left alone.</param>
-        /// <param name="actingUserId">Account the request arrived with.</param>
+        /// <param name="actingUserId">Account the request arrived with; recorded as the issuer
+        /// on the credit log row when the patch changes the balance.</param>
         /// <param name="granted">Permissions the caller's group holds.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
@@ -134,6 +145,12 @@ namespace Fluxy.Core.Users.Interfaces
         /// is leaving <i>and</i> for the role it is arriving in. Neither alone is enough: the
         /// first is what makes the row editable at all, and the second is what stops a caller
         /// who may run the clients from promoting one of them into a group of administrators.
+        ///
+        /// <b>A balance change writes one credit log row naming the acting administrator.</b>
+        /// The issuer is set whatever the sign of the delta: a decrease made from the admin panel
+        /// is still an administrative edit. A row with no issuer is a reseller-initiated spend
+        /// (a write path that does not exist yet), or one whose issuing administrator has been
+        /// deleted.
         /// </remarks>
         Task<AdminUserOutcome> UpdateAsync(
             Guid userId,

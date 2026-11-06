@@ -209,6 +209,12 @@ namespace Fluxy.DataAccess.Context
         public DbSet<ConnectionLogEntity> ConnectionLogs => Set<ConnectionLogEntity>();
 
         /// <summary>
+        /// The audit trail of reseller credit: one signed change per row, written in the same save
+        /// as the balance it explains.
+        /// </summary>
+        public DbSet<CreditLogEntity> CreditLogs => Set<CreditLogEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

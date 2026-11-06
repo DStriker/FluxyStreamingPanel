@@ -141,6 +141,7 @@ namespace Fluxy.API.Controllers.Auth
                 Username = profile.Username,
                 Email = profile.Email,
                 Role = profile.Role.ToString(),
+                Credits = profile.Credits,
                 Permissions = UserPermissionCatalog.All
                     .Where(profile.Permissions.Contains)
                     .Select(UserPermissionCatalog.NameOf)

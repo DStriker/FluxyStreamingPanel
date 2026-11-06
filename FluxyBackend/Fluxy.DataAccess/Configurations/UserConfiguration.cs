@@ -113,6 +113,14 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("bind_session_to_ip")
                 .IsRequired();
 
+            // The balance is an integer, required, and deliberately carries no HasDefaultValue:
+            // the migration writes the 0 that existing rows need, and from then on the
+            // application always names the column. A database default would hide a future write
+            // that forgot it.
+            builder.Property(user => user.Credits)
+                .HasColumnName("credits")
+                .IsRequired();
+
             // Audit columns inherited from AuditableEntity. They are listed explicitly like
             // every other column, because a mapping that only names some of them would leave
             // the rest with the CLR property name.

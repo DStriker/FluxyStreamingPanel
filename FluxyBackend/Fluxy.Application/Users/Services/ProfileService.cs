@@ -132,6 +132,7 @@ namespace Fluxy.Application.Users.Services
                 Username = profile.Username,
                 Email = profile.Email,
                 Role = profile.Role,
+                Credits = profile.Credits,
                 TimeZone = profile.TimeZone,
                 Permissions = profile.Permissions
             };
