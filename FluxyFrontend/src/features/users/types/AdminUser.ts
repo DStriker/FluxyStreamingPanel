@@ -42,6 +42,8 @@ export interface AdminUser {
   groupName: string
   /** Effective state of the account - its own row and its group's, most restrictive first. */
   status: UserStatus
+  /** Credit balance of the account. Zero for every role but a reseller. */
+  credits: number
   /** When the account last signed in or refreshed, or null when it never has. */
   lastSeenAt: string | null
   /** Address that visit came from, or null when the row recorded none. */

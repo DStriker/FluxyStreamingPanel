@@ -122,6 +122,21 @@ body {
   white-space: nowrap;
 }
 
+/* The reseller's credit balance beside the theme switch and the account menu.
+   It is a *statement*, not a control, so it draws no button surface - just the wallet glyph
+   and a plain integer at the bar's own size. `flex: none` is load-bearing: every other thing
+   in this row is an interactive control with its own min-width, and a balance that shrank
+   under a long username would eventually lose a digit. Nothing in the ≤768px rule above
+   hides it either - that rule names the title and the username only, so the one number the
+   owner checks does not disappear where the bar is narrowest. */
+.layout-shell__credits {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 /* The sidebar itself is sized by the flex row; the scroll sits on the wrapper inside it.
    `Sider` sets its own overflow, so putting the scroll there would mean winning a cascade
    against a stylesheet antd injects at a place this file does not control. A child
@@ -391,6 +406,18 @@ body {
 }
 
 /* --- The tables ----------------------------------------------------------------- */
+
+/* The balance line inside the accounts table's group cell: the second line of a two-line
+   cell, quieter than the group name above it. It is not `opacity` on a wrapper holding a link
+   (the subscriptions cell learned that lesson), because there is no link here - only the plain
+   amount and the wallet glyph - and the token pair keeps the contrast correct in both themes. */
+.users-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+}
 
 /* The name of a column is the one thing in it that cannot be cut.
    antd sets `white-space: nowrap` on the title of a column that truncates - `ellipsis` on

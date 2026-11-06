@@ -55,13 +55,25 @@ import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
 import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
+import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
+import {
+  COLUMN_KEYS as CREDIT_LOG_COLUMN_KEYS,
+  COLUMN_WIDTHS_KEY as CREDIT_LOG_WIDTHS_KEY,
+  DEFAULT_COLUMN_WIDTHS as CREDIT_LOG_WIDTHS,
+  sortFieldOf as creditLogSortFieldOf,
+} from '../src/features/credit-logs/layout'
+import {
+  creditLogActorName,
+  creditLogTone,
+} from '../src/features/credit-logs/creditLogActor'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
 import BouquetContentPage from '../src/pages/admin/BouquetContentPage'
 import LastSeenCell from '../src/features/users/components/LastSeenCell'
+import UserGroupCell from '../src/features/users/components/UserGroupCell'
 import StreamStateCell from '../src/features/video-streams/components/StreamStateCell'
 import AudioStreamStateCell from '../src/features/audio-streams/components/StreamStateCell'
 import { RowActions } from '../src/components/table'
@@ -857,6 +869,37 @@ async function main() {
       `Generate password (${GENERATED_PASSWORD_LENGTH} letters and digits)`,
     ),
     `rendered ${userFormHtml.length} bytes of the add form`,
+  )
+
+  // The credit field: always drawn, disabled until the chosen group is a reseller's, with the
+  // hint saying why. The static render has no group list, so `chosenGroup` is undefined and
+  // the first paint is exactly the disabled state the rule exists for. The typed value is not
+  // asserted here - a static render has no form input to type into - so the "not sent while
+  // disabled" half is read off the page's source below.
+  const userFormSource = readFileSync('src/pages/admin/UserFormPage.tsx', 'utf8')
+  check(
+    'the add form draws the balance field disabled with its hint while no reseller group is chosen',
+    userFormHtml.includes('Credits') &&
+      userFormHtml.includes('Credits apply only to accounts in a reseller group.') &&
+      /<input[^>]*ant-input-number-input[^>]*disabled/.test(userFormHtml) &&
+      userFormSource.includes("name=\"credits\"") &&
+      /chosenGroup\?\.role === 'Reseller'/.test(userFormSource) &&
+      /creditsEnabled \? values\.credits : undefined/.test(userFormSource) &&
+      // The server keys a refusal by this camelCase name, so the `Form.Item` must carry it.
+      i18n.getResource('en', 'translation', 'users.creditsLabel') === 'Credits' &&
+      i18n.getResource('ru', 'translation', 'users.creditsLabel') === 'Кредиты' &&
+      i18n.getResource('en', 'translation', 'validation.creditsInvalid') ===
+        'Enter a whole number of 0 or more.',
+    `rendered ${userFormHtml.length} bytes of the add form`,
+  )
+
+  check(
+    'the balance input is a non-negative whole number, 200px wide, after the group field',
+    /min=\{0\}[\s\S]{0,80}?precision=\{0\}/.test(userFormSource) &&
+      /maxWidth: 200/.test(userFormSource) &&
+      userFormSource.indexOf('name="groupId"') < userFormSource.indexOf('name="credits"') &&
+      userFormSource.indexOf('name="credits"') < userFormSource.indexOf('name="status"'),
+    'min 0, precision 0, a 200px control, drawn between the group and the status',
   )
 
   // The edit address needs a real route rather than a bare render: `useParams` reads the
@@ -3093,7 +3136,7 @@ async function main() {
 
   check(
     'the activity log draws its own heading and its table before any rows arrive',
-    // The heading is "Connection logs"/"Логи подключений" on the owner's rename, and the *menu
+    // The heading is "Connection logs"/"Журнал подключений" on the owner's rename, and the *menu
     // item* now says the same words - the rail and the card name one resource. Two keys remain
     // so either can still be worded alone.
     activityLogsHtml.includes('>Connection logs<') &&
@@ -3432,11 +3475,11 @@ async function main() {
     i18n.getResource('en', 'translation', 'nav.items.subscriptionActivity') ===
       'Connection logs' &&
       i18n.getResource('ru', 'translation', 'nav.items.subscriptionActivity') ===
-        'Логи подключений' &&
+        'Журнал подключений' &&
       i18n.getResource('en', 'translation', 'connectionLogs.titles.activity') ===
         'Connection logs' &&
       i18n.getResource('ru', 'translation', 'connectionLogs.titles.activity') ===
-        'Логи подключений',
+        'Журнал подключений',
     `en ${i18n.getResource('en', 'translation', 'nav.items.subscriptionActivity')}, ru ${i18n.getResource('ru', 'translation', 'nav.items.subscriptionActivity')}`,
   )
 
@@ -3495,6 +3538,235 @@ async function main() {
     'the drill-down target is missing from the subscriptions page',
   )
 
+  // --- The reseller credit log ------------------------------------------------
+  //
+  // Its own page behind `nav.items.creditLogs`, the last entry of the admin's `users` group.
+  // The heading, the five column headers, the toolbar controls and the clear command all
+  // appear before the first answer - the table itself is drawn empty under a spinner, so the
+  // static render is exactly the state to assert them in. The row cells are unreachable here
+  // (no row exists), so the actor and tone rules are asserted as functions below.
+  const creditLogsHtml = renderToStaticMarkup(
+    withRouter('/admin/credit-logs', withQuery(
+      <AntApp>
+        <CreditLogsPage sectionKey="nav.items.creditLogs" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the credit log draws its heading and its table before any entries arrive',
+    creditLogsHtml.includes('>Credit log<') &&
+      creditLogsHtml.includes('ant-table') &&
+      !creditLogsHtml.includes('nav.items.creditLogs'),
+    `rendered ${creditLogsHtml.length} bytes with the log still being fetched`,
+  )
+
+  check(
+    'the credit log draws its five column headers in order',
+    ['Reseller', 'Credits', 'Issued by', 'Description', 'Date'].every((heading) =>
+      creditLogsHtml.includes(`>${heading}<`),
+    ) &&
+      creditLogsHtml.indexOf('>Reseller<') < creditLogsHtml.indexOf('>Credits<') &&
+      creditLogsHtml.indexOf('>Credits<') < creditLogsHtml.indexOf('>Issued by<') &&
+      creditLogsHtml.indexOf('>Issued by<') < creditLogsHtml.indexOf('>Description<') &&
+      creditLogsHtml.indexOf('>Description<') < creditLogsHtml.indexOf('>Date<'),
+    `five headings: ${['Reseller', 'Credits', 'Issued by', 'Description', 'Date']
+      .map((heading) => `${heading}@${creditLogsHtml.indexOf(`>${heading}<`)}`)
+      .join(', ')}`,
+  )
+
+  const creditLogCols = [...creditLogsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const creditLogWidths = creditLogCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const creditLogTotal = creditLogWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the credit log is fixed-layout with five columns totalling 1190, in order',
+    /table-layout:\s*fixed/.test(creditLogsHtml) &&
+      creditLogWidths.join(',') === '170,110,170,540,200' &&
+      creditLogTotal === 1190,
+    `${creditLogCols.length} columns: [${creditLogWidths.join(', ')}] = ${creditLogTotal}px`,
+  )
+
+  check(
+    'the credit log toolbar runs search, the reseller picker, the width reset and the clear command',
+    creditLogsHtml.includes('Search credit logs') &&
+      creditLogsHtml.includes('Any reseller') &&
+      creditLogsHtml.includes('aria-label="Reset widths"') &&
+      creditLogsHtml.includes('Clear all logs') &&
+      creditLogsHtml.indexOf('Search credit logs') < creditLogsHtml.indexOf('Any reseller') &&
+      creditLogsHtml.indexOf('Any reseller') < creditLogsHtml.indexOf('aria-label="Reset widths"') &&
+      creditLogsHtml.indexOf('aria-label="Reset widths"') <
+        creditLogsHtml.indexOf('Clear all logs'),
+    `rendered ${creditLogsHtml.length} bytes`,
+  )
+
+  // The date range is the long control, so it is a row of its own in the card body - after
+  // the card head (whose last control is "Clear all logs") and before the table. Index order
+  // is enough: head, then the picker, then the table.
+  check(
+    'the credit log draws the date range on its own row between the card head and the table',
+    creditLogsHtml.includes('ant-picker-range') &&
+      creditLogsHtml.indexOf('Date from') > creditLogsHtml.indexOf('Clear all logs') &&
+      creditLogsHtml.indexOf('Date from') > creditLogsHtml.indexOf('ant-card-body') &&
+      creditLogsHtml.indexOf('Date from') < creditLogsHtml.indexOf('ant-table'),
+    `range@${creditLogsHtml.indexOf('Date from')}, clear@${creditLogsHtml.indexOf('Clear all logs')}, body@${creditLogsHtml.indexOf('ant-card-body')}, table@${creditLogsHtml.indexOf('ant-table')}`,
+  )
+
+  // A range and a reseller in the address are drawn back into the controls and as two closable
+  // tags, in that order: the range first, then the reseller. The search is deliberately not a
+  // tag - its own box is where it is read and cleared.
+  const filteredCreditLogsHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/credit-logs?resellerId=44444444-4444-4444-4444-444444444444&dateFrom=2026-05-01T00%3A00%3A00.000Z&dateTo=2026-05-03T23%3A59%3A59.999Z&search=alice',
+      withQuery(
+        <AntApp>
+          <CreditLogsPage sectionKey="nav.items.creditLogs" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'an address-borne range and reseller arrive as two closable tags, range first',
+    filteredCreditLogsHtml.includes('Date:') &&
+      filteredCreditLogsHtml.includes('Reseller:') &&
+      filteredCreditLogsHtml.includes('ant-tag-close-icon') &&
+      filteredCreditLogsHtml.indexOf('Date:') < filteredCreditLogsHtml.indexOf('Reseller:'),
+    `rendered ${filteredCreditLogsHtml.length} bytes with the filters in the address`,
+  )
+
+  // The five widths, the storage key and the one key-to-field mapping are pinned by
+  // `tests/features/credit-logs/layout.test.ts`; what a render can add is that the table
+  // actually reads them, and that the reseller's own link opens that reseller's edit form -
+  // the same `${area}/users/${id}` target the accounts table's row action uses - rather than
+  // filtering the log again, which a static render cannot click, so the source is read.
+  const creditLogsPageSource = readFileSync('src/pages/admin/CreditLogsPage.tsx', 'utf8')
+  check(
+    'the credit log hands the width hook its own columns, defaults and storage key',
+    creditLogsPageSource.includes('keys: COLUMN_KEYS') &&
+      creditLogsPageSource.includes('defaults: DEFAULT_COLUMN_WIDTHS') &&
+      creditLogsPageSource.includes('storageKey: COLUMN_WIDTHS_KEY') &&
+      CREDIT_LOG_WIDTHS_KEY === 'fluxy.creditLogs.columnWidths' &&
+      CREDIT_LOG_COLUMN_KEYS.length === 5,
+    `${CREDIT_LOG_COLUMN_KEYS.length} columns under ${CREDIT_LOG_WIDTHS_KEY}`,
+  )
+
+  check(
+    'the reseller cell navigates to that reseller\'s edit form, the same target the users row edit uses',
+    /onClick=\{\(\) => navigate\(`\$\{area\}\/users\/\$\{log\.resellerId\}`\)\}/.test(
+      creditLogsPageSource,
+    ) &&
+      /const navigate = useNavigate\(\)/.test(creditLogsPageSource) &&
+      /const area = session \? areaForRole\(session\.role\) : ''/.test(creditLogsPageSource) &&
+      !/choose\('resellerId', log\.resellerId\)/.test(creditLogsPageSource) &&
+      Object.values(CREDIT_LOG_WIDTHS).reduce((sum, width) => sum + width, 0) === 1190,
+    'the reseller link does not open /users/{id}',
+  )
+
+  check(
+    'the credits header sorts by amount while its key stays the word the table draws',
+    /key: 'credits'[\s\S]{0,200}?orderOf\('amount'\)/.test(creditLogsPageSource) &&
+      creditLogSortFieldOf('credits') === 'amount' &&
+      creditLogSortFieldOf('createdAt') === 'createdAt',
+    `credits -> ${creditLogSortFieldOf('credits')}, createdAt -> ${creditLogSortFieldOf('createdAt')}`,
+  )
+
+  // The clear command is never disabled by data state - only by the permission - because its
+  // words are a promise about the log, not about the rows the filters admit. The static render
+  // has no profile answer, so it lands in the permission-less branch: the button exists, is
+  // disabled, and carries the reason.
+  check(
+    'the credit log clear command is gated on editResellers and never on the data',
+    /granted\.includes\('editResellers'\)/.test(creditLogsPageSource) &&
+      /loading=\{clearLogs\.isPending\}/.test(creditLogsPageSource) &&
+      /modal\.confirm\(\{/.test(creditLogsPageSource) &&
+      creditLogsPageSource.includes("t('creditLogs.clearConfirmBody')") &&
+      !/disabled=\{[^}]*logs/.test(creditLogsPageSource),
+    creditLogsHtml.includes('Clear all logs')
+      ? 'the button is drawn in the permission-less state, disabled with its reason'
+      : 'THE CLEAR BUTTON IS MISSING',
+  )
+
+  // The menu entry: last of the admin `users` group, an address of its own, and a real page
+  // behind the loader rather than the placeholder.
+  const creditLogGroup = NAVIGATION.Admin.find((group) => group.key === 'users')
+  const creditLogItemKeys = (creditLogGroup?.items ?? []).map((item) => item.key)
+  const creditLogItem = creditLogGroup?.items.find((item) => item.key === 'creditLogs')
+  const creditLogModule = creditLogItem?.page ? await creditLogItem.page() : null
+  check(
+    'the admin users group ends with the credit-log entry, pointing at the real page',
+    creditLogItemKeys[creditLogItemKeys.length - 1] === 'creditLogs' &&
+      creditLogItemKeys.indexOf('creditLogs') === creditLogItemKeys.indexOf('adminSessions') + 1 &&
+      menuPath('Admin', 'credit-logs') === '/admin/credit-logs' &&
+      creditLogModule?.default === CreditLogsPage,
+    `items: ${creditLogItemKeys.join(', ')}; opens ${menuPath('Admin', 'credit-logs')}`,
+  )
+
+  check(
+    'the credit-log menu entry and card title are both translated',
+    i18n.getResource('en', 'translation', 'nav.items.creditLogs') === 'Credit logs' &&
+      i18n.getResource('ru', 'translation', 'nav.items.creditLogs') === 'Журнал кредитов' &&
+      i18n.getResource('en', 'translation', 'creditLogs.title') === 'Credit log' &&
+      i18n.getResource('ru', 'translation', 'creditLogs.title') === 'Журнал кредитов' &&
+      i18n.getResource('en', 'translation', 'users.creditsLabel') === 'Credits' &&
+      i18n.getResource('ru', 'translation', 'users.creditsLabel') === 'Кредиты',
+    `en ${i18n.getResource('en', 'translation', 'nav.items.creditLogs')}, ru ${i18n.getResource('ru', 'translation', 'nav.items.creditLogs')}`,
+  )
+
+  // The two row rules, as functions: a static render draws no cell, so the "Issued by" name
+  // and the green/red tone are only reachable here. An issuer on the row wins, whatever the
+  // sign; a negative row with no issuer names the reseller (the future reseller-spent row);
+  // a non-negative row with no issuer is an em dash (the deleted-issuer case).
+  const probeCreditLog = {
+    id: '55555555-5555-5555-5555-555555555555',
+    resellerId: '44444444-4444-4444-4444-444444444444',
+    resellerUsername: 'reseller',
+    issuedById: '66666666-6666-6666-6666-666666666666',
+    issuedByUsername: 'root',
+    amount: 10,
+    description: 'Credits changed: 0 → 10',
+    createdAt: '2026-05-01T10:00:00.000Z',
+  }
+  check(
+    'the Issued by cell names the issuer on either sign and the reseller only on an issuer-less expense',
+    creditLogActorName(probeCreditLog) === 'root' &&
+      creditLogActorName({ ...probeCreditLog, amount: -5 }) === 'root' &&
+      creditLogActorName({
+        ...probeCreditLog,
+        amount: -5,
+        issuedById: null,
+        issuedByUsername: null,
+      }) === 'reseller' &&
+      creditLogActorName({
+        ...probeCreditLog,
+        amount: 0,
+      }) === 'root' &&
+      creditLogActorName({
+        ...probeCreditLog,
+        issuedById: null,
+        issuedByUsername: null,
+      }) === '—',
+    `issued ${creditLogActorName(probeCreditLog)}, decreased ${creditLogActorName({
+      ...probeCreditLog,
+      amount: -5,
+    })}, spent ${creditLogActorName({
+      ...probeCreditLog,
+      amount: -5,
+      issuedById: null,
+      issuedByUsername: null,
+    })}, deleted issuer ${creditLogActorName({
+      ...probeCreditLog,
+      issuedById: null,
+      issuedByUsername: null,
+    })}`,
+  )
+
+  check(
+    'the amount is green only when positive, and red for spent and for zero',
+    creditLogTone(10) === 'success' &&
+      creditLogTone(-10) === 'danger' &&
+      creditLogTone(0) === 'danger',
+    `+10 ${creditLogTone(10)}, -10 ${creditLogTone(-10)}, 0 ${creditLogTone(0)}`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -3517,6 +3789,7 @@ async function main() {
     subscriptionsHtml,
     liveLogsHtml,
     activityLogsHtml,
+    creditLogsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(
@@ -3585,6 +3858,52 @@ async function main() {
     'an account that has never signed in draws a dash where the link would be',
     lastSeenEmptyHtml.includes('—') && !lastSeenEmptyHtml.includes('user-sessions'),
     `${lastSeenEmptyHtml.length} bytes: ${lastSeenEmptyHtml.slice(0, 120)}`,
+  )
+
+  // The accounts table's group cell draws a reseller's balance as a second line and nothing
+  // at all for the two other roles - a value that does not apply to an account is not an
+  // unknown one, so it is not a dash either. `0` is a fact and is drawn. The cell is rendered
+  // directly because a column `render` runs only once a row exists, and every render of the
+  // table above lands before the first answer.
+  const probeGroupUser = {
+    id: '77777777-7777-7777-7777-777777777777',
+    username: 'reseller',
+    email: 'reseller@localhost',
+    role: 'Reseller',
+    groupId: '00000000-0000-0000-0000-000000000002',
+    groupName: 'Resellers',
+    status: 'Registered',
+    credits: 0,
+    lastSeenAt: null,
+    lastIp: null,
+  }
+  const resellerGroupCellHtml = renderToStaticMarkup(
+    <AntApp>
+      <UserGroupCell user={probeGroupUser} />
+    </AntApp>,
+  )
+  const clientGroupCellHtml = renderToStaticMarkup(
+    <AntApp>
+      <UserGroupCell user={{ ...probeGroupUser, role: 'Client', credits: 0 }} />
+    </AntApp>,
+  )
+  check(
+    "the accounts table's group cell carries a reseller's balance as a second line, zero included",
+    resellerGroupCellHtml.includes('Resellers') &&
+      resellerGroupCellHtml.includes('users-credits') &&
+      resellerGroupCellHtml.includes('aria-label="Credits: 0"') &&
+      resellerGroupCellHtml.includes('anticon-wallet') &&
+      // The zero is drawn, and it is a number rather than a placeholder.
+      /users-credits[^>]*>[\s\S]*?<span>0<\/span>/.test(resellerGroupCellHtml),
+    `${resellerGroupCellHtml.length} bytes: ${resellerGroupCellHtml.slice(0, 200)}`,
+  )
+  check(
+    'the group cell draws no balance at all for a client, not even a dash',
+    !clientGroupCellHtml.includes('users-credits') &&
+      !clientGroupCellHtml.includes('Credits:') &&
+      !clientGroupCellHtml.includes('anticon-wallet') &&
+      clientGroupCellHtml.includes('Resellers'),
+    `${clientGroupCellHtml.length} bytes: ${clientGroupCellHtml.slice(0, 200)}`,
   )
 
   // The other render no page reach in this probe gets to: a row-action cluster is drawn by a
@@ -4171,6 +4490,39 @@ async function main() {
     adminShell.includes('layout-shell__header') && adminShell.includes(adminSession.username),
     `rendered ${adminShell.length} bytes with appTheme(true).config`,
   )
+
+  // The reseller's balance chip: drawn for a reseller and for nobody else. The render lands
+  // before the profile answer, so the number it draws is its zero floor - what is asserted is
+  // that the chip is *there* and carries the wallet glyph, the accessible tooltip and the
+  // class the stylesheet keeps out of the ≤768px username rule. A client and an admin render
+  // no chip at all, not a zero.
+  const resellerSession = { userId: '3', username: 'bob', role: 'Reseller' }
+  const resellerShell = renderShell(resellerSession)
+
+  check(
+    'the reseller shell draws a non-interactive credit chip beside the account menu',
+    resellerShell.includes('layout-shell__credits') &&
+      resellerShell.includes('anticon-wallet') &&
+      /<span[^>]*class="layout-shell__credits"/.test(resellerShell) &&
+      !/<button[^>]*layout-shell__credits/.test(resellerShell) &&
+      resellerShell.indexOf('layout-shell__credits') < resellerShell.indexOf('Account menu: bob') &&
+      // The tooltip's text lives in a popup that only exists after a hover, so the *key* is
+      // asserted through i18next rather than through this markup - the same treatment every
+      // icon-only control's label gets.
+      i18n.getResource('en', 'translation', 'header.creditBalance') === 'Credit balance' &&
+      i18n.getResource('ru', 'translation', 'header.creditBalance') === 'Баланс кредитов',
+    `rendered ${resellerShell.length} bytes for the reseller shell`,
+  )
+
+  check(
+    'the credit chip is drawn for a reseller only, never as a zero for the other two roles',
+    !clientShell.includes('layout-shell__credits') &&
+      !adminShell.includes('layout-shell__credits') &&
+      !clientShell.includes('Credit balance') &&
+      !adminShell.includes('Credit balance'),
+    `client ${clientShell.includes('layout-shell__credits')}, admin ${adminShell.includes('layout-shell__credits')}`,
+  )
+
   // The variant is declared in two places and both have to move together: `Sider` does not
   // pass its `theme` to the `Menu` inside it, so a half-set pair is not a mismatch antd
   // would notice or repair. It is the kind of bug that renders, styles nothing red and is
@@ -4303,6 +4655,28 @@ async function main() {
         railCss,
       ),
     'the title row at 1200 and the stacked toolbar at 768 are both present',
+  )
+
+  // The reseller's balance chip is `flex: none` - every other control in that row has its own
+  // min-width and a balance that shrank under a long username would lose a digit - and the
+  // ≤768px rule that hides the username names the title and the username only. A balance that
+  // disappeared on a phone would be the one number the owner checks, gone exactly where the
+  // page title has already given way.
+  const creditsChipRule =
+    /\.layout-shell__credits \{[^}]*\}/.exec(railCss)?.[0] ?? ''
+  const narrowHeaderRule =
+    /@media \(max-width: 768px\) \{[^}]*?\.layout-shell \.layout-shell__title,\s*\.layout-shell__username \{[\s\S]*?\n {2}\}/.exec(
+      railCss,
+    )?.[0] ?? ''
+  check(
+    'the credit chip keeps its width and is not caught by the phone rule that hides the username',
+    creditsChipRule.includes('flex: none') &&
+      creditsChipRule.includes('white-space: nowrap') &&
+      narrowHeaderRule.includes('layout-shell__username') &&
+      !narrowHeaderRule.includes('layout-shell__credits'),
+    creditsChipRule
+      ? `chip rule present; the 768px rule reads ${narrowHeaderRule.replace(/\s+/g, ' ').slice(0, 120)}`
+      : 'THE CHIP RULE IS MISSING FROM index.css',
   )
 
   // The selector is pinned whole, colour included, and not merely the colour: the leading

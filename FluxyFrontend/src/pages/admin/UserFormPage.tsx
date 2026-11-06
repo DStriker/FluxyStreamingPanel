@@ -8,6 +8,7 @@ import {
   Divider,
   Form,
   Input,
+  InputNumber,
   Select,
   Space,
   Spin,
@@ -20,6 +21,7 @@ import { canEdit } from '../../features/user-groups/permissions'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 import { combineStatus } from '../../features/users/userStatus'
+import { isCreditAmount } from '../../features/users/creditsField'
 import {
   EMAIL_MAX,
   GENERATED_PASSWORD_LENGTH,
@@ -73,6 +75,15 @@ interface UserFormValues extends GuardFieldValues {
   groupId: string
   status: UserStatus
   timeZone: string
+  /**
+   * The account's credit balance, as the form holds it.
+   *
+   * The field is disabled while the chosen group's role is not `Reseller`, and the value is
+   * deliberately **not** cleared then: it stays in the store so switching the group back
+   * restores what was typed, and `handleFinish` is what decides it is not sent. That is the
+   * same "disabled and not saved" rule the subscriptions form's plan-dependent inputs follow.
+   */
+  credits: number
 }
 
 interface UserFormPageProps {
@@ -122,6 +133,7 @@ const CREATE_VALUES: UserFormValues = {
   groupId: '',
   status: 'Registered',
   timeZone: AutoTimeZone,
+  credits: 0,
   ...guardToFormValues(EMPTY_GUARD),
 }
 
@@ -142,6 +154,7 @@ const FIELD_NAMES: readonly (keyof UserFormValues)[] = [
   'groupId',
   'status',
   'timeZone',
+  'credits',
   'geoProtectionEnabled',
   'bindSessionToIp',
   'allowedIps',
@@ -162,6 +175,7 @@ const detailToFormValues = (detail: AdminUserDetail): UserFormValues => ({
   // select for how the two are shown side by side.
   status: detail.status,
   timeZone: detail.timeZone ?? AutoTimeZone,
+  credits: detail.credits,
   ...guardToFormValues(detail.loginGuard),
 })
 
@@ -350,6 +364,23 @@ export default function UserFormPage(_props: UserFormPageProps) {
       : (detail?.effectiveStatus ?? ownStatus)
 
   /**
+   * Whether the balance field may be typed into: the group the account is going to must be a
+   * reseller's. Watched rather than read from `detail`, for the reason the status note is: the
+   * rule is the role the save is *heading for*, and picking another group has to enable or
+   * disable this field before the save rather than after it.
+   *
+   * `undefined` - no group chosen yet, or the group list still on its way - answers `false`,
+   * which is what keeps a client form's first paint honest. The field never vanishes: it
+   * stays visible with the hint that says why, so switching to a reseller group explains
+   * itself instead of making a control appear out of nowhere.
+   */
+  const creditsEnabled = chosenGroup?.role === 'Reseller'
+
+  /** Whether the typed balance is worth sending: only into a reseller group. */
+  const creditsToSend = (values: UserFormValues): number | undefined =>
+    creditsEnabled ? values.credits : undefined
+
+  /**
    * Which groups the picker may offer - and, by the same rule, which roles the account may
    * be moved *into*.
    *
@@ -446,6 +477,11 @@ export default function UserFormPage(_props: UserFormPageProps) {
     try {
       const loginGuard = formValuesToGuard(values)
       const timeZone = values.timeZone === AutoTimeZone ? '' : values.timeZone
+      // The balance travels only while the chosen group is a reseller's: the server refuses a
+      // named value on any other account (`400 validation_failed`, keyed `credits`), and the
+      // field's own value stays in the store so switching back restores it. This is the
+      // "disabled and not saved" rule the subscriptions form's plan-dependent inputs follow.
+      const credits = creditsToSend(values)
 
       const result =
         isEdit && detail
@@ -464,6 +500,9 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 // what it wants rather than what to skip.
                 timeZone,
                 loginGuard,
+                // Absent means "keep the stored balance": an account whose group is not a
+                // reseller's keeps whatever it holds, which the server also enforces.
+                ...(credits === undefined ? {} : { credits }),
               },
             })
           : await create.mutateAsync({
@@ -477,6 +516,9 @@ export default function UserFormPage(_props: UserFormPageProps) {
                 // to preserve, so "keep" would be an answer to a question never asked.
                 timeZone: values.timeZone === AutoTimeZone ? null : values.timeZone,
                 loginGuard,
+                // On create the balance is the account's starting credit - written as one
+                // ledger row when the group is a reseller's, and omitted otherwise.
+                ...(credits === undefined ? {} : { credits }),
               },
             })
 
@@ -684,6 +726,34 @@ export default function UserFormPage(_props: UserFormPageProps) {
             // permission reads as one and a dead connection as one.
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={groupsError} />
           )}
+
+          {/* The balance, immediately after the group it depends on and before the status:
+              it is a property of a reseller account, and picking the group is what decides
+              whether it applies. The control is *disabled* rather than taken away when the
+              chosen group is not a reseller's - a control that vanishes teaches nothing about
+              why it was there - and the sentence under it says which accounts it applies to.
+              The field keeps whatever was typed while disabled; `handleFinish` is what leaves
+              it out of the body, so switching groups back restores the value. */}
+          <Form.Item
+            name="credits"
+            label={t('users.creditsLabel')}
+            extra={creditsEnabled ? undefined : t('users.creditsHint')}
+            rules={[
+              {
+                validator: (_: unknown, value: number | null | undefined) =>
+                  isCreditAmount(value)
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t('validation.creditsInvalid'))),
+              },
+            ]}
+          >
+            <InputNumber
+              min={0}
+              precision={0}
+              disabled={!creditsEnabled}
+              style={{ width: '100%', maxWidth: 200 }}
+            />
+          </Form.Item>
 
           <Form.Item name="status" label={t('users.columns.status')}>
             {/* Also always one of the three. Changing it here moves the row through the same

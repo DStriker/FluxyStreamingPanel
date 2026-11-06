@@ -70,6 +70,8 @@ const en = {
     codeRequired: 'Enter the code from the email',
     codeLength: 'The code is 6 digits',
     currentPasswordRequired: 'Enter your current password',
+    // The credit balance of an account in a reseller group: a whole number and nothing else.
+    creditsInvalid: 'Enter a whole number of 0 or more.',
   },
   titles: {
     register: 'Registration',
@@ -168,6 +170,10 @@ const en = {
       // the way the two above it do: the menu names how you got there, the card names what
       // you are looking at.
       adminSessions: 'User sessions',
+      // The reseller balance history, last in the admin's own group. The card below it is
+      // headed `creditLogs.title` - "Credit log" rather than "Credit logs" - because the card
+      // names the record and the rail names the place, and the two need not share a number.
+      creditLogs: 'Credit logs',
       // Each content section repeats one shape: `add`, `manage` and `categories`, plus an
       // `import` entry only where a playlist import has been built. Unlike the labels around
       // them, every entry names its object as well as its verb: a bare `Add` beside
@@ -243,6 +249,9 @@ const en = {
     themeLight: 'Light theme',
     themeDark: 'Dark theme',
     themeSystem: 'Follow the system',
+    // The reseller's balance, drawn beside the account menu. A word, not a currency: credits
+    // are this installation's own unit, and the number beside it is a plain integer.
+    creditBalance: 'Credit balance',
   },
   dashboard: {
     greeting: 'Welcome back, {{name}}.',
@@ -394,6 +403,14 @@ const en = {
     // visitor is choosing, named as what it does.
     groupRequired: 'Choose a group for this account',
     groupLevel: 'Access level: {{role}}',
+    // The balance field of the form, and the sentence that explains why it is disabled when
+    // the chosen group is not a reseller's. Credits are a reseller's own, so the field stays
+    // visible (a control that vanishes teaches nothing) and says why it cannot be typed into.
+    creditsLabel: 'Credits',
+    creditsHint: 'Credits apply only to accounts in a reseller group.',
+    // The screen-reader name of the second line in the group cell: the wallet glyph carries
+    // no text of its own, and "0" beside a group name reads as a count of something else.
+    creditsAria: 'Credits: {{count}}',
     // The note beside the status field: the account's own row and its group's, most
     // restrictive winning. It says *where* the restriction comes from, because the row the
     // form is editing may read `Registered` while the account nobody can sign in to is
@@ -2378,6 +2395,52 @@ const en = {
       second: 's',
     },
   },
+  // The reseller credit log: the audit trail of how each balance got to where it is. Its own
+  // block rather than more keys under `users` or `connectionLogs`, because it is a resource of
+  // its own behind a grant of its own (`viewResellers` to read, `editResellers` to wipe).
+  creditLogs: {
+    title: 'Credit log',
+    // The five columns. `credits` is the amount, signed: green for issued, red for spent or
+    // for the zero an account created with no initial credit carries.
+    columns: {
+      reseller: 'Reseller',
+      credits: 'Credits',
+      issuedBy: 'Issued by',
+      description: 'Description',
+      createdAt: 'Date',
+    },
+    searchLabel: 'Search credit logs',
+    searchPlaceholder: 'Search',
+    // The reseller picker's own name while nothing is chosen.
+    filterAnyReseller: 'Any reseller',
+    // The date range: one accessible name on the pair and the two sides' placeholders. It
+    // filters on when the entry was written.
+    filterDateRange: 'Date range',
+    filterDateFrom: 'Date from',
+    filterDateTo: 'Date to',
+    // The active filters as closable tags. The range is one control over two parameters, so
+    // its tag names both ends in one label; a single-sided range names only the side that is
+    // set. The search is deliberately not a tag - its own box is where it is read and cleared.
+    filters: {
+      reseller: 'Reseller: {{value}}',
+      dateRange: 'Date: {{from}} – {{to}}',
+      dateRangeFrom: 'Date from: {{from}}',
+      dateRangeTo: 'Date to: {{to}}',
+    },
+    empty: 'No credit entries yet.',
+    noMatches: 'No credit entries match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The whole-table clear. The dialog states the scope - every reseller, whatever the
+    // filters show - because the button's words are a promise about the log.
+    clearAll: 'Clear all logs',
+    clearConfirmTitle: 'Clear the whole credit log?',
+    clearConfirmBody:
+      'All credit entries will be removed — for every reseller, regardless of the filters on screen. This cannot be undone.',
+    clearConfirmOk: 'Clear all',
+    noPermission: 'Your group does not allow this.',
+  },
   // The add and edit form for one subscription. Its own block because the table names what a row
   // is and the form names what an operator is being asked to type.
   subscriptionsForm: {
@@ -2725,6 +2788,9 @@ const en = {
       // The connection log's one write. It names the table rather than a row: the command wipes
       // everything, and the sentence says so.
       connection_logs_cleared: 'Every connection log entry has been deleted.',
+      // The credit log's one write, worded the same way: the command wipes the table, and the
+      // sentence says every entry went rather than naming a row.
+      credit_logs_cleared: 'Every credit log entry has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

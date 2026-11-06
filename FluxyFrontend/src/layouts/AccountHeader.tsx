@@ -10,6 +10,7 @@ import {
   MoonOutlined,
   SunOutlined,
   UserOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +22,7 @@ import { useSession } from '../utils/sessionContext'
 import { ThemeChoice, setThemeChoice, useThemeChoice } from '../utils/theme'
 import { internalPath } from '../utils/url'
 import { useSignOut } from '../features/auth/hooks/mutations'
+import { useProfile } from '../features/profile/hooks/queries'
 
 /**
  * The pinned top bar: where this area is, who is signed in, how to change the theme, and
@@ -74,6 +76,16 @@ export default function AccountHeader({
   const session = useSession()
   const storedTheme = useThemeChoice()
   const signOut = useSignOut()
+
+  /**
+   * The reseller's balance, from the shared `['profile']` query - the same answer the profile
+   * page and the account forms already read, so the chip adds no request of its own.
+   *
+   * **Asked only for a reseller**, because it is the only role the chip is drawn for: the two
+   * other roles would pay for a database read to decide not to draw it. The hook runs before
+   * the `null` branch below so the hook order stays the same on every render.
+   */
+  const profileQuery = useProfile({ enabled: session?.role === 'Reseller' })
 
   // Only `RequireAuth` renders this bar, and it always publishes a session - so `null` here
   // means the guard was bypassed rather than that nobody happens to be signed in. An empty
@@ -194,6 +206,25 @@ export default function AccountHeader({
           onChange={setThemeChoice}
           options={themeOptions}
         />
+
+        {/* The reseller's balance, and only a reseller's: the three roles share one shell and
+            the balance is a fact of one of them. It is a plain span rather than a control -
+            nothing about it is pressable - and its own class keeps it out of the rule that
+            hides the username below 768px: a balance that disappeared on a phone would be a
+            balance the owner cannot check where the page title has already given way.
+            The number is read off the shared `['profile']` answer, so the chip costs no
+            request the account is not already making. */}
+        {session.role === 'Reseller' && (
+          <Tooltip title={t('header.creditBalance')}>
+            <span className="layout-shell__credits">
+              <WalletOutlined />
+              {/* A dash until the profile answers, rather than a zero the server never sent:
+                  an unknown balance is not an empty wallet. The answer is usually a frame
+                  away, and the chip keeps its width either way. */}
+              <Typography.Text>{profileQuery.data?.credits ?? '\u2014'}</Typography.Text>
+            </span>
+          </Tooltip>
+        )}
 
         {/* The identity is the trigger: whose session this is and what may be done with it
             are one question, so they are one control rather than three. The menu follows the

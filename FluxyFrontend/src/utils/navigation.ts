@@ -25,6 +25,7 @@ import {
   UserAddOutlined,
   UserOutlined,
   VideoCameraOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import type { Role } from '../types'
 import { areaForRole, homeForRole } from './session'
@@ -411,6 +412,21 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.adminSessions',
           icon: GlobalOutlined,
           page: () => import('../pages/admin/AdminSessionsPage'),
+        },
+        {
+          // The reseller balances' history, last in this group: it is the same question the
+          // entry above asks with one more subject - which accounts this operator may read,
+          // and what moved their money. It sits after the visit history on the owner's call,
+          // because a balance is read when something about an account has already gone wrong.
+          //
+          // `credit-logs` rather than a child of `users`: the address mirrors the backend's
+          // own route (`admin/credit-logs`), so the page, the API and the menu entry name one
+          // resource the same way.
+          key: 'creditLogs',
+          path: 'credit-logs',
+          labelKey: 'nav.items.creditLogs',
+          icon: WalletOutlined,
+          page: () => import('../pages/admin/CreditLogsPage'),
         },
       ],
     },

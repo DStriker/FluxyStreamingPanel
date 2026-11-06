@@ -24,6 +24,7 @@ import { idCell, ipCell, textCell } from '../../utils/tableCells'
 import { enumParam, withFilter } from '../../utils/tableParams'
 import { actionsColumnWidth } from '../../utils/tableWidths'
 import LastSeenCell from '../../features/users/components/LastSeenCell'
+import UserGroupCell from '../../features/users/components/UserGroupCell'
 import { ResetColumnWidths, RowActions, ServerTable, TableSearch } from '../../components/table'
 import type { ResizableHeaderCellProps, RowAction } from '../../components/table'
 import { useProfile } from '../../features/profile/hooks/queries'
@@ -498,6 +499,13 @@ export default function UsersPage(_props: UsersPageProps) {
       // renderings of one fact - and this header hands its own key to the sorter, so the
       // column and the order it asks for stay the same thing (`sortBy=group`) instead of
       // sorting names under a heading that reads as levels.
+      //
+      // **A reseller's balance is the cell's second line.** It is one fact about the same
+      // account, not a column: a reseller's group and its wallet are read together, and a
+      // ninth column would cost the pinned 1190 the table has always summed to. `0` is drawn
+      // as `0` - a reseller with an empty wallet is a fact - while every other role draws
+      // nothing on that line at all, not even a dash: the balance does not apply to them, so
+      // there is nothing unknown to mark.
       title: t('users.columns.group'),
       dataIndex: 'groupName',
       key: 'group',
@@ -506,7 +514,7 @@ export default function UsersPage(_props: UsersPageProps) {
       sortOrder: table.orderOf('group'),
       ellipsis: { showTitle: false },
       onHeaderCell: () => resizer('group'),
-      render: textCell,
+      render: (_, user) => <UserGroupCell user={user} />,
     },
     {
       // A tag rather than coloured text: three states of one account read as three labels

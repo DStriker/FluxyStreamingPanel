@@ -158,6 +158,13 @@ export interface NewUserValues {
   timeZone: string | null
   /** The two switches and the three allow lists, sent whole. */
   loginGuard: LoginGuardSettings
+  /**
+   * Initial credit balance, sent only for an account joining a reseller group.
+   *
+   * The create form carries the field and sends it only while the chosen group's role is
+   * `Reseller`; the server refuses it on any other group rather than storing and ignoring it.
+   */
+  credits?: number
 }
 
 /**
@@ -189,6 +196,7 @@ export const createUser = ({
       status: values.status,
       timeZone: values.timeZone,
       loginGuard: values.loginGuard,
+      ...(values.credits === undefined ? {} : { credits: values.credits }),
     },
     csrfToken,
   })
@@ -215,6 +223,15 @@ export interface UserPatch {
   timeZone?: string | null
   /** Replacement guard, sent whole when sent at all - a half a caller never speaks about would be a guard nobody can read. */
   loginGuard?: LoginGuardSettings
+  /**
+   * New credit balance, or null to keep the stored one.
+   *
+   * Sent only while the chosen group's role is `Reseller`: the server refuses a named value on
+   * an account that is not, or is not becoming, a reseller, and the form keeps the typed value
+   * in its store without sending it so switching back restores it. A change writes exactly one
+   * ledger row - the delta - and an unchanged value writes nothing.
+   */
+  credits?: number
 }
 
 /**

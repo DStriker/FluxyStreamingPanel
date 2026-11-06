@@ -39,6 +39,8 @@ export interface AdminUserDetail {
   status: UserStatus
   /** That row combined with the group's: what the account can actually do right now. */
   effectiveStatus: UserStatus
+  /** Credit balance of the account. Zero for every role but a reseller. */
+  credits: number
   /** IANA identifier of the chosen display time zone, or null when the browser decides. */
   timeZone: string | null
   /** When the account confirmed its email address, or null while it never has. Blocking does not clear it. */

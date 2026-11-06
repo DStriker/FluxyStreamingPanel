@@ -19,6 +19,15 @@ export interface ProfileResponse {
    */
   permissions: UserPermission[]
   /**
+   * The account's credit balance, as a plain integer.
+   *
+   * Stored on every row and meaningful only for a reseller: the header chip is drawn for a
+   * reseller alone, and the admin's account screens edit it only while the chosen group's role
+   * is `Reseller`. `GET /auth/me` deliberately does not carry it - that is the cheap identity
+   * the guest guard polls, and a balance is a row this call already reads.
+   */
+  credits: number
+  /**
    * IANA identifier of the chosen display time zone (`Europe/Moscow`), or null when the
    * visitor has not chosen one and the browser's own decides. Null is a normal state and
    * not a missing field: every account starts with it.

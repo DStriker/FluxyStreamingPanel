@@ -10,9 +10,20 @@ import { getProfile } from '../api'
  * feature reaches across.
  */
 
+/** Optional switches for the profile read. */
+interface UseProfileOptions {
+  /**
+   * Whether to ask at all. Defaults to true, because every page that names this hook needs the
+   * answer; the header chip is the one caller that reads a fact only a reseller has and must
+   * not issue a request for the two roles that cannot show it.
+   */
+  enabled?: boolean
+}
+
 /** The three facts the profile page shows, shared by every page that needs the zone or the grants. */
-export const useProfile = () =>
+export const useProfile = ({ enabled = true }: UseProfileOptions = {}) =>
   useQuery({
     queryKey: ['profile'],
     queryFn: ({ signal }) => getProfile(signal),
+    enabled,
   })
