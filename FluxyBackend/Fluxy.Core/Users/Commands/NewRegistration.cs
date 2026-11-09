@@ -15,5 +15,15 @@ namespace Fluxy.Core.Users.Commands
 
         /// <summary>Clear text password the visitor wants. It is hashed inside the service.</summary>
         public required string Password { get; init; }
+
+        /// <summary>Address the request came from, as the server saw it, or null.</summary>
+        /// <remarks>
+        /// Carried so the audit row the service writes records the network it came from. It is
+        /// transport input, not a registration rule: the service never decides anything from it.
+        /// </remarks>
+        public string? ClientAddress { get; init; }
+
+        /// <summary>User agent the request presented, or null. Recorded on the audit row.</summary>
+        public string? UserAgent { get; init; }
     }
 }

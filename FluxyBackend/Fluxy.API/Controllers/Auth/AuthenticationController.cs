@@ -7,8 +7,11 @@ using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
 using Fluxy.Core.Security.Models;
+using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
+using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Models;
+using Fluxy.Core.Users.Utils;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +47,7 @@ namespace Fluxy.API.Controllers.Auth
         private readonly ITokenService _tokenService;
         private readonly CaptchaGuard _captchaGuard;
         private readonly AttemptLimiter _limiter;
+        private readonly IUserLogService _userLogs;
         private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
 
         /// <summary>
@@ -53,6 +57,7 @@ namespace Fluxy.API.Controllers.Auth
         /// <param name="tokenService">Service that issues, rotates and ends sessions.</param>
         /// <param name="captchaGuard">Check that a request came from a person.</param>
         /// <param name="limiter">Counter that limits how often one client may try.</param>
+        /// <param name="userLogs">Audit log logout is recorded in.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="authOptions">Live token settings and landing paths.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
@@ -61,6 +66,7 @@ namespace Fluxy.API.Controllers.Auth
             ITokenService tokenService,
             CaptchaGuard captchaGuard,
             AttemptLimiter limiter,
+            IUserLogService userLogs,
             IAntiforgery antiforgery,
             IOptionsMonitor<AuthenticationOptions> authOptions,
             ILogger<AuthenticationController> logger)
@@ -70,6 +76,7 @@ namespace Fluxy.API.Controllers.Auth
             _tokenService = tokenService;
             _captchaGuard = captchaGuard;
             _limiter = limiter;
+            _userLogs = userLogs;
             _authOptions = authOptions;
         }
 
@@ -179,7 +186,7 @@ namespace Fluxy.API.Controllers.Auth
             var outcome = await _tokenService.RefreshAsync(
                 refreshToken,
                 clientAddress,
-                Request.Headers.UserAgent.FirstOrDefault(),
+                ClientUserAgent,
                 cancellationToken);
 
             if (outcome.Status is not RefreshStatus.Refreshed || outcome.Tokens is null)
@@ -271,6 +278,24 @@ namespace Fluxy.API.Controllers.Auth
             }
 
             AuthCookies.Clear(HttpContext);
+
+            // Recorded after the session is gone: the log service writes with its own save, so
+            // this row cannot be the state the revoked session still depends on. The record is
+            // always a success - reaching this line means the session was ended, whatever the
+            // refresh row looked like.
+            await _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = User.UserId(),
+                    RecordType = UserLogRecordType.Logout,
+                    IsSuccess = true,
+                    Description = UserLogDescriptions.Describe(
+                        UserLogDescriptions.LoggedOut,
+                        User.Name()),
+                    Ip = ClientAddress,
+                    UserAgent = ClientUserAgent
+                },
+                cancellationToken);
 
             return Ok(new MessageResponse
             {
@@ -374,7 +399,7 @@ namespace Fluxy.API.Controllers.Auth
                     Password = request.Password ?? string.Empty,
                     RequiredRole = requiredRole,
                     ClientAddress = clientAddress,
-                    UserAgent = Request.Headers.UserAgent.FirstOrDefault()
+                    UserAgent = ClientUserAgent
                 },
                 cancellationToken);
 

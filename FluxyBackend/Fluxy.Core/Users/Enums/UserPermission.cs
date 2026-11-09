@@ -243,6 +243,17 @@ namespace Fluxy.Core.Users.Enums
         /// Separate from <see cref="ViewBlacklists"/> for the reason <see cref="EditStreams"/>
         /// gives.
         /// </summary>
-        EditBlacklists = 134217728
+        EditBlacklists = 134217728,
+
+        /// <summary>
+        /// May read the user audit log: the log table, its filters and every entry it draws.
+        /// </summary>
+        /// <remarks>
+        /// A read grant by design: the log is written by the flows that perform the actions it
+        /// records, never by an operator. The only administrative operation on it in this phase is
+        /// the whole-table clear, and there is no separate write bit - a second grant would have to
+        /// mean something the table does not support.
+        /// </remarks>
+        ViewUserLogs = 268435456
     }
 }

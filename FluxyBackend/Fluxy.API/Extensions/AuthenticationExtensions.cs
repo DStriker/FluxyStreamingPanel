@@ -145,6 +145,18 @@ namespace Fluxy.API.Extensions
         public const string EditBlacklistsPolicy = "Permission.EditBlacklists";
 
         /// <summary>
+        /// Policy that accepts an operator who may read the user audit log.
+        /// </summary>
+        /// <remarks>
+        /// The log's only grant: an entry is written by the flow that performed the action it
+        /// records, never by an operator, so there is no write policy to pair this with - and
+        /// the same grant gates both endpoints. Reading the log and clearing the whole table
+        /// destroy the same evidence, so they are one permission rather than a read/write pair;
+        /// the clear adds only the antiforgery pair on top.
+        /// </remarks>
+        public const string ViewUserLogsPolicy = "Permission.ViewUserLogs";
+
+        /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
         /// <param name="services">Service collection to register into.</param>
@@ -372,7 +384,19 @@ namespace Fluxy.API.Extensions
                     .RequireAuthenticatedUser()
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
-                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBlacklists)));
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBlacklists)))
+
+                // The user audit log has one grant: reading it. The role requirement stays on top
+                // of the permission for the reason every other policy here carries it - a grant
+                // only means something once the role gate has let the caller into the admin area.
+                // No permission backfill migration accompanies this member: the catalog is code,
+                // and the seeder reconciles the Administrators base group against it on every
+                // boot, so an installation that restarts receives the new bit without a migration.
+                .AddPolicy(ViewUserLogsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.ViewUserLogs)));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped

@@ -163,6 +163,8 @@ namespace Fluxy.API.Controllers.Auth
                 request.Username ?? string.Empty,
                 request.Email ?? string.Empty,
                 request.Password ?? string.Empty,
+                clientAddress,
+                ClientUserAgent,
                 cancellationToken);
 
             return StatusCode(
@@ -227,6 +229,8 @@ namespace Fluxy.API.Controllers.Auth
             var outcome = await _passwordResetService.ConfirmAsync(
                 request.Username ?? string.Empty,
                 request.Code ?? string.Empty,
+                clientAddress,
+                ClientUserAgent,
                 cancellationToken);
 
             if (outcome.Status is PasswordResetStatus.Confirmed && outcome.UserId is { } userId)

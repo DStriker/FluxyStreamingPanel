@@ -11,6 +11,7 @@ using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Exceptions;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Users.Outcomes;
+using Fluxy.Core.Users.Utils;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -65,6 +66,7 @@ namespace Fluxy.API.Controllers.Auth
         private readonly CaptchaGuard _captchaGuard;
         private readonly AttemptLimiter _limiter;
         private readonly ITokenService _tokenService;
+        private readonly IUserLogService _userLogs;
         private readonly IOptionsMonitor<AuthenticationOptions> _authOptions;
 
         /// <summary>
@@ -74,6 +76,7 @@ namespace Fluxy.API.Controllers.Auth
         /// <param name="captchaGuard">Check that a request came from a person.</param>
         /// <param name="limiter">Counter that limits how often one client may try.</param>
         /// <param name="tokenService">Service that opens the session a confirmation earns.</param>
+        /// <param name="userLogs">Audit log the lost-race refusal is recorded in.</param>
         /// <param name="antiforgery">Service that builds and checks the CSRF token.</param>
         /// <param name="authOptions">Live token settings and landing paths.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
@@ -82,6 +85,7 @@ namespace Fluxy.API.Controllers.Auth
             CaptchaGuard captchaGuard,
             AttemptLimiter limiter,
             ITokenService tokenService,
+            IUserLogService userLogs,
             IAntiforgery antiforgery,
             IOptionsMonitor<AuthenticationOptions> authOptions,
             ILogger<RegistrationController> logger)
@@ -91,6 +95,7 @@ namespace Fluxy.API.Controllers.Auth
             _captchaGuard = captchaGuard;
             _limiter = limiter;
             _tokenService = tokenService;
+            _userLogs = userLogs;
             _authOptions = authOptions;
         }
 
@@ -232,7 +237,9 @@ namespace Fluxy.API.Controllers.Auth
                     {
                         Username = request.Username!,
                         Email = request.Email!,
-                        Password = request.Password!
+                        Password = request.Password!,
+                        ClientAddress = clientAddress,
+                        UserAgent = ClientUserAgent
                     },
                     cancellationToken);
             }
@@ -241,10 +248,24 @@ namespace Fluxy.API.Controllers.Auth
                 // The lookup the service did passed, and then another request took the same
                 // username or email first. That is an ordinary outcome of two people choosing the
                 // same name at the same moment, not a fault, so it becomes the same refusal the
-                // loser would have got from a check that had not raced.
+                // loser would have got from a check that had not raced. The failure row is
+                // written here because the service threw before it could answer an outcome.
                 Logger.LogInformation(
                     exception,
                     "A registration lost the race for a unique value and was refused.");
+
+                await _userLogs.RecordAsync(
+                    new NewUserLog
+                    {
+                        RecordType = UserLogRecordType.RegistrationSubmit,
+                        IsSuccess = false,
+                        Description = UserLogDescriptions.Describe(
+                            UserLogDescriptions.RegistrationRefusedAlreadyExists,
+                            request.Username?.Trim()),
+                        Ip = clientAddress,
+                        UserAgent = ClientUserAgent
+                    },
+                    cancellationToken);
 
                 outcome = new RegistrationOutcome { Status = RegistrationStatus.AlreadyExists };
             }
@@ -322,6 +343,8 @@ namespace Fluxy.API.Controllers.Auth
             var outcome = await _registrationService.ConfirmAsync(
                 request.Email!,
                 request.Code!,
+                clientAddress,
+                ClientUserAgent,
                 cancellationToken);
 
             if (outcome.ConfirmedAccount is { } account)
@@ -329,7 +352,7 @@ namespace Fluxy.API.Controllers.Auth
                 var tokens = await _tokenService.IssueAsync(
                     account,
                     clientAddress,
-                    Request.Headers.UserAgent.FirstOrDefault(),
+                    ClientUserAgent,
                     cancellationToken);
 
                 AuthCookies.Write(HttpContext, tokens);

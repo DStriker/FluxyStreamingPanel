@@ -341,18 +341,24 @@ namespace Fluxy.API.Controllers.Auth
                     userId,
                     currentPassword,
                     username,
+                    ClientAddress,
+                    ClientUserAgent,
                     cancellationToken),
 
                 { Email: { } email } => _profileService.ChangeEmailAsync(
                     userId,
                     currentPassword,
                     email,
+                    ClientAddress,
+                    ClientUserAgent,
                     cancellationToken),
 
                 { NewPassword: { } newPassword } => _profileService.ChangePasswordAsync(
                     userId,
                     currentPassword,
                     newPassword,
+                    ClientAddress,
+                    ClientUserAgent,
                     cancellationToken),
 
                 { LoginGuard: { } guard } => _profileService.ChangeLoginGuardAsync(
@@ -367,6 +373,7 @@ namespace Fluxy.API.Controllers.Auth
                         AllowedAutonomousSystemNumber = guard.AllowedAutonomousSystemNumber
                     },
                     ClientAddress,
+                    ClientUserAgent,
                     cancellationToken),
 
                 _ => throw new InvalidOperationException(
@@ -427,6 +434,8 @@ namespace Fluxy.API.Controllers.Auth
             var outcome = await _profileService.ConfirmAsync(
                 userId,
                 request.Code ?? string.Empty,
+                clientAddress,
+                ClientUserAgent,
                 cancellationToken);
 
             return await RespondAsync(outcome, clientAddress, cancellationToken);
@@ -533,7 +542,7 @@ namespace Fluxy.API.Controllers.Auth
                     var tokens = await _tokenService.IssueAsync(
                         account,
                         clientAddress,
-                        Request.Headers.UserAgent.FirstOrDefault(),
+                        ClientUserAgent,
                         cancellationToken);
 
                     AuthCookies.Write(HttpContext, tokens);

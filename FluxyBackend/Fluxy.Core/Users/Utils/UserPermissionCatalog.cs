@@ -36,9 +36,12 @@ namespace Fluxy.Core.Users.Utils
         /// The whole catalog, in a stable order so a form, a log line and a migration can
         /// agree on how the permissions are listed. Grouped by subject - the accounts, then
         /// the groups, then the four content resources (the video streams, the audio streams,
-        /// the on-demand catalogue, the series), then the guide sources, then the bouquets and
-        /// finally the tariff plans a subscription is sold under - and inside each subject as a
-        /// read beside its write, which is the shape the first two permissions had.
+        /// the on-demand catalogue, the series), then the guide sources, then the bouquets,
+        /// then the tariff plans a subscription is sold under, then the subscriptions
+        /// themselves, then the blacklists, and finally the user audit log - and inside each
+        /// subject as a read beside its write, which is the shape the first two permissions
+        /// had. The user log has a read grant and no write one, because an operator never
+        /// writes an audit entry.
         /// </summary>
         public static IReadOnlyList<UserPermission> All { get; } =
         [
@@ -67,7 +70,8 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewSubscriptions,
             UserPermission.EditSubscriptions,
             UserPermission.ViewBlacklists,
-            UserPermission.EditBlacklists
+            UserPermission.EditBlacklists,
+            UserPermission.ViewUserLogs
         ];
 
         /// <summary>
@@ -125,7 +129,8 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewSubscriptions] = UserRole.Admin,
                 [UserPermission.EditSubscriptions] = UserRole.Admin,
                 [UserPermission.ViewBlacklists] = UserRole.Admin,
-                [UserPermission.EditBlacklists] = UserRole.Admin
+                [UserPermission.EditBlacklists] = UserRole.Admin,
+                [UserPermission.ViewUserLogs] = UserRole.Admin
             };
 
         /// <summary>

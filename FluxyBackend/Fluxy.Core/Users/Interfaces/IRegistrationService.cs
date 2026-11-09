@@ -37,11 +37,20 @@ namespace Fluxy.Core.Users.Interfaces
         /// </remarks>
         /// <param name="email">Address the account was registered with.</param>
         /// <param name="code">Code that was mailed to it.</param>
+        /// <param name="clientAddress">
+        /// Address the request came from, recorded on the audit row, or null.
+        /// </param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>How the request ended. No row is ever written by this call.</returns>
+        /// <returns>
+        /// How the request ended. This call never creates an account row; every outcome is
+        /// recorded in the user audit log.
+        /// </returns>
         Task<RegistrationOutcome> ConfirmAsync(
             string email,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
     }
 }

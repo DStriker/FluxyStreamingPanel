@@ -69,11 +69,15 @@ namespace Fluxy.Core.Users.Interfaces
         /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="currentPassword">Password the account signs in with, verified here.</param>
         /// <param name="username">New login name, trimmed but otherwise untouched.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<ProfileChangeOutcome> ChangeUsernameAsync(
             Guid userId,
             string currentPassword,
             string username,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -83,11 +87,15 @@ namespace Fluxy.Core.Users.Interfaces
         /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="currentPassword">Password the account signs in with, verified here.</param>
         /// <param name="email">New address, folded to lower case before anything is compared.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<ProfileChangeOutcome> ChangeEmailAsync(
             Guid userId,
             string currentPassword,
             string email,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -97,11 +105,15 @@ namespace Fluxy.Core.Users.Interfaces
         /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="currentPassword">Password the account signs in with, verified here.</param>
         /// <param name="newPassword">Replacement password in clear text. Never stored as given.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<ProfileChangeOutcome> ChangePasswordAsync(
             Guid userId,
             string currentPassword,
             string newPassword,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -126,18 +138,23 @@ namespace Fluxy.Core.Users.Interfaces
         /// Address the request came from, as the server saw it. The service resolves it itself
         /// and refuses a guard that would lock this very network out.
         /// </param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<ProfileChangeOutcome> ChangeLoginGuardAsync(
             Guid userId,
             string currentPassword,
             LoginGuardSettings settings,
             string? clientAddress,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Applies the change whose code was mailed to the account.
-        /// </summary>        /// <param name="userId">Identifier taken from the access token.</param>
+        /// </summary>
+        /// <param name="userId">Identifier taken from the access token.</param>
         /// <param name="code">Code as typed, digits only.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
         /// The outcome, with <see cref="ProfileChangeOutcome.Account"/> set when the change went
@@ -146,6 +163,8 @@ namespace Fluxy.Core.Users.Interfaces
         Task<ProfileChangeOutcome> ConfirmAsync(
             Guid userId,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
     }
 }

@@ -1363,6 +1363,69 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("user_group_permissions", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("country_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Ip")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_success");
+
+                    b.Property<string>("Isp")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("isp");
+
+                    b.Property<short>("RecordType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("record_type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordType");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("user_logs", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLoginGuardRuleEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1971,6 +2034,14 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("UserGroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLogEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserLoginGuardRuleEntity", b =>

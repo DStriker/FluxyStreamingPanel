@@ -178,6 +178,11 @@ namespace Fluxy.Application
             // this service has no write path at all - only a reader and the wipe.
             services.AddScoped<ICreditLogService, CreditLogService>();
 
+            // The user audit log: one write path every flow may call, plus the reader and the
+            // wipe. It is scoped because it reads and writes through the context, and because
+            // the GeoIP memo it shares describes one request.
+            services.AddScoped<IUserLogService, UserLogService>();
+
             // Trial rows for that log, in Development only and only into an empty table. It reads
             // its prerequisites through Core repositories because the rows must name real
             // subscriptions and streams - the foreign key refuses an invented one - and it is

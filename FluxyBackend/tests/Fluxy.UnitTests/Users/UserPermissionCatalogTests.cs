@@ -68,6 +68,26 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheUserLogReadGrantBelongsToTheAdministratorBaseGroup()
+        {
+            // The log is written by the flows it describes, never by an operator, so the catalog
+            // names one read grant and no write one. The seeder reconciles the base groups
+            // against this catalog on every start - which is why no backfill migration
+            // accompanies the member - so the grant reaches the Administrators group without a
+            // migration and without a frontend permission mirror changing.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewUserLogs, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewUserLogs,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.ViewUserLogs,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -125,6 +145,7 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(33554432, (int)UserPermission.EditSubscriptions);
             Assert.Equal(67108864, (int)UserPermission.ViewBlacklists);
             Assert.Equal(134217728, (int)UserPermission.EditBlacklists);
+            Assert.Equal(268435456, (int)UserPermission.ViewUserLogs);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -192,10 +213,11 @@ namespace Fluxy.UnitTests.Users
             // A bit above the highest member the catalog names. It moved up when the bouquet
             // pair arrived (1 &lt;&lt; 20), again when the tariff plan pair took the next two
             // slots, again when the subscription pair took the two after those, again when the
-            // blacklist pair took 2^26 and 2^27, and it moves each time a permission takes one -
-            // which is exactly what this line is for.
+            // blacklist pair took 2^26 and 2^27, and again when the user-log read grant took
+            // 2^28, and it moves each time a permission takes one - which is exactly what this
+            // line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 28)));
+                UserPermission.ViewClients | (UserPermission)(1 << 29)));
         }
 
         [Fact]

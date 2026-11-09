@@ -59,6 +59,7 @@ namespace Fluxy.Application.Users.Services
         private readonly PendingChangeService _pendingChangeService;
         private readonly IEmailSender _emailSender;
         private readonly IGeoIpResolver _geoIp;
+        private readonly IUserLogService _userLogs;
         private readonly IHostEnvironment _environment;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
@@ -74,6 +75,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="pendingChangeService">The machinery of a change that waits for a code.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="geoIp">Resolver that places the client address on the map.</param>
+        /// <param name="userLogs">The audit log every profile outcome is recorded in.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
@@ -89,6 +91,7 @@ namespace Fluxy.Application.Users.Services
             PendingChangeService pendingChangeService,
             IEmailSender emailSender,
             IGeoIpResolver geoIp,
+            IUserLogService userLogs,
             IHostEnvironment environment,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
@@ -101,6 +104,7 @@ namespace Fluxy.Application.Users.Services
             _pendingChangeService = pendingChangeService;
             _emailSender = emailSender;
             _geoIp = geoIp;
+            _userLogs = userLogs;
             _environment = environment;
             _options = options;
             _timeProvider = timeProvider;
@@ -226,6 +230,7 @@ namespace Fluxy.Application.Users.Services
             string currentPassword,
             LoginGuardSettings settings,
             string? clientAddress,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             // Normalized once, so the anti-lock check below, the staging and the confirmation
@@ -234,6 +239,15 @@ namespace Fluxy.Application.Users.Services
             var staged = LoginGuardNormalizer.Normalize(settings);
             if (staged.Errors.Count > 0)
             {
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChangeRefusedInvalidInput,
+                    isSuccess: false,
+                    subject: null,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.InvalidInput,
@@ -245,6 +259,15 @@ namespace Fluxy.Application.Users.Services
 
             if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChangeRefusedAccountNotActive,
+                    isSuccess: false,
+                    subject: candidate?.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
 
@@ -253,6 +276,15 @@ namespace Fluxy.Application.Users.Services
             if (string.IsNullOrEmpty(currentPassword)
                 || !BCrypt.Net.BCrypt.Verify(currentPassword, candidate.Account.PasswordHash))
             {
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChangeRefusedWrongPassword,
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.InvalidCurrentPassword
@@ -275,6 +307,15 @@ namespace Fluxy.Application.Users.Services
                         staged.Value.AllowedAutonomousSystemNumber is { } asn ? [asn] : [],
                         geo))
                 {
+                    await RecordGuardAsync(
+                        userId,
+                        UserLogDescriptions.LoginGuardChangeRefusedWouldLockOut,
+                        isSuccess: false,
+                        subject: candidate.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new ProfileChangeOutcome
                     {
                         Status = ProfileChangeStatus.InvalidInput,
@@ -308,6 +349,15 @@ namespace Fluxy.Application.Users.Services
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 LogGuardChanged(candidate.Account, staged.Value);
 
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChanged,
+                    isSuccess: true,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.Applied,
@@ -328,7 +378,18 @@ namespace Fluxy.Application.Users.Services
                 // Two requests for the same account arrived at the same moment and the unique
                 // index let one of them win. The winner stored a row and mailed a code of its
                 // own, so this one has nothing of its own to send - answering "check your inbox"
-                // sends the visitor to the code that does exist.
+                // sends the visitor to the code that does exist. The attempt is still recorded
+                // as a success: two requests reached the service, and the visitor is being sent
+                // to a code that works.
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChangeRequested,
+                    isSuccess: true,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.Submitted,
@@ -354,12 +415,30 @@ namespace Fluxy.Application.Users.Services
             {
                 // The row is stored, so the caller has to be told that the code did not arrive.
                 // A new request replaces it once the visitor asks again.
+                await RecordGuardAsync(
+                    userId,
+                    UserLogDescriptions.LoginGuardChangeFailedEmailDelivery,
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.EmailDeliveryFailed,
                     RowPersisted = true
                 };
             }
+
+            await RecordGuardAsync(
+                userId,
+                UserLogDescriptions.LoginGuardChangeRequested,
+                isSuccess: true,
+                subject: candidate.Account.Username,
+                clientAddress,
+                userAgent,
+                cancellationToken);
 
             return new ProfileChangeOutcome
             {
@@ -373,6 +452,8 @@ namespace Fluxy.Application.Users.Services
             Guid userId,
             string currentPassword,
             string username,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var name = username?.Trim() ?? string.Empty;
@@ -395,6 +476,8 @@ namespace Fluxy.Application.Users.Services
                 newPassword: null,
                 currentPassword,
                 errors,
+                clientAddress,
+                userAgent,
                 cancellationToken);
         }
 
@@ -403,6 +486,8 @@ namespace Fluxy.Application.Users.Services
             Guid userId,
             string currentPassword,
             string email,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var normalized = EmailNormalizer.Normalize(email);
@@ -420,6 +505,8 @@ namespace Fluxy.Application.Users.Services
                 newPassword: null,
                 currentPassword,
                 errors,
+                clientAddress,
+                userAgent,
                 cancellationToken);
         }
 
@@ -428,6 +515,8 @@ namespace Fluxy.Application.Users.Services
             Guid userId,
             string currentPassword,
             string newPassword,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var password = newPassword ?? string.Empty;
@@ -450,6 +539,8 @@ namespace Fluxy.Application.Users.Services
                 newPassword: password,
                 currentPassword,
                 errors,
+                clientAddress,
+                userAgent,
                 cancellationToken);
         }
 
@@ -457,12 +548,35 @@ namespace Fluxy.Application.Users.Services
         public async Task<ProfileChangeOutcome> ConfirmAsync(
             Guid userId,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var trimmedCode = code?.Trim() ?? string.Empty;
 
+            // The pending row is read first because it is the only thing that names which change
+            // a refusal belongs to. A confirmation for a code that confirms nothing has no kind
+            // to log under, so those two branches write no row: the audit vocabulary is typed by
+            // the change, and inventing a kind would put a fact in the table that never happened.
+            var pending = await _pendingChanges.FindByUserIdAsync(userId, cancellationToken: cancellationToken);
+            var isProfileChange = pending is not null
+                && pending.Kind is not PendingChangeKind.PasswordReset;
+
             if (trimmedCode.Length == 0)
             {
+                if (isProfileChange)
+                {
+                    await RecordChangeAsync(
+                        userId,
+                        pending!.Kind,
+                        ConfirmInvalidCodePhrase(pending.Kind),
+                        isSuccess: false,
+                        subject: null,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+                }
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
@@ -470,10 +584,21 @@ namespace Fluxy.Application.Users.Services
 
             if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
+                if (isProfileChange)
+                {
+                    await RecordChangeAsync(
+                        userId,
+                        pending!.Kind,
+                        AccountNotActivePhrase(pending.Kind),
+                        isSuccess: false,
+                        subject: candidate?.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+                }
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
-
-            var pending = await _pendingChanges.FindByUserIdAsync(userId, cancellationToken: cancellationToken);
 
             // A code minted for the public password reset form never confirms a profile change,
             // and the other way round: the two flows are separate proofs, and one row can only
@@ -486,9 +611,29 @@ namespace Fluxy.Application.Users.Services
             switch (_pendingChangeService.Verify(pending, trimmedCode))
             {
                 case PendingCodeStatus.Invalid:
+                    await RecordChangeAsync(
+                        userId,
+                        pending.Kind,
+                        ConfirmInvalidCodePhrase(pending.Kind),
+                        isSuccess: false,
+                        subject: candidate.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
 
                 case PendingCodeStatus.Expired:
+                    await RecordChangeAsync(
+                        userId,
+                        pending.Kind,
+                        ConfirmExpiredCodePhrase(pending.Kind),
+                        isSuccess: false,
+                        subject: candidate.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new ProfileChangeOutcome { Status = ProfileChangeStatus.CodeExpired };
             }
 
@@ -497,7 +642,12 @@ namespace Fluxy.Application.Users.Services
             // say about networks, and the generic apply knows nothing about rules.
             if (pending.Kind is PendingChangeKind.ChangeLoginGuard)
             {
-                return await ConfirmLoginGuardAsync(candidate, pending, cancellationToken);
+                return await ConfirmLoginGuardAsync(
+                    candidate,
+                    pending,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
             }
 
             // The value was checked when the change was requested, and the code may have spent
@@ -505,6 +655,16 @@ namespace Fluxy.Application.Users.Services
             // the authority, so it is checked again here rather than trusted.
             if (await IsTakenAsync(userId, pending.Kind, pending.TargetValue, cancellationToken))
             {
+                await RecordChangeAsync(
+                    userId,
+                    pending.Kind,
+                    AlreadyExistsPhrase(pending.Kind),
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AlreadyExists };
             }
 
@@ -519,6 +679,16 @@ namespace Fluxy.Application.Users.Services
 
             if (!await SaveAsync(cancellationToken))
             {
+                await RecordChangeAsync(
+                    userId,
+                    pending.Kind,
+                    AlreadyExistsPhrase(pending.Kind),
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AlreadyExists };
             }
 
@@ -526,6 +696,35 @@ namespace Fluxy.Application.Users.Services
                 "Applied a confirmed {Kind} for {Username}.",
                 pending.Kind,
                 candidate.Account.Username);
+
+            if (pending.Kind is PendingChangeKind.ChangeUsername or PendingChangeKind.ChangeEmail)
+            {
+                // A rename is the one profile change whose detail matters after the fact: the
+                // subject is the name the account read under when the change was recorded, so
+                // without the old value the row would not say what it used to be.
+                await RecordRenameAsync(
+                    userId,
+                    pending.Kind,
+                    ConfirmedPhrase(pending.Kind),
+                    candidate.Account.Username,
+                    CurrentValue(candidate.Account, pending.Kind),
+                    pending.TargetValue,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+            }
+            else
+            {
+                await RecordChangeAsync(
+                    userId,
+                    pending.Kind,
+                    ConfirmedPhrase(pending.Kind),
+                    isSuccess: true,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+            }
 
             return new ProfileChangeOutcome
             {
@@ -549,10 +748,22 @@ namespace Fluxy.Application.Users.Services
             string? newPassword,
             string currentPassword,
             IReadOnlyDictionary<string, string[]> errors,
+            string? clientAddress,
+            string? userAgent,
             CancellationToken cancellationToken)
         {
             if (errors.Count > 0)
             {
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    InvalidInputPhrase(kind),
+                    isSuccess: false,
+                    subject: null,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.InvalidInput,
@@ -564,6 +775,16 @@ namespace Fluxy.Application.Users.Services
 
             if (candidate is null || candidate.RowStatus is not UserStatus.Registered)
             {
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    AccountNotActivePhrase(kind),
+                    isSuccess: false,
+                    subject: candidate?.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AccountNotActive };
             }
 
@@ -573,6 +794,16 @@ namespace Fluxy.Application.Users.Services
             if (string.IsNullOrEmpty(currentPassword)
                 || !BCrypt.Net.BCrypt.Verify(currentPassword, candidate.Account.PasswordHash))
             {
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    WrongPasswordPhrase(kind),
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.InvalidCurrentPassword
@@ -581,6 +812,16 @@ namespace Fluxy.Application.Users.Services
 
             if (await IsTakenAsync(userId, kind, targetValue, cancellationToken))
             {
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    AlreadyExistsPhrase(kind),
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.AlreadyExists };
             }
 
@@ -610,7 +851,43 @@ namespace Fluxy.Application.Users.Services
 
                 if (!await SaveAsync(cancellationToken))
                 {
+                    await RecordChangeAsync(
+                        userId,
+                        kind,
+                        AlreadyExistsPhrase(kind),
+                        isSuccess: false,
+                        subject: candidate.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new ProfileChangeOutcome { Status = ProfileChangeStatus.AlreadyExists };
+                }
+
+                if (kind is PendingChangeKind.ChangeUsername or PendingChangeKind.ChangeEmail)
+                {
+                    await RecordRenameAsync(
+                        userId,
+                        kind,
+                        ConfirmedPhrase(kind),
+                        candidate.Account.Username,
+                        CurrentValue(candidate.Account, kind),
+                        targetValue,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+                }
+                else
+                {
+                    await RecordChangeAsync(
+                        userId,
+                        kind,
+                        ConfirmedPhrase(kind),
+                        isSuccess: true,
+                        subject: candidate.Account.Username,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
                 }
 
                 return new ProfileChangeOutcome
@@ -635,7 +912,20 @@ namespace Fluxy.Application.Users.Services
                 // Two requests for the same account arrived at the same moment and the unique
                 // index let one of them win. The winner stored a row and mailed a code of its
                 // own, so this one has nothing of its own to send - answering "check your inbox"
-                // sends the visitor to the code that does exist.
+                // sends the visitor to the code that does exist. The attempt is still recorded
+                // as a success, exactly like the guard branch and the password reset: two
+                // requests reached the service, and the visitor is being sent to a code that
+                // works.
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    RequestedPhrase(kind),
+                    isSuccess: true,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.Submitted,
@@ -665,12 +955,32 @@ namespace Fluxy.Application.Users.Services
             {
                 // The row is stored, so the caller has to be told that the code did not arrive.
                 // A new request replaces it once the visitor asks again.
+                await RecordChangeAsync(
+                    userId,
+                    kind,
+                    EmailDeliveryPhrase(kind),
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome
                 {
                     Status = ProfileChangeStatus.EmailDeliveryFailed,
                     RowPersisted = true
                 };
             }
+
+            await RecordChangeAsync(
+                userId,
+                kind,
+                RequestedPhrase(kind),
+                isSuccess: true,
+                subject: candidate.Account.Username,
+                clientAddress,
+                userAgent,
+                cancellationToken);
 
             return new ProfileChangeOutcome
             {
@@ -735,6 +1045,14 @@ namespace Fluxy.Application.Users.Services
                     break;
             }
         }
+
+        /// <summary>The value a rename replaces, read from the account before it was changed.</summary>
+        private static string? CurrentValue(User account, PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => account.Username,
+            PendingChangeKind.ChangeEmail => account.Email,
+            _ => null
+        };
 
         /// <summary>
         /// The account model after the change, without reading the row again.
@@ -807,6 +1125,8 @@ namespace Fluxy.Application.Users.Services
         private async Task<ProfileChangeOutcome> ConfirmLoginGuardAsync(
             EditableAccount candidate,
             PendingChange pending,
+            string? clientAddress,
+            string? userAgent,
             CancellationToken cancellationToken)
         {
             NormalizedLoginGuard? staged = null;
@@ -822,6 +1142,15 @@ namespace Fluxy.Application.Users.Services
 
             if (staged is null)
             {
+                await RecordGuardAsync(
+                    candidate.Account.Id,
+                    UserLogDescriptions.LoginGuardChangeConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
@@ -837,6 +1166,15 @@ namespace Fluxy.Application.Users.Services
                 // Two confirmations of the same code raced and the unique index let one win.
                 // The code is spent either way, so the loser gets the same answer a wrong code
                 // gets rather than a conflict about a list it never saw.
+                await RecordGuardAsync(
+                    candidate.Account.Id,
+                    UserLogDescriptions.LoginGuardChangeConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    subject: candidate.Account.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new ProfileChangeOutcome { Status = ProfileChangeStatus.InvalidCode };
             }
 
@@ -847,6 +1185,15 @@ namespace Fluxy.Application.Users.Services
                 pending.Kind,
                 candidate.Account.Username);
 
+            await RecordGuardAsync(
+                candidate.Account.Id,
+                UserLogDescriptions.LoginGuardChangeConfirmed,
+                isSuccess: true,
+                subject: candidate.Account.Username,
+                clientAddress,
+                userAgent,
+                cancellationToken);
+
             return new ProfileChangeOutcome
             {
                 Status = ProfileChangeStatus.Confirmed,
@@ -854,6 +1201,175 @@ namespace Fluxy.Application.Users.Services
                 Account = ApplyGuard(candidate.Account, staged)
             };
         }
+
+        /// <summary>
+        /// Records one profile-change outcome in the audit log, typed by the kind of change.
+        /// </summary>
+        /// <remarks>
+        /// <b>Neither password ever reaches this method.</b> The phrase names the change, the
+        /// subject is the login name, and nothing else is written: a permanent audit row
+        /// holding the current or the new password would be a credential nobody can rotate.
+        /// </remarks>
+        private Task RecordChangeAsync(
+            Guid userId,
+            PendingChangeKind kind,
+            string phrase,
+            bool isSuccess,
+            string? subject,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = RecordTypeOf(kind),
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(phrase, subject),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
+
+        /// <summary>
+        /// Records one rename - a username or email change - with the value it replaced, so the
+        /// row reads as <c>old → new</c> after the account no longer carries the old value.
+        /// </summary>
+        /// <remarks>
+        /// Only the two rename kinds pass a detail. A password change never does: the detail
+        /// would be a credential, and the phrase already says the password changed.
+        /// </remarks>
+        private Task RecordRenameAsync(
+            Guid userId,
+            PendingChangeKind kind,
+            string phrase,
+            string? subject,
+            string? before,
+            string? after,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = RecordTypeOf(kind),
+                    IsSuccess = true,
+                    Description = UserLogDescriptions.Renamed(phrase, subject, before, after),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
+
+        /// <summary>Records one login guard outcome in the audit log.</summary>
+        private Task RecordGuardAsync(
+            Guid userId,
+            string phrase,
+            bool isSuccess,
+            string? subject,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.LoginGuardChange,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(phrase, subject),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
+
+        /// <summary>The record type a staged profile change is logged under.</summary>
+        private static UserLogRecordType RecordTypeOf(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogRecordType.UsernameChange,
+            PendingChangeKind.ChangeEmail => UserLogRecordType.EmailChange,
+            PendingChangeKind.ChangePassword => UserLogRecordType.PasswordChange,
+            _ => UserLogRecordType.LoginGuardChange
+        };
+
+        /// <summary>The phrase a refused value of the named change is recorded with.</summary>
+        private static string InvalidInputPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogDescriptions.UsernameChangeRefusedInvalidInput,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeRefusedInvalidInput,
+            _ => UserLogDescriptions.PasswordChangeRefusedInvalidInput
+        };
+
+        /// <summary>The phrase a wrong current password is recorded with, by kind.</summary>
+        private static string WrongPasswordPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogDescriptions.UsernameChangeRefusedWrongPassword,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeRefusedWrongPassword,
+            _ => UserLogDescriptions.PasswordChangeRefusedWrongPassword
+        };
+
+        /// <summary>The phrase an inactive account is recorded with, by kind.</summary>
+        private static string AccountNotActivePhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername =>
+                UserLogDescriptions.UsernameChangeRefusedAccountNotActive,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeRefusedAccountNotActive,
+            _ => UserLogDescriptions.PasswordChangeRefusedAccountNotActive
+        };
+
+        /// <summary>The phrase a taken value is recorded with, by kind.</summary>
+        private static string AlreadyExistsPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogDescriptions.UsernameChangeRefusedAlreadyExists,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeRefusedAlreadyExists,
+            _ => UserLogDescriptions.PasswordChangeRefusedInvalidInput
+        };
+
+        /// <summary>The phrase a stored change is recorded with, by kind.</summary>
+        private static string RequestedPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogDescriptions.UsernameChangeRequested,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeRequested,
+            _ => UserLogDescriptions.PasswordChangeRequested
+        };
+
+        /// <summary>The phrase an applied change is recorded with, by kind.</summary>
+        private static string ConfirmedPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername => UserLogDescriptions.UsernameChanged,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChanged,
+            _ => UserLogDescriptions.PasswordChanged
+        };
+
+        /// <summary>The phrase a failed delivery is recorded with, by kind.</summary>
+        private static string EmailDeliveryPhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername =>
+                UserLogDescriptions.UsernameChangeFailedEmailDelivery,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeFailedEmailDelivery,
+            _ => UserLogDescriptions.PasswordChangeFailedEmailDelivery
+        };
+
+        /// <summary>The phrase a wrong confirmation code is recorded with, by kind.</summary>
+        private static string ConfirmInvalidCodePhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername =>
+                UserLogDescriptions.UsernameChangeConfirmFailedInvalidCode,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeConfirmFailedInvalidCode,
+            PendingChangeKind.ChangePassword =>
+                UserLogDescriptions.PasswordChangeConfirmFailedInvalidCode,
+            _ => UserLogDescriptions.LoginGuardChangeConfirmFailedInvalidCode
+        };
+
+        /// <summary>The phrase an expired confirmation code is recorded with, by kind.</summary>
+        private static string ConfirmExpiredCodePhrase(PendingChangeKind kind) => kind switch
+        {
+            PendingChangeKind.ChangeUsername =>
+                UserLogDescriptions.UsernameChangeConfirmFailedExpiredCode,
+            PendingChangeKind.ChangeEmail => UserLogDescriptions.EmailChangeConfirmFailedExpiredCode,
+            PendingChangeKind.ChangePassword =>
+                UserLogDescriptions.PasswordChangeConfirmFailedExpiredCode,
+            _ => UserLogDescriptions.LoginGuardChangeConfirmFailedExpiredCode
+        };
 
         /// <summary>
         /// Writes the switches and replaces the rules. The old lists are deleted by the guard

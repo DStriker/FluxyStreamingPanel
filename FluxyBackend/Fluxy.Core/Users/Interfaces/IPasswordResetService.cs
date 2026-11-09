@@ -29,11 +29,15 @@ namespace Fluxy.Core.Users.Interfaces
         /// <param name="username">Login name of the account, compared case sensitively.</param>
         /// <param name="email">Address of the account, folded to lower case.</param>
         /// <param name="newPassword">Replacement password in clear text. Never stored as given.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         Task<PasswordResetOutcome> RequestAsync(
             string username,
             string email,
             string newPassword,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -41,6 +45,8 @@ namespace Fluxy.Core.Users.Interfaces
         /// </summary>
         /// <param name="username">Login name the reset was requested for.</param>
         /// <param name="code">Code as typed, digits only.</param>
+        /// <param name="clientAddress">Address the request came from, recorded on the audit row, or null.</param>
+        /// <param name="userAgent">User agent the request presented, recorded on the audit row, or null.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <returns>
         /// The outcome, with <see cref="PasswordResetOutcome.UserId"/> set when the password was
@@ -49,6 +55,8 @@ namespace Fluxy.Core.Users.Interfaces
         Task<PasswordResetOutcome> ConfirmAsync(
             string username,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default);
     }
 }

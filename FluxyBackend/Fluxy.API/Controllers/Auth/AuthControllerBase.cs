@@ -45,5 +45,16 @@ namespace Fluxy.API.Controllers.Auth
         /// </remarks>
         protected string ClientAddress
             => HttpContext.Connection.RemoteIpAddress?.ToString() ?? UnknownClient;
+
+        /// <summary>
+        /// User agent the request presented, as the server saw it, or null when it sent none.
+        /// </summary>
+        /// <remarks>
+        /// The audit log records where an attempt came from, and the agent is the half of that
+        /// fact an address cannot carry. Kept beside <see cref="ClientAddress"/> so every flow
+        /// reads the two the same way instead of asking the request headers itself.
+        /// </remarks>
+        protected string? ClientUserAgent
+            => Request.Headers.UserAgent.FirstOrDefault();
     }
 }

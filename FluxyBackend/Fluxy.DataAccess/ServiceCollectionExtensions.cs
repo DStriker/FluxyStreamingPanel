@@ -107,6 +107,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
             services.AddScoped<IConnectionLogRepository, ConnectionLogRepository>();
             services.AddScoped<ICreditLogRepository, CreditLogRepository>();
+            services.AddScoped<IUserLogRepository, UserLogRepository>();
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();

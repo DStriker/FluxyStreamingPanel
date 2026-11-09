@@ -43,6 +43,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly PendingChangeService _pendingChangeService;
         private readonly IEmailSender _emailSender;
+        private readonly IUserLogService _userLogs;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<PasswordResetService> _logger;
@@ -56,6 +57,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="unitOfWork">Commits one reset as one save.</param>
         /// <param name="pendingChangeService">The machinery of a change that waits for a code.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
+        /// <param name="userLogs">The audit log every outcome is recorded in.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
         /// <param name="timeProvider">
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
@@ -69,6 +71,7 @@ namespace Fluxy.Application.Users.Services
             IUnitOfWork unitOfWork,
             PendingChangeService pendingChangeService,
             IEmailSender emailSender,
+            IUserLogService userLogs,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
             ILogger<PasswordResetService> logger)
@@ -79,6 +82,7 @@ namespace Fluxy.Application.Users.Services
             _unitOfWork = unitOfWork;
             _pendingChangeService = pendingChangeService;
             _emailSender = emailSender;
+            _userLogs = userLogs;
             _options = options;
             _timeProvider = timeProvider;
             _logger = logger;
@@ -92,6 +96,8 @@ namespace Fluxy.Application.Users.Services
             string username,
             string email,
             string newPassword,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             // Before validation, before the lookup, before anything: an installation that
@@ -102,6 +108,15 @@ namespace Fluxy.Application.Users.Services
                 _logger.LogWarning(
                     "A password reset was refused because this installation has no mail server " +
                     "configured. See the Email configuration section.");
+
+                await RecordAsync(
+                    UserLogDescriptions.PasswordResetRefusedNotConfigured,
+                    isSuccess: false,
+                    userId: null,
+                    username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
 
                 return new PasswordResetOutcome
                 {
@@ -115,6 +130,15 @@ namespace Fluxy.Application.Users.Services
 
             if (!RegistrationPolicy.IsPasswordAcceptable(password))
             {
+                await RecordAsync(
+                    UserLogDescriptions.PasswordResetRefusedInvalidInput,
+                    isSuccess: false,
+                    userId: null,
+                    name,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome
                 {
                     Status = PasswordResetStatus.InvalidInput,
@@ -136,11 +160,21 @@ namespace Fluxy.Application.Users.Services
             // under a different address, an account that is not usable - so the form cannot be
             // used to find out which combinations of username and email exist. The attempt is
             // counted by the endpoint either way, which is what keeps that probing to the same
-            // handful of guesses a sign-in gets.
+            // handful of guesses a sign-in gets. The audit row names the login name that was
+            // typed and carries the account only when one was matched.
             if (user is null
                 || user.Email != normalized
                 || user.RowStatus is not UserStatus.Registered)
             {
+                await RecordAsync(
+                    UserLogDescriptions.PasswordResetRefusedUnknownPair,
+                    isSuccess: false,
+                    userId: user?.Id,
+                    name,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidPair };
             }
 
@@ -157,7 +191,18 @@ namespace Fluxy.Application.Users.Services
             {
                 // A concurrent request for the same account won the unique index and mailed a
                 // code of its own. Sending a second one here would put two codes in the inbox
-                // where only the stored one works.
+                // where only the stored one works. The visitor is still told to check their
+                // inbox, and this attempt is recorded exactly like the one that won: two
+                // requests reached the service, and two attempts is what happened.
+                await RecordAsync(
+                    UserLogDescriptions.PasswordResetRequested,
+                    isSuccess: true,
+                    userId: user.Id,
+                    user.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome
                 {
                     Status = PasswordResetStatus.Submitted,
@@ -176,6 +221,15 @@ namespace Fluxy.Application.Users.Services
 
             if (result is not EmailSendResult.Sent)
             {
+                await RecordAsync(
+                    UserLogDescriptions.PasswordResetFailedEmailDelivery,
+                    isSuccess: false,
+                    userId: user.Id,
+                    user.Username,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome
                 {
                     Status = PasswordResetStatus.EmailDeliveryFailed,
@@ -186,6 +240,15 @@ namespace Fluxy.Application.Users.Services
             _logger.LogInformation(
                 "Stored a password reset request for {Username}.",
                 user.Username);
+
+            await RecordAsync(
+                UserLogDescriptions.PasswordResetRequested,
+                isSuccess: true,
+                userId: user.Id,
+                user.Username,
+                clientAddress,
+                userAgent,
+                cancellationToken);
 
             return new PasswordResetOutcome
             {
@@ -198,6 +261,8 @@ namespace Fluxy.Application.Users.Services
         public async Task<PasswordResetOutcome> ConfirmAsync(
             string username,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var name = username?.Trim() ?? string.Empty;
@@ -205,6 +270,15 @@ namespace Fluxy.Application.Users.Services
 
             if (trimmedCode.Length == 0)
             {
+                await RecordConfirmAsync(
+                    UserLogDescriptions.PasswordResetConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: null,
+                    name,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
@@ -214,6 +288,15 @@ namespace Fluxy.Application.Users.Services
             {
                 // Reported exactly like a wrong code, so the endpoint does not confirm which
                 // login names hold an account.
+                await RecordConfirmAsync(
+                    UserLogDescriptions.PasswordResetConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: user?.Id,
+                    name,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
@@ -224,15 +307,42 @@ namespace Fluxy.Application.Users.Services
 
             if (pending is null || pending.NewPasswordHash is null)
             {
+                await RecordConfirmAsync(
+                    UserLogDescriptions.PasswordResetConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: user.Id,
+                    name,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
             switch (_pendingChangeService.Verify(pending, trimmedCode))
             {
                 case PendingCodeStatus.Invalid:
+                    await RecordConfirmAsync(
+                        UserLogDescriptions.PasswordResetConfirmFailedInvalidCode,
+                        isSuccess: false,
+                        userId: user.Id,
+                        name,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
 
                 case PendingCodeStatus.Expired:
+                    await RecordConfirmAsync(
+                        UserLogDescriptions.PasswordResetConfirmFailedExpiredCode,
+                        isSuccess: false,
+                        userId: user.Id,
+                        name,
+                        clientAddress,
+                        userAgent,
+                        cancellationToken);
+
                     return new PasswordResetOutcome { Status = PasswordResetStatus.CodeExpired };
             }
 
@@ -241,7 +351,9 @@ namespace Fluxy.Application.Users.Services
             // A password reset proves the mailbox, which is also the recovery path for a guard
             // that locked its owner out - so the guard goes with the password rather than
             // staying on to refuse the sign-in the reset was made for. The sessions end in the
-            // controller, like every other password replacement.
+            // controller, like every other password replacement. No login_guard_change row is
+            // written for it: the operator reading the log sees the reset, and the guard clear
+            // is part of it rather than a second decision the account made.
             await _guards.ApplyAsync(
                 user.Id,
                 new NormalizedLoginGuard(false, false, [], null, null),
@@ -253,7 +365,8 @@ namespace Fluxy.Application.Users.Services
             {
                 // No unique value is written here, so anything the database refuses is a real
                 // failure rather than an outcome of the form. Reported like a wrong code so a
-                // raced confirmation cannot tell the loser anything about the row.
+                // raced confirmation cannot tell the loser anything about the row, and no audit
+                // row is written: the attempt did not reach the account.
                 return new PasswordResetOutcome { Status = PasswordResetStatus.InvalidCode };
             }
 
@@ -262,12 +375,70 @@ namespace Fluxy.Application.Users.Services
                 "its login guard.",
                 user.Username);
 
+            await RecordConfirmAsync(
+                UserLogDescriptions.PasswordResetConfirmed,
+                isSuccess: true,
+                userId: user.Id,
+                user.Username,
+                clientAddress,
+                userAgent,
+                cancellationToken);
+
             return new PasswordResetOutcome
             {
                 Status = PasswordResetStatus.Confirmed,
                 UserId = user.Id
             };
         }
+
+        /// <summary>
+        /// Records one password reset outcome in the audit log.
+        /// </summary>
+        /// <remarks>
+        /// The subject is the login name the visitor typed; the account identifier is carried
+        /// separately and is null only when no account was matched. Nothing about the password -
+        /// the old one, the new one, its hash - ever reaches the description.
+        /// </remarks>
+        private Task RecordAsync(
+            string phrase,
+            bool isSuccess,
+            Guid? userId,
+            string? subject,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.PasswordResetRequest,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(phrase, subject),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
+
+        /// <summary>Records one password reset confirmation outcome in the audit log.</summary>
+        private Task RecordConfirmAsync(
+            string phrase,
+            bool isSuccess,
+            Guid? userId,
+            string? subject,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.PasswordResetConfirm,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(phrase, subject),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
 
         /// <summary>The plain text body of the message that carries the code.</summary>
         private static string BuildCodeBody(string username, string code, TimeSpan lifetime)

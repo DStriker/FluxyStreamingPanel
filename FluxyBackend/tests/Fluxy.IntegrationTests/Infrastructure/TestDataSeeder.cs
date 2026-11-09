@@ -435,6 +435,185 @@ namespace Fluxy.IntegrationTests.Infrastructure
         }
 
         /// <summary>
+        /// Plants one user log row directly, and returns its identifier.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="userId">Account the row is about, or null for an unknown-account attempt.</param>
+        /// <param name="recordType">Which kind of event it records.</param>
+        /// <param name="isSuccess">Whether the attempt worked.</param>
+        /// <param name="description">Stored English sentence.</param>
+        /// <param name="createdAt">Creation instant, so an ordering or a range can be pinned.</param>
+        /// <param name="ip">Address the event came from, or null.</param>
+        /// <param name="isp">Provider, or null.</param>
+        /// <param name="countryCode">Upper-case country, or null.</param>
+        /// <param name="userAgent">User agent, or null.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>A deliberate SQL fixture.</b> The production write path stamps <c>created_at</c> with
+        /// the request clock, so a test that has to pin rows to chosen instants - or to the same
+        /// instant, to exercise the identifier tie-break - cannot reach them through the API. The
+        /// statement names the table and its columns, never an entity or a context, which is the
+        /// rule the connection and credit log fixtures follow too.
+        /// </remarks>
+        public static async Task<Guid> PlantUserLogAsync(
+            NpgsqlConnection connection,
+            Guid? userId,
+            UserLogRecordType recordType,
+            bool isSuccess,
+            string description,
+            DateTimeOffset createdAt,
+            string? ip = "203.0.113.9",
+            string? isp = "Example ISP",
+            string? countryCode = "DE",
+            string? userAgent = "Mozilla/5.0 (Test)",
+            CancellationToken cancellationToken = default)
+        {
+            var id = Guid.NewGuid();
+
+            await using var command = new NpgsqlCommand(
+                "insert into user_logs " +
+                "(id, user_id, record_type, is_success, description, ip, isp, country_code, " +
+                "user_agent, created_at, updated_at) " +
+                "values (@id, @user_id, @record_type, @is_success, @description, @ip, @isp, " +
+                "@country_code, @user_agent, @created_at, @created_at)",
+                connection);
+
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("user_id", (object?)userId ?? DBNull.Value);
+            command.Parameters.AddWithValue("record_type", (short)recordType);
+            command.Parameters.AddWithValue("is_success", isSuccess);
+            command.Parameters.AddWithValue("description", description);
+            command.Parameters.AddWithValue("ip", (object?)ip ?? DBNull.Value);
+            command.Parameters.AddWithValue("isp", (object?)isp ?? DBNull.Value);
+            command.Parameters.AddWithValue("country_code", (object?)countryCode ?? DBNull.Value);
+            command.Parameters.AddWithValue("user_agent", (object?)userAgent ?? DBNull.Value);
+            command.Parameters.AddWithValue("created_at", createdAt);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Counts the user log rows, so a test can prove a refusal wrote nothing.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<int> CountUserLogsAsync(
+            NpgsqlConnection connection,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select count(*) from user_logs",
+                connection);
+
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        /// <summary>
+        /// Installs a trigger that refuses every user log insert, so a test can force the audit
+        /// write to fail while the audited operation succeeds.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name of the trigger, so it can be dropped afterwards.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>The only way to prove the write path fails open from outside.</b> The log row is
+        /// written by the flow that already committed its business change, so the interesting
+        /// failure is one the database raises on the log insert alone. A trigger is that failure,
+        /// and it is installed under a name the test controls so it can be dropped in a
+        /// <c>finally</c>.
+        /// </remarks>
+        public static async Task InstallUserLogFailureTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"create or replace function {triggerName}_fn() returns trigger as $$ " +
+                "begin " +
+                "raise exception 'forced user log failure'; " +
+                "end; $$ language plpgsql; " +
+                $"drop trigger if exists {triggerName} on user_logs; " +
+                $"create trigger {triggerName} before insert on user_logs " +
+                $"for each row execute function {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>Removes a trigger installed by <see cref="InstallUserLogFailureTriggerAsync"/>.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name the trigger was installed under.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task DropUserLogFailureTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"drop trigger if exists {triggerName} on user_logs; " +
+                $"drop function if exists {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Installs a trigger that makes every insert into <c>pending_changes</c> fail with the
+        /// unique-index refusal the staging race produces, so a test can exercise the branch
+        /// that answers "a code is already waiting" without needing a genuine simultaneous
+        /// request.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name of the trigger, so it can be dropped afterwards.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>The race is otherwise not reachable from a test.</b> Two requests have to pass the
+        /// repository's read before either one saves, and an HTTP test cannot hold that window
+        /// open. The trigger raises the same SQLSTATE the unique index raises and names the same
+        /// constraint, so the service takes the exact branch a real loser takes - and the
+        /// response the test sees is the one production gives. The constraint name mirrors
+        /// <c>PendingChangeService.PendingChangeIndexName</c>
+        /// (<c>Fluxy.Application/Users/Services/PendingChangeService.cs</c>, a private const),
+        /// spelled out here because the fixture is SQL.
+        /// </remarks>
+        public static async Task InstallPendingChangeRaceTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"create or replace function {triggerName}_fn() returns trigger as $$ " +
+                "begin " +
+                "raise exception using errcode = '23505', " +
+                "constraint = 'IX_pending_changes_user_id', " +
+                "message = 'forced staging race'; " +
+                "end; $$ language plpgsql; " +
+                $"drop trigger if exists {triggerName} on pending_changes; " +
+                $"create trigger {triggerName} before insert on pending_changes " +
+                $"for each row execute function {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>Removes a trigger installed by <see cref="InstallPendingChangeRaceTriggerAsync"/>.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="triggerName">Name the trigger was installed under.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task DropPendingChangeRaceTriggerAsync(
+            NpgsqlConnection connection,
+            string triggerName,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                $"drop trigger if exists {triggerName} on pending_changes; " +
+                $"drop function if exists {triggerName}_fn();",
+                connection);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>
         /// Installs a trigger that refuses every credit log insert, so a test can force the save to
         /// fail after a balance change was staged.
         /// </summary>

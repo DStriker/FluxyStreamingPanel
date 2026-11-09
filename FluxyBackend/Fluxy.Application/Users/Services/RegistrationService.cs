@@ -46,6 +46,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IEmailSender _emailSender;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
         private readonly TimeProvider _timeProvider;
+        private readonly IUserLogService _userLogs;
         private readonly ILogger<RegistrationService> _logger;
 
         /// <summary>
@@ -59,6 +60,7 @@ namespace Fluxy.Application.Users.Services
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
         /// without waiting for it.
         /// </param>
+        /// <param name="userLogs">The audit log every outcome of this flow is recorded in.</param>
         /// <param name="logger">Logger the security relevant steps are reported to.</param>
         public RegistrationService(
             IUserRepository users,
@@ -66,6 +68,7 @@ namespace Fluxy.Application.Users.Services
             IEmailSender emailSender,
             IOptionsMonitor<RegistrationOptions> options,
             TimeProvider timeProvider,
+            IUserLogService userLogs,
             ILogger<RegistrationService> logger)
         {
             _users = users;
@@ -73,6 +76,7 @@ namespace Fluxy.Application.Users.Services
             _emailSender = emailSender;
             _options = options;
             _timeProvider = timeProvider;
+            _userLogs = userLogs;
             _logger = logger;
         }
 
@@ -91,6 +95,13 @@ namespace Fluxy.Application.Users.Services
                     "A registration was refused because this installation has no mail server " +
                     "configured. See the Email configuration section.");
 
+                await RecordAsync(
+                    registration,
+                    UserLogDescriptions.RegistrationRefusedNotConfigured,
+                    isSuccess: false,
+                    userId: null,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.RegistrationNotConfigured
@@ -105,6 +116,13 @@ namespace Fluxy.Application.Users.Services
 
             if (errors.Count > 0)
             {
+                await RecordAsync(
+                    registration,
+                    UserLogDescriptions.RegistrationRefusedInvalidInput,
+                    isSuccess: false,
+                    userId: null,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.InvalidInput,
@@ -151,18 +169,32 @@ namespace Fluxy.Application.Users.Services
 
                 await SaveAsync(cancellationToken);
 
-                return await DeliverAsync(email, username, code, rowPersisted: true, cancellationToken);
+                return await DeliverAsync(
+                    registration,
+                    reusable.Id,
+                    username,
+                    email,
+                    code,
+                    rowPersisted: true,
+                    cancellationToken);
             }
 
             if (IsTaken(byUsername, username) || IsTaken(byEmail, email))
             {
+                await RecordAsync(
+                    registration,
+                    UserLogDescriptions.RegistrationRefusedAlreadyExists,
+                    isSuccess: false,
+                    userId: null,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.AlreadyExists
                 };
             }
 
-            await _users.AddAsync(
+            var accountId = await _users.AddAsync(
                 new NewAccount
                 {
                     Username = username,
@@ -187,13 +219,22 @@ namespace Fluxy.Application.Users.Services
                 username,
                 UserStatus.Unregistered);
 
-            return await DeliverAsync(email, username, code, rowPersisted: true, cancellationToken);
+            return await DeliverAsync(
+                registration,
+                accountId,
+                username,
+                email,
+                code,
+                rowPersisted: true,
+                cancellationToken);
         }
 
         /// <inheritdoc />
         public async Task<RegistrationOutcome> ConfirmAsync(
             string email,
             string code,
+            string? clientAddress = null,
+            string? userAgent = null,
             CancellationToken cancellationToken = default)
         {
             var normalized = EmailNormalizer.Normalize(email);
@@ -201,6 +242,15 @@ namespace Fluxy.Application.Users.Services
 
             if (trimmedCode.Length == 0)
             {
+                await RecordConfirmAsync(
+                    normalized,
+                    UserLogDescriptions.RegistrationConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: null,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.InvalidCode
@@ -213,8 +263,18 @@ namespace Fluxy.Application.Users.Services
                 || user.Account.RegistrationCodeHash is null)
             {
                 // Reported exactly like a wrong code, so the endpoint does not confirm which
-                // addresses have an account. There is nothing here worth a log line either: a
-                // caller guessing addresses is the expected case.
+                // addresses have an account. The audit row is the one place that distinction is
+                // kept: it names the address that was typed and says the code did not match,
+                // without confirming whether the address holds an account.
+                await RecordConfirmAsync(
+                    normalized,
+                    UserLogDescriptions.RegistrationConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: user?.Account.Id,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.InvalidCode
@@ -227,6 +287,15 @@ namespace Fluxy.Application.Users.Services
             // open as a free way to make the server do work.
             if (!BCrypt.Net.BCrypt.Verify(trimmedCode, user.Account.RegistrationCodeHash))
             {
+                await RecordConfirmAsync(
+                    normalized,
+                    UserLogDescriptions.RegistrationConfirmFailedInvalidCode,
+                    isSuccess: false,
+                    userId: user.Account.Id,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.InvalidCode
@@ -236,6 +305,15 @@ namespace Fluxy.Application.Users.Services
             if (user.Account.RegistrationCodeExpiresAt is not { } expiresAt
                 || _timeProvider.GetUtcNow() > expiresAt)
             {
+                await RecordConfirmAsync(
+                    normalized,
+                    UserLogDescriptions.RegistrationConfirmFailedExpiredCode,
+                    isSuccess: false,
+                    userId: user.Account.Id,
+                    clientAddress,
+                    userAgent,
+                    cancellationToken);
+
                 return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.CodeExpired
@@ -265,6 +343,15 @@ namespace Fluxy.Application.Users.Services
                 "Confirmed the registration of {Username}. The account is now {Status}.",
                 confirmed.Username,
                 confirmed.Status);
+
+            await RecordConfirmAsync(
+                normalized,
+                UserLogDescriptions.RegistrationConfirmed,
+                isSuccess: true,
+                userId: confirmed.Id,
+                clientAddress,
+                userAgent,
+                cancellationToken);
 
             return new RegistrationOutcome
             {
@@ -301,8 +388,10 @@ namespace Fluxy.Application.Users.Services
         /// Sends the code and turns the delivery outcome into the result of the call.
         /// </summary>
         private async Task<RegistrationOutcome> DeliverAsync(
-            string email,
+            NewRegistration registration,
+            Guid accountId,
             string username,
+            string email,
             string code,
             bool rowPersisted,
             CancellationToken cancellationToken)
@@ -316,22 +405,93 @@ namespace Fluxy.Application.Users.Services
                 },
                 cancellationToken);
 
-            return result switch
+            if (result is EmailSendResult.Sent)
             {
-                EmailSendResult.Sent => new RegistrationOutcome
+                await RecordAsync(
+                    registration,
+                    UserLogDescriptions.RegistrationSubmitted,
+                    isSuccess: true,
+                    userId: accountId,
+                    cancellationToken);
+
+                return new RegistrationOutcome
                 {
                     Status = RegistrationStatus.Submitted,
                     RowPersisted = rowPersisted
-                },
-                _ => new RegistrationOutcome
-                {
-                    // The account is already stored, so the caller has to be told that the code
-                    // did not arrive. A new request replaces it once the window is over.
-                    Status = RegistrationStatus.EmailDeliveryFailed,
-                    RowPersisted = rowPersisted
-                }
+                };
+            }
+
+            await RecordAsync(
+                registration,
+                UserLogDescriptions.RegistrationFailedEmailDelivery,
+                isSuccess: false,
+                userId: accountId,
+                cancellationToken);
+
+            return new RegistrationOutcome
+            {
+                // The account is already stored, so the caller has to be told that the code
+                // did not arrive. A new request replaces it once the window is over.
+                Status = RegistrationStatus.EmailDeliveryFailed,
+                RowPersisted = rowPersisted
             };
         }
+
+        /// <summary>
+        /// Records one registration outcome in the audit log.
+        /// </summary>
+        /// <remarks>
+        /// The subject is the login name the visitor typed, not the normalized address: it is the
+        /// identifier a reader recognises, and the log is the one place the typed value is kept
+        /// after the request is gone. The network comes straight from the request and the GeoIP
+        /// snapshot is the log service's to take.
+        /// </remarks>
+        private Task RecordAsync(
+            NewRegistration registration,
+            string phrase,
+            bool isSuccess,
+            Guid? userId,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.RegistrationSubmit,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(
+                        phrase,
+                        registration.Username?.Trim()),
+                    Ip = registration.ClientAddress,
+                    UserAgent = registration.UserAgent
+                },
+                cancellationToken);
+
+        /// <summary>Records one registration confirmation outcome in the audit log.</summary>
+        /// <remarks>
+        /// The subject is the address the visitor typed, because that is what a confirmation is
+        /// keyed by; the account identifier is carried separately and is null when the address
+        /// belongs to no account. A wrong code against a real account names that account, which
+        /// is a fact the operator may see and the client never is told.
+        /// </remarks>
+        private Task RecordConfirmAsync(
+            string email,
+            string phrase,
+            bool isSuccess,
+            Guid? userId,
+            string? clientAddress,
+            string? userAgent,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.RegistrationConfirm,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(phrase, email),
+                    Ip = clientAddress,
+                    UserAgent = userAgent
+                },
+                cancellationToken);
 
         /// <summary>
         /// Applies the registration rules to the normalized values.

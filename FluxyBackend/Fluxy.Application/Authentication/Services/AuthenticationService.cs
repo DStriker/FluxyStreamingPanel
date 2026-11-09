@@ -1,11 +1,13 @@
+using Fluxy.Application.Authentication.Utils;
 using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Authentication.Commands;
 using Fluxy.Core.Authentication.Enums;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Outcomes;
-using Fluxy.Core.GeoIp.Interfaces;
+using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
+using Fluxy.Core.Users.Utils;
 using Fluxy.Core.Users.Repositories;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -48,8 +50,9 @@ namespace Fluxy.Application.Authentication.Services
 
         private readonly IUserRepository _users;
         private readonly ITokenService _tokenService;
-        private readonly IGeoIpResolver _geoIp;
+        private readonly GeoIpMemo _geoIp;
         private readonly ILoginGuardService _guard;
+        private readonly IUserLogService _userLogs;
         private readonly IHostEnvironment _environment;
         private readonly ILogger<AuthenticationService> _logger;
 
@@ -58,15 +61,17 @@ namespace Fluxy.Application.Authentication.Services
         /// </summary>
         /// <param name="users">Repository of the account rows.</param>
         /// <param name="tokenService">Minter of the session tokens.</param>
-        /// <param name="geoIp">Resolver that places the client address on the map.</param>
+        /// <param name="geoIp">The lookups of this request, memoized per address.</param>
         /// <param name="guard">Enforcer of the account's allow lists.</param>
+        /// <param name="userLogs">The audit log every attempt is recorded in.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="logger">Logger the refusals worth remembering are reported to.</param>
         public AuthenticationService(
             IUserRepository users,
             ITokenService tokenService,
-            IGeoIpResolver geoIp,
+            GeoIpMemo geoIp,
             ILoginGuardService guard,
+            IUserLogService userLogs,
             IHostEnvironment environment,
             ILogger<AuthenticationService> logger)
         {
@@ -74,6 +79,7 @@ namespace Fluxy.Application.Authentication.Services
             _tokenService = tokenService;
             _geoIp = geoIp;
             _guard = guard;
+            _userLogs = userLogs;
             _environment = environment;
             _logger = logger;
         }
@@ -94,6 +100,13 @@ namespace Fluxy.Application.Authentication.Services
                 // Spend the same time as a normal comparison so an empty name cannot be
                 // distinguished by timing from any other refusal.
                 _ = BCrypt.Net.BCrypt.Verify(password, DecoyHash.Value);
+                await RecordAsync(
+                    credentials,
+                    UserLogDescriptions.LoginFailedNoSuchAccount,
+                    isSuccess: false,
+                    userId: null,
+                    cancellationToken);
+
                 return Refused();
             }
 
@@ -105,6 +118,13 @@ namespace Fluxy.Application.Authentication.Services
                 // throwaway hash to keep the response time constant regardless of whether the
                 // name exists.
                 _ = BCrypt.Net.BCrypt.Verify(password, DecoyHash.Value);
+                await RecordAsync(
+                    credentials,
+                    UserLogDescriptions.LoginFailedNoSuchAccount,
+                    isSuccess: false,
+                    userId: null,
+                    cancellationToken);
+
                 return Refused();
             }
 
@@ -112,9 +132,16 @@ namespace Fluxy.Application.Authentication.Services
             // time to compare as a live one; the decision is made after the comparison.
             if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             {
-                // One refusal for a name that is unknown and for a password that is wrong. Not
-                // logged individually: someone trying names is the expected case, and a log full
-                // of them is both noise and an account list.
+                // One refusal for a name that is unknown and for a password that is wrong. The
+                // answer is one, but the audit row is the operator's record of which it was -
+                // and it names the account only when one exists, which the client is never told.
+                await RecordAsync(
+                    credentials,
+                    UserLogDescriptions.LoginFailedWrongPassword,
+                    isSuccess: false,
+                    userId: user.Id,
+                    cancellationToken);
+
                 return Refused();
             }
 
@@ -130,6 +157,15 @@ namespace Fluxy.Application.Authentication.Services
                     "Refused a sign-in for {Username}: the account is {Status}.",
                     username,
                     account.Status);
+
+                await RecordAsync(
+                    credentials,
+                    account.Status is UserStatus.Blocked
+                        ? UserLogDescriptions.LoginFailedBlocked
+                        : UserLogDescriptions.LoginFailedNotRegistered,
+                    isSuccess: false,
+                    userId: account.Id,
+                    cancellationToken);
 
                 return Refused();
             }
@@ -147,6 +183,13 @@ namespace Fluxy.Application.Authentication.Services
                     username,
                     account.Role,
                     credentials.RequiredRole);
+
+                await RecordAsync(
+                    credentials,
+                    UserLogDescriptions.LoginFailedWrongRole,
+                    isSuccess: false,
+                    userId: account.Id,
+                    cancellationToken);
 
                 return Refused();
             }
@@ -170,6 +213,13 @@ namespace Fluxy.Application.Authentication.Services
                         "the account's allow lists.",
                         username);
 
+                    await RecordAsync(
+                        credentials,
+                        UserLogDescriptions.LoginFailedGuardRefused,
+                        isSuccess: false,
+                        userId: account.Id,
+                        cancellationToken);
+
                     return Refused();
                 }
             }
@@ -178,6 +228,13 @@ namespace Fluxy.Application.Authentication.Services
                 account,
                 credentials.ClientAddress,
                 credentials.UserAgent,
+                cancellationToken);
+
+            await RecordAsync(
+                credentials,
+                UserLogDescriptions.LoginSucceeded,
+                isSuccess: true,
+                userId: account.Id,
                 cancellationToken);
 
             return new AuthenticationOutcome
@@ -189,6 +246,35 @@ namespace Fluxy.Application.Authentication.Services
                 Tokens = tokens
             };
         }
+
+        /// <summary>
+        /// Records one sign-in attempt in the audit log.
+        /// </summary>
+        /// <remarks>
+        /// The subject is the login name as typed - which for an unknown account is exactly the
+        /// identifier a support call will ask about - and the account identifier is carried
+        /// separately, null when no row holds the name. Called after the token was issued, so the
+        /// log's own save is the last write of the request.
+        /// </remarks>
+        private Task RecordAsync(
+            NewCredentials credentials,
+            string phrase,
+            bool isSuccess,
+            Guid? userId,
+            CancellationToken cancellationToken)
+            => _userLogs.RecordAsync(
+                new NewUserLog
+                {
+                    UserId = userId,
+                    RecordType = UserLogRecordType.Login,
+                    IsSuccess = isSuccess,
+                    Description = UserLogDescriptions.Describe(
+                        phrase,
+                        credentials.Username?.Trim()),
+                    Ip = credentials.ClientAddress,
+                    UserAgent = credentials.UserAgent
+                },
+                cancellationToken);
 
         /// <summary>
         /// The one answer every failure produces.

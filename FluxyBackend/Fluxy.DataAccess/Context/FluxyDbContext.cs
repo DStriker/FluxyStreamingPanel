@@ -215,6 +215,12 @@ namespace Fluxy.DataAccess.Context
         public DbSet<CreditLogEntity> CreditLogs => Set<CreditLogEntity>();
 
         /// <summary>
+        /// The user audit log: one row per attempt to register, sign in, reset a password, change
+        /// the account, or sign out, with the network it came from.
+        /// </summary>
+        public DbSet<UserLogEntity> UserLogs => Set<UserLogEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

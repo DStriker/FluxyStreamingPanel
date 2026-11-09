@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend of the `Refluxy` monorepo. Git root is *
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 600 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 249 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 849 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 731 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 270 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 1001 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -68,7 +68,7 @@ Fluxy.Core/
   Security/          Models 1 · Interfaces 2 · Enums 1
   Email/             Commands 1 · Interfaces 1 · Enums 1
   GeoIp/             ReadModels 1 · Interfaces 1 · Utils 2
-  Users/             Models 6 · Rows 4 · ReadModels 10 · Commands 10 · Outcomes 9 · Enums 20 · Utils 12 · Interfaces 9 · Repositories 5 · Exceptions 1
+  Users/             Models 7 · Rows 4 · ReadModels 12 · Commands 11 · Outcomes 9 · Enums 23 · Utils 17 · Interfaces 10 · Repositories 6 · Exceptions 1
   Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1 · Options 1
   Content/           Models 2 · Commands 7 · Enums 5 · ReadModels 3 · Utils 2 · Interfaces 2 · Repositories 2
   Streams/           Models 2 · Rows 2 · ReadModels 4 · Commands 13 · Outcomes 11 · Enums 17 · Utils 10 · Interfaces 6 · Repositories 2
@@ -98,7 +98,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else** — **sixteen** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `ConnectionLog` (Subscriptions). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
+**`Models/` holds the business model and nothing else** — **seventeen** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `UserLog` (Users), `RefreshToken` (Authentication), `ContentCategory` (Content), `VideoStream`, `AudioStream` (Streams), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `ConnectionLog` (Subscriptions). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
 
 **One type per file.** Twelve files once held two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -145,7 +145,7 @@ Fluxy.Application/
   Series/          Services 6 · Utils 3
   Streams/         Services 6 · Utils 2
   Subscriptions/   Services 5 · Utils 4
-  Users/           Services 10 · Utils 8 · Options 1
+  Users/           Services 11 · Utils 8 · Options 1
   Vod/             Services 4 · Utils 1
 ```
 
@@ -159,7 +159,7 @@ Fluxy.Application/
 | `Utils/` | the helpers the services share — a normalizer, a policy, a memo, the frame of a message | it is not a business operation: no contract, no outcome |
 | `Options/` | the configuration the services read | it is bound from a configuration section |
 
-**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `VideoStreamBulkService`, `VideoStreamImportService`, `CreditLogService`, `AuthenticationService`, `JwtTokenService` and the three session readers implement a `Fluxy.Core` interface; the API names that interface, never the class. `AccessChecker` is the one service without its own — a helper the authorization handlers call, not an operation a client asks for — and sits beside them because it is a service in the ordinary sense.
+**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `VideoStreamBulkService`, `VideoStreamImportService`, `CreditLogService`, `UserLogService`, `AuthenticationService`, `JwtTokenService` and the three session readers implement a `Fluxy.Core` interface; the API names that interface, never the class. `AccessChecker` is the one service without its own — a helper the authorization handlers call, not an operation a client asks for — and sits beside them because it is a service in the ordinary sense.
 
 **A file that is not a service does not live in `Services/`.** `CodeMessage` (the frame of a message carrying a code), `DevelopmentGuardBypass` (lets a local address past the login guard in Development), `GeoIpMemo` (the lookups of one request, one per address), `OneTimeCode`, `EmailNormalizer`, `RegistrationPolicy`, `LoginGuardPolicy`, `LoginGuardNormalizer`, `TimeZonePolicy` and `VideoStreamRules` are helpers; a helper in `Services/` is a service that answers nothing.
 
@@ -233,6 +233,8 @@ Reach for REST first: **plural noun resources**; the method that describes the o
 - **`GET /auth/me` beside `GET /auth/profile`** — two readings of "who am I": `me` is the cheap session identity the guest guard polls on every navigation; `profile` is the full account row with the login guard. Merging would put the guest guard's round trip behind a database read it does not need.
 - **Three admin account actions as `POST {id}/…`** (`confirm-registration`, `block`, `unblock` under `admin/users`) — each is a state transition on an existing row; alternatives were worse: `PATCH {id}` with a status would carry all transition rules (restore `Unregistered` vs `Registered`, clear `registered_at`, revoke sessions) in the caller's payload, and `DELETE`/`PUT` cannot mean "confirm". Owned actions also let each answer its own code (`registration_confirmed`, `user_blocked`, `user_unblocked`) and refusal (`invalid_status`) instead of overloading `user_updated`. The rest of the surface is plain REST — see `docs/admin-users.md`.
 - **`POST /admin/subscriptions/playlist-id`** mints a value rather than writing a resource (same reasoning as `POST /auth/csrf`); the form fills its read-only field from it. A `PATCH` flag meaning "generate something" would make a field write answer with a value the request did not name.
+- **`GET`/`DELETE /admin/user-logs` share one permission** (`viewUserLogs`). There is no write permission for the audit log at all: a row is written by the flow it describes, never by an operator, and the only write this surface performs is the total erase. Reading the log and destroying it are the same evidence and therefore the same grant, plus a fresh antiforgery pair on the delete.
+- **`DELETE /admin/user-logs` clears the whole collection regardless of the query string.** The button says "clear the user log", so a delete that obeyed a filter the caller did not send would wipe a different set from the one it named. It is the collection-level `DELETE` REST describes for "remove everything", not a filtered bulk delete wearing the same verb.
 
 The May 2026 REST pass collapsed five `POST /auth/profile/*` change endpoints into one `PATCH /auth/profile` and renamed `register`/`password` into `registrations`/`password-resets`. `POST /auth/registrations` answers **201 — deliberately without `Location`**: the row has no client-addressable URI yet — `/auth/profile` answers 401 for its own owner until the mailed code confirms it, and a pending-registration URI addressable by email would be the enumeration oracle the refusal policy exists to avoid (reasoning in the action's remarks; RFC 9110 makes the header a SHOULD and this is the case it leaves open).
 
@@ -272,3 +274,4 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/admin-subscriptions.md](docs/admin-subscriptions.md) | `admin/subscriptions` CRUD, tariff-plan derivation and clearing, expiry/prolong arithmetic, subscription bulk |
 | [docs/admin-connection-logs.md](docs/admin-connection-logs.md) | `admin/connection-logs` list/filters (including the inclusive `startedFrom`/`startedTo` range), clear-all `DELETE`, `activeConnectionCount` on subscriptions |
 | [docs/admin-credit-logs.md](docs/admin-credit-logs.md) | `admin/credit-logs` list/filters (including the inclusive `dateFrom`/`dateTo` range), clear-all `DELETE`, `users.credits`, the create/update log row and its atomicity |
+| [docs/user-logs.md](docs/user-logs.md) | the user audit log: `user_logs` shape, the ten record types, `ViewUserLogs`, the description convention, the fail-open write path and `admin/user-logs` |
