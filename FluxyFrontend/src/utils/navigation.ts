@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   ApartmentOutlined,
   AppstoreOutlined,
+  AuditOutlined,
   CalendarOutlined,
   CloudServerOutlined,
   CreditCardOutlined,
@@ -427,6 +428,22 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.creditLogs',
           icon: WalletOutlined,
           page: () => import('../pages/admin/CreditLogsPage'),
+        },
+        {
+          // The user audit log, appended after the credit log: it is the same kind of read -
+          // what happened, with an outcome - about accounts rather than about their money, and
+          // it is last because it is the widest record of the two. `user-logs` mirrors the
+          // backend's own route (`admin/user-logs`), so the page, the API and the menu entry
+          // name one resource the same way.
+          //
+          // The label is `nav.items.userLogs` - "User logs" / «Журнал действий» - and
+          // deliberately not the group's own heading: the rail's "Users" is where the visitor
+          // is, and this is what they are reading.
+          key: 'userLogs',
+          path: 'user-logs',
+          labelKey: 'nav.items.userLogs',
+          icon: AuditOutlined,
+          page: () => import('../pages/admin/UserLogsPage'),
         },
       ],
     },

@@ -15,7 +15,7 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all twenty-four belong to
+ * - **A permission belongs to exactly one role.** On this installation all twenty-seven belong to
  *   `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
@@ -44,7 +44,9 @@ import type { Role, UserPermission } from '../../types'
  *   pair; the bouquet pair is a package *of* them rather than a fifth content kind, which is
  *   why it is its own grant rather than a reuse of any of the four, and the plan pair is the
  *   price list of the packages rather than a fifth package. The blacklist pair is one pair for
- *   all three lists because they are one resource behind one screen family.
+ *   all three lists because they are one resource behind one screen family. **The audit log's
+ *   `viewUserLogs` is the one single grant** - it gates the read and the wipe together, because
+ *   the wipe destroys the same evidence - so it too is neither a role pair nor a lookup entry.
  * - **Unknown is not a case.** Every value is a member of the union, so there is no branch
  *   for a name that means nothing - the server answers `validation_failed` with the list that
  *   does exist if a body ever carries one, and that is where the refusal belongs.
@@ -78,6 +80,9 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editSubscriptions',
   'viewBlacklists',
   'editBlacklists',
+  // The user audit log's single grant, last in the catalog: it gates both the read and the
+  // whole-table wipe, and it is deliberately not a pair - an operator never writes a row.
+  'viewUserLogs',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -108,6 +113,7 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editSubscriptions: 'Admin',
   viewBlacklists: 'Admin',
   editBlacklists: 'Admin',
+  viewUserLogs: 'Admin',
 }
 
 /**

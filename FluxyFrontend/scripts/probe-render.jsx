@@ -56,6 +56,7 @@ import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
 import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
 import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
+import UserLogsPage from '../src/pages/admin/UserLogsPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import {
@@ -68,6 +69,16 @@ import {
   creditLogActorName,
   creditLogTone,
 } from '../src/features/credit-logs/creditLogActor'
+import {
+  COLUMN_KEYS as USER_LOG_COLUMN_KEYS,
+  COLUMN_WIDTHS_KEY as USER_LOG_WIDTHS_KEY,
+  DEFAULT_COLUMN_WIDTHS as USER_LOG_WIDTHS,
+  TABLE_WIDTH as USER_LOG_TABLE_WIDTH,
+  columnWidthTotal as userLogColumnWidthTotal,
+  sortFieldOf as userLogSortFieldOf,
+} from '../src/features/user-logs/layout'
+import { recordTone } from '../src/features/user-logs/recordTone'
+import { USER_LOG_RECORD_TYPES } from '../src/features/user-logs/recordTypes'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -3540,7 +3551,8 @@ async function main() {
 
   // --- The reseller credit log ------------------------------------------------
   //
-  // Its own page behind `nav.items.creditLogs`, the last entry of the admin's `users` group.
+  // Its own page behind `nav.items.creditLogs`, right after the visit history in the admin's
+  // `users` group (the user audit log follows it).
   // The heading, the five column headers, the toolbar controls and the clear command all
   // appear before the first answer - the table itself is drawn empty under a spinner, so the
   // static render is exactly the state to assert them in. The row cells are unreachable here
@@ -3555,7 +3567,7 @@ async function main() {
 
   check(
     'the credit log draws its heading and its table before any entries arrive',
-    creditLogsHtml.includes('>Credit log<') &&
+    creditLogsHtml.includes('>Credit logs<') &&
       creditLogsHtml.includes('ant-table') &&
       !creditLogsHtml.includes('nav.items.creditLogs'),
     `rendered ${creditLogsHtml.length} bytes with the log still being fetched`,
@@ -3685,26 +3697,310 @@ async function main() {
       : 'THE CLEAR BUTTON IS MISSING',
   )
 
-  // The menu entry: last of the admin `users` group, an address of its own, and a real page
+  // --- The user audit log ------------------------------------------------------
+  //
+  // Its own page behind `nav.items.userLogs`, appended after the credit log so the admin's
+  // `users` group ends with it. The heading, the five column headers, the toolbar controls and
+  // the clear command all appear before the first answer - the table itself is drawn empty
+  // under a spinner, so the static render is exactly the state to assert them in. No row
+  // exists in a static render, so the record tone is asserted as a function below, and the two
+  // source-shape checks (the username link, the gated clear) read the page's own file.
+  const userLogsHtml = renderToStaticMarkup(
+    withRouter('/admin/user-logs', withQuery(
+      <AntApp>
+        <UserLogsPage sectionKey="nav.items.userLogs" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the user log draws its heading and its table before any entries arrive',
+    userLogsHtml.includes('>User logs<') &&
+      userLogsHtml.includes('ant-table') &&
+      !userLogsHtml.includes('nav.items.userLogs'),
+    `rendered ${userLogsHtml.length} bytes with the log still being fetched`,
+  )
+
+  check(
+    'the user log draws its five column headers in order',
+    ['User', 'Event', 'Description', 'Network', 'Date'].every((heading) =>
+      userLogsHtml.includes(`>${heading}<`),
+    ) &&
+      userLogsHtml.indexOf('>User<') < userLogsHtml.indexOf('>Event<') &&
+      userLogsHtml.indexOf('>Event<') < userLogsHtml.indexOf('>Description<') &&
+      userLogsHtml.indexOf('>Description<') < userLogsHtml.indexOf('>Network<') &&
+      userLogsHtml.indexOf('>Network<') < userLogsHtml.indexOf('>Date<'),
+    `five headings: ${['User', 'Event', 'Description', 'Network', 'Date']
+      .map((heading) => `${heading}@${userLogsHtml.indexOf(`>${heading}<`)}`)
+      .join(', ')}`,
+  )
+
+  const userLogCols = [...userLogsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const userLogWidths = userLogCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const userLogTotal = userLogWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the user log is fixed-layout with five columns totalling 1190, in order',
+    /table-layout:\s*fixed/.test(userLogsHtml) &&
+      userLogWidths.join(',') === '210,170,400,220,190' &&
+      userLogTotal === USER_LOG_TABLE_WIDTH &&
+      userLogColumnWidthTotal(USER_LOG_WIDTHS) === USER_LOG_TABLE_WIDTH,
+    `${userLogCols.length} columns: [${userLogWidths.join(', ')}] = ${userLogTotal}px`,
+  )
+
+  // The toolbar order the specification names: auto-refresh, search, the three pickers, the
+  // width reset, the clear command. The auto-refresh control is icon-only, so its position is
+  // read from its own accessible name.
+  const refreshTipIndex = userLogsHtml.indexOf('Resume auto refresh')
+  check(
+    'the user log toolbar runs auto-refresh, search, the three pickers, the width reset and the clear command',
+    refreshTipIndex !== -1 &&
+      userLogsHtml.includes('Search user logs') &&
+      userLogsHtml.includes('Any user') &&
+      userLogsHtml.includes('Any group') &&
+      userLogsHtml.includes('Any event') &&
+      userLogsHtml.includes('aria-label="Reset widths"') &&
+      userLogsHtml.includes('Clear all logs') &&
+      refreshTipIndex < userLogsHtml.indexOf('Search user logs') &&
+      userLogsHtml.indexOf('Search user logs') < userLogsHtml.indexOf('Any user') &&
+      userLogsHtml.indexOf('Any user') < userLogsHtml.indexOf('Any group') &&
+      userLogsHtml.indexOf('Any group') < userLogsHtml.indexOf('Any event') &&
+      userLogsHtml.indexOf('Any event') < userLogsHtml.indexOf('aria-label="Reset widths"') &&
+      userLogsHtml.indexOf('aria-label="Reset widths"') < userLogsHtml.indexOf('Clear all logs'),
+    `refresh@${refreshTipIndex}, search@${userLogsHtml.indexOf('Search user logs')}, clear@${userLogsHtml.indexOf('Clear all logs')}`,
+  )
+
+  // The date range is the long control, so it is a row of its own in the card body - after
+  // the card head (whose last control is "Clear all logs") and before the table. Index order
+  // is enough: head, then the picker, then the table.
+  check(
+    'the user log draws the date range on its own row between the card head and the table',
+    userLogsHtml.includes('ant-picker-range') &&
+      userLogsHtml.indexOf('Date from') > userLogsHtml.indexOf('Clear all logs') &&
+      userLogsHtml.indexOf('Date from') > userLogsHtml.indexOf('ant-card-body') &&
+      userLogsHtml.indexOf('Date from') < userLogsHtml.indexOf('ant-table'),
+    `range@${userLogsHtml.indexOf('Date from')}, clear@${userLogsHtml.indexOf('Clear all logs')}, body@${userLogsHtml.indexOf('ant-card-body')}, table@${userLogsHtml.indexOf('ant-table')}`,
+  )
+
+  // A range, one of each list filter and the three network filters in the address are drawn
+  // back into the controls and as closable tags, in that order: the range first, then the
+  // network filters (country, ip, isp - the connection log's tag order), then the user, the
+  // group and the event. The three list filters are repeated parameters, so this also proves
+  // the read-back handles more than one element; the network ones are the values a click on the
+  // shared cell writes.
+  const filteredUserLogsHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/user-logs?userIds=44444444-4444-4444-4444-444444444444&groupIds=22222222-2222-2222-2222-222222222222&recordTypes=login&recordTypes=logout&ip=203.0.113.9&country=DE&isp=Example%20ISP&dateFrom=2026-05-01T00%3A00%3A00.000Z&dateTo=2026-05-03T23%3A59%3A59.999Z&search=alice',
+      withQuery(
+        <AntApp>
+          <UserLogsPage sectionKey="nav.items.userLogs" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'an address-borne range, three network filters and three list filters arrive as closable tags, range first',
+    filteredUserLogsHtml.includes('Date:') &&
+      filteredUserLogsHtml.includes('Country:') &&
+      filteredUserLogsHtml.includes('IP:') &&
+      filteredUserLogsHtml.includes('Provider:') &&
+      filteredUserLogsHtml.includes('User:') &&
+      filteredUserLogsHtml.includes('Group:') &&
+      filteredUserLogsHtml.includes('Event:') &&
+      filteredUserLogsHtml.includes('ant-tag-close-icon') &&
+      filteredUserLogsHtml.indexOf('Date:') < filteredUserLogsHtml.indexOf('Country:') &&
+      filteredUserLogsHtml.indexOf('Country:') < filteredUserLogsHtml.indexOf('IP:') &&
+      filteredUserLogsHtml.indexOf('IP:') < filteredUserLogsHtml.indexOf('Provider:') &&
+      filteredUserLogsHtml.indexOf('Provider:') < filteredUserLogsHtml.indexOf('User:') &&
+      filteredUserLogsHtml.indexOf('User:') < filteredUserLogsHtml.indexOf('Group:') &&
+      filteredUserLogsHtml.indexOf('Group:') < filteredUserLogsHtml.indexOf('Event:'),
+    `rendered ${filteredUserLogsHtml.length} bytes with the filters in the address: ${[
+      'Date:',
+      'Country:',
+      'IP:',
+      'Provider:',
+      'User:',
+      'Group:',
+      'Event:',
+    ]
+      .map((tag) => `${tag}@${filteredUserLogsHtml.indexOf(tag)}`)
+      .join(', ')}`,
+  )
+
+  const userLogsPageSource = readFileSync('src/pages/admin/UserLogsPage.tsx', 'utf8')
+  check(
+    'the user log hands the width hook its own columns, defaults and storage key',
+    userLogsPageSource.includes('keys: COLUMN_KEYS') &&
+      userLogsPageSource.includes('defaults: DEFAULT_COLUMN_WIDTHS') &&
+      userLogsPageSource.includes('storageKey: COLUMN_WIDTHS_KEY') &&
+      USER_LOG_WIDTHS_KEY === 'fluxy.userLogs.columnWidths' &&
+      USER_LOG_COLUMN_KEYS.length === 5,
+    `${USER_LOG_COLUMN_KEYS.length} columns under ${USER_LOG_WIDTHS_KEY}`,
+  )
+
+  // The username cell has two branches and no row reaches either in a static render, so the
+  // shape is read from the page: a link to `${area}/users/${row.accountId}` when the row names
+  // an account, and plain text otherwise. Building a link from a null id would open the form
+  // at `/users/null` for exactly the rows the fallback exists for.
+  //
+  // The network cell is read the same way, and now with its click-through: this endpoint takes
+  // the same `ip`/`country`/`isp` parameters as the connection log, so the cell receives
+  // `onFilter={choose}` - the one writer that drops `page` - exactly as `ConnectionLogsPage`
+  // hands it over. Without the callback the three facts would render as plain text on a screen
+  // whose server does accept the filter, which is the regression this pins.
+  check(
+    'the user-log username cell links only when the row names an account',
+    /if \(row\.accountId\)/.test(userLogsPageSource) &&
+      /onClick=\{\(\) => navigate\(`\$\{area\}\/users\/\$\{row\.accountId\}`\)\}/.test(
+        userLogsPageSource,
+      ) &&
+      /<Typography\.Text>\{row\.username \?\? DASH\}<\/Typography\.Text>/.test(userLogsPageSource) &&
+      /const area = session \? areaForRole\(session\.role\) : ''/.test(userLogsPageSource),
+    'the username cell draws a link for an account and plain text otherwise',
+  )
+
+  check(
+    'the user-log network cell is the click-through: it writes its three filters through choose',
+    /<ConnectionNetworkCell log=\{row\} locale=\{locale\} onFilter=\{choose\} \/>/.test(
+      userLogsPageSource,
+    ) &&
+      /const choose = \(key: string, value: string \| null \| undefined\) =>[\s\S]{0,120}?withFilter\(searchParams, key, value\), \{ replace: true \}\)/.test(
+        userLogsPageSource,
+      ) &&
+      /const \{ ip, country, isp \} = networkFilterParams\(searchParams\)/.test(userLogsPageSource) &&
+      // The wire param is `country`, not the response field `countryCode`: a reader that sent
+      // the response spelling would be ignored by the endpoint and the table would stay wide.
+      /country: params\.get\('country'\)/.test(
+        readFileSync('src/features/user-logs/networkFilters.ts', 'utf8'),
+      ),
+    'the network cell is not wired to choose, or the three filters are not read from the address',
+  )
+
+  check(
+    'the record-type header sorts by recordType while its key stays the word the table draws',
+    /key: 'recordType'[\s\S]{0,400}?orderOf\('recordType'\)/.test(userLogsPageSource) &&
+      userLogSortFieldOf('recordType') === 'recordType' &&
+      userLogSortFieldOf('createdAt') === 'createdAt',
+    `recordType -> ${userLogSortFieldOf('recordType')}, createdAt -> ${userLogSortFieldOf('createdAt')}`,
+  )
+
+  // The clear command is never disabled by data state - only by the permission - because its
+  // words are a promise about the log, not about the rows the filters admit. The static render
+  // has no profile answer, so it lands in the permission-less branch: the button exists, is
+  // disabled, and carries the reason.
+  check(
+    'the user log clear command is gated on viewUserLogs and never on the data',
+    /granted\.includes\('viewUserLogs'\)/.test(userLogsPageSource) &&
+      /loading=\{clearLogs\.isPending\}/.test(userLogsPageSource) &&
+      /modal\.confirm\(\{/.test(userLogsPageSource) &&
+      userLogsPageSource.includes("t('userLogs.clearConfirmBody')") &&
+      !/disabled=\{[^}]*logs/.test(userLogsPageSource),
+    userLogsHtml.includes('Clear all logs')
+      ? 'the button is drawn in the permission-less state, disabled with its reason'
+      : 'THE CLEAR BUTTON IS MISSING',
+  )
+
+  // The refusal is answered only after the profile answers: an unanswered profile is "not
+  // known yet" and draws the ordinary shell, which is why every check above (rendered from a
+  // fresh client with no profile answer) sees the toolbar. Seeding a profile **without** the
+  // grant is the one state that reaches the refusal branch, and it must draw the card, its
+  // heading and the sentence - and nothing else: no toolbar, no filters, no table.
+  const refusedUserLogsHtml = renderToStaticMarkup(
+    withRouter('/admin/user-logs', withSeededQuery(
+      ['profile'],
+      {
+        username: 'probeadmin',
+        email: 'probeadmin@localhost',
+        role: 'Admin',
+        permissions: [],
+        credits: 0,
+        timeZone: null,
+        geoProtectionEnabled: false,
+        bindSessionToIp: false,
+        allowedIps: [],
+        allowedCountry: null,
+        allowedAutonomousSystemNumber: null,
+      },
+      <AntApp>
+        <UserLogsPage sectionKey="nav.items.userLogs" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'a profile without viewUserLogs draws the refusal alert alone, under the card title',
+    refusedUserLogsHtml.includes('>User logs<') &&
+      refusedUserLogsHtml.includes('Your group does not allow this.') &&
+      refusedUserLogsHtml.includes('ant-alert') &&
+      refusedUserLogsHtml.includes('page-card') &&
+      !refusedUserLogsHtml.includes('ant-table') &&
+      !refusedUserLogsHtml.includes('Search user logs') &&
+      !refusedUserLogsHtml.includes('ant-picker-range') &&
+      !refusedUserLogsHtml.includes('Clear all logs'),
+    refusedUserLogsHtml.includes('ant-alert')
+      ? `rendered ${refusedUserLogsHtml.length} bytes of the refusal`
+      : 'THE REFUSAL ALERT IS MISSING',
+  )
+
+  // Translations, before the menu block below reads the group's order: a card title, a rail
+  // label and all ten record-type words have to exist in both bundles, and a key present in
+  // neither is the one failure no type or render can see.
+  check(
+    'the user-log menu entry, card title and record types are all translated',
+    i18n.getResource('en', 'translation', 'nav.items.userLogs') === 'User logs' &&
+      i18n.getResource('ru', 'translation', 'nav.items.userLogs') === 'Журнал действий' &&
+      i18n.getResource('en', 'translation', 'userLogs.title') === 'User logs' &&
+      i18n.getResource('ru', 'translation', 'userLogs.title') === 'Журнал действий' &&
+      USER_LOG_RECORD_TYPES.every(
+        (type) =>
+          i18n.getResource('en', 'translation', `userLogs.types.${type}`) &&
+          i18n.getResource('ru', 'translation', `userLogs.types.${type}`),
+      ) &&
+      USER_LOG_RECORD_TYPES.length === 10,
+    `en ${i18n.getResource('en', 'translation', 'nav.items.userLogs')}, ru ${i18n.getResource('ru', 'translation', 'nav.items.userLogs')}, ${USER_LOG_RECORD_TYPES.length} types`,
+  )
+
+  // The two row rules, as functions: a static render draws no cell, so the green/red tag and
+  // the ten-value vocabulary are only reachable here.
+  check(
+    'a record tag is green for a successful attempt and red for a refused one',
+    recordTone({ isSuccess: true }) === 'success' &&
+      recordTone({ isSuccess: false }) === 'error',
+    `success ${recordTone({ isSuccess: true })}, failure ${recordTone({ isSuccess: false })}`,
+  )
+
+  // The menu entry: right after the visit history, an address of its own, and a real page
   // behind the loader rather than the placeholder.
   const creditLogGroup = NAVIGATION.Admin.find((group) => group.key === 'users')
   const creditLogItemKeys = (creditLogGroup?.items ?? []).map((item) => item.key)
   const creditLogItem = creditLogGroup?.items.find((item) => item.key === 'creditLogs')
   const creditLogModule = creditLogItem?.page ? await creditLogItem.page() : null
   check(
-    'the admin users group ends with the credit-log entry, pointing at the real page',
-    creditLogItemKeys[creditLogItemKeys.length - 1] === 'creditLogs' &&
-      creditLogItemKeys.indexOf('creditLogs') === creditLogItemKeys.indexOf('adminSessions') + 1 &&
+    'the admin users group carries the credit-log entry right after the sessions, pointing at the real page',
+    creditLogItemKeys.indexOf('creditLogs') === creditLogItemKeys.indexOf('adminSessions') + 1 &&
       menuPath('Admin', 'credit-logs') === '/admin/credit-logs' &&
       creditLogModule?.default === CreditLogsPage,
     `items: ${creditLogItemKeys.join(', ')}; opens ${menuPath('Admin', 'credit-logs')}`,
+  )
+
+  // The user-log entry: appended after the credit log, so the group ends with the wider record.
+  const userLogGroup = NAVIGATION.Admin.find((group) => group.key === 'users')
+  const userLogItemKeys = (userLogGroup?.items ?? []).map((item) => item.key)
+  const userLogItem = userLogGroup?.items.find((item) => item.key === 'userLogs')
+  const userLogModule = userLogItem?.page ? await userLogItem.page() : null
+  check(
+    'the admin users group ends with the user-log entry, right after the credit log',
+    userLogItemKeys[userLogItemKeys.length - 1] === 'userLogs' &&
+      userLogItemKeys.indexOf('userLogs') === userLogItemKeys.indexOf('creditLogs') + 1 &&
+      userLogItemKeys.indexOf('creditLogs') === userLogItemKeys.indexOf('adminSessions') + 1 &&
+      menuPath('Admin', 'user-logs') === '/admin/user-logs' &&
+      userLogModule?.default === UserLogsPage,
+    `items: ${userLogItemKeys.join(', ')}; opens ${menuPath('Admin', 'user-logs')}`,
   )
 
   check(
     'the credit-log menu entry and card title are both translated',
     i18n.getResource('en', 'translation', 'nav.items.creditLogs') === 'Credit logs' &&
       i18n.getResource('ru', 'translation', 'nav.items.creditLogs') === 'Журнал кредитов' &&
-      i18n.getResource('en', 'translation', 'creditLogs.title') === 'Credit log' &&
+      i18n.getResource('en', 'translation', 'creditLogs.title') === 'Credit logs' &&
       i18n.getResource('ru', 'translation', 'creditLogs.title') === 'Журнал кредитов' &&
       i18n.getResource('en', 'translation', 'users.creditsLabel') === 'Credits' &&
       i18n.getResource('ru', 'translation', 'users.creditsLabel') === 'Кредиты',
@@ -3790,6 +4086,7 @@ async function main() {
     liveLogsHtml,
     activityLogsHtml,
     creditLogsHtml,
+    userLogsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(
@@ -4655,6 +4952,26 @@ async function main() {
         railCss,
       ),
     'the title row at 1200 and the stacked toolbar at 768 are both present',
+  )
+
+  // The user log's head is the one that does not fit between 1201px and 1500px: seven
+  // controls and a long title in one row, and the title was measured at width 0 while the
+  // toolbar kept the row. The rule is scoped to that card's own class so no other page's head
+  // changes, and it is the half `probe:render` can see - the stylesheet side - because a
+  // static render carries no layout. It must keep the title at its natural width and let the
+  // head wrap, exactly as the ≤1200px rule does.
+  check(
+    'the user log head keeps its title at its natural width above 1200px and wraps instead of squeezing it',
+    userLogsHtml.includes('user-logs-card') &&
+      /@media \(min-width: 1201px\)[\s\S]*?\.layout-shell \.user-logs-card \.ant-card-head-wrapper \{[^}]*flex-wrap: wrap;/.test(
+        railCss,
+      ) &&
+      /\.layout-shell \.user-logs-card \.ant-card-head-title \{[^}]*flex: 0 0 auto;[^}]*min-width: max-content;/.test(
+        railCss,
+      ),
+    userLogsHtml.includes('user-logs-card')
+      ? 'the card carries user-logs-card and index.css keeps its title at max-content'
+      : 'THE USER LOG CARD LACKS THE user-logs-card CLASS',
   )
 
   // The reseller's balance chip is `flex: none` - every other control in that row has its own

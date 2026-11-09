@@ -171,9 +171,14 @@ const en = {
       // you are looking at.
       adminSessions: 'User sessions',
       // The reseller balance history, last in the admin's own group. The card below it is
-      // headed `creditLogs.title` - "Credit log" rather than "Credit logs" - because the card
-      // names the record and the rail names the place, and the two need not share a number.
+      // headed `creditLogs.title` - "Credit logs", the same plural the rail uses - because the
+      // screen is a table of entries, and a singular heading read like one record rather than
+      // the list.
       creditLogs: 'Credit logs',
+      // The user audit log, after the credit log and last in the admin's own group. The card
+      // below it is headed `userLogs.title` - "User logs" - and the pair works as the ones
+      // above it do: the rail names the place, the card names the table of entries.
+      userLogs: 'User logs',
       // Each content section repeats one shape: `add`, `manage` and `categories`, plus an
       // `import` entry only where a playlist import has been built. Unlike the labels around
       // them, every entry names its object as well as its verb: a bare `Add` beside
@@ -546,7 +551,7 @@ const en = {
         'Each account and everything attached to it вЂ” sessions, sign-in protection вЂ” will be removed. This cannot be undone.',
     },
   },
-  // The ten permission keys, exactly as the catalog spells them. These strings are the
+  // The permission keys, exactly as the catalog spells them. These strings are the
   // labels of the checkboxes on the group form and the values `src/features/user-groups/permissions.ts`
   // mirrors from the backend - one name for one thing, spelled the same way in both, so a
   // permission added on the server becomes a box an operator can tick without a translation
@@ -604,6 +609,10 @@ const en = {
     // one API and one screen family behind three menu entries.
     viewBlacklists: 'View blacklists',
     editBlacklists: 'Edit blacklists',
+    // The audit log's single grant: it opens the user log and its clear command, because the
+    // wipe destroys the same evidence. There is deliberately no `editUserLogs` - an operator
+    // never writes a row; a row is written by the flow it records.
+    viewUserLogs: 'View user logs',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -2399,7 +2408,7 @@ const en = {
   // block rather than more keys under `users` or `connectionLogs`, because it is a resource of
   // its own behind a grant of its own (`viewResellers` to read, `editResellers` to wipe).
   creditLogs: {
-    title: 'Credit log',
+    title: 'Credit logs',
     // The five columns. `credits` is the amount, signed: green for issued, red for spent or
     // for the zero an account created with no initial credit carries.
     columns: {
@@ -2440,6 +2449,82 @@ const en = {
       'All credit entries will be removed — for every reseller, regardless of the filters on screen. This cannot be undone.',
     clearConfirmOk: 'Clear all',
     noPermission: 'Your group does not allow this.',
+  },
+  // The user audit log: every attempt to register, sign in, reset a password, change an
+  // account or sign out, with its outcome and the network it came from. Its own block rather
+  // than more keys under `users` or `creditLogs`, because it is a resource of its own behind
+  // a grant of its own (`viewUserLogs`, which also gates the wipe).
+  userLogs: {
+    title: 'User logs',
+    // The five columns. `network` is the flag, address and provider cell shared with the
+    // connection log; the record type is a tag whose colour is the attempt's outcome.
+    columns: {
+      username: 'User',
+      recordType: 'Event',
+      description: 'Description',
+      network: 'Network',
+      createdAt: 'Date',
+    },
+    searchLabel: 'Search user logs',
+    searchPlaceholder: 'Search',
+    // The three pickers' own names while nothing is chosen.
+    filterAnyUser: 'Any user',
+    filterAnyGroup: 'Any group',
+    filterAnyType: 'Any event',
+    // The date range: one accessible name on the pair and the two sides' placeholders. It
+    // filters on when the entry was written.
+    filterDateRange: 'Date range',
+    filterDateFrom: 'Date from',
+    filterDateTo: 'Date to',
+    // The active filters as closable tags. The range is one control over two parameters, so
+    // its tag names both ends in one label; a single-sided range names only the side that is
+    // set. The search is deliberately not a tag - its own box is where it is read and cleared.
+    filters: {
+      user: 'User: {{value}}',
+      group: 'Group: {{value}}',
+      recordType: 'Event: {{value}}',
+      // The three network filters, written by clicking a fact in the shared network cell. The
+      // words match the connection log's tags: one component writes both rows' keys.
+      country: 'Country: {{value}}',
+      ip: 'IP: {{value}}',
+      isp: 'Provider: {{value}}',
+      dateRange: 'Date: {{from}} – {{to}}',
+      dateRangeFrom: 'Date from: {{from}}',
+      dateRangeTo: 'Date to: {{to}}',
+    },
+    empty: 'No log entries yet.',
+    noMatches: 'No log entries match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded as the connection log's is: the action and the
+    // interval, because the button is icon-only and this string is its whole accessible name.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The whole-table clear. The dialog states the scope - every account, whatever the
+    // filters show - because the button's words are a promise about the log.
+    clearAll: 'Clear all logs',
+    clearConfirmTitle: 'Clear the whole user log?',
+    clearConfirmBody:
+      'All user log entries will be removed – for every account, regardless of the filters on screen. This cannot be undone.',
+    clearConfirmOk: 'Clear all',
+    noPermission: 'Your group does not allow this.',
+    // The ten record types, keyed by their wire names. The screen speaks its own words for a
+    // row while the description column keeps the stored English sentence - the record is the
+    // audit trail, the tag is what the reader is being told.
+    types: {
+      registration_submit: 'Registration (submitted)',
+      registration_confirm: 'Registration (confirmed)',
+      login: 'Sign-in',
+      password_reset_request: 'Password reset (requested)',
+      password_reset_confirm: 'Password reset (confirmed)',
+      username_change: 'Username change',
+      email_change: 'Email change',
+      password_change: 'Password change',
+      login_guard_change: 'Login guard change',
+      logout: 'Sign-out',
+    },
   },
   // The add and edit form for one subscription. Its own block because the table names what a row
   // is and the form names what an operator is being asked to type.
@@ -2791,6 +2876,9 @@ const en = {
       // The credit log's one write, worded the same way: the command wipes the table, and the
       // sentence says every entry went rather than naming a row.
       credit_logs_cleared: 'Every credit log entry has been deleted.',
+      // The user audit log's one write, worded the same way: the command wipes the table, and
+      // the sentence says every entry went rather than naming a row.
+      user_logs_cleared: 'Every user log entry has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

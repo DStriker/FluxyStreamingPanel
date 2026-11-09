@@ -20,9 +20,10 @@ import { flagUrl } from '../flag'
  *
  * - the visits' organisation and AS number are two fields the server resolved, so the provider
  *   line is built from them by `networkLabel`; the connection log stores one provider string;
- * - only the connection log can filter by any of the three facts (its country and provider are
- *   stored columns), so `onFilter` is optional and the visits pass none. A fact with no filter to
- *   write is drawn as plain text - a control that would do nothing is worse than a word.
+ * - the connection log and the user audit log both take the three filters (their country,
+ *   address and provider are stored columns), so the visits pass no `onFilter` and the two logs
+ *   pass their own writer. A fact with no filter to write is drawn as plain text - a control
+ *   that would do nothing is worse than a word.
  *
  * **A flag that cannot be loaded falls back to the two-letter code and stops being clickable.**
  * The service may be down, may have no picture for a code, or the browser may be offline; the code
@@ -65,7 +66,7 @@ export default function ConnectionNetworkCell({
   locale: string
   /**
    * Writes one filter into the address, dropping `page` in the same write - or absent when the
-   * table reading this cell has no such filter.
+   * table reading this cell has no such filter (the visit histories).
    *
    * The key is the query parameter and the value is what the cell read off the row, so the cell
    * does not decide which parameter a fact belongs to twice.

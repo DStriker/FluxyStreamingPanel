@@ -49,10 +49,13 @@ describe('ALL_PERMISSIONS', () => {
       // so it sits after the price list that decides what it delivers.
       'viewSubscriptions',
       'editSubscriptions',
-      // The blacklist pair is the last one: the three access-control lists are a resource of
+      // The blacklist pair is the last pair: the three access-control lists are a resource of
       // their own, behind one screen family and one API.
       'viewBlacklists',
       'editBlacklists',
+      // The audit log's single grant closes the catalog: it gates the read and the wipe
+      // together, and it has no write sibling because an operator never writes a log row.
+      'viewUserLogs',
     ])
   })
 })
@@ -128,6 +131,10 @@ describe('canViewAny / canEditAny', () => {
     // not satisfy these gates either.
     expect(canViewAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
     expect(canEditAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
+    // The audit log's single grant names the log rather than accounts, so it must not satisfy
+    // these gates either.
+    expect(canViewAny(['viewUserLogs'])).toBe(false)
+    expect(canEditAny(['viewUserLogs'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

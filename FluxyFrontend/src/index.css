@@ -298,6 +298,37 @@ body {
   }
 }
 
+/* One card's toolbar is wider than the head can share before `xl`. The user log's head
+   carries seven controls (the refresh, the search, three multiple pickers, the width reset
+   and the danger clear command) and a long title, so between roughly 1201px and 1500px there
+   is no room for both halves of a single row - and antd's `.ant-card-head-title` carries
+   `overflow: hidden`, whose automatic minimum size is 0, so the title lost the argument and
+   was measured at width 0 while `extra` kept the row.
+
+   The trade is the one the ≤1200px rule makes, applied per card and only when the two no
+   longer fit: the title keeps its whole text at its natural width, and the toolbar moves to
+   a line of its own and wraps its own controls - the same behaviour `UsersPage` documents
+   for its head. Both are still on one row wherever the two fit, so the desktop layout is
+   unchanged wherever it is readable. `flex: 0 0 auto` plus `min-width: max-content` is what
+   stops the title being the half that yields; `min-width: 0` on `extra` is what lets the
+   fixed-width controls wrap inside it instead of pushing the head wider than the card. */
+@media (min-width: 1201px) {
+  .layout-shell .user-logs-card .ant-card-head-wrapper {
+    flex-wrap: wrap;
+  }
+
+  .layout-shell .user-logs-card .ant-card-head-title {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .layout-shell .user-logs-card .ant-card-extra {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 768px) {
   .layout-shell .page-card .ant-card-head-title {
     /* The desktop rule is inline on the pages (`styles.title`), so only an important

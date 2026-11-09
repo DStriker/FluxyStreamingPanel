@@ -35,6 +35,63 @@ export function withFilter(
 }
 
 /**
+ * The address after a **repeated** filter changes: one parameter per value, the whole key
+ * removed when the list is empty, and `page` dropped in the same write.
+ *
+ * The repeated-parameter shape is the endpoint's, not a formatting choice: `?userIds=a&userIds=b`
+ * is two accounts, and `?userIds=a,b` is one value the server would refuse. Writing the key
+ * once per element is what makes that distinction structural at the call site.
+ *
+ * Replacing rather than appending is the point of the `delete` in the middle: a picker hands
+ * over the full new selection, so the address's old values describe a list that no longer
+ * exists - appending would filter by the union of what was chosen and what was chosen before.
+ * `page` is dropped for the reason `withFilter` gives: a different list is a different pager.
+ */
+export function withFilterList(
+  params: URLSearchParams,
+  key: string,
+  values: readonly string[],
+): URLSearchParams {
+  const next = new URLSearchParams(params)
+
+  next.delete(key)
+  for (const value of values) next.append(key, value)
+
+  next.delete('page')
+
+  return next
+}
+
+/**
+ * Every value of a repeated parameter that the caller recognises, in the order the address
+ * spells them.
+ *
+ * The guard is the other half of `withFilterList`, and it exists for the same reason `enumParam`
+ * does: an address is shareable and hand-editable, and one bad element is a **400 under the
+ * parameter's own name** on this endpoint - so a stale or mistyped link has to draw a narrower
+ * table rather than an error page. The caller names what it accepts: the record-type whitelist
+ * for one picker, a uuid test for the two account pickers.
+ *
+ * An element that fails the test is dropped rather than the whole list, because the surviving
+ * values are what the visitor can actually see chosen; dropping all of them would silently
+ * widen the table to everything.
+ */
+export function listParam<T extends string>(
+  params: URLSearchParams,
+  key: string,
+  accept: readonly T[] | ((value: string) => boolean),
+): T[] {
+  const test =
+    typeof accept === 'function'
+      ? accept
+      : (value: string) => (accept as readonly string[]).includes(value)
+
+  return params
+    .getAll(key)
+    .filter((value) => value !== '' && test(value)) as T[]
+}
+
+/**
  * One of a fixed set of values, as an address can name it.
  *
  * Anything else - an absent key, an empty value, a hand-edited word the endpoint would

@@ -1,7 +1,7 @@
 /**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These twenty-four strings are the whole catalog at the time of writing. They are a union rather
+ * These twenty-seven strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,9 +16,9 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all twenty-four - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
+ * `Admin` for all twenty-seven - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all twenty-four comes
+ * dropped on the way in rather than refused, which is why a Client group sent all twenty-seven comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
  *
  * **The two stream permissions are the first pair that is not about accounts.**
@@ -68,6 +68,11 @@
  * resource: one table, one API and one screen behind three menu entries. The backend keeps
  * them at 67108864 and 134217728.
  *
+ * **The user audit log is the catalog's one single grant.** `viewUserLogs` gates both
+ * reading the log and wiping it, because the wipe destroys the same evidence - there is no
+ * `editUserLogs`, and there is none because an operator never writes a row: a row is written
+ * by the flow it describes. The backend keeps it at 268435456.
+ *
  * Note the two questions are spelled the same way and are not the same question:
  * `permissionsForRole(role)` takes the role of the group *holding* the grant, while
  * `canView(granted, role)` takes the role of the account being *looked at*.
@@ -99,4 +104,5 @@ export type UserPermission =
   | 'editSubscriptions'
   | 'viewBlacklists'
   | 'editBlacklists'
+  | 'viewUserLogs'
 
