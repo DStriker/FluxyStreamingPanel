@@ -204,6 +204,18 @@ namespace Fluxy.Application
             // runs the integration suite is a no-op.
             services.AddScoped<IApiRequestFailureSeeder, DevelopmentApiRequestFailureSeeder>();
 
+            // The journal of problems the stream producer reports: read, plus the one whole-table
+            // clear and the one record path the producer will call. It is its own service because a
+            // problem belongs to a stream and carries rules no stream write has - a trimmed,
+            // non-blank message cut to its column - and writing the row is the whole operation, so
+            // its failure is not swallowed the way the audit log's is.
+            services.AddScoped<IStreamProblemService, StreamProblemService>();
+
+            // Trial rows for that journal, in Development only and only into an empty table. The
+            // stream is a real foreign key, so it reads the streams through the Core repository and
+            // never invents one - the shape the connection log's seeder follows.
+            services.AddScoped<IStreamProblemSeeder, DevelopmentStreamProblemSeeder>();
+
             // The three access-control blacklists: one resource behind two permissions and
             // three menu entries. It is its own service because an entry has rules none of the
             // resources above has - a value unique within its list, an address parsed as an
@@ -281,9 +293,10 @@ namespace Fluxy.Application
         }
 
         /// <summary>
-        /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IConnectionLogSeeder.SeedAsync"/>
-        /// and <see cref="IApiRequestFailureSeeder.SeedAsync"/> in a scope of their own, so they can
-        /// be called from the composition root without resolving anything there.
+        /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IConnectionLogSeeder.SeedAsync"/>,
+        /// <see cref="IApiRequestFailureSeeder.SeedAsync"/> and
+        /// <see cref="IStreamProblemSeeder.SeedAsync"/> in a scope of their own, so they can be
+        /// called from the composition root without resolving anything there.
         /// </summary>
         /// <param name="services">Provider built by the host.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -304,6 +317,10 @@ namespace Fluxy.Application
         /// The API request failure seeder follows it and has the same Development gate. It reads
         /// nothing first: its rows are snapshots with no foreign key to satisfy.
         /// </para>
+        /// <para>
+        /// The stream problem seeder is last and has the same gate. Its rows name a real stream, so
+        /// it reads the video streams the installation already has and skips when there is none.
+        /// </para>
         /// </remarks>
         public static async Task SeedDatabaseAsync(
             this IServiceProvider services,
@@ -322,6 +339,10 @@ namespace Fluxy.Application
             var failures = scope.ServiceProvider.GetRequiredService<IApiRequestFailureSeeder>();
 
             await failures.SeedAsync(cancellationToken);
+
+            var problems = scope.ServiceProvider.GetRequiredService<IStreamProblemSeeder>();
+
+            await problems.SeedAsync(cancellationToken);
         }
     }
 }

@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend of the `Refluxy` monorepo. Git root is *
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 800 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 282 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 1082 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 841 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 294 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 1135 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -71,7 +71,7 @@ Fluxy.Core/
   Users/             Models 7 · Rows 4 · ReadModels 12 · Commands 11 · Outcomes 9 · Enums 23 · Utils 17 · Interfaces 10 · Repositories 6 · Exceptions 1
   Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1 · Options 1
   Content/           Models 2 · Commands 7 · Enums 5 · ReadModels 3 · Utils 2 · Interfaces 2 · Repositories 2
-  Streams/           Models 2 · Rows 2 · ReadModels 4 · Commands 13 · Outcomes 11 · Enums 17 · Utils 10 · Interfaces 6 · Repositories 2
+  Streams/           Models 3 · Rows 2 · ReadModels 6 · Commands 14 · Outcomes 11 · Enums 19 · Utils 13 · Interfaces 8 · Repositories 3
   Vod/               Models 1 · Rows 1 · ReadModels 3 · Commands 5 · Outcomes 6 · Enums 9 · Utils 4 · Interfaces 4 · Repositories 1
   Series/            Models 2 · ReadModels 7 · Commands 9 · Outcomes 8 · Enums 12 · Utils 7 · Interfaces 6 · Repositories 2
   Epg/               Models 2 · ReadModels 4 · Commands 3 · Outcomes 1 · Enums 5 · Utils 3 · Interfaces 1 · Repositories 1
@@ -99,7 +99,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else** — **twenty-three** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `UserLog` (Users), `RefreshToken` (Authentication), `ContentCategory`, `Bouquet` (Content), `VideoStream`, `AudioStream` (Streams), `VodItem` (Vod), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `BlacklistEntry` (Blacklists), `Subscription`, `TariffPlan`, `ConnectionLog` (Subscriptions), `ApiRequestFailure` (Requests). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
+**`Models/` holds the business model and nothing else** — **twenty-four** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `UserLog` (Users), `RefreshToken` (Authentication), `ContentCategory`, `Bouquet` (Content), `VideoStream`, `AudioStream`, `StreamProblem` (Streams), `VodItem` (Vod), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `BlacklistEntry` (Blacklists), `Subscription`, `TariffPlan`, `ConnectionLog` (Subscriptions), `ApiRequestFailure` (Requests). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
 
 **One type per file.** Twelve files once held two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -122,7 +122,7 @@ Fluxy.API/
     Content/                  content categories, video streams, audio streams
 ```
 
-**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions|api-request-failures` in `Admin/`, `admin/content-categories|video-streams|audio-streams` in `Content/` — namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). Split a file by a **seam** (separate resource or request shape), not by length: `ProfileController` gave session history to `SessionsController`; `UsersController`/`UserGroupsController` gave bulk endpoints their own controllers; one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery, `NoStore`); `AuthControllerBase` adds only `ClientAddress`; the two guest checks compose as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset, profile), so `SessionsController`, `Admin` and `Content` never inject an unused throttle. Contracts follow the same split in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
+**A controller lives in the area its route starts with** — `auth` in `Auth/`, `admin/users|user-groups|sessions|api-request-failures|stream-problems` in `Admin/`, `admin/content-categories|video-streams|audio-streams` in `Content/` — namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). Split a file by a **seam** (separate resource or request shape), not by length: `ProfileController` gave session history to `SessionsController`; `UsersController`/`UserGroupsController` gave bulk endpoints their own controllers; one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery, `NoStore`); `AuthControllerBase` adds only `ClientAddress`; the two guest checks compose as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset, profile), so `SessionsController`, `Admin` and `Content` never inject an unused throttle. Contracts follow the same split in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
 
 **The envelope is API-owned, including the framework's own refusals.** Every action answers `{ code, message }`; the two paths that never reach an action use the same shape: an unhandled exception is `500 server_error` through `ApiExceptionHandler`, a bodyless 404/405/415 is `not_found` / `method_not_allowed` / `unsupported_media_type` through `UseFluxyStatusCodePages()`. Both write `Cache-Control: no-store`; the exception is logged, never sent to the client. Development keeps `UseDeveloperExceptionPage` for 500s; the handler sits only on the other branch.
 
@@ -145,7 +145,7 @@ Fluxy.Application/
   Requests/        Services 2
   Security/        Services 1 · Options 1
   Series/          Services 6 · Utils 3
-  Streams/         Services 6 · Utils 2
+  Streams/         Services 8 · Utils 2
   Subscriptions/   Services 5 · Utils 4
   Users/           Services 11 · Utils 8 · Options 1
   Vod/             Services 4 · Utils 1
@@ -239,6 +239,9 @@ Reach for REST first: **plural noun resources**; the method that describes the o
 - **`DELETE /admin/user-logs` clears the whole collection regardless of the query string.** The button says "clear the user log", so a delete that obeyed a filter the caller did not send would wipe a different set from the one it named. It is the collection-level `DELETE` REST describes for "remove everything", not a filtered bulk delete wearing the same verb.
 - **`GET`/`DELETE /admin/api-request-failures` share one permission** (`viewApiRequestFailures`) — the user-logs argument restated rather than assumed, because reusing it is a choice. There is no `editApiRequestFailures`: an operator never writes a row (the capability has no production write path at all), and the only write this surface performs is the total erase, so the grant that admits the read admits the clear, plus a fresh antiforgery pair on the delete.
 - **`DELETE /admin/api-request-failures` clears the whole collection regardless of the query string.** Same reason as the user log's: the button says "clear the log", and a filtered delete would wipe a different set from the one it named.
+- **`GET`/`DELETE /admin/stream-problems` use the parent resource's split grants** — `viewStreams` for the read and `editStreams` for the clear — and that is a deliberate departure from the two logs above, restated rather than assumed. This journal is not an audit trail with a grant of its own: it is a read of the streams' history and a change to what their surface holds, and the streams already have two grants. Reusing `viewStreams` for both would let a read-only grant destroy rows; a third permission would split one screen's access three ways. No new `UserPermission` member, no catalog change, no migration.
+- **`DELETE /admin/stream-problems` clears the whole collection regardless of the query string.** Same reason as the user and refusal logs': the button says "clear the journal", and a filtered delete would wipe a different set from the one it named.
+- **`admin/stream-problems` has no write route, and that absence is the fence.** A row is written by the future stream producer through `IStreamProblemService.RecordAsync` — trimmed, blank refused, cut to its column, committed with its own save, an exception never swallowed — and by the Development seeder; the collection answers `405` to every method it does not own, and no operator can type a journal line by hand. The refused-request log's fence, restated for a resource that does have a real parent to point at.
 
 The May 2026 REST pass collapsed five `POST /auth/profile/*` change endpoints into one `PATCH /auth/profile` and renamed `register`/`password` into `registrations`/`password-resets`. `POST /auth/registrations` answers **201 — deliberately without `Location`**: the row has no client-addressable URI yet — `/auth/profile` answers 401 for its own owner until the mailed code confirms it, and a pending-registration URI addressable by email would be the enumeration oracle the refusal policy exists to avoid (reasoning in the action's remarks; RFC 9110 makes the header a SHOULD and this is the case it leaves open).
 
@@ -280,3 +283,4 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/admin-credit-logs.md](docs/admin-credit-logs.md) | `admin/credit-logs` list/filters (including the inclusive `dateFrom`/`dateTo` range), clear-all `DELETE`, `users.credits`, the create/update log row and its atomicity |
 | [docs/user-logs.md](docs/user-logs.md) | the user audit log: `user_logs` shape, the ten record types, `ViewUserLogs`, the description convention, the fail-open write path and `admin/user-logs` |
 | [docs/api-request-failures.md](docs/api-request-failures.md) | the refused public-API request log: `api_request_failures` shape, the six reasons and wire names, `ViewApiRequestFailures`, the query contract, the write-path fence, the Development seeder and `admin/api-request-failures` |
+| [docs/stream-problems.md](docs/stream-problems.md) | the stream problem journal: `stream_problems` shape (FK CASCADE to `video_streams`, no name snapshot), the split `viewStreams`/`editStreams` grants, the query contract, the write-path fence (`RecordAsync`), the Development seeder and `admin/stream-problems` |

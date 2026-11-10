@@ -58,6 +58,7 @@ import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
 import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
 import UserLogsPage from '../src/pages/admin/UserLogsPage'
 import ApiRequestFailuresPage from '../src/pages/admin/ApiRequestFailuresPage'
+import StreamProblemsPage from '../src/pages/admin/StreamProblemsPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import {
@@ -89,6 +90,13 @@ import {
 } from '../src/features/api-request-failures/layout'
 import { API_REQUEST_FAILURE_REASONS } from '../src/features/api-request-failures/reasons'
 import { reasonTone } from '../src/features/api-request-failures/reasonTone'
+import {
+  COLUMN_KEYS as STREAM_PROBLEM_COLUMN_KEYS,
+  DEFAULT_COLUMN_WIDTHS as STREAM_PROBLEM_WIDTHS,
+  TABLE_WIDTH as STREAM_PROBLEM_TABLE_WIDTH,
+  columnWidthTotal as streamProblemColumnWidthTotal,
+  sortFieldOf as streamProblemSortFieldOf,
+} from '../src/features/stream-problems/layout'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -4452,6 +4460,144 @@ async function main() {
     `items: ${apiRequestFailureItemKeys.join(', ')}; opens ${menuPath('Admin', 'api-request-failures')}`,
   )
 
+  // --- The stream problem journal ----------------------------------------------
+  //
+  // Its own page behind `nav.items.streamProblems`, last in the `videoStreams` group but at
+  // `/admin/stream-problems` rather than under the section's own prefix: the address mirrors
+  // the backend's route, the credit-logs/api-request-failures treatment. The item key is
+  // deliberately not prefixed with the section's (`streamProblems`, not `videoStreamsProblems`),
+  // so the assertion the section's four generated entries rest on - the `videoStreams*` prefix
+  // check above - stays exactly as it is.
+  //
+  // The heading, the three column headers and the toolbar all appear before the first answer -
+  // the table is drawn empty under a spinner - so a static render is exactly the state to
+  // assert them in. No row exists in a static render, so the table's sort mapping is asserted
+  // through the layout module.
+  const streamProblemsHtml = renderToStaticMarkup(
+    withRouter('/admin/stream-problems', withQuery(
+      <AntApp>
+        <StreamProblemsPage sectionKey="nav.items.streamProblems" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the stream problem journal draws its heading and its table before any entries arrive',
+    streamProblemsHtml.includes('>Stream problems journal<') &&
+      streamProblemsHtml.includes('ant-table') &&
+      !streamProblemsHtml.includes('nav.items.streamProblems'),
+    `rendered ${streamProblemsHtml.length} bytes with the journal still being fetched`,
+  )
+
+  // The three headers in the order they are drawn, and the two Russian words behind them: the
+  // render runs in `en`, so the `ru` bundle is read through `i18n.getResource` - a key present
+  // in neither file is the one failure no type or render can see.
+  check(
+    'the stream problem journal draws Stream, Error and Date in that order',
+    ['Stream', 'Error', 'Date'].every((heading) =>
+      streamProblemsHtml.includes(`>${heading}<`),
+    ) &&
+      streamProblemsHtml.indexOf('>Stream<') < streamProblemsHtml.indexOf('>Error<') &&
+      streamProblemsHtml.indexOf('>Error<') < streamProblemsHtml.indexOf('>Date<') &&
+      i18n.getResource('en', 'translation', 'streamProblems.title') ===
+        'Stream problems journal' &&
+      i18n.getResource('ru', 'translation', 'streamProblems.title') ===
+        'Журнал проблем видеотрансляций' &&
+      i18n.getResource('ru', 'translation', 'streamProblems.columns.stream') === 'Поток' &&
+      i18n.getResource('ru', 'translation', 'streamProblems.columns.error') === 'Ошибка' &&
+      i18n.getResource('ru', 'translation', 'streamProblems.columns.createdAt') === 'Дата',
+    `three headings: ${['Stream', 'Error', 'Date']
+      .map((heading) => `${heading}@${streamProblemsHtml.indexOf(`>${heading}<`)}`)
+      .join(', ')}`,
+  )
+
+  const streamProblemCols = [...streamProblemsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const streamProblemWidths = streamProblemCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const streamProblemTotal = streamProblemWidths.reduce(
+    (sum, width) => sum + (Number(width) || 0),
+    0,
+  )
+  check(
+    'the stream problem journal is fixed-layout with three columns totalling 1190, in order',
+    /table-layout:\s*fixed/.test(streamProblemsHtml) &&
+      streamProblemWidths.join(',') === '320,570,300' &&
+      streamProblemTotal === STREAM_PROBLEM_TABLE_WIDTH &&
+      streamProblemColumnWidthTotal(STREAM_PROBLEM_WIDTHS) === STREAM_PROBLEM_TABLE_WIDTH &&
+      STREAM_PROBLEM_TABLE_WIDTH === 1190 &&
+      STREAM_PROBLEM_COLUMN_KEYS.join(',') === 'stream,error,createdAt' &&
+      // The endpoint orders by one field alone, and every column key maps to it - a header that
+      // sorted by a value the server never orders on would order the page, not the list.
+      streamProblemSortFieldOf('createdAt') === 'createdAt' &&
+      streamProblemSortFieldOf('stream') === 'createdAt',
+    `${streamProblemCols.length} columns: [${streamProblemWidths.join(', ')}] = ${streamProblemTotal}px`,
+  )
+
+  // The toolbar order: auto-refresh (an icon whose accessible name says which action it
+  // performs, ON by default so the fresh render says "Pause"), search, the stream picker, the
+  // width reset, the clear command. Both the clear button's greyed state and its reason are the
+  // permission-less branch of a fresh render - the profile has not answered yet.
+  const streamProblemRefreshAt = streamProblemsHtml.indexOf('Pause auto refresh')
+  check(
+    'the stream problem journal toolbar runs auto-refresh (on by default), search, stream picker, width reset and clear',
+    streamProblemRefreshAt !== -1 &&
+      streamProblemsHtml.includes('Search the stream problems journal') &&
+      streamProblemsHtml.includes('Any stream') &&
+      streamProblemsHtml.includes('aria-label="Reset widths"') &&
+      streamProblemsHtml.includes('Clear the journal') &&
+      streamProblemRefreshAt <
+        streamProblemsHtml.indexOf('Search the stream problems journal') &&
+      streamProblemsHtml.indexOf('Search the stream problems journal') <
+        streamProblemsHtml.indexOf('Any stream') &&
+      streamProblemsHtml.indexOf('Any stream') <
+        streamProblemsHtml.indexOf('aria-label="Reset widths"') &&
+      streamProblemsHtml.indexOf('aria-label="Reset widths"') <
+        streamProblemsHtml.indexOf('Clear the journal'),
+    `refresh@${streamProblemRefreshAt}, search@${streamProblemsHtml.indexOf('Search the stream problems journal')}, picker@${streamProblemsHtml.indexOf('Any stream')}, clear@${streamProblemsHtml.indexOf('Clear the journal')}`,
+  )
+
+  // The date range is the one control too wide for the card head, so it is a row of its own in
+  // the card body - after the card head (whose last control is "Clear the journal") and before
+  // the table. Index order is enough: head, then the picker, then the table.
+  check(
+    'the stream problem journal draws the date range on its own row between the card head and the table',
+    streamProblemsHtml.includes('ant-picker-range') &&
+      streamProblemsHtml.indexOf('Date from') >
+        streamProblemsHtml.indexOf('Clear the journal') &&
+      streamProblemsHtml.indexOf('Date from') >
+        streamProblemsHtml.indexOf('ant-card-body') &&
+      streamProblemsHtml.indexOf('Date from') < streamProblemsHtml.indexOf('ant-table'),
+    `range@${streamProblemsHtml.indexOf('Date from')}, clear@${streamProblemsHtml.indexOf('Clear the journal')}, body@${streamProblemsHtml.indexOf('ant-card-body')}, table@${streamProblemsHtml.indexOf('ant-table')}`,
+  )
+
+  // The menu entry: last in the `videoStreams` group, one past the categories item, the derived
+  // address mirroring the backend's route, and a real page behind the loader rather than the
+  // placeholder. The midpoint of the group also pins the *order*: the section's four generated
+  // entries first, then the journal.
+  const streamProblemGroup = NAVIGATION.Admin.find((group) => group.key === 'videoStreams')
+  const streamProblemItemKeys = (streamProblemGroup?.items ?? []).map((item) => item.key)
+  const streamProblemItem = streamProblemGroup?.items.find(
+    (item) => item.key === 'streamProblems',
+  )
+  const streamProblemModule = streamProblemItem?.page ? await streamProblemItem.page() : null
+  const streamProblemMatch = matchRoutes(routeTable, '/admin/stream-problems')
+  const streamProblemLeaf = streamProblemMatch?.[streamProblemMatch.length - 1]?.route
+  check(
+    'the video streams group ends with the problem journal entry, opening the real page at its mirrored address',
+    streamProblemItemKeys.join(',') ===
+      'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories,streamProblems' &&
+      streamProblemItem?.path === 'stream-problems' &&
+      menuPath('Admin', 'stream-problems') === '/admin/stream-problems' &&
+      streamProblemItem?.labelKey === 'nav.items.streamProblems' &&
+      Boolean(i18n.getResource('en', 'translation', 'nav.items.streamProblems')) &&
+      Boolean(i18n.getResource('ru', 'translation', 'nav.items.streamProblems')) &&
+      streamProblemModule?.default === StreamProblemsPage &&
+      // The route table resolves the address to the section's own child rather than the
+      // catch-all - a menu item without a route is a click that lands on the 404.
+      streamProblemLeaf?.path === 'stream-problems' &&
+      streamProblemLeaf?.path !== '*',
+    `items: ${streamProblemItemKeys.join(', ')}; opens ${menuPath('Admin', 'stream-problems')}, route ${streamProblemLeaf?.path ?? 'nothing'}, module ${streamProblemModule?.default?.name ?? 'nothing'}`,
+  )
+
   // --- Feature isolation -------------------------------------------------------
   //
   // A feature imports neither another feature nor a page; the shared `components/`, `hooks/`
@@ -4485,6 +4631,33 @@ async function main() {
       : `CROSS-FEATURE IMPORTS: ${apiRequestFailureCrossImports.join(', ')}`,
   )
 
+  // The same fence over the stream problem journal's own files, listed explicitly for the reason
+  // above: a feature that reached sideways into `video-streams` would still typecheck, and the
+  // page-level import is the only one allowed - the page, not the feature, names both domains.
+  const streamProblemFeatureFiles = [
+    'src/features/stream-problems/api.ts',
+    'src/features/stream-problems/dateRange.ts',
+    'src/features/stream-problems/layout.ts',
+    'src/features/stream-problems/hooks/queries.ts',
+    'src/features/stream-problems/hooks/mutations.ts',
+    'src/features/stream-problems/types/index.ts',
+    'src/features/stream-problems/types/StreamProblemRow.ts',
+    'src/features/stream-problems/types/StreamProblemRowList.ts',
+  ]
+  const streamProblemCrossImports = streamProblemFeatureFiles.flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier.includes('/features/'))
+      .filter((specifier) => !specifier.includes('features/stream-problems/')),
+  )
+  check(
+    'nothing inside the stream-problems feature imports another feature',
+    streamProblemCrossImports.length === 0,
+    streamProblemCrossImports.length === 0
+      ? `${streamProblemFeatureFiles.length} feature files, no cross-feature imports`
+      : `CROSS-FEATURE IMPORTS: ${streamProblemCrossImports.join(', ')}`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -4510,6 +4683,7 @@ async function main() {
     creditLogsHtml,
     userLogsHtml,
     apiRequestFailuresHtml,
+    streamProblemsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

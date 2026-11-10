@@ -188,6 +188,11 @@ const en = {
       videoStreamsImport: 'Import video streams',
       videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
+      // The video streams' problem journal, filed under the section whose streams it writes
+      // about. Named for what the table holds rather than for the group, and deliberately not
+      // `videoStreamsProblems`: the key must stay outside the `videoStreams*` prefix the four
+      // generated entries above own. Its address mirrors the backend's own route.
+      streamProblems: 'Stream problems',
       audioStreamsAdd: 'Add audio stream',
       audioStreamsImport: 'Import audio streams',
       audioStreamsManage: 'Manage audio streams',
@@ -2605,6 +2610,58 @@ const en = {
       user_blocked: 'User blocked',
     },
   },
+  // The stream producers' problem journal: every failure a stream reported, which stream it was
+  // about and when. Its own block rather than keys under `videoStreams`, because the record is a
+  // resource of its own behind its own grant pair (`viewStreams` reads it, `editStreams` wipes
+  // it) even though the menu item sits in that group.
+  streamProblems: {
+    title: 'Stream problems journal',
+    // The three columns. The stream cell draws the stream's current name and nothing else - the
+    // identifier is the row's foreign key, not a fact to read - and the error is the producer's
+    // own message, so it is the wide column and the one the search matches.
+    columns: {
+      stream: 'Stream',
+      error: 'Error',
+      createdAt: 'Date',
+    },
+    searchLabel: 'Search the stream problems journal',
+    searchPlaceholder: 'Search',
+    // The stream picker's own name while nothing is chosen.
+    filterAnyStream: 'Any stream',
+    // The date range: one accessible name on the pair and the two sides' placeholders. It
+    // filters on when the problem was recorded.
+    filterDateRange: 'Date range',
+    filterDateFrom: 'Date from',
+    filterDateTo: 'Date to',
+    // The active filters as closable tags. The range is one control over two parameters, so its
+    // tag names both ends in one label; a single-sided range names only the side that is set.
+    // The stream filter is written by the picker above the table. The search is deliberately not
+    // a tag - its own box is where it is read and cleared.
+    filters: {
+      stream: 'Stream: {{value}}',
+      dateRange: 'Date: {{from}} – {{to}}',
+      dateRangeFrom: 'Date from: {{from}}',
+      dateRangeTo: 'Date to: {{to}}',
+    },
+    empty: 'No stream problems yet.',
+    noMatches: 'No stream problems match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded as the three other logs' is: the action and the interval,
+    // because the button is icon-only and this string is its whole accessible name.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The whole-table clear. The dialog states the scope - every stream, whatever the filters
+    // show - because the button's words are a promise about the journal.
+    clearAll: 'Clear the journal',
+    clearConfirmTitle: 'Clear the whole stream problem journal?',
+    clearConfirmBody:
+      'All stream problem entries will be removed – for every stream, regardless of the filters on screen. This cannot be undone.',
+    clearConfirmOk: 'Clear all',
+    noPermission: 'Your group does not allow this.',
+  },
   // The add and edit form for one subscription. Its own block because the table names what a row
   // is and the form names what an operator is being asked to type.
   subscriptionsForm: {
@@ -2961,6 +3018,9 @@ const en = {
       // The refused-request log's one write, worded the same way: the command wipes the table,
       // and the sentence says every entry went rather than naming a row.
       api_request_failures_cleared: 'Every failed API request has been deleted.',
+      // The stream problem journal's one write, worded the same way: the command wipes the
+      // table, and the sentence says every entry went rather than naming a row.
+      stream_problems_cleared: 'Every stream problem entry has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

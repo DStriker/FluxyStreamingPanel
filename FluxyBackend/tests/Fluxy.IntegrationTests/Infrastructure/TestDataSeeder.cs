@@ -544,6 +544,44 @@ namespace Fluxy.IntegrationTests.Infrastructure
         }
 
         /// <summary>
+        /// Plants stream problem rows through the Core repository, in one save.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="problems">Rows to stage, in the order they are given.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <para>
+        /// <b>The repository is the staging point; the production write path is the service.</b>
+        /// This capability's only production writer is <c>IStreamProblemService.RecordAsync</c>,
+        /// which stages through the same repository and commits; planting through
+        /// <see cref="IStreamProblemRepository.AddAsync"/> plus one save is the same insert intent
+        /// without the service's message rules, which the tests that care about them exercise
+        /// directly.
+        /// </para>
+        /// <para>
+        /// <b>One save stamps one instant.</b> The audit columns come from the host's clock, so all
+        /// rows in one call share <c>created_at</c> - which is exactly the case the identifier
+        /// tie-break exists for. A test that needs two instants advances the fixture's
+        /// <c>FakeTimeProvider</c> and plants again.
+        /// </para>
+        /// </remarks>
+        public static async Task PlantStreamProblemsAsync(
+            IServiceProvider services,
+            IReadOnlyList<NewStreamProblem> problems,
+            CancellationToken cancellationToken = default)
+        {
+            var repository = services.GetRequiredService<IStreamProblemRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            foreach (var problem in problems)
+            {
+                await repository.AddAsync(problem, cancellationToken);
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>
         /// Installs a trigger that refuses every user log insert, so a test can force the audit
         /// write to fail while the audited operation succeeds.
         /// </summary>

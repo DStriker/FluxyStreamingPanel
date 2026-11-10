@@ -228,6 +228,13 @@ namespace Fluxy.DataAccess.Context
         public DbSet<ApiRequestFailureEntity> ApiRequestFailures => Set<ApiRequestFailureEntity>();
 
         /// <summary>
+        /// Problems the stream producer reported: which configured stream failed and what it said.
+        /// The producer will write them; this pass holds the storage, the reader, the clear and the
+        /// Development seeder's trial rows.
+        /// </summary>
+        public DbSet<StreamProblemEntity> StreamProblems => Set<StreamProblemEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

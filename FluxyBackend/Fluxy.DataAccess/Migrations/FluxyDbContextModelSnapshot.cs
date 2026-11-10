@@ -989,6 +989,40 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("series", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.StreamProblemEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<Guid>("StreamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stream_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("StreamId", "CreatedAt");
+
+                    b.ToTable("stream_problems", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionBouquetEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2016,6 +2050,15 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.StreamProblemEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.VideoStreamEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionBouquetEntity", b =>

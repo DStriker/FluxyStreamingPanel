@@ -120,6 +120,20 @@ interface ContentSection {
   importPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
   /** The table, present only where one has been built. */
   managePage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /**
+   * The problem log of this section, present only where one has been built.
+   *
+   * It carries its own key, path and page rather than being derived from `key`/`path` like the
+   * three entries above, because the page it opens is **not** a child of the section's address
+   * prefix: `/admin/stream-problems` mirrors the backend's own route, exactly as
+   * `api-request-failures` and `credit-logs` do, while the rail still files the entry under the
+   * section whose streams it writes about.
+   */
+  problemLogPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /** The problem log's item key. Deliberately not prefixed by `key` - see the field above. */
+  problemLogKey?: string
+  /** The problem log's address under the area's prefix. */
+  problemLogPath?: string
 }
 
 const CONTENT_SECTIONS: ContentSection[] = [
@@ -132,6 +146,9 @@ const CONTENT_SECTIONS: ContentSection[] = [
     addPage: () => import('../pages/admin/VideoStreamFormPage'),
     importPage: () => import('../pages/admin/VideoStreamImportPage'),
     managePage: () => import('../pages/admin/VideoStreamsPage'),
+    problemLogPage: () => import('../pages/admin/StreamProblemsPage'),
+    problemLogKey: 'streamProblems',
+    problemLogPath: 'stream-problems',
   },
   {
     key: 'audioStreams',
@@ -202,6 +219,23 @@ const contentGroups = (): NavGroup[] =>
         icon: TagsOutlined,
         page: section.categoriesPage,
       },
+      // The section's problem log, last: it is not one of the section's four verbs but the
+      // record of what its streams reported. Its key, address and page are the section's own
+      // fields rather than derived from `key`/`path`, because the address mirrors the backend's
+      // (`admin/stream-problems`) and sits outside the section's path prefix - and because the
+      // item key deliberately does not start with the section's, which is the prefix
+      // `probe:render` hard-asserts for the four generated entries above.
+      ...(section.problemLogPage && section.problemLogKey && section.problemLogPath
+        ? [
+            {
+              key: section.problemLogKey,
+              path: section.problemLogPath,
+              labelKey: `nav.items.${section.problemLogKey}`,
+              icon: WarningOutlined,
+              page: section.problemLogPage,
+            },
+          ]
+        : []),
     ],
   }))
 
