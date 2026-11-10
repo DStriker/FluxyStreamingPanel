@@ -15,7 +15,7 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all twenty-seven belong to
+ * - **A permission belongs to exactly one role.** On this installation all twenty-eight belong to
  *   `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
@@ -47,6 +47,9 @@ import type { Role, UserPermission } from '../../types'
  *   all three lists because they are one resource behind one screen family. **The audit log's
  *   `viewUserLogs` is the one single grant** - it gates the read and the wipe together, because
  *   the wipe destroys the same evidence - so it too is neither a role pair nor a lookup entry.
+ *   **`viewApiRequestFailures` is the second single grant of the same shape**, appended after
+ *   `viewUserLogs`: the refused-request log is read and wiped under one permission for exactly
+ *   that reason, and this capability has no production write path at all.
  * - **Unknown is not a case.** Every value is a member of the union, so there is no branch
  *   for a name that means nothing - the server answers `validation_failed` with the list that
  *   does exist if a body ever carries one, and that is where the refusal belongs.
@@ -83,6 +86,10 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   // The user audit log's single grant, last in the catalog: it gates both the read and the
   // whole-table wipe, and it is deliberately not a pair - an operator never writes a row.
   'viewUserLogs',
+  // The refused-request log's single grant, appended after it for the same reason: one grant
+  // gates the read and the wipe together, because the wipe destroys the same evidence. This
+  // capability has no write sibling at all - it has no production write path.
+  'viewApiRequestFailures',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -114,6 +121,7 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   viewBlacklists: 'Admin',
   editBlacklists: 'Admin',
   viewUserLogs: 'Admin',
+  viewApiRequestFailures: 'Admin',
 }
 
 /**

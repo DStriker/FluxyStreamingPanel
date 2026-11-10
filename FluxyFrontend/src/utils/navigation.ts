@@ -27,6 +27,7 @@ import {
   UserOutlined,
   VideoCameraOutlined,
   WalletOutlined,
+  WarningOutlined,
 } from '@ant-design/icons'
 import type { Role } from '../types'
 import { areaForRole, homeForRole } from './session'
@@ -585,6 +586,9 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       // filter: the three lists are separate questions an operator arrives with, and the rail
       // is where that choice is made. All three open the same page with its own `sectionKey`.
       //
+      // The failed-request log sits after them: the lists are the rules that refuse and the log
+      // is the record of the refusals, so the family holds both sides of one decision.
+      //
       // The icons describe the thing each list holds - a network address, a provider, a
       // client - rather than repeating the group's stop sign three times, which would make
       // the three entries look like one entry drawn thrice.
@@ -612,6 +616,20 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.blacklistUa',
           icon: DesktopOutlined,
           page: () => import('../pages/admin/BlacklistEntriesPage'),
+        },
+        {
+          // The refused-request log, appended after the three access-control lists on the
+          // owner's call: the rail is where an operator arrives when something was refused,
+          // and the three lists it sits under are the rules that do the refusing.
+          //
+          // `api-request-failures` rather than `blacklists/api-request-failures`: the address
+          // mirrors the backend's own route (`admin/api-request-failures`), so the page, the API
+          // and the menu entry name one resource the same way.
+          key: 'apiRequestFailures',
+          path: 'api-request-failures',
+          labelKey: 'nav.items.apiRequestFailures',
+          icon: WarningOutlined,
+          page: () => import('../pages/admin/ApiRequestFailuresPage'),
         },
       ],
     },

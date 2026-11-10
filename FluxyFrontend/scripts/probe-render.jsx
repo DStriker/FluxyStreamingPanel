@@ -57,6 +57,7 @@ import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
 import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
 import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
 import UserLogsPage from '../src/pages/admin/UserLogsPage'
+import ApiRequestFailuresPage from '../src/pages/admin/ApiRequestFailuresPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import {
@@ -79,6 +80,15 @@ import {
 } from '../src/features/user-logs/layout'
 import { recordTone } from '../src/features/user-logs/recordTone'
 import { USER_LOG_RECORD_TYPES } from '../src/features/user-logs/recordTypes'
+import {
+  COLUMN_KEYS as API_REQUEST_FAILURE_COLUMN_KEYS,
+  DEFAULT_COLUMN_WIDTHS as API_REQUEST_FAILURE_WIDTHS,
+  TABLE_WIDTH as API_REQUEST_FAILURE_TABLE_WIDTH,
+  columnWidthTotal as apiRequestFailureColumnWidthTotal,
+  sortFieldOf as apiRequestFailureSortFieldOf,
+} from '../src/features/api-request-failures/layout'
+import { API_REQUEST_FAILURE_REASONS } from '../src/features/api-request-failures/reasons'
+import { reasonTone } from '../src/features/api-request-failures/reasonTone'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -2136,17 +2146,25 @@ async function main() {
   const blacklistGroup = NAVIGATION.Admin.find((group) => group.key === 'blacklists')
   const blacklistItemKeys = blacklistGroup?.items.map((item) => item.key) ?? []
   check(
-    'the blacklists group sits directly under the programme guide, with its three items in order',
+    'the blacklists group sits directly under the programme guide, with its four items in order',
     adminGroupKeysForBlacklists.indexOf('blacklists') ===
       adminGroupKeysForBlacklists.indexOf('epg') + 1 &&
-      blacklistItemKeys.join(',') === 'blacklistIp,blacklistIsp,blacklistUa',
+      blacklistItemKeys.join(',') ===
+        'blacklistIp,blacklistIsp,blacklistUa,apiRequestFailures',
     `the rail reads ${adminGroupKeysForBlacklists.join(', ')}; the group reads ${blacklistItemKeys.join(', ')}`,
   )
 
   check(
-    'each of the three blacklist entries opens the page',
+    'each of the four blacklists-group entries opens the page, and only the three lists nest under the group',
     blacklistGroup?.items.every((item) => item.page !== undefined) === true &&
-      blacklistGroup?.items.every((item) => item.path.startsWith('blacklists/')) === true,
+      blacklistGroup?.items
+        .filter((item) => item.key !== 'apiRequestFailures')
+        .every((item) => item.path.startsWith('blacklists/')) === true &&
+      // The refused-request log mirrors `admin/api-request-failures` on the API rather than
+      // nesting under the group's prefix - the credit-logs/tariff-plans treatment. The heading
+      // is still «Чёрные списки»: the group is a rail grouping, not a path segment.
+      blacklistGroup?.items.find((item) => item.key === 'apiRequestFailures')?.path ===
+        'api-request-failures',
     `paths: ${blacklistGroup?.items.map((item) => item.path).join(', ') ?? 'none'}`,
   )
 
@@ -4063,6 +4081,410 @@ async function main() {
     `+10 ${creditLogTone(10)}, -10 ${creditLogTone(-10)}, 0 ${creditLogTone(0)}`,
   )
 
+  // --- The failed API request log ----------------------------------------------
+  //
+  // Its own page behind `nav.items.apiRequestFailures`, last in the `blacklists` group. The
+  // heading, the five column headers and the toolbar all appear before the first answer - the
+  // table is drawn empty under a spinner - so a static render is exactly the state to assert
+  // them in. No row exists in a static render, so the reason tag's colour is asserted as a
+  // function, and the source-shape checks read the page's own file.
+  const apiRequestFailuresHtml = renderToStaticMarkup(
+    withRouter('/admin/api-request-failures', withQuery(
+      <AntApp>
+        <ApiRequestFailuresPage sectionKey="nav.items.apiRequestFailures" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the failed-request log draws its heading and its table before any entries arrive',
+    apiRequestFailuresHtml.includes('>Failed API requests<') &&
+      apiRequestFailuresHtml.includes('ant-table') &&
+      !apiRequestFailuresHtml.includes('nav.items.apiRequestFailures'),
+    `rendered ${apiRequestFailuresHtml.length} bytes with the log still being fetched`,
+  )
+
+  check(
+    'the failed-request log draws its five column headers in order',
+    ['Subscription', 'Content', 'Reason', 'Network', 'Date'].every((heading) =>
+      apiRequestFailuresHtml.includes(`>${heading}<`),
+    ) &&
+      apiRequestFailuresHtml.indexOf('>Subscription<') <
+        apiRequestFailuresHtml.indexOf('>Content<') &&
+      apiRequestFailuresHtml.indexOf('>Content<') <
+        apiRequestFailuresHtml.indexOf('>Reason<') &&
+      apiRequestFailuresHtml.indexOf('>Reason<') <
+        apiRequestFailuresHtml.indexOf('>Network<') &&
+      apiRequestFailuresHtml.indexOf('>Network<') <
+        apiRequestFailuresHtml.indexOf('>Date<'),
+    `five headings: ${['Subscription', 'Content', 'Reason', 'Network', 'Date']
+      .map((heading) => `${heading}@${apiRequestFailuresHtml.indexOf(`>${heading}<`)}`)
+      .join(', ')}`,
+  )
+
+  const apiRequestFailureCols = [...apiRequestFailuresHtml.matchAll(/<col\s[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  const apiRequestFailureWidths = apiRequestFailureCols.map(
+    (col) => /width:(\d+)px/.exec(col)?.[1],
+  )
+  const apiRequestFailureTotal = apiRequestFailureWidths.reduce(
+    (sum, width) => sum + (Number(width) || 0),
+    0,
+  )
+  check(
+    'the failed-request log is fixed-layout with five columns totalling 1190, in order',
+    /table-layout:\s*fixed/.test(apiRequestFailuresHtml) &&
+      apiRequestFailureWidths.join(',') === '220,320,200,250,200' &&
+      apiRequestFailureTotal === API_REQUEST_FAILURE_TABLE_WIDTH &&
+      apiRequestFailureColumnWidthTotal(API_REQUEST_FAILURE_WIDTHS) ===
+        API_REQUEST_FAILURE_TABLE_WIDTH &&
+      API_REQUEST_FAILURE_TABLE_WIDTH === 1190,
+    `${apiRequestFailureCols.length} columns: [${apiRequestFailureWidths.join(', ')}] = ${apiRequestFailureTotal}px`,
+  )
+
+  // The toolbar order the specification names: auto-refresh, search, the reason picker, the
+  // width reset, the clear command. Auto-refresh is ON by default, so the icon-only control's
+  // accessible name in a fresh render is "Pause ...".
+  const apiRefreshTipIndex = apiRequestFailuresHtml.indexOf('Pause auto refresh')
+  check(
+    'the failed-request log toolbar runs auto-refresh (on by default), search, the reason picker, the width reset and the clear command',
+    apiRefreshTipIndex !== -1 &&
+      apiRequestFailuresHtml.includes('Search failed API requests') &&
+      apiRequestFailuresHtml.includes('Any reason') &&
+      apiRequestFailuresHtml.includes('aria-label="Reset widths"') &&
+      apiRequestFailuresHtml.includes('Clear all logs') &&
+      apiRefreshTipIndex < apiRequestFailuresHtml.indexOf('Search failed API requests') &&
+      apiRequestFailuresHtml.indexOf('Search failed API requests') <
+        apiRequestFailuresHtml.indexOf('Any reason') &&
+      apiRequestFailuresHtml.indexOf('Any reason') <
+        apiRequestFailuresHtml.indexOf('aria-label="Reset widths"') &&
+      apiRequestFailuresHtml.indexOf('aria-label="Reset widths"') <
+        apiRequestFailuresHtml.indexOf('Clear all logs'),
+    `refresh@${apiRefreshTipIndex}, search@${apiRequestFailuresHtml.indexOf('Search failed API requests')}, picker@${apiRequestFailuresHtml.indexOf('Any reason')}, clear@${apiRequestFailuresHtml.indexOf('Clear all logs')}`,
+  )
+
+  // The date range is the long control, so it is a row of its own in the card body - after
+  // the card head (whose last control is "Clear all logs") and before the tag row and the
+  // table. Index order is enough: head, then the picker, then the table.
+  check(
+    'the failed-request log draws the date range on its own row between the card head and the table',
+    apiRequestFailuresHtml.includes('ant-picker-range') &&
+      apiRequestFailuresHtml.indexOf('Date from') > apiRequestFailuresHtml.indexOf('Clear all logs') &&
+      apiRequestFailuresHtml.indexOf('Date from') > apiRequestFailuresHtml.indexOf('ant-card-body') &&
+      apiRequestFailuresHtml.indexOf('Date from') < apiRequestFailuresHtml.indexOf('ant-table'),
+    `range@${apiRequestFailuresHtml.indexOf('Date from')}, clear@${apiRequestFailuresHtml.indexOf('Clear all logs')}, body@${apiRequestFailuresHtml.indexOf('ant-card-body')}, table@${apiRequestFailuresHtml.indexOf('ant-table')}`,
+  )
+
+  const apiRequestFailuresPageSource = readFileSync(
+    'src/pages/admin/ApiRequestFailuresPage.tsx',
+    'utf8',
+  )
+
+  // The reason picker is a multi-select: nothing is a tag until something is chosen, and one
+  // picked reason contributes one tag. The date range leads the tag row - the connection and
+  // user logs' order - and the three network filters follow it, ahead of the picker's tag.
+  const filteredApiRequestFailuresHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/api-request-failures?dateFrom=2026-05-01T00%3A00%3A00.000Z&dateTo=2026-05-03T23%3A59%3A59.999Z&reasons=auth_failed&reasons=user_blocked&ip=203.0.113.9&country=DE&isp=Example%20ISP&search=token',
+      withQuery(
+        <AntApp>
+          <ApiRequestFailuresPage sectionKey="nav.items.apiRequestFailures" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'an address-borne range, the three network filters and the reason filter arrive as closable tags, range first',
+    filteredApiRequestFailuresHtml.includes('Date:') &&
+      filteredApiRequestFailuresHtml.includes('Country:') &&
+      filteredApiRequestFailuresHtml.includes('IP:') &&
+      filteredApiRequestFailuresHtml.includes('Provider:') &&
+      filteredApiRequestFailuresHtml.includes('Reason:') &&
+      filteredApiRequestFailuresHtml.includes('Authentication failed') &&
+      filteredApiRequestFailuresHtml.includes('User blocked') &&
+      filteredApiRequestFailuresHtml.includes('ant-tag-close-icon') &&
+      // The picker is its own row above the tag row, and the tag row sits above the table.
+      filteredApiRequestFailuresHtml.indexOf('ant-picker-range') <
+        filteredApiRequestFailuresHtml.indexOf('Date:') &&
+      filteredApiRequestFailuresHtml.indexOf('Date:') <
+        filteredApiRequestFailuresHtml.indexOf('ant-table') &&
+      filteredApiRequestFailuresHtml.indexOf('Date:') <
+        filteredApiRequestFailuresHtml.indexOf('Country:') &&
+      filteredApiRequestFailuresHtml.indexOf('Country:') <
+        filteredApiRequestFailuresHtml.indexOf('IP:') &&
+      filteredApiRequestFailuresHtml.indexOf('IP:') <
+        filteredApiRequestFailuresHtml.indexOf('Provider:') &&
+      filteredApiRequestFailuresHtml.indexOf('Provider:') <
+        filteredApiRequestFailuresHtml.indexOf('Reason:'),
+    `rendered ${filteredApiRequestFailuresHtml.length} bytes with the filters in the address: ${[
+      'Date:',
+      'Country:',
+      'IP:',
+      'Provider:',
+      'Reason:',
+    ]
+      .map((tag) => `${tag}@${filteredApiRequestFailuresHtml.indexOf(tag)}`)
+      .join(', ')}`,
+  )
+
+  // Both bounds are one control over two parameters, so closing its tag must clear both. The
+  // clear is one `chooseRange(null)` call, which writes both keys: two separate `choose` calls
+  // would read the half-written range in between. No click runs under `renderToStaticMarkup`,
+  // so this half is read off the page's source - the same treatment the connection log gets.
+  check(
+    'the failed-request range tag clears both bounds in one navigation',
+    /key: 'dateRange',[\s\S]{0,400}?clear: \(\) => chooseRange\(null\)/.test(
+      apiRequestFailuresPageSource,
+    ) &&
+      /const chooseRange = \(value[\s\S]{0,600}?withFilter\(searchParams, DATE_FROM_KEY[\s\S]{0,300}?withFilter\(withFrom, DATE_TO_KEY/.test(
+        apiRequestFailuresPageSource,
+      ) &&
+      /dateRangeParams\(searchParams, DATE_FROM_KEY, DATE_TO_KEY\)/.test(
+        apiRequestFailuresPageSource,
+      ),
+    'the range tag, the single-write range update and the address read are not all present',
+  )
+
+  check(
+    'the failed-request log hands the width hook its own columns, defaults and storage key',
+    apiRequestFailuresPageSource.includes('keys: COLUMN_KEYS') &&
+      apiRequestFailuresPageSource.includes('defaults: DEFAULT_COLUMN_WIDTHS') &&
+      apiRequestFailuresPageSource.includes('storageKey: COLUMN_WIDTHS_KEY') &&
+      API_REQUEST_FAILURE_COLUMN_KEYS.length === 5,
+    `${API_REQUEST_FAILURE_COLUMN_KEYS.length} columns`,
+  )
+
+  // The content cell is a stored snapshot: a primary name with its opaque identifier muted
+  // underneath, and one dash when the group is null. No row reaches either branch in a static
+  // render, so the shape is read from the page.
+  check(
+    'the failed-request content cell draws the stored name over its muted identifier, or one dash',
+    /const contentCell = \(row: ApiRequestFailureRow\)/.test(apiRequestFailuresPageSource) &&
+      /if \(!row\.contentName && !row\.contentId\)/.test(apiRequestFailuresPageSource) &&
+      /<Typography\.Text type="secondary">\{DASH\}<\/Typography\.Text>/.test(
+        apiRequestFailuresPageSource,
+      ) &&
+      /row\.contentName \?\? DASH/.test(apiRequestFailuresPageSource) &&
+      /row\.contentId/.test(apiRequestFailuresPageSource),
+    'the content cell is not the name-over-id snapshot',
+  )
+
+  check(
+    'the failed-request network cell is the click-through: it writes its three filters through choose',
+    /<ConnectionNetworkCell log=\{row\} locale=\{locale\} onFilter=\{choose\} \/>/.test(
+      apiRequestFailuresPageSource,
+    ) &&
+      /const choose = \(key: string, value: string \| null \| undefined\) =>[\s\S]{0,120}?withFilter\(searchParams, key, value\), \{ replace: true \}\)/.test(
+        apiRequestFailuresPageSource,
+      ) &&
+      /const \{ ip, country, isp \} = networkFilterParams\(searchParams\)/.test(
+        apiRequestFailuresPageSource,
+      ) &&
+      // The cell and its read-back live in other features, imported at PAGE level: a page may
+      // import across features, a feature may not.
+      !/from '\.\.\/connection-logs\//.test(
+        readFileSync('src/features/api-request-failures/api.ts', 'utf8'),
+      ) &&
+      !/from '\.\.\/user-logs\//.test(
+        readFileSync('src/features/api-request-failures/api.ts', 'utf8'),
+      ),
+    'the network cell is not wired to choose, or the three filters are not read from the address',
+  )
+
+  check(
+    'the reason header sorts by reason while its key stays the word the table draws',
+    /key: 'reason'[\s\S]{0,400}?orderOf\('reason'\)/.test(apiRequestFailuresPageSource) &&
+      apiRequestFailureSortFieldOf('reason') === 'reason' &&
+      apiRequestFailureSortFieldOf('createdAt') === 'createdAt',
+    `reason -> ${apiRequestFailureSortFieldOf('reason')}, createdAt -> ${apiRequestFailureSortFieldOf('createdAt')}`,
+  )
+
+  // The clear command is never disabled by data state - only by the permission. The static
+  // render has no profile answer, so it lands in the permission-less branch: the button exists,
+  // is disabled, and carries the reason.
+  check(
+    'the failed-request clear command is gated on viewApiRequestFailures and never on the data',
+    /granted\.includes\('viewApiRequestFailures'\)/.test(apiRequestFailuresPageSource) &&
+      /loading=\{clearLog\.isPending\}/.test(apiRequestFailuresPageSource) &&
+      /modal\.confirm\(\{/.test(apiRequestFailuresPageSource) &&
+      apiRequestFailuresPageSource.includes("t('apiRequestFailures.clearConfirmBody')") &&
+      !/disabled=\{[^}]*log/.test(apiRequestFailuresPageSource),
+    apiRequestFailuresHtml.includes('Clear all logs')
+      ? 'the button is drawn in the permission-less state, disabled with its reason'
+      : 'THE CLEAR BUTTON IS MISSING',
+  )
+
+  // Auto-refresh is ON by default here, unlike the user log, and the interval is 30 seconds.
+  check(
+    'the failed-request log starts with auto-refresh on at thirty seconds',
+    /const AUTO_REFRESH_MS = 30_000/.test(apiRequestFailuresPageSource) &&
+      /useState\(true\)/.test(apiRequestFailuresPageSource) &&
+      /const refreshRef = useRef<\(\) => void>\(\(\) => \{\}\)/.test(
+        apiRequestFailuresPageSource,
+      ) &&
+      apiRequestFailuresHtml.includes('Refreshes every 30 seconds'),
+    'auto-refresh is not on by default at 30 s',
+  )
+
+  // The six reasons as a runtime vocabulary, and the tag tone as a function: no row reaches a
+  // static render, so a wrong colour would keep compiling.
+  check(
+    'the failed-request reason vocabulary is all six wire names, in server order',
+    API_REQUEST_FAILURE_REASONS.join(',') ===
+      'unknown_id,geo_ip_violation,auth_failed,too_many_connections,subscription_expired,user_blocked',
+    API_REQUEST_FAILURE_REASONS.join(', '),
+  )
+
+  check(
+    'a reason tag is toned by the refusal kind, and every member answers one of antd’s status words',
+    API_REQUEST_FAILURE_REASONS.every((reason) =>
+      ['error', 'warning', 'processing', 'default'].includes(reasonTone(reason)),
+    ) &&
+      reasonTone('auth_failed') === 'error' &&
+      reasonTone('geo_ip_violation') === 'warning' &&
+      reasonTone('too_many_connections') === 'processing' &&
+      reasonTone('user_blocked') === 'default',
+    API_REQUEST_FAILURE_REASONS.map((reason) => `${reason}:${reasonTone(reason)}`).join(', '),
+  )
+
+  // The refusal is answered only after the profile answers, so seeding a profile **without**
+  // the grant is the one state that reaches it: the card, its heading and the sentence, and
+  // nothing else.
+  const refusedApiRequestFailuresHtml = renderToStaticMarkup(
+    withRouter('/admin/api-request-failures', withSeededQuery(
+      ['profile'],
+      {
+        username: 'probeadmin',
+        email: 'probeadmin@localhost',
+        role: 'Admin',
+        permissions: [],
+        credits: 0,
+        timeZone: null,
+        geoProtectionEnabled: false,
+        bindSessionToIp: false,
+        allowedIps: [],
+        allowedCountry: null,
+        allowedAutonomousSystemNumber: null,
+      },
+      <AntApp>
+        <ApiRequestFailuresPage sectionKey="nav.items.apiRequestFailures" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'a profile without viewApiRequestFailures draws the refusal alert alone, under the card title',
+    refusedApiRequestFailuresHtml.includes('>Failed API requests<') &&
+      refusedApiRequestFailuresHtml.includes('Your group does not allow this.') &&
+      refusedApiRequestFailuresHtml.includes('ant-alert') &&
+      refusedApiRequestFailuresHtml.includes('page-card') &&
+      !refusedApiRequestFailuresHtml.includes('ant-table') &&
+      !refusedApiRequestFailuresHtml.includes('Search failed API requests') &&
+      !refusedApiRequestFailuresHtml.includes('Clear all logs') &&
+      !refusedApiRequestFailuresHtml.includes('nav.items.apiRequestFailures'),
+    refusedApiRequestFailuresHtml.includes('ant-alert')
+      ? `rendered ${refusedApiRequestFailuresHtml.length} bytes of the refusal`
+      : 'THE REFUSAL ALERT IS MISSING',
+  )
+
+  // Translations of the rail label, the card title, all six reasons and the one permission: a
+  // key present in neither bundle is the one failure no type or render can see.
+  check(
+    'the failed-request menu entry, card title, reasons and permission are all translated',
+    i18n.getResource('en', 'translation', 'nav.items.apiRequestFailures') ===
+      'Failed API requests' &&
+      i18n.getResource('ru', 'translation', 'nav.items.apiRequestFailures') ===
+        'Неудачные запросы' &&
+      i18n.getResource('en', 'translation', 'apiRequestFailures.title') ===
+        'Failed API requests' &&
+      i18n.getResource('ru', 'translation', 'apiRequestFailures.title') ===
+        'Неудачные запросы API' &&
+      i18n.getResource('en', 'translation', 'permissions.viewApiRequestFailures') &&
+      i18n.getResource('ru', 'translation', 'permissions.viewApiRequestFailures') &&
+      // The date range's accessible name, the two placeholders and their tag labels are the
+      // literals the page calls, so a missing key here is the raw key drawn on screen.
+      i18n.getResource('en', 'translation', 'apiRequestFailures.filterDateRange') ===
+        'Date range' &&
+      i18n.getResource('ru', 'translation', 'apiRequestFailures.filterDateRange') ===
+        'Интервал дат' &&
+      i18n.getResource('en', 'translation', 'apiRequestFailures.filterDateFrom') === 'Date from' &&
+      i18n.getResource('ru', 'translation', 'apiRequestFailures.filterDateFrom') === 'Дата с' &&
+      i18n.getResource('en', 'translation', 'apiRequestFailures.filterDateTo') === 'Date to' &&
+      i18n.getResource('ru', 'translation', 'apiRequestFailures.filterDateTo') === 'Дата по' &&
+      i18n.getResource('en', 'translation', 'apiRequestFailures.filters.dateRange') ===
+        'Date: {{from}} – {{to}}' &&
+      i18n.getResource('ru', 'translation', 'apiRequestFailures.filters.dateRange') ===
+        'Дата: {{from}} – {{to}}' &&
+      API_REQUEST_FAILURE_REASONS.every(
+        (reason) =>
+          i18n.getResource('en', 'translation', `apiRequestFailures.reasons.${reason}`) &&
+          i18n.getResource('ru', 'translation', `apiRequestFailures.reasons.${reason}`),
+      ) &&
+      API_REQUEST_FAILURE_REASONS.length === 6,
+    `en ${i18n.getResource('en', 'translation', 'nav.items.apiRequestFailures')}, ru ${i18n.getResource('ru', 'translation', 'nav.items.apiRequestFailures')}, ${API_REQUEST_FAILURE_REASONS.length} reasons`,
+  )
+
+  // The menu entry: last in the `blacklists` group, the derived address, and a real page behind
+  // the loader rather than the placeholder.
+  const apiRequestFailureGroup = NAVIGATION.Admin.find(
+    (group) => group.key === 'blacklists',
+  )
+  const apiRequestFailureItemKeys = (apiRequestFailureGroup?.items ?? []).map(
+    (item) => item.key,
+  )
+  const apiRequestFailureItem = apiRequestFailureGroup?.items.find(
+    (item) => item.key === 'apiRequestFailures',
+  )
+  const apiRequestFailureModule = apiRequestFailureItem?.page
+    ? await apiRequestFailureItem.page()
+    : null
+  const adminItemKeys = flatItems('Admin').map((item) => item.key)
+  check(
+    'the blacklists group ends with the failed-request entry, opening the real page at its mirrored address',
+    apiRequestFailureItemKeys[apiRequestFailureItemKeys.length - 1] ===
+      'apiRequestFailures' &&
+      // Mirroring `admin/api-request-failures` rather than nesting under `blacklists/` - the
+      // credit-logs/tariff-plans precedent: one resource named the same way by menu, page and
+      // endpoint, while the «Чёрные списки» heading stays a rail grouping only.
+      menuPath('Admin', 'api-request-failures') === '/admin/api-request-failures' &&
+      apiRequestFailureModule?.default === ApiRequestFailuresPage &&
+      adminItemKeys.includes('apiRequestFailures'),
+    `items: ${apiRequestFailureItemKeys.join(', ')}; opens ${menuPath('Admin', 'api-request-failures')}`,
+  )
+
+  // --- Feature isolation -------------------------------------------------------
+  //
+  // A feature imports neither another feature nor a page; the shared `components/`, `hooks/`
+  // and `utils/` are what it may reach. The new feature's own files are the first thing this
+  // probe can read as text, and a stray cross-feature import is exactly what no type catches.
+  const apiRequestFailureFeatureFiles = [
+    'src/features/api-request-failures/api.ts',
+    'src/features/api-request-failures/reasons.ts',
+    'src/features/api-request-failures/reasonTone.ts',
+    'src/features/api-request-failures/layout.ts',
+    'src/features/api-request-failures/dateRange.ts',
+    'src/features/api-request-failures/hooks/queries.ts',
+    'src/features/api-request-failures/hooks/mutations.ts',
+    'src/features/api-request-failures/types/index.ts',
+    'src/features/api-request-failures/types/ApiRequestFailureRow.ts',
+    'src/features/api-request-failures/types/ApiRequestFailureRowList.ts',
+    'src/features/api-request-failures/types/ApiRequestFailureReason.ts',
+    'src/features/api-request-failures/types/ApiRequestFailureContentKind.ts',
+  ]
+  const apiRequestFailureCrossImports = apiRequestFailureFeatureFiles.flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier.includes('/features/'))
+      .filter((specifier) => !specifier.includes('features/api-request-failures/')),
+  )
+  check(
+    'nothing inside the api-request-failures feature imports another feature',
+    apiRequestFailureCrossImports.length === 0,
+    apiRequestFailureCrossImports.length === 0
+      ? `${apiRequestFailureFeatureFiles.length} feature files, no cross-feature imports`
+      : `CROSS-FEATURE IMPORTS: ${apiRequestFailureCrossImports.join(', ')}`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -4087,6 +4509,7 @@ async function main() {
     activityLogsHtml,
     creditLogsHtml,
     userLogsHtml,
+    apiRequestFailuresHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

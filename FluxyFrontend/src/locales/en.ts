@@ -209,6 +209,10 @@ const en = {
       blacklistIp: 'IP blacklist',
       blacklistIsp: 'ISP blacklist',
       blacklistUa: 'User-agent blacklist',
+      // The refused-request log, last in the group: the three lists above are the rules that
+      // refuse and this is the record of the refusals. Named for what the table holds rather
+      // than for the group, which names the family it sits in.
+      apiRequestFailures: 'Failed API requests',
       // The bouquets section's one entry. Named for the verb like the two guild entries
       // above it, and for its object as well, because "Manage" alone under a heading called
       // "Bouquets" would read as a heading with no door.
@@ -613,6 +617,10 @@ const en = {
     // wipe destroys the same evidence. There is deliberately no `editUserLogs` - an operator
     // never writes a row; a row is written by the flow it records.
     viewUserLogs: 'View user logs',
+    // The refused-request log's single grant, mirroring `viewUserLogs`: it opens the log and
+    // wipes it, because the wipe destroys the same evidence. There is no write sibling here
+    // either - this capability has no production write path at all.
+    viewApiRequestFailures: 'View failed API requests',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -2526,6 +2534,77 @@ const en = {
       logout: 'Sign-out',
     },
   },
+  // The refused public-API requests: every request the API turned away, why, for which
+  // subscription data and which content, and from where. Its own block rather than keys under
+  // `blacklists`, because the record is a resource of its own behind its own grant
+  // (`viewApiRequestFailures`, which opens the read and the wipe) even though the menu item
+  // sits in that group.
+  apiRequestFailures: {
+    title: 'Failed API requests',
+    // The five columns. The content cell is a stored snapshot - a name with its opaque id
+    // muted underneath - and `network` is the flag, address and provider cell shared with the
+    // connection and user logs. The reason is a tag coloured by the refusal's kind.
+    columns: {
+      subscription: 'Subscription',
+      content: 'Content',
+      reason: 'Reason',
+      network: 'Network',
+      createdAt: 'Date',
+    },
+    searchLabel: 'Search failed API requests',
+    searchPlaceholder: 'Search',
+    // The reason picker's own name while nothing is chosen.
+    filterAnyReason: 'Any reason',
+    // The date range: one accessible name on the pair and the two sides' placeholders. It
+    // filters on when the entry was written.
+    filterDateRange: 'Date range',
+    filterDateFrom: 'Date from',
+    filterDateTo: 'Date to',
+    // The active filters as closable tags. The range is one control over two parameters, so
+    // its tag names both ends in one label; a single-sided range names only the side that is
+    // set. The three network filters are written by clicking a fact in the shared network
+    // cell; the words match the connection and user logs' tags because one component writes
+    // every table's keys. The search is deliberately not a tag - its own box is where it is
+    // read and cleared.
+    filters: {
+      reason: 'Reason: {{value}}',
+      country: 'Country: {{value}}',
+      ip: 'IP: {{value}}',
+      isp: 'Provider: {{value}}',
+      dateRange: 'Date: {{from}} – {{to}}',
+      dateRangeFrom: 'Date from: {{from}}',
+      dateRangeTo: 'Date to: {{to}}',
+    },
+    empty: 'No failed requests yet.',
+    noMatches: 'No failed requests match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded as the two other logs' is: the action and the interval,
+    // because the button is icon-only and this string is its whole accessible name.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The whole-table clear. The dialog states the scope - every reason, every network,
+    // whatever the filters show - because the button's words are a promise about the log.
+    clearAll: 'Clear all logs',
+    clearConfirmTitle: 'Clear the whole failure log?',
+    clearConfirmBody:
+      'All failed-request entries will be removed – for every reason, regardless of the filters on screen. This cannot be undone.',
+    clearConfirmOk: 'Clear all',
+    noPermission: 'Your group does not allow this.',
+    // The six reasons, keyed by their wire names. The screen speaks its own words for the
+    // tag; the description column keeps the stored English sentence, because the record is
+    // evidence and the tag is what the reader is being told.
+    reasons: {
+      unknown_id: 'Unknown ID',
+      geo_ip_violation: 'Geo-IP violation',
+      auth_failed: 'Authentication failed',
+      too_many_connections: 'Too many connections',
+      subscription_expired: 'Subscription expired',
+      user_blocked: 'User blocked',
+    },
+  },
   // The add and edit form for one subscription. Its own block because the table names what a row
   // is and the form names what an operator is being asked to type.
   subscriptionsForm: {
@@ -2879,6 +2958,9 @@ const en = {
       // The user audit log's one write, worded the same way: the command wipes the table, and
       // the sentence says every entry went rather than naming a row.
       user_logs_cleared: 'Every user log entry has been deleted.',
+      // The refused-request log's one write, worded the same way: the command wipes the table,
+      // and the sentence says every entry went rather than naming a row.
+      api_request_failures_cleared: 'Every failed API request has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

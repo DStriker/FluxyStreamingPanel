@@ -56,6 +56,9 @@ describe('ALL_PERMISSIONS', () => {
       // The audit log's single grant closes the catalog: it gates the read and the wipe
       // together, and it has no write sibling because an operator never writes a log row.
       'viewUserLogs',
+      // The refused-request log's single grant follows it for the same reason: one grant for
+      // the read and the wipe, with no write sibling - this log has no production write path.
+      'viewApiRequestFailures',
     ])
   })
 })
@@ -135,6 +138,9 @@ describe('canViewAny / canEditAny', () => {
     // these gates either.
     expect(canViewAny(['viewUserLogs'])).toBe(false)
     expect(canEditAny(['viewUserLogs'])).toBe(false)
+    // The refused-request log's grant is the second of that shape and follows the same rule.
+    expect(canViewAny(['viewApiRequestFailures'])).toBe(false)
+    expect(canEditAny(['viewApiRequestFailures'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

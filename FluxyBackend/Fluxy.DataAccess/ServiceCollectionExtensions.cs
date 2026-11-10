@@ -5,6 +5,7 @@ using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Epg.Repositories;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Repositories;
 using Fluxy.Core.Streams.Repositories;
@@ -108,6 +109,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IConnectionLogRepository, ConnectionLogRepository>();
             services.AddScoped<ICreditLogRepository, CreditLogRepository>();
             services.AddScoped<IUserLogRepository, UserLogRepository>();
+            services.AddScoped<IApiRequestFailureRepository, ApiRequestFailureRepository>();
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();

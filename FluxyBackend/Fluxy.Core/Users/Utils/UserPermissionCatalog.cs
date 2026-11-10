@@ -38,10 +38,11 @@ namespace Fluxy.Core.Users.Utils
         /// the groups, then the four content resources (the video streams, the audio streams,
         /// the on-demand catalogue, the series), then the guide sources, then the bouquets,
         /// then the tariff plans a subscription is sold under, then the subscriptions
-        /// themselves, then the blacklists, and finally the user audit log - and inside each
-        /// subject as a read beside its write, which is the shape the first two permissions
-        /// had. The user log has a read grant and no write one, because an operator never
-        /// writes an audit entry.
+        /// themselves, then the blacklists, and finally the two logs - the user audit log and
+        /// the API request failure log - and inside each subject as a read beside its write,
+        /// which is the shape the first two permissions had. Each log has a read grant and no
+        /// write one, because an operator never writes an entry; the failure log's single grant
+        /// also covers its whole-table clear.
         /// </summary>
         public static IReadOnlyList<UserPermission> All { get; } =
         [
@@ -71,7 +72,8 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.EditSubscriptions,
             UserPermission.ViewBlacklists,
             UserPermission.EditBlacklists,
-            UserPermission.ViewUserLogs
+            UserPermission.ViewUserLogs,
+            UserPermission.ViewApiRequestFailures
         ];
 
         /// <summary>
@@ -130,7 +132,8 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.EditSubscriptions] = UserRole.Admin,
                 [UserPermission.ViewBlacklists] = UserRole.Admin,
                 [UserPermission.EditBlacklists] = UserRole.Admin,
-                [UserPermission.ViewUserLogs] = UserRole.Admin
+                [UserPermission.ViewUserLogs] = UserRole.Admin,
+                [UserPermission.ViewApiRequestFailures] = UserRole.Admin
             };
 
         /// <summary>

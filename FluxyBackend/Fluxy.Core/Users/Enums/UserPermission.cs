@@ -254,6 +254,27 @@ namespace Fluxy.Core.Users.Enums
         /// the whole-table clear, and there is no separate write bit - a second grant would have to
         /// mean something the table does not support.
         /// </remarks>
-        ViewUserLogs = 268435456
+        ViewUserLogs = 268435456,
+
+        /// <summary>
+        /// May read the API request failure log and wipe it: the log table, its filters and every
+        /// entry it draws.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>One grant gates both endpoints, and that is the deliberate departure.</b> Reading the
+        /// refusals and clearing the table destroy the same evidence, so they are one permission
+        /// rather than a read/write pair - the argument <see cref="ViewUserLogs"/> records. There
+        /// is no write permission for this log at all: a row is written by the public API's future
+        /// capture path, never by an operator, and the only write this surface performs is the
+        /// total erase. The clear adds only the antiforgery pair on top.
+        /// </para>
+        /// <para>
+        /// No backfill migration accompanies this member: the catalog is code and
+        /// <c>DefaultUserSeeder</c> reconciles the base groups with it on every boot, so an
+        /// installation that restarts receives the new bit without one.
+        /// </para>
+        /// </remarks>
+        ViewApiRequestFailures = 536870912
     }
 }

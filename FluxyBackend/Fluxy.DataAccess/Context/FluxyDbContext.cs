@@ -221,6 +221,13 @@ namespace Fluxy.DataAccess.Context
         public DbSet<UserLogEntity> UserLogs => Set<UserLogEntity>();
 
         /// <summary>
+        /// Refused public-API requests: why each was refused, for which subscription data and which
+        /// content, and from where. The future public API will write them; this pass reads and
+        /// clears them, plus the Development seeder's trial rows.
+        /// </summary>
+        public DbSet<ApiRequestFailureEntity> ApiRequestFailures => Set<ApiRequestFailureEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

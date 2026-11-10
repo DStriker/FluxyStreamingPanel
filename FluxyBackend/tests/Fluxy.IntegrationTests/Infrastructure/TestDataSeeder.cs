@@ -3,6 +3,8 @@ using Fluxy.Core.Content.Commands;
 using Fluxy.Core.Content.Enums;
 using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Requests.Commands;
+using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Repositories;
@@ -506,6 +508,39 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 connection);
 
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        /// <summary>
+        /// Plants API request failure rows through the Core repository, in one save.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="failures">Rows to stage, in the order they are given.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <para>
+        /// <b>The repository is the only writer this capability has.</b> There is no production
+        /// write path, so a test plants rows the same way the Development seeder does:
+        /// <c>AddRangeAsync</c> stages them and one <see cref="IUnitOfWork.SaveChangesAsync"/>
+        /// commits them. No persistence type is named here, which is the rule every helper in this
+        /// class follows.
+        /// </para>
+        /// <para>
+        /// <b>One save stamps one instant.</b> The audit columns come from the host's clock, so all
+        /// rows in one call share <c>created_at</c> - which is exactly the case the identifier
+        /// tie-break exists for. A test that needs two instants advances the fixture's
+        /// <c>FakeTimeProvider</c> and plants again.
+        /// </para>
+        /// </remarks>
+        public static async Task PlantApiRequestFailuresAsync(
+            IServiceProvider services,
+            IReadOnlyList<NewApiRequestFailure> failures,
+            CancellationToken cancellationToken = default)
+        {
+            var repository = services.GetRequiredService<IApiRequestFailureRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            await repository.AddRangeAsync(failures, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         /// <summary>

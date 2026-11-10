@@ -88,6 +88,26 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheApiRequestFailureReadGrantBelongsToTheAdministratorBaseGroup()
+        {
+            // One grant covers both the read and the whole-table clear, for the argument the
+            // user-log grant records: the two destroy the same evidence, and there is no write
+            // permission because a refusal row is written by the public API's future capture path.
+            // The seeder reconciles the base groups against this catalog on every start, so no
+            // backfill migration accompanies the member.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewApiRequestFailures, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewApiRequestFailures,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.ViewApiRequestFailures,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -146,6 +166,7 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(67108864, (int)UserPermission.ViewBlacklists);
             Assert.Equal(134217728, (int)UserPermission.EditBlacklists);
             Assert.Equal(268435456, (int)UserPermission.ViewUserLogs);
+            Assert.Equal(536870912, (int)UserPermission.ViewApiRequestFailures);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -211,13 +232,13 @@ namespace Fluxy.UnitTests.Users
             Assert.False(UserPermissionCatalog.IsKnown((UserPermission)1));
 
             // A bit above the highest member the catalog names. It moved up when the bouquet
-            // pair arrived (1 &lt;&lt; 20), again when the tariff plan pair took the next two
+            // pair arrived (1 << 20), again when the tariff plan pair took the next two
             // slots, again when the subscription pair took the two after those, again when the
-            // blacklist pair took 2^26 and 2^27, and again when the user-log read grant took
-            // 2^28, and it moves each time a permission takes one - which is exactly what this
-            // line is for.
+            // blacklist pair took 2^26 and 2^27, again when the user-log read grant took
+            // 2^28, again when the API request failure read grant took 2^29, and it moves each
+            // time a permission takes one - which is exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 29)));
+                UserPermission.ViewClients | (UserPermission)(1 << 30)));
         }
 
         [Fact]

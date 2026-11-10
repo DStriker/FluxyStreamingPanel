@@ -1,7 +1,7 @@
 /**
  * One thing a group may let its members do, spelled exactly as the server's catalog spells it.
  *
- * These twenty-seven strings are the whole catalog at the time of writing. They are a union rather
+ * These twenty-eight strings are the whole catalog at the time of writing. They are a union rather
  * than `string` for the reason `errors` lands under camelCase JSON names on the other side:
  * a key typed here is checked where it is written, while a permission typed as `string` would
  * accept `viewClientss` and the server would answer `validation_failed` naming a field the form
@@ -16,9 +16,9 @@
  * group table" is not a claim about any particular group.
  *
  * A permission belongs to **exactly one role**, and on this installation that role is
- * `Admin` for all twenty-seven - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
+ * `Admin` for all twenty-eight - see `permissionsForRole` in `src/features/user-groups/permissions.ts`, which mirrors
  * `UserPermissionCatalog.ForRole` on the backend. A grant the group's role does not own is
- * dropped on the way in rather than refused, which is why a Client group sent all twenty-seven comes
+ * dropped on the way in rather than refused, which is why a Client group sent all twenty-eight comes
  * back with none: they would mean nothing, since the role gate ahead of them already says no.
  *
  * **The two stream permissions are the first pair that is not about accounts.**
@@ -105,4 +105,5 @@ export type UserPermission =
   | 'viewBlacklists'
   | 'editBlacklists'
   | 'viewUserLogs'
+  | 'viewApiRequestFailures'
 

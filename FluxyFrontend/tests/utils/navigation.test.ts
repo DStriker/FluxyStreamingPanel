@@ -40,6 +40,11 @@ describe('groupKeyForPath', () => {
     expect(groupKeyForPath('Admin', '/admin/subscriptions/8f3c1e2a')).toBe('subscriptions')
     expect(groupKeyForPath('Admin', '/admin/user-groups/add')).toBe('users')
     expect(groupKeyForPath('Admin', '/admin/video-streams/8f3c1e2a')).toBe('videoStreams')
+    // The refused-request log mirrors the backend's own address (`admin/api-request-failures`)
+    // instead of nesting under the group's prefix - the credit-logs treatment - so the
+    // three-list group stays open on it, and the old nested address no longer owns anything.
+    expect(groupKeyForPath('Admin', '/admin/api-request-failures')).toBe('blacklists')
+    expect(groupKeyForPath('Admin', '/admin/blacklists/api-request-failures')).toBeNull()
   })
 
   it('ignores a trailing slash, as the sidebar does before matching', () => {

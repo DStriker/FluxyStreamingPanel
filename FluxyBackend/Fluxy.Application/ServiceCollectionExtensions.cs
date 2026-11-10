@@ -5,6 +5,7 @@ using Fluxy.Application.Content.Services;
 using Fluxy.Application.Email.Options;
 using Fluxy.Application.Epg.Services;
 using Fluxy.Application.Email.Services;
+using Fluxy.Application.Requests.Services;
 using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
 using Fluxy.Application.Series.Services;
@@ -19,6 +20,7 @@ using Fluxy.Core.Blacklists.Interfaces;
 using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Epg.Interfaces;
+using Fluxy.Core.Requests.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
@@ -183,12 +185,24 @@ namespace Fluxy.Application
             // the GeoIP memo it shares describes one request.
             services.AddScoped<IUserLogService, UserLogService>();
 
-            // Trial rows for that log, in Development only and only into an empty table. It reads
-            // its prerequisites through Core repositories because the rows must name real
+            // Trial rows for the connection log, in Development only and only into an empty table.
+            // It reads its prerequisites through Core repositories because the rows must name real
             // subscriptions and streams - the foreign key refuses an invented one - and it is
             // gated on IHostEnvironment so the Testing host that runs the integration suite is a
             // no-op rather than a second seeder the fixtures would have to undo.
             services.AddScoped<IConnectionLogSeeder, DevelopmentConnectionLogSeeder>();
+
+            // The log of refused public-API requests: read-only, plus the one whole-table clear.
+            // It is its own service rather than a method on a subscription or blacklist one because
+            // a refusal names facts from several domains, and this pass has no write path at all:
+            // the future public API will own the capture.
+            services.AddScoped<IApiRequestFailureService, ApiRequestFailureService>();
+
+            // Trial rows for that log, in Development only and only into an empty table. It needs no
+            // prerequisite of the installation - every column is a snapshot and no foreign key
+            // points out of the table - and it is gated on IHostEnvironment so the Testing host that
+            // runs the integration suite is a no-op.
+            services.AddScoped<IApiRequestFailureSeeder, DevelopmentApiRequestFailureSeeder>();
 
             // The three access-control blacklists: one resource behind two permissions and
             // three menu entries. It is its own service because an entry has rules none of the
@@ -267,9 +281,9 @@ namespace Fluxy.Application
         }
 
         /// <summary>
-        /// Runs <see cref="IUserSeeder.SeedAsync"/> and <see cref="IConnectionLogSeeder.SeedAsync"/>
-        /// in a scope of their own, so they can be called from the composition root without
-        /// resolving anything there.
+        /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IConnectionLogSeeder.SeedAsync"/>
+        /// and <see cref="IApiRequestFailureSeeder.SeedAsync"/> in a scope of their own, so they can
+        /// be called from the composition root without resolving anything there.
         /// </summary>
         /// <param name="services">Provider built by the host.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -286,6 +300,10 @@ namespace Fluxy.Application
         /// Development gate makes it a no-op everywhere else, including the Testing host the
         /// integration suite runs on.
         /// </para>
+        /// <para>
+        /// The API request failure seeder follows it and has the same Development gate. It reads
+        /// nothing first: its rows are snapshots with no foreign key to satisfy.
+        /// </para>
         /// </remarks>
         public static async Task SeedDatabaseAsync(
             this IServiceProvider services,
@@ -300,6 +318,10 @@ namespace Fluxy.Application
             var logs = scope.ServiceProvider.GetRequiredService<IConnectionLogSeeder>();
 
             await logs.SeedAsync(cancellationToken);
+
+            var failures = scope.ServiceProvider.GetRequiredService<IApiRequestFailureSeeder>();
+
+            await failures.SeedAsync(cancellationToken);
         }
     }
 }
