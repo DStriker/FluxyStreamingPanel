@@ -188,7 +188,7 @@ const en = {
       videoStreamsImport: 'Import video streams',
       videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
-      // The video streams' problem journal, filed under the section whose streams it writes
+      // The video streams' problem log, filed under the section whose streams it writes
       // about. Named for what the table holds rather than for the group, and deliberately not
       // `videoStreamsProblems`: the key must stay outside the `videoStreams*` prefix the four
       // generated entries above own. Its address mirrors the backend's own route.
@@ -2610,12 +2610,12 @@ const en = {
       user_blocked: 'User blocked',
     },
   },
-  // The stream producers' problem journal: every failure a stream reported, which stream it was
+  // The stream producers' problem log: every failure a stream reported, which stream it was
   // about and when. Its own block rather than keys under `videoStreams`, because the record is a
   // resource of its own behind its own grant pair (`viewStreams` reads it, `editStreams` wipes
-  // it) even though the menu item sits in that group.
+  // it and opens a stream's edit form) even though the menu item sits in that group.
   streamProblems: {
-    title: 'Stream problems journal',
+    title: 'Stream problem logs',
     // The three columns. The stream cell draws the stream's current name and nothing else - the
     // identifier is the row's foreign key, not a fact to read - and the error is the producer's
     // own message, so it is the wide column and the one the search matches.
@@ -2624,7 +2624,7 @@ const en = {
       error: 'Error',
       createdAt: 'Date',
     },
-    searchLabel: 'Search the stream problems journal',
+    searchLabel: 'Search the stream problem logs',
     searchPlaceholder: 'Search',
     // The stream picker's own name while nothing is chosen.
     filterAnyStream: 'Any stream',
@@ -2654,9 +2654,9 @@ const en = {
     resumeRefresh: 'Resume auto refresh',
     autoRefreshHint: 'Refreshes every {{seconds}} seconds',
     // The whole-table clear. The dialog states the scope - every stream, whatever the filters
-    // show - because the button's words are a promise about the journal.
-    clearAll: 'Clear the journal',
-    clearConfirmTitle: 'Clear the whole stream problem journal?',
+    // show - because the button's words are a promise about the log.
+    clearAll: 'Clear the logs',
+    clearConfirmTitle: 'Clear the whole stream problem log?',
     clearConfirmBody:
       'All stream problem entries will be removed – for every stream, regardless of the filters on screen. This cannot be undone.',
     clearConfirmOk: 'Clear all',
@@ -3018,7 +3018,7 @@ const en = {
       // The refused-request log's one write, worded the same way: the command wipes the table,
       // and the sentence says every entry went rather than naming a row.
       api_request_failures_cleared: 'Every failed API request has been deleted.',
-      // The stream problem journal's one write, worded the same way: the command wipes the
+      // The stream problem log's one write, worded the same way: the command wipes the
       // table, and the sentence says every entry went rather than naming a row.
       stream_problems_cleared: 'Every stream problem entry has been deleted.',
       video_on_demand_import_completed: 'The playlist has been imported.',

@@ -742,3 +742,18 @@ export const groupKeyForPath = (role: Role, pathname: string): string | null => 
 /** Every menu item of a role, flattened in display order. */
 export const flatItems = (role: Role): NavItem[] =>
   (NAVIGATION[role] ?? []).flatMap((group) => group.items)
+
+/**
+ * The absolute address of the menu item with this key, or `null` when the role's menu has none.
+ *
+ * A page that has to point at another section names that section's own item key instead of
+ * repeating its segment: the key is what the rail and the router already agree on, so a
+ * section renamed in `CONTENT_SECTIONS` reaches every link built this way and none of the
+ * hardcoded strings the note in `AGENTS.md` forbids. `null` rather than an area-relative
+ * fallback, because a role whose menu has no such item has nowhere to send the visitor.
+ */
+export const menuItemPath = (role: Role, key: string): string | null => {
+  const item = flatItems(role).find((entry) => entry.key === key)
+
+  return item ? menuPath(role, item.path) : null
+}

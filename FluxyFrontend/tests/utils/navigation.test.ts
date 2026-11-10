@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupKeyForPath, menuPath } from '../../src/utils/navigation'
+import { groupKeyForPath, menuItemPath, menuPath } from '../../src/utils/navigation'
 
 /**
  * The rail's address rules, asserted as functions rather than through a render.
@@ -20,6 +20,17 @@ describe('menuPath', () => {
   it('takes the landing page for the item with no path of its own', () => {
     expect(menuPath('Admin', '')).toBe('/admin/dashboard')
     expect(menuPath('Client', '')).toBe('/client/index')
+  })
+})
+
+describe('menuItemPath', () => {
+  it('opens the section an item key names, without repeating its segment', () => {
+    expect(menuItemPath('Admin', 'videoStreamsManage')).toBe('/admin/video-streams')
+    expect(menuItemPath('Admin', 'streamProblems')).toBe('/admin/stream-problems')
+  })
+
+  it('answers null when the role has no such item', () => {
+    expect(menuItemPath('Client', 'videoStreamsManage')).toBeNull()
   })
 })
 

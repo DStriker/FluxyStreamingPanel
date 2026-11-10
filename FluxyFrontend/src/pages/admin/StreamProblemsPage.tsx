@@ -3,7 +3,7 @@ import { Alert, App, Button, Card, DatePicker, Select, Space, Tag } from 'antd'
 import type { TableColumnsType } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ClearOutlined, PauseCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { STREAM_PROBLEMS_PAGE_SIZE } from '../../features/stream-problems/api'
 import type { StreamProblemSortField } from '../../features/stream-problems/api'
@@ -33,6 +33,8 @@ import { useColumnWidths, useServerTable } from '../../hooks/table'
 import { formatDay, formatTimestamp } from '../../utils/dateFormat'
 import { hinted } from '../../utils/hinted'
 import { messageForError, successTextFor } from '../../utils/http'
+import { menuItemPath } from '../../utils/navigation'
+import { useSession } from '../../utils/sessionContext'
 import { withFilter } from '../../utils/tableParams'
 import { tableResults } from '../../utils/tableResults'
 import { textCell } from '../../utils/tableCells'
@@ -48,15 +50,18 @@ const AUTO_REFRESH_MS = 30_000
  * a problem is recorded by the future producer through the backend's own service, so there is
  * no create or edit control anywhere - the one write is the total erase. That is also why the
  * stream cell draws the stream's name alone: the opaque `streamId` is the row's foreign key,
- * not a fact the visitor reads.
+ * not a fact the visitor reads. For an operator holding `editStreams` the name is also the way
+ * into that stream's own edit form - the fix for the source the problem is about - and a
+ * visitor without the grant sees the same name as plain text, never a dead click target.
  *
  * Every parameter lives in the address: the shared five `useServerTable` reads, the `streamId`
  * filter and the two date bounds. The range is the one control too wide for the card head, so
  * it is a row of its own in the card body above the tag row and the table - the placement
  * `ConnectionLogsPage` sets.
  *
- * **Read and clear are different grants.** `viewStreams` opens the list; `editStreams` opens
- * the wipe, because destroying the streams' own record is a change to what they surface holds.
+ * **Read and change are different grants.** `viewStreams` opens the list; `editStreams` opens
+ * the wipe and the stream cell's edit link, because destroying the streams' own record and
+ * changing one of the streams are changes to what the list holds.
  *
  * **Clear-all is never disabled by data state.** The button's words are a promise about the
  * journal, not about the rows the filters admit: greying it out because the filtered slice is
@@ -67,6 +72,7 @@ export default function StreamProblemsPage(_props: { sectionKey: string }) {
   const { t, i18n } = useTranslation()
   const { message, modal } = App.useApp()
   const [searchParams, setSearchParams] = useSearchParams()
+  const session = useSession()
 
   const profileQuery = useProfile()
   const granted = profileQuery.data?.permissions ?? []
@@ -76,12 +82,22 @@ export default function StreamProblemsPage(_props: { sectionKey: string }) {
   /**
    * The refusal is answered **only once the profile has answered**: an unanswered profile is
    * "not known yet", which must draw the ordinary shell in its loading form rather than an
-   * accusation. The journal query is disabled while refused, so the screen does not spend a
+   * accusation. The log query is disabled while refused, so the screen does not spend a
    * request on a list the server would answer 403.
    */
   const refused =
     profileQuery.data !== undefined && !(profileQuery.data.permissions ?? []).includes('viewStreams')
-  const canClear = granted.includes('editStreams')
+  const canEdit = granted.includes('editStreams')
+
+  /**
+   * The streams table's own address, resolved from its menu item rather than written here:
+   * the journal lives in a different section from the table it points at, and a copied
+   * segment is exactly the string that drifts when a route is renamed.
+   *
+   * `null` only under the probes, which render no session provider - every real navigation to
+   * this page comes through `RequireAuth`, which publishes one.
+   */
+  const streamsPath = session ? menuItemPath(session.role, 'videoStreamsManage') : null
 
   const table = useServerTable<StreamProblemRow, StreamProblemSortField>({
     defaultSort: { by: 'createdAt', order: 'desc' },
@@ -218,17 +234,39 @@ export default function StreamProblemsPage(_props: { sectionKey: string }) {
       }),
     )
 
+  /**
+   * One stream's edit form, or nothing when this visitor may not open one.
+   *
+   * The address is the streams table's own edit route - `/admin/video-streams/{id}` - built
+   * from the table's menu item rather than a copied segment, and it is the same address the
+   * connection log's stream cell opens. The journal therefore reaches the fix for the source
+   * the problem is about without a second mechanism: no query parameter, no dialog, and no
+   * change to the streams page itself.
+   */
+  const streamEditHref = (streamId: string): string | null =>
+    canEdit && streamsPath ? `${streamsPath}/${encodeURIComponent(streamId)}` : null
+
   const columns: TableColumnsType<StreamProblemRow> = [
     {
       // The stream's name as it reads now, resolved by the server's join. The opaque `streamId`
       // is not drawn: it identifies the foreign key, not the stream the visitor came to see.
       // The native `title` is antd's own ellipsis tooltip, which this cell needs no wrapper for.
+      //
+      // **The name is the way to the stream's edit form** for an operator holding `editStreams`
+      // - a link, so it is keyboard reachable and opens in a new tab like every other link -
+      // and plain text for everyone else. A visitor without the grant still reads the name;
+      // what they do not get is a click target that would answer with a refusal.
       title: t('streamProblems.columns.stream'),
       dataIndex: 'streamName',
       key: 'stream',
       width: widths.stream,
       ellipsis: { showTitle: true },
       onHeaderCell: () => resizer('stream'),
+      render: (value: string, row: StreamProblemRow) => {
+        const href = streamEditHref(row.streamId)
+
+        return href ? <Link to={href}>{value}</Link> : value
+      },
     },
     {
       title: t('streamProblems.columns.error'),
@@ -352,7 +390,7 @@ export default function StreamProblemsPage(_props: { sectionKey: string }) {
             disabled={atDefaults}
             onClick={() => reset()}
           />
-          {canClear ? (
+          {canEdit ? (
             <Button
               danger
               icon={<ClearOutlined />}

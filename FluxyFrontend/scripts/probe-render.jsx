@@ -116,7 +116,7 @@ import ErrorFallback from '../src/components/ErrorFallback'
 import AccountLayout from '../src/layouts/AccountLayout'
 import { routes as routeTable } from '../src/router/routes'
 import { SessionContext } from '../src/utils/sessionContext'
-import { NAVIGATION, flatItems, menuPath } from '../src/utils/navigation'
+import { NAVIGATION, flatItems, menuItemPath, menuPath } from '../src/utils/navigation'
 import { areaForRole, homeForRole, loginRouteForPath, sessionOpensArea } from '../src/utils/session'
 import { appTheme, setThemeChoice, ThemeChoice } from '../src/utils/theme'
 import { countryName } from '../src/utils/countryName'
@@ -4460,7 +4460,7 @@ async function main() {
     `items: ${apiRequestFailureItemKeys.join(', ')}; opens ${menuPath('Admin', 'api-request-failures')}`,
   )
 
-  // --- The stream problem journal ----------------------------------------------
+  // --- The stream problem log ---------------------------------------------------
   //
   // Its own page behind `nav.items.streamProblems`, last in the `videoStreams` group but at
   // `/admin/stream-problems` rather than under the section's own prefix: the address mirrors
@@ -4482,27 +4482,27 @@ async function main() {
   )
 
   check(
-    'the stream problem journal draws its heading and its table before any entries arrive',
-    streamProblemsHtml.includes('>Stream problems journal<') &&
+    'the stream problem log draws its heading and its table before any entries arrive',
+    streamProblemsHtml.includes('>Stream problem logs<') &&
       streamProblemsHtml.includes('ant-table') &&
       !streamProblemsHtml.includes('nav.items.streamProblems'),
-    `rendered ${streamProblemsHtml.length} bytes with the journal still being fetched`,
+    `rendered ${streamProblemsHtml.length} bytes with the log still being fetched`,
   )
 
   // The three headers in the order they are drawn, and the two Russian words behind them: the
   // render runs in `en`, so the `ru` bundle is read through `i18n.getResource` - a key present
   // in neither file is the one failure no type or render can see.
   check(
-    'the stream problem journal draws Stream, Error and Date in that order',
+    'the stream problem log draws Stream, Error and Date in that order',
     ['Stream', 'Error', 'Date'].every((heading) =>
       streamProblemsHtml.includes(`>${heading}<`),
     ) &&
       streamProblemsHtml.indexOf('>Stream<') < streamProblemsHtml.indexOf('>Error<') &&
       streamProblemsHtml.indexOf('>Error<') < streamProblemsHtml.indexOf('>Date<') &&
       i18n.getResource('en', 'translation', 'streamProblems.title') ===
-        'Stream problems journal' &&
+        'Stream problem logs' &&
       i18n.getResource('ru', 'translation', 'streamProblems.title') ===
-        'Журнал проблем видеотрансляций' &&
+        'Проблемы потоков' &&
       i18n.getResource('ru', 'translation', 'streamProblems.columns.stream') === 'Поток' &&
       i18n.getResource('ru', 'translation', 'streamProblems.columns.error') === 'Ошибка' &&
       i18n.getResource('ru', 'translation', 'streamProblems.columns.createdAt') === 'Дата',
@@ -4518,7 +4518,7 @@ async function main() {
     0,
   )
   check(
-    'the stream problem journal is fixed-layout with three columns totalling 1190, in order',
+    'the stream problem log is fixed-layout with three columns totalling 1190, in order',
     /table-layout:\s*fixed/.test(streamProblemsHtml) &&
       streamProblemWidths.join(',') === '320,570,300' &&
       streamProblemTotal === STREAM_PROBLEM_TABLE_WIDTH &&
@@ -4532,47 +4532,142 @@ async function main() {
     `${streamProblemCols.length} columns: [${streamProblemWidths.join(', ')}] = ${streamProblemTotal}px`,
   )
 
+  // The stream cell is the one thing on this page a column `render` writes, and a render is
+  // reached only when a row exists - so it is rendered from a seeded cache, the subscription
+  // form's treatment. Two grants are the whole difference: `editStreams` turns the joined name
+  // into a link to that stream's edit form, and no grant leaves the same name as plain text.
+  //
+  // The link is built from `videoStreamsManage`'s menu item rather than a copied segment, and
+  // the seed below is the query key the page actually asks with - the table's five parameters
+  // plus its three filters - so a key change here is a failed assertion rather than a silently
+  // empty table.
+  const streamProblemProbeRow = {
+    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    streamId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    streamName: 'Stream Alfa',
+    errorMessage: 'Connection refused',
+    createdAt: '2026-05-01T10:00:00Z',
+  }
+  // The session `RequireAuth` would have published for the admin area; the page reads only its
+  // role, which is what turns the streams menu item into an address.
+  const streamProblemsSession = {
+    userId: '1',
+    username: 'root',
+    role: 'Admin',
+    refresh: async () => null,
+  }
+  const renderStreamProblemsSeeded = (permissions) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['profile'], {
+      username: 'probeadmin',
+      email: 'probeadmin@localhost',
+      role: 'Admin',
+      permissions,
+      credits: 0,
+      timeZone: null,
+      geoProtectionEnabled: false,
+      bindSessionToIp: false,
+      allowedIps: [],
+      allowedCountry: null,
+      allowedAutonomousSystemNumber: null,
+    })
+    client.setQueryData(
+      [
+        'streamProblems',
+        {
+          page: 1,
+          pageSize: 20,
+          search: '',
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
+          streamId: null,
+          dateFrom: null,
+          dateTo: null,
+        },
+      ],
+      { items: [streamProblemProbeRow], total: 1, page: 1, pageSize: 20 },
+    )
+
+    return renderToStaticMarkup(
+      withRouter(
+        '/admin/stream-problems',
+        <QueryClientProvider client={client}>
+          <AntApp>
+            <SessionContext.Provider value={streamProblemsSession}>
+              <StreamProblemsPage sectionKey="nav.items.streamProblems" />
+            </SessionContext.Provider>
+          </AntApp>
+        </QueryClientProvider>,
+      ),
+    )
+  }
+  const editableStreamProblemsHtml = renderStreamProblemsSeeded(['viewStreams', 'editStreams'])
+  const readableStreamProblemsHtml = renderStreamProblemsSeeded(['viewStreams'])
+  const streamProblemEditHref = `${menuItemPath('Admin', 'videoStreamsManage')}/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`
+  check(
+    'the stream cell opens that stream’s edit form for an operator holding editStreams',
+    streamProblemEditHref ===
+      '/admin/video-streams/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' &&
+      editableStreamProblemsHtml.includes(`href="${streamProblemEditHref}"`) &&
+      editableStreamProblemsHtml.includes('>Stream Alfa</a>') &&
+      // The ellipsis tooltip is antd's own and still names the whole value on the cell.
+      editableStreamProblemsHtml.includes('title="Stream Alfa"'),
+    `link ${editableStreamProblemsHtml.includes('>Stream Alfa</a>') ? 'drawn' : 'MISSING'}, href ${
+      /href="([^"]*video-streams[^"]*)"/.exec(editableStreamProblemsHtml)?.[1] ?? 'none'
+    }`,
+  )
+  check(
+    'a visitor without editStreams reads the stream name as plain text, with no dead link',
+    readableStreamProblemsHtml.includes('Stream Alfa') &&
+      !readableStreamProblemsHtml.includes('video-streams/aaaaaaaa') &&
+      !readableStreamProblemsHtml.includes('>Stream Alfa</a>'),
+    readableStreamProblemsHtml.includes('Stream Alfa')
+      ? 'name drawn, no link'
+      : 'THE STREAM NAME IS MISSING',
+  )
+
   // The toolbar order: auto-refresh (an icon whose accessible name says which action it
   // performs, ON by default so the fresh render says "Pause"), search, the stream picker, the
   // width reset, the clear command. Both the clear button's greyed state and its reason are the
   // permission-less branch of a fresh render - the profile has not answered yet.
   const streamProblemRefreshAt = streamProblemsHtml.indexOf('Pause auto refresh')
   check(
-    'the stream problem journal toolbar runs auto-refresh (on by default), search, stream picker, width reset and clear',
+    'the stream problem log toolbar runs auto-refresh (on by default), search, stream picker, width reset and clear',
     streamProblemRefreshAt !== -1 &&
-      streamProblemsHtml.includes('Search the stream problems journal') &&
+      streamProblemsHtml.includes('Search the stream problem logs') &&
       streamProblemsHtml.includes('Any stream') &&
       streamProblemsHtml.includes('aria-label="Reset widths"') &&
-      streamProblemsHtml.includes('Clear the journal') &&
+      streamProblemsHtml.includes('Clear the logs') &&
       streamProblemRefreshAt <
-        streamProblemsHtml.indexOf('Search the stream problems journal') &&
-      streamProblemsHtml.indexOf('Search the stream problems journal') <
+        streamProblemsHtml.indexOf('Search the stream problem logs') &&
+      streamProblemsHtml.indexOf('Search the stream problem logs') <
         streamProblemsHtml.indexOf('Any stream') &&
       streamProblemsHtml.indexOf('Any stream') <
         streamProblemsHtml.indexOf('aria-label="Reset widths"') &&
       streamProblemsHtml.indexOf('aria-label="Reset widths"') <
-        streamProblemsHtml.indexOf('Clear the journal'),
-    `refresh@${streamProblemRefreshAt}, search@${streamProblemsHtml.indexOf('Search the stream problems journal')}, picker@${streamProblemsHtml.indexOf('Any stream')}, clear@${streamProblemsHtml.indexOf('Clear the journal')}`,
+        streamProblemsHtml.indexOf('Clear the logs'),
+    `refresh@${streamProblemRefreshAt}, search@${streamProblemsHtml.indexOf('Search the stream problem logs')}, picker@${streamProblemsHtml.indexOf('Any stream')}, clear@${streamProblemsHtml.indexOf('Clear the logs')}`,
   )
 
   // The date range is the one control too wide for the card head, so it is a row of its own in
-  // the card body - after the card head (whose last control is "Clear the journal") and before
+  // the card body - after the card head (whose last control is "Clear the logs") and before
   // the table. Index order is enough: head, then the picker, then the table.
   check(
-    'the stream problem journal draws the date range on its own row between the card head and the table',
+    'the stream problem log draws the date range on its own row between the card head and the table',
     streamProblemsHtml.includes('ant-picker-range') &&
       streamProblemsHtml.indexOf('Date from') >
-        streamProblemsHtml.indexOf('Clear the journal') &&
+        streamProblemsHtml.indexOf('Clear the logs') &&
       streamProblemsHtml.indexOf('Date from') >
         streamProblemsHtml.indexOf('ant-card-body') &&
       streamProblemsHtml.indexOf('Date from') < streamProblemsHtml.indexOf('ant-table'),
-    `range@${streamProblemsHtml.indexOf('Date from')}, clear@${streamProblemsHtml.indexOf('Clear the journal')}, body@${streamProblemsHtml.indexOf('ant-card-body')}, table@${streamProblemsHtml.indexOf('ant-table')}`,
+    `range@${streamProblemsHtml.indexOf('Date from')}, clear@${streamProblemsHtml.indexOf('Clear the logs')}, body@${streamProblemsHtml.indexOf('ant-card-body')}, table@${streamProblemsHtml.indexOf('ant-table')}`,
   )
 
   // The menu entry: last in the `videoStreams` group, one past the categories item, the derived
   // address mirroring the backend's route, and a real page behind the loader rather than the
   // placeholder. The midpoint of the group also pins the *order*: the section's four generated
-  // entries first, then the journal.
+  // entries first, then the log.
   const streamProblemGroup = NAVIGATION.Admin.find((group) => group.key === 'videoStreams')
   const streamProblemItemKeys = (streamProblemGroup?.items ?? []).map((item) => item.key)
   const streamProblemItem = streamProblemGroup?.items.find(
@@ -4582,7 +4677,7 @@ async function main() {
   const streamProblemMatch = matchRoutes(routeTable, '/admin/stream-problems')
   const streamProblemLeaf = streamProblemMatch?.[streamProblemMatch.length - 1]?.route
   check(
-    'the video streams group ends with the problem journal entry, opening the real page at its mirrored address',
+    'the video streams group ends with the problem log entry, opening the real page at its mirrored address',
     streamProblemItemKeys.join(',') ===
       'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories,streamProblems' &&
       streamProblemItem?.path === 'stream-problems' &&

@@ -119,7 +119,7 @@ turns are disjoint with one constant `total`.
 a JavaScript client parses a uuid as a number otherwise; they are unrelated - the first is this
 record's own key, the second the stream the problem is about.
 
-**The clear ignores the screen's filters on purpose.** The button says "clear the journal", so the
+**The clear ignores the screen's filters on purpose.** The button says "clear the logs", so the
 whole table goes whatever the reader had narrowed it to; a delete that obeyed a filter the caller did
 not send would wipe a different set from the one it named. It is not paged and no identifier is
 passed. An empty table answers `200` with `0`, because the second press of a button that already did
@@ -170,6 +170,11 @@ date; `createdAt` is the only sortable header, default `createdAt desc`; the sta
 default, because problems arrive continuously while streams run), search, stream picker, width reset,
 clear-all. The date range is the one control too wide for the card head, so it is a row of its own in
 the card body above the tag row and the table - the `ConnectionLogsPage` placement.
+
+The stream's name is a link into that stream's own edit form (`/admin/video-streams/{id}`) for an
+operator holding `editStreams`, and plain text for a reader without it. It is the same address the
+connection log's stream cell opens, built from the streams table's menu item rather than a copied
+segment - no query parameter and no change to the streams page itself.
 
 A visitor without `viewStreams` draws the card's title and the `noPermission` alert in place of the
 toolbar, filters and table, and the journal query is disabled so the screen does not spend a request
