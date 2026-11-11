@@ -1,6 +1,13 @@
 import { Button, Space, Tag, Tooltip, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { CopyOutlined, DeleteOutlined, EditOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  ReloadOutlined,
+  SendOutlined,
+  UsbOutlined,
+} from '@ant-design/icons'
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import type { Subscription } from '../types'
@@ -20,10 +27,11 @@ import { useSubscriptionsListActions } from './SubscriptionsListContext'
  * does not hold, and only the ones the effective plan allows - so a subscription with a playlist
  * whose plan supports playlists and MAG but not Enigma2 offers "add MAG" and nothing else.
  *
- * **Every write button is gated on `editSubscriptions`, and copy is not.** The page is readable
- * with the view grant alone, and an operator who may only read must not be handed a button whose
- * request the server refuses - a raw 403 on a support call is worse than a greyed button with the
- * reason attached. Copying a value changes nothing, so it stays live.
+ * **Every write button is gated on `editSubscriptions`, and the reads are not.** The page is
+ * readable with the view grant alone, and an operator who may only read must not be handed a
+ * button whose request the server refuses - a raw 403 on a support call is worse than a greyed
+ * button with the reason attached. Copying a value changes nothing, and the MAG strip's
+ * journal drill-down is a read of the record of what was sent, so both stay live.
  */
 export default function SubscriptionSubrows({ subscription }: { subscription: Subscription }) {
   const { t } = useTranslation()
@@ -72,6 +80,27 @@ export default function SubscriptionSubrows({ subscription }: { subscription: Su
             label: t('subscriptions.services.change'),
             icon: <EditOutlined />,
             run: () => actions.changeMac(subscription, 'mag'),
+          },
+          // The two device actions, between "Change" and "Delete": reading what was sent to the
+          // device and sending one now. The journal is a read, so it is drawn live for a
+          // view-only operator; the send is a write, so the strip's own gate greys it with the
+          // refusal reason.
+          {
+            key: 'magEvents',
+            label: t('subscriptions.actions.magEvents'),
+            icon: <UsbOutlined />,
+            gated: false,
+            run: () => actions.magEvents(subscription),
+          },
+          {
+            key: 'sendEvent',
+            label: t('subscriptions.actions.sendEvent'),
+            icon: <SendOutlined />,
+            // No `needsMagMac` guard: this strip is drawn only inside the `magMac !== null`
+            // branch, so a device is always present here and a client-side check would be dead
+            // code. The refusal stays on the server (`mag_device_missing`), which is the defense
+            // for an address cleared between this list read and the click.
+            run: () => actions.sendEvent(subscription),
           },
           {
             key: 'delete',
@@ -194,6 +223,8 @@ function ServiceStrip({
     label: string
     icon: ReactNode
     danger?: boolean
+    /** Whether the action needs `editSubscriptions`. Defaults to true; a read leaves it out. */
+    gated?: boolean
     run: () => void
   }[]
 }) {
@@ -207,21 +238,27 @@ function ServiceStrip({
       <Tooltip title={t('subscriptions.services.copy')}>
         <Button size="small" type="text" icon={<CopyOutlined />} onClick={onCopy} />
       </Tooltip>
-      {extra.map((action) => (
-        <Fragment key={action.key}>
-          {hinted(
-            canEdit ? action.label : t('subscriptions.noPermission'),
-            <Button
-              size="small"
-              type="text"
-              danger={action.danger}
-              icon={action.icon}
-              disabled={!canEdit}
-              onClick={action.run}
-            />,
-          )}
-        </Fragment>
-      ))}
+      {extra.map((action) => {
+        // A gated action is a write: without the grant it is drawn disabled with the reason.
+        // An ungated one is a read and is always live, like the copy button above.
+        const disabled = action.gated === false ? false : !canEdit
+
+        return (
+          <Fragment key={action.key}>
+            {hinted(
+              disabled ? t('subscriptions.noPermission') : action.label,
+              <Button
+                size="small"
+                type="text"
+                danger={action.danger}
+                icon={action.icon}
+                disabled={disabled}
+                onClick={action.run}
+              />,
+            )}
+          </Fragment>
+        )
+      })}
     </Space>
   )
 }

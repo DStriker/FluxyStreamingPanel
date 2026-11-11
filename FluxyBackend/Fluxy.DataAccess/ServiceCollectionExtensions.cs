@@ -111,6 +111,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IUserLogRepository, UserLogRepository>();
             services.AddScoped<IApiRequestFailureRepository, ApiRequestFailureRepository>();
             services.AddScoped<IStreamProblemRepository, StreamProblemRepository>();
+            services.AddScoped<IMagEventRepository, MagEventRepository>();
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();

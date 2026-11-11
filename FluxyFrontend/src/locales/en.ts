@@ -242,6 +242,10 @@ const en = {
       // and the card now agree instead of the menu keeping the old "Subscription activity".
       liveConnections: 'Live connections',
       subscriptionActivity: 'Connection logs',
+      // The MAG event journal, after the two connection logs: it is the record of what was
+      // *sent to* a device rather than what a device then watched. Named for what the table
+      // holds, and its address mirrors the backend's own route (`admin/mag-events`).
+      magEvents: 'MAG events',
       tariffPlans: 'Tariff plans',
       profile: 'Profile',
       // The visit history. Named for what it lists rather than for "sessions", because the
@@ -2224,9 +2228,31 @@ const en = {
       // on `editSubscriptions`, because looking at what a subscription was used for changes
       // nothing.
       showActivity: 'Show activity',
+      // The two MAG device actions. Reading the journal is reading the subscription, so its
+      // drill-down is not gated on `editSubscriptions`; sending an event is a change to what
+      // the subscription surface holds, so it is.
+      magEvents: 'MAG events',
+      sendEvent: 'Send an event to the device',
       killConnections: 'Kill active connections (not available yet)',
       blockOwner: 'Block the owner',
       delete: 'Delete',
+    },
+    // The send-event dialog, opened from one subscription's row. Its event names and its
+    // message rule mirror the server's `MagEventRules`.
+    sendEvent: {
+      title: 'Send a MAG event',
+      // The sentence that names the subscription the dialog is about: the same six operations
+      // look identical on every row, and the operator may have arrived from a long list.
+      target: 'Subscription of {{name}}',
+      submit: 'Send',
+      eventLabel: 'Event',
+      eventRequired: 'Choose an event.',
+      messageLabel: 'Message',
+      messageRequired: 'Enter the message the device should show.',
+      channelLabel: 'Channel',
+      channelRequired: 'Choose a channel.',
+      // The reason the row's button is greyed without a device.
+      needsMagMac: 'This subscription has no MAG device to send to.',
     },
     // The service subrows. Each strip names the service it is about, then its actions.
     services: {
@@ -2662,6 +2688,78 @@ const en = {
     clearConfirmOk: 'Clear all',
     noPermission: 'Your group does not allow this.',
   },
+  // The MAG event journal: every event sent to a subscription's device, which operation it
+  // was, what it carried and whether the device confirmed it. Its own block rather than keys
+  // under `subscriptions`, because the journal is a resource of its own behind the
+  // subscription grant pair (`viewSubscriptions` reads it, `editSubscriptions` wipes it and
+  // sends from the subscriptions table) even though the menu item sits in that group.
+  magEvents: {
+    title: 'MAG events',
+    // The five columns. The device address is drawn in monospace and links back to the
+    // subscription it belongs to; the message is the operation's payload and therefore the
+    // widest and the one the search matches beside the address.
+    columns: {
+      mac: 'MAG MAC',
+      event: 'Event',
+      message: 'Message',
+      status: 'Status',
+      date: 'Date',
+    },
+    // The six operations, keyed by their wire names: one literal `t()` per value, so the
+    // picker's membership and the label's spelling come from the same list.
+    events: {
+      playChannel: 'Play a channel',
+      closePortal: 'Close the portal',
+      reloadPortal: 'Reload the portal',
+      rebootDevice: 'Reboot the device',
+      sendMessage: 'Send a message',
+      resetStbLock: 'Reset the STB lock',
+    },
+    // The two confirmation states, drawn as tags: confirmed by the device, or still waiting.
+    statuses: {
+      confirmed: 'Confirmed',
+      notConfirmed: 'Not confirmed',
+    },
+    searchLabel: 'Search by message or MAC address',
+    searchPlaceholder: 'Message or MAC address',
+    // The operation picker's own name while nothing is chosen.
+    filterAnyEvent: 'Any event',
+    // The date range: one accessible name on the pair and the two sides' placeholders. It
+    // filters on when the event was recorded.
+    filterDateRange: 'Date range',
+    filterDateFrom: 'Date from',
+    filterDateTo: 'Date to',
+    // The active filters as closable tags. The range is one control over two parameters, so
+    // its tag names both ends in one label; a single-sided range names only the side that is
+    // set. The subscription tag names the drill-down that arrived with an identifier. The
+    // search is deliberately not a tag - its own box is where it is read and cleared.
+    filters: {
+      event: 'Event: {{value}}',
+      subscription: 'Subscription: {{value}}',
+      dateRange: 'Date: {{from}} – {{to}}',
+      dateRangeFrom: 'Date from: {{from}}',
+      dateRangeTo: 'Date to: {{to}}',
+    },
+    empty: 'No MAG events yet.',
+    noMatches: 'No MAG events match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh control, worded as the other logs' is: the action and the interval,
+    // because the button is icon-only and this string is its whole accessible name.
+    pauseRefresh: 'Pause auto refresh',
+    resumeRefresh: 'Resume auto refresh',
+    autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+    // The whole-table clear. The dialog states the scope - every subscription and every
+    // operation, whatever the filters show - because the button's words are a promise about
+    // the log.
+    clearAll: 'Clear the logs',
+    clearConfirmTitle: 'Clear the whole MAG event log?',
+    clearConfirmBody:
+      'Every MAG event will be removed – for every subscription and every operation, regardless of the filters on screen. This cannot be undone.',
+    clearConfirmOk: 'Clear all',
+    noPermission: 'Your group does not allow this.',
+  },
   // The add and edit form for one subscription. Its own block because the table names what a row
   // is and the form names what an operator is being asked to type.
   subscriptionsForm: {
@@ -3021,6 +3119,14 @@ const en = {
       // The stream problem log's one write, worded the same way: the command wipes the
       // table, and the sentence says every entry went rather than naming a row.
       stream_problems_cleared: 'Every stream problem entry has been deleted.',
+      // The MAG event journal's one send and its one wipe. The send is a success about a device
+      // - "sent" rather than "recorded", because that is what the operator asked for - and the
+      // wipe is worded like every other log's.
+      mag_event_sent: 'The event has been sent to the MAG device.',
+      mag_events_cleared: 'Every MAG event entry has been deleted.',
+      // The subscription has no device, so there is nowhere to send to. A fact about the row
+      // rather than a malformed field, which is why it has a code of its own.
+      mag_device_missing: 'The subscription has no MAG device to send to.',
       video_on_demand_import_completed: 'The playlist has been imported.',
       video_on_demand_import_empty: 'The uploaded file is empty.',
       video_on_demand_import_hls:

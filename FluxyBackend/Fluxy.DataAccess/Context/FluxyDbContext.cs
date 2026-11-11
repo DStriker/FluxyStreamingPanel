@@ -235,6 +235,12 @@ namespace Fluxy.DataAccess.Context
         public DbSet<StreamProblemEntity> StreamProblems => Set<StreamProblemEntity>();
 
         /// <summary>
+        /// Events sent to MAG devices: which subscription, which operation, and whether the device
+        /// has confirmed it.
+        /// </summary>
+        public DbSet<MagEventEntity> MagEvents => Set<MagEventEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

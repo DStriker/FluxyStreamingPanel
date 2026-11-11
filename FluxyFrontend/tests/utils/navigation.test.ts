@@ -39,6 +39,10 @@ describe('groupKeyForPath', () => {
     expect(groupKeyForPath('Admin', '/admin/dashboard')).toBe('overview')
     expect(groupKeyForPath('Admin', '/admin/users')).toBe('users')
     expect(groupKeyForPath('Admin', '/admin/subscriptions')).toBe('subscriptions')
+    // The MAG event log is a menu item of the subscriptions group, so the group stays open on
+    // its own address even though the address mirrors the backend's route rather than nesting
+    // under the group's prefix.
+    expect(groupKeyForPath('Admin', '/admin/mag-events')).toBe('subscriptions')
     expect(groupKeyForPath('Admin', '/admin/video-streams/categories')).toBe('videoStreams')
     expect(groupKeyForPath('Client', '/client/sessions/active')).toBe('account')
   })

@@ -59,6 +59,7 @@ import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
 import UserLogsPage from '../src/pages/admin/UserLogsPage'
 import ApiRequestFailuresPage from '../src/pages/admin/ApiRequestFailuresPage'
 import StreamProblemsPage from '../src/pages/admin/StreamProblemsPage'
+import MagEventsPage from '../src/pages/admin/MagEventsPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import {
@@ -97,6 +98,15 @@ import {
   columnWidthTotal as streamProblemColumnWidthTotal,
   sortFieldOf as streamProblemSortFieldOf,
 } from '../src/features/stream-problems/layout'
+import {
+  COLUMN_KEYS as MAG_EVENT_COLUMN_KEYS,
+  DEFAULT_COLUMN_WIDTHS as MAG_EVENT_WIDTHS,
+  TABLE_WIDTH as MAG_EVENT_TABLE_WIDTH,
+  columnWidthTotal as magEventColumnWidthTotal,
+  sortFieldOf as magEventSortFieldOf,
+} from '../src/features/mag-events/layout'
+import { MAG_EVENT_TYPES } from '../src/features/mag-events/events'
+import { actionsColumnWidth } from '../src/utils/tableWidths'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -2194,9 +2204,9 @@ async function main() {
   )
 
   check(
-    'the subscriptions section carries the add form, the management list, the price list and the two log entries',
+    'the subscriptions section carries the add form, the management list, the price list and the three log entries',
     subscriptionItemKeys.join(',') ===
-      'subscriptionsAdd,subscriptionsManage,tariffPlans,liveConnections,subscriptionActivity',
+      'subscriptionsAdd,subscriptionsManage,tariffPlans,liveConnections,subscriptionActivity,magEvents',
     `the section reads ${subscriptionItemKeys.join(', ')}`,
   )
 
@@ -2790,6 +2800,17 @@ async function main() {
     `${subscriptionCols.length} columns: [${subscriptionWidths.join(', ')}] = ${subscriptionTotal}px`,
   )
 
+  // The actions column is measured rather than chosen: exactly as wide as the six buttons a
+  // row draws. The count is the formula's whole input, and it has been left behind once before
+  // (a five-button width under a six-button row clipped "Show activity"), so both halves are
+  // pinned: the page's own source names six, and the rendered last column is that width.
+  check(
+    'the subscriptions actions column is exactly as wide as the six buttons a row draws',
+    /actionsColumnWidth\(6\)/.test(subscriptionsPageSource) &&
+      subscriptionWidths[6] === String(actionsColumnWidth(6)),
+    `actions column ${subscriptionWidths[6]}, actionsColumnWidth(6) = ${actionsColumnWidth(6)}`,
+  )
+
   // The two connection columns are read as one sentence ("3 of 5"), so the owner asked for them
   // to be the same width. Their positions are the 3rd and 4th of the page's own six (the
   // selection column shifts them to 4 and 5 in the rendered `<colgroup>`), and a pair that
@@ -2942,10 +2963,11 @@ async function main() {
     `rendered ${subscriptionFormHtml.length} bytes`,
   )
 
-  // Every write button on a service strip is gated on `editSubscriptions`, and copy is not: a
-  // view-only operator must see a greyed control with the reason rather than a live button whose
-  // request the server refuses. `probe:render` lands before `getProfile` answers, so `canEdit` is
-  // false here - which is exactly the read-only state this asserts.
+  // Every write button on a service strip is gated on `editSubscriptions`, and the two reads -
+  // copy and the MAG journal drill-down - are not: a view-only operator must see a greyed
+  // control with the reason rather than a live button whose request the server refuses.
+  // `probe:render` lands before `getProfile` answers, so `canEdit` is false here - which is
+  // exactly the read-only state this asserts.
   const subrows = renderToStaticMarkup(
     withQuery(
       <AntApp>
@@ -2986,6 +3008,10 @@ async function main() {
       subrows.includes('0123456789abcdef0123456789abcdef') &&
       subrows.includes('MAG') &&
       subrows.includes('AA:BB:CC:DD:EE:FF') &&
+      // The MAG strip carries the two device actions between Change and Delete, drawn from
+      // their own glyphs: the journal's drill-down and the send-event trigger.
+      subrows.includes('anticon-usb') &&
+      subrows.includes('anticon-send') &&
       // The add line offers the missing Enigma2 device and nothing else, because the playlist and
       // the MAG are attached.
       subrows.includes('Add Enigma2') &&
@@ -2996,10 +3022,44 @@ async function main() {
 
   check(
     'every write button on a strip is disabled for a view-only operator',
-    // Two services are attached, so exactly two buttons stay live - the two copy buttons, which
-    // change nothing. Every regenerate, change, delete and add button carries `disabled`.
-    [...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length === 2,
+    // Two services are attached, so exactly three buttons stay live: the two copy buttons,
+    // which change nothing, and the MAG strip's journal drill-down, which is a read like them.
+    // Every regenerate, change, send, delete and add button carries `disabled`.
+    [...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length === 3,
     `live buttons: ${[...subrows.matchAll(/<button[^>]*>/g)].filter((m) => !m[0].includes('disabled')).length}`,
+  )
+
+  // The MAG strip's two device actions sit **between "Change" and "Delete"**, in that order:
+  // the journal first, the send second. The labels live in tooltips, which a static render
+  // never opens, so the order is read off the strip's own source - the keys are the only
+  // stable spelling of an icon-only button.
+  const subscriptionSubrowsSource = readFileSync(
+    'src/features/subscriptions/components/SubscriptionSubrows.tsx',
+    'utf8',
+  )
+  const magStripBlock =
+    /key="mag"([\s\S]*?)key="enigma2"/.exec(subscriptionSubrowsSource)?.[1] ?? ''
+  const magStripActionKeys = [...magStripBlock.matchAll(/key: '([A-Za-z-]+)',/g)].map(
+    (match) => match[1],
+  )
+  const sendEventBlock =
+    /key: 'sendEvent'([\s\S]*?)key: 'delete'/.exec(magStripBlock)?.[1] ?? ''
+  check(
+    'the MAG subrow runs Change, MAG events, Send event, Delete in that order',
+    magStripActionKeys.join(',') === 'change,magEvents,sendEvent,delete' &&
+      // Both buttons carry the row-action label keys, and only the journal's is ungated: it is
+      // a read of the record of what was sent, while sending is a change to the subscription.
+      magStripBlock.includes("t('subscriptions.actions.magEvents')") &&
+      magStripBlock.includes("t('subscriptions.actions.sendEvent')") &&
+      /key: 'magEvents',[\s\S]{0,220}?gated: false/.test(magStripBlock) &&
+      sendEventBlock.includes('run: () => actions.sendEvent(subscription)') &&
+      !sendEventBlock.includes('gated: false') &&
+      // The page owns the dialog state and refuses a row whose device vanished between the
+      // read and the click - the defence the server's `mag_device_missing` also states.
+      /sendEvent: \(subscription\) => \{[\s\S]{0,240}?subscription\.magMac === null[\s\S]{0,240}?setSendEventTarget/.test(
+        subscriptionsPageSource,
+      ),
+    `MAG strip actions: ${magStripActionKeys.join(', ') || 'none found'}`,
   )
 
   // The expiry field, rendered with a **populated** value. This is the regression check for the
@@ -3573,6 +3633,18 @@ async function main() {
     'the Show activity action opens the activity page filtered by that subscription',
     subscriptionsPageSource.includes('/connection-logs?subscriptionId=${subscription.id}'),
     'the drill-down target is missing from the subscriptions page',
+  )
+
+  check(
+    'the MAG events action opens the journal filtered by that subscription',
+    // The journal's own address mirrors the backend's route, so the drill-down is a link into
+    // `/admin/mag-events?subscriptionId=…` rather than a second filter on this table.
+    subscriptionsPageSource.includes('/mag-events?subscriptionId=${subscription.id}'),
+    `drill-down ${
+      subscriptionsPageSource.includes('/mag-events?subscriptionId=${subscription.id}')
+        ? 'drawn'
+        : 'MISSING'
+    } on the subscriptions page`,
   )
 
   // --- The reseller credit log ------------------------------------------------
@@ -4693,6 +4765,356 @@ async function main() {
     `items: ${streamProblemItemKeys.join(', ')}; opens ${menuPath('Admin', 'stream-problems')}, route ${streamProblemLeaf?.path ?? 'nothing'}, module ${streamProblemModule?.default?.name ?? 'nothing'}`,
   )
 
+  // --- The MAG event journal ---------------------------------------------------
+  //
+  // Its own page behind `nav.items.magEvents`, last in the `subscriptions` group and at
+  // `/admin/mag-events` rather than under the section's prefix: the address mirrors the
+  // backend's route, the credit-logs/api-request-failures/stream-problems treatment.
+  //
+  // The heading, the five column headers and the toolbar all appear before the first answer -
+  // the table is drawn empty under a spinner - so a static render is exactly the state to
+  // assert them in. A row's own cells need the answer, so they are rendered from a seeded
+  // cache below; the send dialog itself is a portal, which `renderToStaticMarkup` never opens,
+  // so its mount and its "no flag controls" shape are read off the two sources instead.
+  const magEventsHtml = renderToStaticMarkup(
+    withRouter('/admin/mag-events', withQuery(
+      <AntApp>
+        <MagEventsPage sectionKey="nav.items.magEvents" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the MAG event journal draws its heading and its table before any entries arrive',
+    magEventsHtml.includes('>MAG events<') &&
+      magEventsHtml.includes('ant-table') &&
+      !magEventsHtml.includes('nav.items.magEvents'),
+    `rendered ${magEventsHtml.length} bytes with the journal still being fetched`,
+  )
+
+  // The page's own source, read once here because two checks below assert things no static
+  // render can draw: the send dialog's mount condition and the clear command's gate.
+  const magEventsPageSource = readFileSync('src/pages/admin/MagEventsPage.tsx', 'utf8')
+
+  // The five headers in the order the row reads, and the two bundles behind them: the render
+  // runs in `en`, so `ru` is read through `i18n.getResource` - a key present in neither file is
+  // the one failure no type or render can see.
+  check(
+    'the MAG event journal draws MAC, Event, Message, Status and Date in that order',
+    ['MAG MAC', 'Event', 'Message', 'Status', 'Date'].every((heading) =>
+      magEventsHtml.includes(`>${heading}<`),
+    ) &&
+      magEventsHtml.indexOf('>MAG MAC<') < magEventsHtml.indexOf('>Event<') &&
+      magEventsHtml.indexOf('>Event<') < magEventsHtml.indexOf('>Message<') &&
+      magEventsHtml.indexOf('>Message<') < magEventsHtml.indexOf('>Status<') &&
+      magEventsHtml.indexOf('>Status<') < magEventsHtml.indexOf('>Date<') &&
+      i18n.getResource('en', 'translation', 'magEvents.title') === 'MAG events' &&
+      i18n.getResource('ru', 'translation', 'magEvents.title') === 'События MAG' &&
+      i18n.getResource('ru', 'translation', 'magEvents.columns.mac') === 'MAC-адрес MAG' &&
+      i18n.getResource('ru', 'translation', 'magEvents.columns.event') === 'Событие' &&
+      i18n.getResource('ru', 'translation', 'magEvents.columns.message') === 'Сообщение' &&
+      i18n.getResource('ru', 'translation', 'magEvents.columns.status') === 'Статус' &&
+      i18n.getResource('ru', 'translation', 'magEvents.columns.date') === 'Дата',
+    `five headings: ${['MAG MAC', 'Event', 'Message', 'Status', 'Date']
+      .map((heading) => `${heading}@${magEventsHtml.indexOf(`>${heading}<`)}`)
+      .join(', ')}`,
+  )
+
+  // The five widths, in order, from the `<colgroup>` antd draws - and the sum that keeps this
+  // table beside every other administration table. The actions column this page does not have
+  // is why the width reset is the last measurement-shaped control instead.
+  const magEventCols = [...magEventsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const magEventWidths = magEventCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const magEventTotal = magEventWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  check(
+    'the MAG event journal is fixed-layout with five columns totalling 1190, in order',
+    /table-layout:\s*fixed/.test(magEventsHtml) &&
+      magEventWidths.join(',') === '180,170,520,120,200' &&
+      magEventTotal === MAG_EVENT_TABLE_WIDTH &&
+      magEventColumnWidthTotal(MAG_EVENT_WIDTHS) === MAG_EVENT_TABLE_WIDTH &&
+      MAG_EVENT_TABLE_WIDTH === 1190 &&
+      MAG_EVENT_COLUMN_KEYS.join(',') === 'mac,event,message,status,date' &&
+      // The endpoint orders by one field alone, and every column key maps to it.
+      magEventSortFieldOf('createdAt') === 'createdAt' &&
+      magEventSortFieldOf('mac') === 'createdAt',
+    `${magEventCols.length} columns: [${magEventWidths.join(', ')}] = ${magEventTotal}px`,
+  )
+
+  // The toolbar order, the way the other logs read it: auto-refresh (an icon whose accessible
+  // name says which action it performs, ON by default so the fresh render says "Pause"),
+  // search, the operation picker, the width reset and the clear command. Both the clear
+  // button's greyed state and its reason are the permission-less branch of a fresh render -
+  // the profile has not answered yet.
+  const magEventRefreshAt = magEventsHtml.indexOf('Pause auto refresh')
+  check(
+    'the MAG event journal toolbar runs auto-refresh (on by default), search, the event picker, width reset and clear',
+    magEventRefreshAt !== -1 &&
+      magEventsHtml.includes('Search by message or MAC address') &&
+      magEventsHtml.includes('Any event') &&
+      magEventsHtml.includes('aria-label="Reset widths"') &&
+      magEventsHtml.includes('Clear the logs') &&
+      magEventRefreshAt < magEventsHtml.indexOf('Search by message or MAC address') &&
+      magEventsHtml.indexOf('Search by message or MAC address') <
+        magEventsHtml.indexOf('Any event') &&
+      magEventsHtml.indexOf('Any event') < magEventsHtml.indexOf('aria-label="Reset widths"') &&
+      magEventsHtml.indexOf('aria-label="Reset widths"') <
+        magEventsHtml.indexOf('Clear the logs'),
+    `refresh@${magEventRefreshAt}, search@${magEventsHtml.indexOf('Search by message or MAC address')}, picker@${magEventsHtml.indexOf('Any event')}, clear@${magEventsHtml.indexOf('Clear the logs')}`,
+  )
+
+  // The date range is the one control too wide for the card head, so it is a row of its own in
+  // the card body - after the card head (whose last control is "Clear the logs") and before
+  // the table. Index order is enough: head, then the picker, then the table.
+  check(
+    'the MAG event journal draws the date range on its own row between the card head and the table',
+    magEventsHtml.includes('ant-picker-range') &&
+      magEventsHtml.indexOf('Date from') > magEventsHtml.indexOf('Clear the logs') &&
+      magEventsHtml.indexOf('Date from') > magEventsHtml.indexOf('ant-card-body') &&
+      magEventsHtml.indexOf('Date from') < magEventsHtml.indexOf('ant-table'),
+    `range@${magEventsHtml.indexOf('Date from')}, clear@${magEventsHtml.indexOf('Clear the logs')}, body@${magEventsHtml.indexOf('ant-card-body')}, table@${magEventsHtml.indexOf('ant-table')}`,
+  )
+
+  // The row's own cells - a MAC link, the localized operation, the payload, the tone of the
+  // status tag - are drawn by column `render`s, which run only when a row exists. Two renders
+  // from a seeded cache, the stream problem log's treatment: one row with a device and one
+  // without, because the dash branch is the one a null join produces.
+  const magEventProbeRow = {
+    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    subscriptionId: '11111111-1111-1111-1111-111111111111',
+    magMac: 'AA:BB:CC:DD:EE:FF',
+    eventType: 'sendMessage',
+    message: 'Hello from the operator',
+    status: 'notConfirmed',
+    createdAt: '2026-05-01T10:00:00Z',
+  }
+  const magEventNoDeviceRow = {
+    ...magEventProbeRow,
+    id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+    magMac: null,
+    eventType: 'rebootDevice',
+    message: null,
+    status: 'confirmed',
+  }
+  const magEventsSession = {
+    userId: '1',
+    username: 'root',
+    role: 'Admin',
+    refresh: async () => null,
+  }
+  const renderMagEventsSeeded = (permissions) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['profile'], {
+      username: 'probeadmin',
+      email: 'probeadmin@localhost',
+      role: 'Admin',
+      permissions,
+      credits: 0,
+      timeZone: null,
+      geoProtectionEnabled: false,
+      bindSessionToIp: false,
+      allowedIps: [],
+      allowedCountry: null,
+      allowedAutonomousSystemNumber: null,
+    })
+    client.setQueryData(
+      [
+        'magEvents',
+        {
+          page: 1,
+          pageSize: 20,
+          search: '',
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
+          event: null,
+          subscriptionId: null,
+          dateFrom: null,
+          dateTo: null,
+        },
+      ],
+      { items: [magEventProbeRow, magEventNoDeviceRow], total: 2, page: 1, pageSize: 20 },
+    )
+
+    return renderToStaticMarkup(
+      withRouter(
+        '/admin/mag-events',
+        <QueryClientProvider client={client}>
+          <AntApp>
+            <SessionContext.Provider value={magEventsSession}>
+              <MagEventsPage sectionKey="nav.items.magEvents" />
+            </SessionContext.Provider>
+          </AntApp>
+        </QueryClientProvider>,
+      ),
+    )
+  }
+  const readableMagEventsHtml = renderMagEventsSeeded(['viewSubscriptions'])
+  const writableMagEventsHtml = renderMagEventsSeeded([
+    'viewSubscriptions',
+    'editSubscriptions',
+  ])
+  const magEventSubscriptionHref = `${menuItemPath('Admin', 'subscriptionsManage')}/11111111-1111-1111-1111-111111111111`
+  check(
+    'the MAC cell links the device back to its subscription and draws the address in monospace',
+    // The link is a `Typography.Link` with an `onClick`, the same click-through the connection
+    // logs draw - it is not an `href`, because the address is built from the session's role at
+    // click time rather than from a copied segment. What a static render can see is the
+    // monospace address inside a link, and what the page's source names is the target.
+    /<a[^>]*>[\s\S]{0,200}?<code>AA:BB:CC:DD:EE:FF<\/code>/.test(readableMagEventsHtml) &&
+      magEventsPageSource.includes(
+        '`${area}/subscriptions/${row.subscriptionId}`',
+      ) &&
+      // The row with no device draws a dash rather than a link to nowhere.
+      !readableMagEventsHtml.includes('dddddddd-dddd-dddd-dddd-dddddddddddd</a>') &&
+      magEventsPageSource.includes("return <Typography.Text type=\"secondary\">{DASH}</Typography.Text>"),
+    `link ${readableMagEventsHtml.includes('AA:BB:CC:DD:EE:FF') ? 'drawn' : 'MISSING'}, target ${
+      magEventSubscriptionHref
+    }`,
+  )
+  check(
+    'the event and status cells read as localized words and the tag carries the state’s tone',
+    readableMagEventsHtml.includes('Send a message') &&
+      readableMagEventsHtml.includes('Reboot the device') &&
+      readableMagEventsHtml.includes('Hello from the operator') &&
+      readableMagEventsHtml.includes('Not confirmed') &&
+      readableMagEventsHtml.includes('Confirmed') &&
+      // antd renders a semantic tag colour as its own class: success for confirmed, warning
+      // for not confirmed. A pair of tags that silently swapped would read perfectly otherwise.
+      readableMagEventsHtml.includes('ant-tag-success') &&
+      readableMagEventsHtml.includes('ant-tag-warning'),
+    `rendered ${readableMagEventsHtml.length} bytes with both rows`,
+  )
+  check(
+    'the clear command is gated on editSubscriptions and never on the data',
+    // The read-only render carries the greyed command with its reason; the writable one carries
+    // the live danger button. Neither branch mentions `total` or `items` - the button is a
+    // promise about the journal, not about the rows the filters admit - so the gate is read off
+    // the page's source as well, where the two facts are stated once.
+    readableMagEventsHtml.includes('Clear the logs') &&
+      writableMagEventsHtml.includes('Clear the logs') &&
+      /canClear \? \(/.test(magEventsPageSource) &&
+      /const canClear = granted\.includes\('editSubscriptions'\)/.test(magEventsPageSource) &&
+      !/disabled=\{[^}]*(total|items|journal)/.test(magEventsPageSource),
+    `readable button drawn: ${readableMagEventsHtml.includes('Clear the logs')}`,
+  )
+
+  // A profile without `viewSubscriptions` gets the refusal alert alone, under the card title:
+  // the address still names the page, and an empty table would describe a journal that exists.
+  const refusedMagEventsHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/mag-events',
+      withSeededQuery(
+        ['profile'],
+        {
+          username: 'probeadmin',
+          email: 'probeadmin@localhost',
+          role: 'Admin',
+          permissions: [],
+          credits: 0,
+          timeZone: null,
+          geoProtectionEnabled: false,
+          bindSessionToIp: false,
+          allowedIps: [],
+          allowedCountry: null,
+          allowedAutonomousSystemNumber: null,
+        },
+        <AntApp>
+          <MagEventsPage sectionKey="nav.items.magEvents" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'a profile without viewSubscriptions draws the refusal alert alone, under the card title',
+    refusedMagEventsHtml.includes('>MAG events<') &&
+      refusedMagEventsHtml.includes('Your group does not allow this.') &&
+      !refusedMagEventsHtml.includes('ant-table') &&
+      !refusedMagEventsHtml.includes('Any event'),
+    `rendered ${refusedMagEventsHtml.length} bytes with the read refused`,
+  )
+
+  // The send dialog is a `Modal`, whose portal `renderToStaticMarkup` never opens - so what is
+  // asserted is what a static render *can* see of it: the page mounts it only for an open row,
+  // and neither source invents a flag the server resolves.
+  const sendEventModalSource = readFileSync(
+    'src/features/mag-events/components/SendEventModal.tsx',
+    'utf8',
+  )
+  check(
+    'the send dialog is mounted only while a row is chosen, and offers no flag controls',
+    /sendEventTarget !== null &&[\s\S]{0,240}?<SendEventModal/.test(subscriptionsPageSource) &&
+      /const \[sendEventTarget, setSendEventTarget\] = useState<SendEventTarget \| null>\(null\)/.test(
+        subscriptionsPageSource,
+      ) &&
+      sendEventModalSource.includes("t('subscriptions.sendEvent.title')") &&
+      sendEventModalSource.includes('name="event"') &&
+      sendEventModalSource.includes('name="message"') &&
+      // The six wire operations are the picker's options, with no default: an operation is a
+      // decision, and a preselected one would let "Send" record something nobody chose.
+      sendEventModalSource.includes('MAG_EVENT_TYPES.map') &&
+      // No flag is a control: the words may appear in the module's own explanation of why they
+      // are absent, but no `Form.Item`, switch or input may name one.
+      !/name="(needConfirm|rebootAfterOk|autoHideTimeout|additionalServicesOn|anec|vclub)"/.test(
+        sendEventModalSource,
+      ) &&
+      !/Form\.Item[^\n]*(needConfirm|rebootAfterOk|autoHideTimeout|additionalServicesOn|anec|vclub)/.test(
+        sendEventModalSource,
+      ),
+    'a dialog that offers a server-resolved flag, or one that mounts without a row',
+  )
+
+  // The menu entry: last in the `subscriptions` group, one past the activity log, the address
+  // mirroring the backend's route, and a real page behind the loader. The order is the owner's
+  // - the journal is the record of what was sent, so it follows the two logs of what was then
+  // watched.
+  const magEventGroup = NAVIGATION.Admin.find((group) => group.key === 'subscriptions')
+  const magEventItemKeys = (magEventGroup?.items ?? []).map((item) => item.key)
+  const magEventItem = magEventGroup?.items.find((item) => item.key === 'magEvents')
+  const magEventModule = magEventItem?.page ? await magEventItem.page() : null
+  const magEventMatch = matchRoutes(routeTable, '/admin/mag-events')
+  const magEventLeaf = magEventMatch?.[magEventMatch.length - 1]?.route
+  check(
+    'the subscriptions group ends with the MAG event journal, opening the real page at its mirrored address',
+    magEventItemKeys.join(',') ===
+      'subscriptionsAdd,subscriptionsManage,tariffPlans,liveConnections,subscriptionActivity,magEvents' &&
+      magEventItem?.path === 'mag-events' &&
+      menuPath('Admin', 'mag-events') === '/admin/mag-events' &&
+      magEventItem?.labelKey === 'nav.items.magEvents' &&
+      Boolean(i18n.getResource('en', 'translation', 'nav.items.magEvents')) &&
+      Boolean(i18n.getResource('ru', 'translation', 'nav.items.magEvents')) &&
+      magEventModule?.default === MagEventsPage &&
+      magEventLeaf?.path === 'mag-events' &&
+      magEventLeaf?.path !== '*',
+    `items: ${magEventItemKeys.join(', ')}; opens ${menuPath('Admin', 'mag-events')}, route ${magEventLeaf?.path ?? 'nothing'}, module ${magEventModule?.default?.name ?? 'nothing'}`,
+  )
+
+  // The operation vocabulary, the send rules and the three server codes, asserted as values
+  // because no render reaches a refusal that has not been asked for yet.
+  check(
+    'the MAG event vocabulary and the send rules mirror the server, and all three codes are translated',
+    MAG_EVENT_TYPES.join(',') ===
+      'playChannel,closePortal,reloadPortal,rebootDevice,sendMessage,resetStbLock' &&
+      ['en', 'ru'].every((lng) =>
+        MAG_EVENT_TYPES.every((event) =>
+          Boolean(i18n.getResource(lng, 'translation', `magEvents.events.${event}`)),
+        ),
+      ) &&
+      i18n.getResource('en', 'translation', 'magEvents.events.playChannel') === 'Play a channel' &&
+      i18n.getResource('ru', 'translation', 'magEvents.events.resetStbLock') ===
+        'Сбросить STB-блокировку' &&
+      i18n.getResource('en', 'translation', 'magEvents.statuses.confirmed') === 'Confirmed' &&
+      i18n.getResource('ru', 'translation', 'magEvents.statuses.notConfirmed') ===
+        'Не подтверждено' &&
+      i18n.getResource('en', 'translation', 'messages.api.mag_event_sent') ===
+        'The event has been sent to the MAG device.' &&
+      Boolean(i18n.getResource('ru', 'translation', 'messages.api.mag_event_sent')) &&
+      Boolean(i18n.getResource('en', 'translation', 'messages.api.mag_events_cleared')) &&
+      Boolean(i18n.getResource('ru', 'translation', 'messages.api.mag_events_cleared')) &&
+      Boolean(i18n.getResource('en', 'translation', 'messages.api.mag_device_missing')) &&
+      Boolean(i18n.getResource('ru', 'translation', 'messages.api.mag_device_missing')),
+    `${MAG_EVENT_TYPES.length} operations, three codes`,
+  )
+
   // --- Feature isolation -------------------------------------------------------
   //
   // A feature imports neither another feature nor a page; the shared `components/`, `hooks/`
@@ -4753,6 +5175,38 @@ async function main() {
       : `CROSS-FEATURE IMPORTS: ${streamProblemCrossImports.join(', ')}`,
   )
 
+  // The same fence over the MAG event journal's files. `SendEventModal` is the first component
+  // in this feature, and the temptation it creates is exactly the forbidden one: reading the
+  // video streams itself instead of taking the page's options.
+  const magEventFeatureFiles = [
+    'src/features/mag-events/api.ts',
+    'src/features/mag-events/events.ts',
+    'src/features/mag-events/eventRules.ts',
+    'src/features/mag-events/dateRange.ts',
+    'src/features/mag-events/layout.ts',
+    'src/features/mag-events/hooks/queries.ts',
+    'src/features/mag-events/hooks/mutations.ts',
+    'src/features/mag-events/components/SendEventModal.tsx',
+    'src/features/mag-events/types/index.ts',
+    'src/features/mag-events/types/MagEventRow.ts',
+    'src/features/mag-events/types/MagEventRowList.ts',
+    'src/features/mag-events/types/MagEventType.ts',
+    'src/features/mag-events/types/MagEventStatus.ts',
+  ]
+  const magEventCrossImports = magEventFeatureFiles.flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier.includes('/features/'))
+      .filter((specifier) => !specifier.includes('features/mag-events/')),
+  )
+  check(
+    'nothing inside the mag-events feature imports another feature',
+    magEventCrossImports.length === 0,
+    magEventCrossImports.length === 0
+      ? `${magEventFeatureFiles.length} feature files, no cross-feature imports`
+      : `CROSS-FEATURE IMPORTS: ${magEventCrossImports.join(', ')}`,
+  )
+
   const toolbarCards = [
     sessionsHtml,
     activeSessionsHtml,
@@ -4779,6 +5233,7 @@ async function main() {
     userLogsHtml,
     apiRequestFailuresHtml,
     streamProblemsHtml,
+    magEventsHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(

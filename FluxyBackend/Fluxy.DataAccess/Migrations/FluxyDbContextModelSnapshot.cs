@@ -787,6 +787,71 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("series_episodes", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.MagEventEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AdditionalServicesOn")
+                        .HasColumnType("boolean")
+                        .HasColumnName("additional_services_on");
+
+                    b.Property<bool>("Anec")
+                        .HasColumnType("boolean")
+                        .HasColumnName("anec");
+
+                    b.Property<bool>("AutoHideTimeout")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_hide_timeout");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("EventType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("event_type");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("message");
+
+                    b.Property<bool>("NeedConfirm")
+                        .HasColumnType("boolean")
+                        .HasColumnName("need_confirm");
+
+                    b.Property<bool>("RebootAfterOk")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reboot_after_ok");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<bool>("Vclub")
+                        .HasColumnType("boolean")
+                        .HasColumnName("vclub");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("SubscriptionId", "CreatedAt");
+
+                    b.ToTable("mag_events", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2017,6 +2082,15 @@ namespace Fluxy.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Series");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.MagEventEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.SubscriptionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>

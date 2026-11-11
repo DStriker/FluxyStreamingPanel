@@ -23,6 +23,10 @@ export interface SubscriptionsListActions {
   addPlaylist: (subscription: Subscription) => void
   /** Opens the MAC dialog for one device kind. */
   changeMac: (subscription: Subscription, kind: SubscriptionMacKind) => void
+  /** Opens the MAG event journal filtered to this subscription. A read, so it is never gated. */
+  magEvents: (subscription: Subscription) => void
+  /** Opens the send-event dialog for this subscription's MAG device. */
+  sendEvent: (subscription: Subscription) => void
   /** Clears the three service fields. */
   clearPlaylist: (subscription: Subscription) => void
   clearMag: (subscription: Subscription) => void
@@ -42,6 +46,8 @@ export const SubscriptionsListContext = createContext<SubscriptionsListActions>(
   regenerate: noop,
   addPlaylist: noop,
   changeMac: noop,
+  magEvents: noop,
+  sendEvent: noop,
   clearPlaylist: noop,
   clearMag: noop,
   clearEnigma2: noop,

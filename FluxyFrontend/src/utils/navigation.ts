@@ -25,6 +25,7 @@ import {
   UnorderedListOutlined,
   UserAddOutlined,
   UserOutlined,
+  UsbOutlined,
   VideoCameraOutlined,
   WalletOutlined,
   WarningOutlined,
@@ -555,6 +556,20 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.subscriptionActivity',
           icon: HistoryOutlined,
           page: () => import('../pages/admin/ConnectionLogsPage'),
+        },
+        {
+          // The record of what was sent *to* a device, after the two logs of what a device
+          // then watched: the journal answers "did it get there?", which is the question a
+          // support call asks once the connection log has shown nothing wrong.
+          //
+          // `mag-events` rather than a child of `subscriptions`: the address mirrors the
+          // backend's own route (`admin/mag-events`), so the page, the API and the menu entry
+          // name one resource the same way.
+          key: 'magEvents',
+          path: 'mag-events',
+          labelKey: 'nav.items.magEvents',
+          icon: UsbOutlined,
+          page: () => import('../pages/admin/MagEventsPage'),
         },
       ],
     },

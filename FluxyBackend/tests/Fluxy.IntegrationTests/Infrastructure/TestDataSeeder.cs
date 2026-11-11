@@ -175,11 +175,20 @@ namespace Fluxy.IntegrationTests.Infrastructure
         /// test that only needs an owner for a connection has no reason to walk the bouquet
         /// surface to get one.
         /// </remarks>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="ownerId">Account the subscription belongs to.</param>
+        /// <param name="issuerId">Account that issues it.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <param name="magMac">
+        /// Canonical MAG address to store, or null. The MAG event tests need a subscription that
+        /// has a device to send to; everything that does not care passes nothing.
+        /// </param>
         public static async Task<Guid> CreateSubscriptionAsync(
             IServiceProvider services,
             Guid ownerId,
             Guid issuerId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? magMac = null)
         {
             var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
             var unitOfWork = services.GetRequiredService<IUnitOfWork>();
@@ -190,6 +199,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
                     UserId = ownerId,
                     ResellerId = issuerId,
                     PlaylistId = Convert.ToHexStringLower(Guid.NewGuid().ToByteArray()),
+                    MagMac = magMac,
                     BouquetIds = []
                 },
                 [],
@@ -579,6 +589,62 @@ namespace Fluxy.IntegrationTests.Infrastructure
             }
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Plants MAG event rows through the Core repository, in one save.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="events">Resolved rows to stage, in the order they are given.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>The identifiers the staged rows carry, in the order they were given.</returns>
+        /// <remarks>
+        /// <para>
+        /// <b>The repository is the staging point; the production write path is the service.</b>
+        /// This feature's only production writer is <c>IMagEventService.SendAsync</c>, which
+        /// resolves the send rules and stages through the same repository. Planting through
+        /// <see cref="IMagEventRepository.AddAsync"/> plus one save is the same insert intent
+        /// without the rules, which the tests that care about them exercise through the endpoint.
+        /// </para>
+        /// <para>
+        /// <b>One save stamps one instant.</b> The audit columns come from the host's clock, so all
+        /// rows in one call share <c>created_at</c> - which is exactly the case the identifier
+        /// tie-break exists for. A test that needs two instants advances the fixture's
+        /// <c>FakeTimeProvider</c> and plants again.
+        /// </para>
+        /// </remarks>
+        public static async Task<IReadOnlyList<Guid>> PlantMagEventsAsync(
+            IServiceProvider services,
+            IReadOnlyList<MagEventWrite> events,
+            CancellationToken cancellationToken = default)
+        {
+            var repository = services.GetRequiredService<IMagEventRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var ids = new List<Guid>(events.Count);
+
+            foreach (var magEvent in events)
+            {
+                ids.Add(await repository.AddAsync(magEvent, cancellationToken));
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return ids;
+        }
+
+        /// <summary>Counts the MAG event rows, so a test can prove a refusal wrote nothing.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<int> CountMagEventsAsync(
+            NpgsqlConnection connection,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select count(*) from mag_events",
+                connection);
+
+            return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
         }
 
         /// <summary>

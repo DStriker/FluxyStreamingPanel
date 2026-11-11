@@ -55,6 +55,8 @@ import {
 } from '../../features/subscriptions/hooks/mutations'
 import { useSubscriptions } from '../../features/subscriptions/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
+import { useVideoStreams } from '../../features/video-streams/hooks/queries'
+import SendEventModal from '../../features/mag-events/components/SendEventModal'
 import { hinted } from '../../utils/hinted'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
@@ -165,6 +167,18 @@ interface MacDialogState {
   kind: SubscriptionMacKind
 }
 
+/**
+ * The row the send-event dialog is about.
+ *
+ * The same two facts `SendEventModal` names - the identifier it posts and the name it prints -
+ * kept here because whether the dialog is open is this page's state. Structural rather than
+ * imported, because a feature exports no component prop types through a barrel.
+ */
+interface SendEventTarget {
+  id: string
+  title: string
+}
+
 /** The two dialogs a bulk run needs a value for. */
 type BulkDialog = 'tariff' | 'creator'
 
@@ -241,6 +255,26 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   })
   const plans = plansQuery.data?.items ?? []
 
+  /**
+   * The streams a `playChannel` event may open, read at the page level - the connection log's
+   * and the stream problem log's precedent, and the reason the dialog takes its options rather
+   * than fetching them: a feature imports neither another feature nor a page. The read is
+   * deduplicated by the query client, so the subscriptions table and every other screen that
+   * lists streams share one answer, and a failure here offers an empty picker rather than
+   * failing the table.
+   */
+  const streamsQuery = useVideoStreams({
+    page: 1,
+    pageSize: 1000,
+    search: '',
+    sortBy: 'name',
+    sortOrder: 'asc',
+  })
+  const channelOptions = (streamsQuery.data?.items ?? []).map((stream) => ({
+    value: stream.id,
+    label: stream.name,
+  }))
+
   const { widths, tableWidth, atDefaults, reset, resizer: handleFor } =
     useColumnWidths<SubscriptionColumnKey>({
       keys: COLUMN_KEYS,
@@ -280,6 +314,16 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null)
   const [bulkTariffId, setBulkTariffId] = useState<string | null>(null)
   const [bulkCreatorId, setBulkCreatorId] = useState<string | null>(null)
+
+  /**
+   * The send-event dialog, and the one row it is about.
+   *
+   * The modal itself lives in `features/mag-events/components/SendEventModal` - the dialog is
+   * the journal's to draw - while *whether* it is open, and the row it names, is this page's
+   * state, exactly like `macDialog`. That split is what keeps the streams list it needs (a
+   * page-level cross-domain read) out of the feature.
+   */
+  const [sendEventTarget, setSendEventTarget] = useState<SendEventTarget | null>(null)
 
   const closeMacDialog = () => {
     setMacDialog(null)
@@ -460,6 +504,23 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       setMacDialog({ subscription, kind })
       setMacValue(current)
       macForm.setFieldsValue({ mac: current })
+    },
+    // The journal is the page behind `admin/mag-events`; the drill-down is the same link the
+    // "Show activity" action draws, so it is built from the area rather than a copied segment.
+    magEvents: (subscription) =>
+      navigate(`${area}/mag-events?subscriptionId=${subscription.id}`),
+    // Sending is a dialog, and which row it is about is this page's state - exactly like
+    // `macDialog` above. A row with no device cannot be sent to: the subrow only draws the
+    // button for a MAG subscription, so this is the defence for a list that went stale between
+    // the read and the click, and it names the same fact the server answers with
+    // `mag_device_missing`.
+    sendEvent: (subscription) => {
+      if (subscription.magMac === null) {
+        void message.error(t('subscriptions.sendEvent.needsMagMac'))
+        return
+      }
+
+      setSendEventTarget({ id: subscription.id, title: subscription.username })
     },
     // An empty string is "clear" on this API, which is what makes one request express both the
     // removal and the change of a field. A refusal is reported here rather than by
@@ -1157,6 +1218,18 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
             </Form.Item>
           </Form>
         </Modal>
+
+        {/* The send-event dialog. The dialog is the journal feature's; the row it is about and
+            whether it is open are this page's state, like `macDialog` above. The streams list
+            it offers comes from the page-level read, because a feature imports neither another
+            feature nor a page. */}
+        {sendEventTarget !== null && (
+          <SendEventModal
+            target={sendEventTarget}
+            channelOptions={channelOptions}
+            onClose={() => setSendEventTarget(null)}
+          />
+        )}
 
         {/* The bulk plan change. The list is the one the filter loads, reused rather than asked
             for a second time; the sentence below says what a clearance costs. */}

@@ -175,6 +175,12 @@ namespace Fluxy.Application
             // and this pass has no write path at all: the relaying process owns the capture.
             services.AddScoped<IConnectionLogService, ConnectionLogService>();
 
+            // The MAG event journal: the one send path plus the two whole-table reads. It is its
+            // own service because an event belongs to a subscription's device and carries rules no
+            // subscription write has - which operation needs a message, what a message must parse
+            // as, and which flag the server forces.
+            services.AddScoped<IMagEventService, MagEventService>();
+
             // The audit trail of reseller credit: read, plus the one whole-table clear. Entries
             // are written by the account service in the same save as the balance they explain, so
             // this service has no write path at all - only a reader and the wipe.

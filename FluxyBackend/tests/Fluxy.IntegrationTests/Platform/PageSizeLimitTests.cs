@@ -26,6 +26,7 @@ namespace Fluxy.IntegrationTests.Platform
         [InlineData("/admin/sessions")]
         [InlineData("/auth/sessions")]
         [InlineData("/admin/connection-logs")]
+        [InlineData("/admin/mag-events")]
         public async Task APageOfAThousandIsAcceptedAndOneMoreIsRefused(string path)
         {
             await CreateAdminAndSignInAsync();
