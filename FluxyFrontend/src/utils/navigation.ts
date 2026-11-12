@@ -19,6 +19,7 @@ import {
   PlusOutlined,
   ShoppingCartOutlined,
   StopOutlined,
+  SwapOutlined,
   TableOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -135,6 +136,19 @@ interface ContentSection {
   problemLogKey?: string
   /** The problem log's address under the area's prefix. */
   problemLogPath?: string
+  /**
+   * The mass source replacement screen, present only where one has been built.
+   *
+   * It is carried the way the problem log is - its own key, path and page rather than derived
+   * from `key`/`path` - because its address is the backend's own `admin/source-replacement`
+   * route and sits outside the section's prefix, while the rail still files it under the
+   * streams whose addresses it rewrites.
+   */
+  sourceReplacementPage?: () => Promise<{ default: ComponentType<{ sectionKey: string }> }>
+  /** The source replacement item key. Deliberately not prefixed by `key`. */
+  sourceReplacementKey?: string
+  /** The source replacement address under the area's prefix. */
+  sourceReplacementPath?: string
 }
 
 const CONTENT_SECTIONS: ContentSection[] = [
@@ -150,6 +164,9 @@ const CONTENT_SECTIONS: ContentSection[] = [
     problemLogPage: () => import('../pages/admin/StreamProblemsPage'),
     problemLogKey: 'streamProblems',
     problemLogPath: 'stream-problems',
+    sourceReplacementPage: () => import('../pages/admin/SourceReplacementPage'),
+    sourceReplacementKey: 'sourceReplacement',
+    sourceReplacementPath: 'source-replacement',
   },
   {
     key: 'audioStreams',
@@ -220,6 +237,25 @@ const contentGroups = (): NavGroup[] =>
         icon: TagsOutlined,
         page: section.categoriesPage,
       },
+      // The mass source replacement, before the problem log: it is the other thing an operator
+      // does *to* the streams as a set rather than to one row, and the journal that follows is
+      // the record of what they reported. Its key, address and page are the section's own
+      // fields rather than derived from `key`/`path`, because the address mirrors the backend's
+      // (`admin/source-replacement`) and sits outside the section's path prefix - and because
+      // the item key deliberately does not start with the section's.
+      ...(section.sourceReplacementPage &&
+      section.sourceReplacementKey &&
+      section.sourceReplacementPath
+        ? [
+            {
+              key: section.sourceReplacementKey,
+              path: section.sourceReplacementPath,
+              labelKey: `nav.items.${section.sourceReplacementKey}`,
+              icon: SwapOutlined,
+              page: section.sourceReplacementPage,
+            },
+          ]
+        : []),
       // The section's problem log, last: it is not one of the section's four verbs but the
       // record of what its streams reported. Its key, address and page are the section's own
       // fields rather than derived from `key`/`path`, because the address mirrors the backend's

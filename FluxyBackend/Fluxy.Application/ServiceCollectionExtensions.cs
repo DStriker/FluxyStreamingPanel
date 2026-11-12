@@ -89,6 +89,11 @@ namespace Fluxy.Application
             // them without answering "which kind?" on every call.
             services.AddScoped<IBouquetService, BouquetService>();
 
+            // The mass source replacement reaches four playback tables at once. Its own
+            // service because the rules are about the run rather than about any one aggregate:
+            // the same two strings, the same per-entity refusal and one save over all of them.
+            services.AddScoped<ISourceReplacementService, SourceReplacementService>();
+
             // The streams filed under those categories are their own resource again, for the
             // same reason three times over: a stream has rules no category has - the type
             // owns the payload it may carry, a position is read rather than claimed - and a

@@ -113,6 +113,12 @@ namespace Fluxy.DataAccess
             services.AddScoped<IStreamProblemRepository, StreamProblemRepository>();
             services.AddScoped<IMagEventRepository, MagEventRepository>();
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
+
+            // The mass source replacement reads and stages rows of four aggregates owned by
+            // other repositories. It is a repository of its own rather than extra methods on
+            // those four: the operation is one intent across all of them, and a caller that
+            // asked any single owner for the other three would be reaching across an aggregate.
+            services.AddScoped<ISourceReplacementRepository, SourceReplacementRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
 

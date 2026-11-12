@@ -188,6 +188,12 @@ const en = {
       videoStreamsImport: 'Import video streams',
       videoStreamsManage: 'Manage video streams',
       videoStreamsCategories: 'Categories',
+      // The mass source replacement, filed under the section whose addresses it rewrites and
+      // before the problem log. Named for the act rather than for a table, because the screen
+      // is one form: it shows no rows, it changes rows. Its address mirrors the backend's own
+      // route (`admin/source-replacement`), and the key stays outside the `videoStreams*`
+      // prefix the four generated entries above own.
+      sourceReplacement: 'Source replacement',
       // The video streams' problem log, filed under the section whose streams it writes
       // about. Named for what the table holds rather than for the group, and deliberately not
       // `videoStreamsProblems`: the key must stay outside the `videoStreams*` prefix the four
@@ -2688,6 +2694,37 @@ const en = {
     clearConfirmOk: 'Clear all',
     noPermission: 'Your group does not allow this.',
   },
+  // The mass source replacement: two strings in, every playback address rewritten. Its own
+  // block rather than keys under `videoStreams`, because the run reaches four domains - video
+  // stream sources, audio stream sources, on-demand sources and episode sources - and only
+  // happens to be filed under the streams in the rail. Nothing here is a column heading: the
+  // screen is a form, and the report is a toast plus a dialog.
+  sourceReplacement: {
+    title: 'Source replacement',
+    // The two fields, named for their roles rather than for an example. The replacement's hint
+    // is one of the few `extra` sentences this repo allows, because "an empty replacement
+    // deletes the match" is a rule the visitor cannot infer from the label.
+    findLabel: 'Find',
+    replaceLabel: 'Replace with',
+    replaceHint: 'Leave empty to delete every occurrence of the text you search for.',
+    submit: 'Replace sources',
+    noPermission: 'Your group does not allow this.',
+    // The one-line summary at the top of the refusal dialog: what the run did manage, in the
+    // same two numbers the toast does not carry.
+    done: '{{updated}} updated, {{skipped}} unchanged.',
+    refusedTitle: 'Some sources were not changed',
+    // The two client-side rules, worded exactly as the server's field errors are.
+    emptyFind: 'Enter the text to find in the source addresses.',
+    sameFindAndReplace: 'The replacement must differ from the text to find.',
+    // The four domains, keyed by the wire name the server reports. Every one is always
+    // present, so a refusal line can name its domain without a fallback.
+    domains: {
+      videoStreams: 'Video streams',
+      audioStreams: 'Audio streams',
+      videoOnDemand: 'Video on demand',
+      seriesEpisodes: 'Series episodes',
+    },
+  },
   // The MAG event journal: every event sent to a subscription's device, which operation it
   // was, what it carried and whether the device confirmed it. Its own block rather than keys
   // under `subscriptions`, because the journal is a resource of its own behind the
@@ -3119,6 +3156,11 @@ const en = {
       // The stream problem log's one write, worded the same way: the command wipes the
       // table, and the sentence says every entry went rather than naming a row.
       stream_problems_cleared: 'Every stream problem entry has been deleted.',
+      // The mass source replacement. One success code covers a run that changed rows and one
+      // that matched nothing; the two refusals are per entity, and the dialog translates them.
+      source_replacement_completed: 'The source addresses have been replaced.',
+      source_replacement_blank: 'the replacement would leave an address empty',
+      source_replacement_too_long: 'the replacement would make an address too long',
       // The MAG event journal's one send and its one wipe. The send is a success about a device
       // - "sent" rather than "recorded", because that is what the operator asked for - and the
       // wipe is worded like every other log's.

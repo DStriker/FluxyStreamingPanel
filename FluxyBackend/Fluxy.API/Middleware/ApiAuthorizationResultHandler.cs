@@ -138,11 +138,16 @@ namespace Fluxy.API.Middleware
         /// <returns>The code the body carries.</returns>
         private async Task<string> ExplainAsync(HttpContext context, AuthorizationPolicy policy)
         {
+            // Every permission requirement is read, not the first one. A policy built from a
+            // single attribute carries one, but stacked [Authorize] attributes merge into one
+            // policy that carries one requirement per attribute - and reading only the first
+            // would answer "your role changed" for an account whose role is fine and whose
+            // group is simply missing the second, third or fourth grant.
             var demanded = policy.Requirements
                 .OfType<PermissionRequirement>()
-                .FirstOrDefault();
+                .ToArray();
 
-            if (demanded is null)
+            if (demanded.Length == 0)
             {
                 return AuthenticationResponses.RoleChangedCode;
             }
@@ -161,11 +166,11 @@ namespace Fluxy.API.Middleware
                 return AuthenticationResponses.RoleChangedCode;
             }
 
-            var requiredRole = policy.Requirements
+            var roles = policy.Requirements
                 .OfType<RoleRequirement>()
-                .FirstOrDefault();
+                .ToArray();
 
-            if (requiredRole is not null && standing.Role != requiredRole.Role)
+            if (roles.Length > 0 && roles.Any(role => standing.Role != role.Role))
             {
                 return AuthenticationResponses.RoleChangedCode;
             }
@@ -175,11 +180,12 @@ namespace Fluxy.API.Middleware
             // reader is after; neither is the same as "you are in the wrong area", which is why
             // the two codes are different.
             //
-            // Any of the named permissions is enough here too - the same "some accounts, not
-            // every kind" reading the handler applies. A caller holding one of the three
-            // <c>view*</c> keys and refused by this endpoint was refused by the *role*
-            // requirement, which is the other half of the message this branch words.
-            return demanded.Permissions.Any(standing.Grants)
+            // The rule is all-of rather than any-of because that is the semantics of stacked
+            // [Authorize] attributes: the policy merges their requirements and every one of
+            // them must succeed. An endpoint demanding four grants therefore answers
+            // permission_denied unless the group holds all four, and the client can put the
+            // refusal where it belongs - on the screen, not on a sign-in page.
+            return demanded.All(requirement => requirement.Permissions.Any(standing.Grants))
                 ? AuthenticationResponses.RoleChangedCode
                 : AuthenticationResponses.PermissionDeniedCode;
         }

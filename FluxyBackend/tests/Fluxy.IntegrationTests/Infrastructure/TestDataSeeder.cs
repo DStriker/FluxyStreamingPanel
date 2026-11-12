@@ -5,6 +5,9 @@ using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Requests.Commands;
 using Fluxy.Core.Requests.Repositories;
+using Fluxy.Core.Series.Commands;
+using Fluxy.Core.Series.Enums;
+using Fluxy.Core.Series.Repositories;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Repositories;
@@ -15,6 +18,9 @@ using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Users.Utils;
+using Fluxy.Core.Vod.Commands;
+using Fluxy.Core.Vod.Enums;
+using Fluxy.Core.Vod.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -289,6 +295,440 @@ namespace Fluxy.IntegrationTests.Infrastructure
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return id;
+        }
+
+        /// <summary>
+        /// Creates a video stream carrying the addresses the caller names, under a category of
+        /// the kind.
+        /// </summary>
+        /// <remarks>
+        /// The plain helper above always plants one fixed address, which is right for a
+        /// connection-log fixture and useless for a source replacement: the run's whole subject
+        /// is the text of the addresses. This overload keeps the same rules - a category of the
+        /// kind, one save - and lets the caller choose the chain.
+        /// </remarks>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="name">Display name of the stream.</param>
+        /// <param name="sources">Addresses of the failover chain, in order.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<Guid> CreateVideoStreamAsync(
+            IServiceProvider services,
+            string name,
+            IReadOnlyList<string> sources,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var streams = services.GetRequiredService<IVideoStreamRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Video {Guid.NewGuid():N}",
+                    Type = ContentType.VideoStream
+                },
+                1,
+                cancellationToken);
+
+            var id = await streams.AddAsync(
+                new VideoStreamWrite
+                {
+                    Name = name,
+                    Type = VideoStreamType.Permanent,
+                    Status = VideoStreamStatus.Running,
+                    CategoryId = categoryId,
+                    DelayMinutes = 0,
+                    ArchiveDays = 0,
+                    VodItems = [],
+                    Sources = sources,
+                    Files = []
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Creates an audio stream carrying the addresses the caller names.</summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="name">Display name of the stream.</param>
+        /// <param name="sources">Addresses of the failover chain, in order.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<Guid> CreateAudioStreamAsync(
+            IServiceProvider services,
+            string name,
+            IReadOnlyList<string> sources,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var streams = services.GetRequiredService<IAudioStreamRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Audio {Guid.NewGuid():N}",
+                    Type = ContentType.AudioStream
+                },
+                1,
+                cancellationToken);
+
+            var id = await streams.AddAsync(
+                new AudioStreamWrite
+                {
+                    Name = name,
+                    Type = AudioStreamType.OnDemand,
+                    Status = AudioStreamStatus.Running,
+                    CategoryId = categoryId,
+                    Sources = sources
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Creates one on-demand item whose source the caller names.</summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="name">Display name of the item.</param>
+        /// <param name="source">Playback address the row stores.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<Guid> CreateVodItemAsync(
+            IServiceProvider services,
+            string name,
+            string source,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var videos = services.GetRequiredService<IVodRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Video on demand {Guid.NewGuid():N}",
+                    Type = ContentType.VideoOnDemand
+                },
+                1,
+                cancellationToken);
+
+            var id = await videos.AddAsync(
+                new VodItemWrite
+                {
+                    Name = name,
+                    Status = VodStatus.Active,
+                    Type = VodType.Relay,
+                    CategoryId = categoryId,
+                    Source = source,
+                    Cast = [],
+                    Genres = []
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>Creates one series with a single episode whose source the caller names.</summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="name">Display name of the series.</param>
+        /// <param name="episodeName">Display name of the episode.</param>
+        /// <param name="source">Playback address the episode stores.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>Identifiers of the series and the episode.</returns>
+        public static async Task<(Guid SeriesId, Guid EpisodeId)> CreateSeriesWithEpisodeAsync(
+            IServiceProvider services,
+            string name,
+            string episodeName,
+            string source,
+            CancellationToken cancellationToken = default)
+        {
+            var categories = services.GetRequiredService<IContentCategoryRepository>();
+            var series = services.GetRequiredService<ISeriesRepository>();
+            var episodes = services.GetRequiredService<IEpisodeRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var categoryId = await categories.AddAsync(
+                new NewContentCategory
+                {
+                    Name = $"Series {Guid.NewGuid():N}",
+                    Type = ContentType.Series
+                },
+                1,
+                cancellationToken);
+
+            var seriesId = await series.AddAsync(
+                new SeriesWrite
+                {
+                    Name = name,
+                    Status = SeriesStatus.Active,
+                    CategoryId = categoryId,
+                    Cast = [],
+                    Genres = []
+                },
+                cancellationToken);
+
+            var episodeId = await episodes.AddAsync(
+                new EpisodeWrite
+                {
+                    SeriesId = seriesId,
+                    SeasonNumber = 1,
+                    EpisodeNumber = 1,
+                    Name = episodeName,
+                    Source = source,
+                    Status = EpisodeStatus.Active,
+                    Type = EpisodeType.Relay
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return (seriesId, episodeId);
+        }
+
+        /// <summary>
+        /// Reads one video stream's stored source rows directly, so a test can prove a write
+        /// changed the address and nothing else about the row.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="streamId">Stream whose chain is read.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>A deliberate SQL fixture, read-only.</b> The production read path returns the
+        /// addresses as strings and no identifier or audit column, so the in-place claim - the
+        /// same row, the same position, the same <c>created_at</c> - cannot be asserted through
+        /// the API. The statement names the table and its columns, never an entity or a context,
+        /// which is the rule every fixture in this class follows.
+        /// </remarks>
+        public static async Task<IReadOnlyList<(Guid Id, int Position, string Url, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)>> ReadVideoSourceRowsAsync(
+            NpgsqlConnection connection,
+            Guid streamId,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select id, position, url, created_at, updated_at from video_stream_sources " +
+                "where stream_id = @stream_id order by position",
+                connection);
+
+            command.Parameters.AddWithValue("stream_id", streamId);
+
+            return await ReadSourceRowsAsync(command, cancellationToken);
+        }
+
+        /// <summary>Reads one audio stream's stored source rows directly.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="streamId">Stream whose chain is read.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<IReadOnlyList<(Guid Id, int Position, string Url, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)>> ReadAudioSourceRowsAsync(
+            NpgsqlConnection connection,
+            Guid streamId,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select id, position, url, created_at, updated_at from audio_stream_sources " +
+                "where stream_id = @stream_id order by position",
+                connection);
+
+            command.Parameters.AddWithValue("stream_id", streamId);
+
+            return await ReadSourceRowsAsync(command, cancellationToken);
+        }
+
+        /// <summary>Reads one on-demand row's source and audit columns directly.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="id">Identifier of the item.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<(string Source, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)> ReadVodSourceAsync(
+            NpgsqlConnection connection,
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select source, created_at, updated_at from vod_items where id = @id",
+                connection);
+
+            command.Parameters.AddWithValue("id", id);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            Assert.True(await reader.ReadAsync(cancellationToken), "No on-demand row with that id.");
+
+            return (
+                reader.GetString(0),
+                reader.GetFieldValue<DateTimeOffset>(1),
+                reader.GetFieldValue<DateTimeOffset>(2));
+        }
+
+        /// <summary>Reads one episode's source and audit columns directly.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="id">Identifier of the episode.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<(string Source, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)> ReadEpisodeSourceAsync(
+            NpgsqlConnection connection,
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select source, created_at, updated_at from series_episodes where id = @id",
+                connection);
+
+            command.Parameters.AddWithValue("id", id);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            Assert.True(await reader.ReadAsync(cancellationToken), "No episode row with that id.");
+
+            return (
+                reader.GetString(0),
+                reader.GetFieldValue<DateTimeOffset>(1),
+                reader.GetFieldValue<DateTimeOffset>(2));
+        }
+
+        /// <summary>
+        /// Sets the source the relaying process reports on a video stream, so a test can prove a
+        /// replacement leaves it alone.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="streamId">Stream to stamp.</param>
+        /// <param name="activeSource">Address the relaying process is reported to use.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>A deliberate SQL fixture.</b> <c>active_source</c> is written by the relaying
+        /// process and by nothing in this application - the service deliberately never touches
+        /// it - so planting one through the API is impossible by design. The statement names the
+        /// table and one column.
+        /// </remarks>
+        public static async Task SetActiveSourceAsync(
+            NpgsqlConnection connection,
+            Guid streamId,
+            string activeSource,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "update video_streams set active_source = @active_source where id = @id",
+                connection);
+
+            command.Parameters.AddWithValue("active_source", activeSource);
+            command.Parameters.AddWithValue("id", streamId);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>Reads the source the relaying process reports on a video stream.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="streamId">Stream to read.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task<string?> ReadActiveSourceAsync(
+            NpgsqlConnection connection,
+            Guid streamId,
+            CancellationToken cancellationToken = default)
+        {
+            await using var command = new NpgsqlCommand(
+                "select active_source from video_streams where id = @id",
+                connection);
+
+            command.Parameters.AddWithValue("id", streamId);
+
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+
+            return value is DBNull or null ? null : (string)value;
+        }
+
+        /// <summary>
+        /// Moves a row's audit stamps into the past, so a replacement has something to move
+        /// them forward from.
+        /// </summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="streamId">Stream whose source rows are aged.</param>
+        /// <param name="stamp">Instant both audit columns are set to.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>A deliberate SQL fixture.</b> The audit columns are stamped by the context and are
+        /// not writable through any service, which is the property that makes them evidence. A
+        /// test that wants to prove a write moved <c>updated_at</c> without moving
+        /// <c>created_at</c> has to place the row in the past first, and this is the only way to
+        /// do it. The statement names the table and two columns.
+        /// </remarks>
+        public static async Task AgeVideoSourceRowsAsync(
+            NpgsqlConnection connection,
+            Guid streamId,
+            DateTimeOffset stamp,
+            CancellationToken cancellationToken = default)
+            => await AgeAsync(
+                connection,
+                "video_stream_sources",
+                "stream_id",
+                streamId,
+                stamp,
+                cancellationToken);
+
+        /// <summary>Moves an on-demand row's audit stamps into the past.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="id">Identifier of the item.</param>
+        /// <param name="stamp">Instant both audit columns are set to.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task AgeVodRowAsync(
+            NpgsqlConnection connection,
+            Guid id,
+            DateTimeOffset stamp,
+            CancellationToken cancellationToken = default)
+            => await AgeAsync(connection, "vod_items", "id", id, stamp, cancellationToken);
+
+        /// <summary>Moves an episode's audit stamps into the past.</summary>
+        /// <param name="connection">Open connection to the test database.</param>
+        /// <param name="id">Identifier of the episode.</param>
+        /// <param name="stamp">Instant both audit columns are set to.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        public static async Task AgeEpisodeRowAsync(
+            NpgsqlConnection connection,
+            Guid id,
+            DateTimeOffset stamp,
+            CancellationToken cancellationToken = default)
+            => await AgeAsync(connection, "series_episodes", "id", id, stamp, cancellationToken);
+
+        /// <summary>The one statement every aging helper runs.</summary>
+        private static async Task AgeAsync(
+            NpgsqlConnection connection,
+            string table,
+            string keyColumn,
+            Guid key,
+            DateTimeOffset stamp,
+            CancellationToken cancellationToken)
+        {
+            await using var command = new NpgsqlCommand(
+                $"update {table} set created_at = @stamp, updated_at = @stamp " +
+                $"where {keyColumn} = @key",
+                connection);
+
+            command.Parameters.AddWithValue("stamp", stamp);
+            command.Parameters.AddWithValue("key", key);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        /// <summary>Reads the rows a source query returns, in the order the query names.</summary>
+        private static async Task<IReadOnlyList<(Guid Id, int Position, string Url, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt)>> ReadSourceRowsAsync(
+            NpgsqlCommand command,
+            CancellationToken cancellationToken)
+        {
+            var rows = new List<(Guid, int, string, DateTimeOffset, DateTimeOffset)>();
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((
+                    reader.GetGuid(0),
+                    reader.GetInt32(1),
+                    reader.GetString(2),
+                    reader.GetFieldValue<DateTimeOffset>(3),
+                    reader.GetFieldValue<DateTimeOffset>(4)));
+            }
+
+            return rows;
         }
 
         /// <summary>

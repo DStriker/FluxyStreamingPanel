@@ -59,6 +59,7 @@ import CreditLogsPage from '../src/pages/admin/CreditLogsPage'
 import UserLogsPage from '../src/pages/admin/UserLogsPage'
 import ApiRequestFailuresPage from '../src/pages/admin/ApiRequestFailuresPage'
 import StreamProblemsPage from '../src/pages/admin/StreamProblemsPage'
+import SourceReplacementPage from '../src/pages/admin/SourceReplacementPage'
 import MagEventsPage from '../src/pages/admin/MagEventsPage'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
@@ -4532,6 +4533,176 @@ async function main() {
     `items: ${apiRequestFailureItemKeys.join(', ')}; opens ${menuPath('Admin', 'api-request-failures')}`,
   )
 
+  // --- The mass source replacement ---------------------------------------------
+  //
+  // A form, not a table: the screen rewrites every playback address and shows no rows. The
+  // item key is deliberately not prefixed with the section's (`sourceReplacement`, not
+  // `videoStreamsSourceReplacement`), so the assertion the section's four generated entries
+  // rest on - the `videoStreams*` prefix check above - stays exactly as it is.
+  //
+  // What a fresh render can assert: the card title is drawn before the profile answers, both
+  // fields are there with their labels, the replacement's rule is stated, and the submit is
+  // disabled without any accusation while the grants are unknown. The refusal and the
+  // permitted states need a seeded profile, so they are seeded below the way the stream
+  // problem log seeds one.
+  const sourceReplacementHtml = renderToStaticMarkup(
+    withRouter('/admin/source-replacement', withQuery(
+      <AntApp>
+        <SourceReplacementPage sectionKey="nav.items.sourceReplacement" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the source replacement draws its card title and both fields before the profile answers',
+    sourceReplacementHtml.includes('>Source replacement<') &&
+      sourceReplacementHtml.includes('>Find<') &&
+      sourceReplacementHtml.includes('>Replace with<') &&
+      sourceReplacementHtml.includes('id="find"') &&
+      sourceReplacementHtml.includes('id="replace"') &&
+      !sourceReplacementHtml.includes('nav.items.sourceReplacement'),
+    `rendered ${sourceReplacementHtml.length} bytes with the profile still being fetched`,
+  )
+
+  // The two fields are one per row: antd's `ant-form-item-row` wraps each, and the form must
+  // not carry a `ant-row` grid of its own around them.
+  check(
+    'the source replacement form puts one field per row and states the empty-replacement rule',
+    (sourceReplacementHtml.match(/ant-form-item-row/g) ?? []).length >= 2 &&
+      sourceReplacementHtml.includes('Leave empty to delete every occurrence') &&
+      !sourceReplacementHtml.includes('placeholder="Find"'),
+    `form rows: ${(sourceReplacementHtml.match(/ant-form-item-row/g) ?? []).length}`,
+  )
+
+  // The submit is disabled while the grants are unknown, and the "not known yet" state must
+  // not accuse: no refusal tooltip, no hinted wrapper. Only the answered refused state speaks;
+  // that one is asserted below with a seeded profile.
+  check(
+    'the source replacement submit is disabled and silent while the grants are unknown',
+    sourceReplacementHtml.includes('type="submit"') &&
+      /<button[^>]*type="submit"[^>]*disabled/.test(sourceReplacementHtml) &&
+      !sourceReplacementHtml.includes('Your group does not allow this.') &&
+      !sourceReplacementHtml.includes('display:inline-flex') &&
+      i18n.getResource('en', 'translation', 'sourceReplacement.noPermission') ===
+        'Your group does not allow this.',
+    `disabled submit present: ${/<button[^>]*type="submit"[^>]*disabled/.test(sourceReplacementHtml)}, accused while loading: ${sourceReplacementHtml.includes('Your group does not allow this.')}`,
+  )
+
+  // The permitted and refused states come from a seeded profile: the query key is the one the
+  // page asks with (`['profile']`), and the same seeded render is used twice so the only
+  // difference is the grants.
+  const renderSourceReplacementSeeded = (permissions) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['profile'], {
+      username: 'probeadmin',
+      email: 'probeadmin@localhost',
+      role: 'Admin',
+      permissions,
+      credits: 0,
+      timeZone: null,
+      geoProtectionEnabled: false,
+      bindSessionToIp: false,
+      allowedIps: [],
+      allowedCountry: null,
+      allowedAutonomousSystemNumber: null,
+    })
+
+    return renderToStaticMarkup(
+      withRouter(
+        '/admin/source-replacement',
+        <QueryClientProvider client={client}>
+          <AntApp>
+            <SourceReplacementPage sectionKey="nav.items.sourceReplacement" />
+          </AntApp>
+        </QueryClientProvider>,
+      ),
+    )
+  }
+
+  const permittedSourceReplacementHtml = renderSourceReplacementSeeded([
+    'editStreams',
+    'editAudioStreams',
+    'editVideoOnDemand',
+    'editSeries',
+  ])
+  const refusedSourceReplacementHtml = renderSourceReplacementSeeded([
+    'editStreams',
+    'editAudioStreams',
+    'editVideoOnDemand',
+  ])
+
+  // The four domain labels the refusal dialog builds its lines from are template keys
+  // (`t(\`sourceReplacement.domains.${domain}\`)`), so the literal-key audit never sees them.
+  // They are checked here against both bundles, the way the MAG event vocabulary is.
+  const sourceReplacementDomains = [
+    'videoStreams',
+    'audioStreams',
+    'videoOnDemand',
+    'seriesEpisodes',
+  ]
+  check(
+    'the four source replacement domain labels and the two refusal codes resolve in both bundles',
+    sourceReplacementDomains.every((domain) =>
+      ['en', 'ru'].every((lng) =>
+        Boolean(
+          i18n.getResource(lng, 'translation', `sourceReplacement.domains.${domain}`),
+        ),
+      ),
+    ) &&
+      ['en', 'ru'].every(
+        (lng) =>
+          Boolean(
+            i18n.getResource(lng, 'translation', 'messages.api.source_replacement_blank'),
+          ) &&
+          Boolean(
+            i18n.getResource(lng, 'translation', 'messages.api.source_replacement_too_long'),
+          ) &&
+          Boolean(
+            i18n.getResource(lng, 'translation', 'messages.api.source_replacement_completed'),
+          ),
+      ),
+    sourceReplacementDomains
+      .map((domain) => `${domain}:${i18n.getResource('ru', 'translation', `sourceReplacement.domains.${domain}`)}`)
+      .join(', '),
+  )
+
+  check(
+    'the source replacement is submittable with all four grants and refuses with any one missing',
+    permittedSourceReplacementHtml.includes('>Replace sources<') &&
+      !/<button[^>]*disabled/.test(permittedSourceReplacementHtml) &&
+      refusedSourceReplacementHtml.includes('Your group does not allow this.') &&
+      /<button[^>]*disabled/.test(refusedSourceReplacementHtml),
+    `permitted disabled: ${/<button[^>]*disabled/.test(permittedSourceReplacementHtml)}, refused disabled: ${/<button[^>]*disabled/.test(refusedSourceReplacementHtml)}`,
+  )
+
+  // The menu entry: after the categories item and before the problem log, at its mirrored
+  // address, with a real page behind the loader. The order between the two endings is the
+  // owner's: the replacement acts on the set, the journal records what the set reported.
+  const sourceReplacementGroup = NAVIGATION.Admin.find((group) => group.key === 'videoStreams')
+  const sourceReplacementItem = sourceReplacementGroup?.items.find(
+    (item) => item.key === 'sourceReplacement',
+  )
+  const sourceReplacementModule = sourceReplacementItem?.page
+    ? await sourceReplacementItem.page()
+    : null
+  const sourceReplacementMatch = matchRoutes(routeTable, '/admin/source-replacement')
+  const sourceReplacementLeaf =
+    sourceReplacementMatch?.[sourceReplacementMatch.length - 1]?.route
+  check(
+    'the source replacement sits after categories and before the problem log, opening the real page',
+    sourceReplacementItem?.path === 'source-replacement' &&
+      menuPath('Admin', 'source-replacement') === '/admin/source-replacement' &&
+      sourceReplacementItem?.labelKey === 'nav.items.sourceReplacement' &&
+      Boolean(i18n.getResource('en', 'translation', 'nav.items.sourceReplacement')) &&
+      i18n.getResource('ru', 'translation', 'nav.items.sourceReplacement') ===
+        'Замена источников' &&
+      sourceReplacementModule?.default === SourceReplacementPage &&
+      sourceReplacementLeaf?.path === 'source-replacement' &&
+      sourceReplacementLeaf?.path !== '*',
+    `items: ${(sourceReplacementGroup?.items ?? []).map((item) => item.key).join(', ')}; opens ${menuPath('Admin', 'source-replacement')}, route ${sourceReplacementLeaf?.path ?? 'nothing'}, module ${sourceReplacementModule?.default?.name ?? 'nothing'}`,
+  )
+
   // --- The stream problem log ---------------------------------------------------
   //
   // Its own page behind `nav.items.streamProblems`, last in the `videoStreams` group but at
@@ -4751,7 +4922,7 @@ async function main() {
   check(
     'the video streams group ends with the problem log entry, opening the real page at its mirrored address',
     streamProblemItemKeys.join(',') ===
-      'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories,streamProblems' &&
+      'videoStreamsAdd,videoStreamsImport,videoStreamsManage,videoStreamsCategories,sourceReplacement,streamProblems' &&
       streamProblemItem?.path === 'stream-problems' &&
       menuPath('Admin', 'stream-problems') === '/admin/stream-problems' &&
       streamProblemItem?.labelKey === 'nav.items.streamProblems' &&

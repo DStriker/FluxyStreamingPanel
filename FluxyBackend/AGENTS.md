@@ -70,7 +70,7 @@ Fluxy.Core/
   GeoIp/             ReadModels 1 · Interfaces 1 · Utils 2
   Users/             Models 7 · Rows 4 · ReadModels 12 · Commands 11 · Outcomes 9 · Enums 23 · Utils 17 · Interfaces 10 · Repositories 6 · Exceptions 1
   Authentication/    Models 1 · Rows 5 · ReadModels 7 · Commands 1 · Outcomes 3 · Enums 5 · Utils 3 · Interfaces 7 · Repositories 1 · Options 1
-  Content/           Models 2 · Commands 7 · Enums 5 · ReadModels 3 · Utils 2 · Interfaces 2 · Repositories 2
+  Content/           Models 2 · Commands 8 · Enums 7 · ReadModels 3 · Outcomes 3 · Rows 4 · Utils 2 · Interfaces 3 · Repositories 3
   Streams/           Models 3 · Rows 2 · ReadModels 6 · Commands 14 · Outcomes 11 · Enums 19 · Utils 13 · Interfaces 8 · Repositories 3
   Vod/               Models 1 · Rows 1 · ReadModels 3 · Commands 5 · Outcomes 6 · Enums 9 · Utils 4 · Interfaces 4 · Repositories 1
   Series/            Models 2 · ReadModels 7 · Commands 9 · Outcomes 8 · Enums 12 · Utils 7 · Interfaces 6 · Repositories 2
@@ -140,7 +140,7 @@ Fluxy.Application/
   ServiceCollectionExtensions.cs   the assembly's DI surface: AddApplicationServices
   Authentication/  Services 6 · Utils 2
   Blacklists/      Services 1 · Utils 1
-  Content/         Services 2 · Utils 2
+  Content/         Services 3 · Utils 2
   Email/           Services 1 · Options 1
   Epg/             Services 1 · Utils 1
   Requests/        Services 2
@@ -162,7 +162,7 @@ Fluxy.Application/
 | `Utils/` | the helpers the services share — a normalizer, a policy, a memo, the frame of a message | it is not a business operation: no contract, no outcome |
 | `Options/` | the configuration the services read | it is bound from a configuration section |
 
-**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `VideoStreamBulkService`, `VideoStreamImportService`, `CreditLogService`, `UserLogService`, `AuthenticationService`, `JwtTokenService`, `MagEventService` and the three session readers implement a `Fluxy.Core` interface; the API names that interface, never the class. `AccessChecker` is the one service without its own — a helper the authorization handlers call, not an operation a client asks for — and sits beside them because it is a service in the ordinary sense.
+**A service is a service because it implements a contract.** `ProfileService`, `RegistrationService`, `PasswordResetService`, `UserAdminService`, `UserGroupService`, `ContentCategoryService`, `VideoStreamService`, `VideoStreamBulkService`, `VideoStreamImportService`, `SourceReplacementService`, `CreditLogService`, `UserLogService`, `AuthenticationService`, `JwtTokenService`, `MagEventService` and the three session readers implement a `Fluxy.Core` interface; the API names that interface, never the class. `AccessChecker` is the one service without its own — a helper the authorization handlers call, not an operation a client asks for — and sits beside them because it is a service in the ordinary sense.
 
 **A file that is not a service does not live in `Services/`.** `CodeMessage` (the frame of a message carrying a code), `DevelopmentGuardBypass` (lets a local address past the login guard in Development), `GeoIpMemo` (the lookups of one request, one per address), `OneTimeCode`, `EmailNormalizer`, `RegistrationPolicy`, `LoginGuardPolicy`, `LoginGuardNormalizer`, `TimeZonePolicy` and `VideoStreamRules` are helpers; a helper in `Services/` is a service that answers nothing.
 
@@ -246,6 +246,7 @@ Reach for REST first: **plural noun resources**; the method that describes the o
 - **`GET`/`POST`/`DELETE /admin/mag-events` reuse the subscription grants** — `viewSubscriptions` for the read, `editSubscriptions` for the send and the clear, no new `UserPermission` member and no migration. The journal is the subscription surface's own record of what was sent to a device, so the grant that opens what a subscription holds opens its history, and the grant that changes it sends an event or wipes the record. Restated rather than assumed, like the stream problem journal's pair.
 - **`DELETE /admin/mag-events` clears the whole collection regardless of the query string.** Same reason as the three logs' above: the button says "clear the journal", and a filtered delete would wipe a different set from the one it named.
 - **`admin/mag-events` has no write route for a row, and that absence is the fence.** `PATCH`/`PUT`/`DELETE {id}` answer `405 method_not_allowed` because an event is a fact that was sent and rewriting the record of what happened is not a capability — those three verbs on a `{id}` path are answered by a fence action that reads neither the identifier nor the body, so an otherwise unknown path answers `405` rather than the generic `404`, and the collection answers the same for the methods it does not own. A send is the only write, and it is a `POST` on the collection because that is a create.
+- **`POST /admin/source-replacements` is a `POST` on a verb-like collection.** The operation has no resource to name and no member of a collection to address: it scans *every* playback address in four tables - video stream sources, audio stream sources, on-demand sources and episode sources - and writes a replacement over every ordinal occurrence of a substring. `PATCH` requires a target, and no single target describes a run across four domains; per-domain endpoints would make the operator perform a client-side transaction with no server-side rule. The run itself is the thing created, so it is created with a `POST`, and the four-grant fence plus the antiforgery pair is what admits it. Scope, refusal codes and the in-place semantics are in `docs/admin-source-replacement.md`.
 
 The May 2026 REST pass collapsed five `POST /auth/profile/*` change endpoints into one `PATCH /auth/profile` and renamed `register`/`password` into `registrations`/`password-resets`. `POST /auth/registrations` answers **201 — deliberately without `Location`**: the row has no client-addressable URI yet — `/auth/profile` answers 401 for its own owner until the mailed code confirms it, and a pending-registration URI addressable by email would be the enumeration oracle the refusal policy exists to avoid (reasoning in the action's remarks; RFC 9110 makes the header a SHOULD and this is the case it leaves open).
 
@@ -289,3 +290,4 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/api-request-failures.md](docs/api-request-failures.md) | the refused public-API request log: `api_request_failures` shape, the six reasons and wire names, `ViewApiRequestFailures`, the query contract, the write-path fence, the Development seeder and `admin/api-request-failures` |
 | [docs/stream-problems.md](docs/stream-problems.md) | the stream problem journal: `stream_problems` shape (FK CASCADE to `video_streams`, no name snapshot), the split `viewStreams`/`editStreams` grants, the query contract, the write-path fence (`RecordAsync`), the Development seeder and `admin/stream-problems` |
 | [docs/mag-events.md](docs/mag-events.md) | the MAG event journal: `mag_events` shape (FK CASCADE to `subscriptions`, no MAC snapshot, defaults in the service), the reused `viewSubscriptions`/`editSubscriptions` grants, the query contract, the send rules per operation (`need_confirm` forced for `sendMessage`, payload dropped for four, `playChannel` uuid shape), the ratified `validation_failed`/`mag_device_missing` pair, the `event`/`eventType` asymmetry, the clear and the `405` row fence (`admin/mag-events`) |
+| [docs/admin-source-replacement.md](docs/admin-source-replacement.md) | `admin/source-replacements`, the four-grant fence, the four playback columns it may write, the ordinal all-occurrence rule, the per-entity refusal codes, the in-place/one-save semantics, `active_source` staleness and the no-index scan |
