@@ -75,4 +75,21 @@ describe('groupKeyForPath', () => {
   it('answers null for a path no category covers', () => {
     expect(groupKeyForPath('Admin', '/admin/unknown')).toBeNull()
   })
+
+  it('files the ticket queues under their own groups, and owns the detail addresses', () => {
+    // The admin queue is a users-group entry; the two account-area queues have a support
+    // group of their own, placed before `account` on the owner's requirement.
+    expect(groupKeyForPath('Admin', '/admin/tickets')).toBe('users')
+    expect(groupKeyForPath('Client', '/client/tickets')).toBe('support')
+    expect(groupKeyForPath('Reseller', '/reseller/tickets')).toBe('support')
+
+    // The details are `extra` routes with no menu item, so the group that contains their list
+    // has to keep owning them - the same rule the users edit form follows.
+    expect(groupKeyForPath('Admin', '/admin/tickets/8f3c1e2a')).toBe('users')
+    expect(groupKeyForPath('Client', '/client/tickets/8f3c1e2a')).toBe('support')
+    expect(groupKeyForPath('Reseller', '/reseller/tickets/8f3c1e2a')).toBe('support')
+
+    // And the detail address is not a second way to reach a different group's list.
+    expect(groupKeyForPath('Admin', '/admin/ticketsomething')).toBeNull()
+  })
 })

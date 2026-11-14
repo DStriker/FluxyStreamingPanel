@@ -143,6 +143,10 @@ const en = {
       // because it is the price list of the second - a plan names the packages it delivers and
       // the groups it may be sold to. Four of its five entries are placeholders for now.
       subscriptions: 'Subscriptions',
+      // The support section, which only the two account-area roles see: a ticket is opened
+      // by the account it belongs to, and the administrator answers them from the accounts
+      // group instead (`nav.items.tickets`).
+      support: 'Support',
       account: 'Account',
     },
     items: {
@@ -263,6 +267,10 @@ const en = {
       // what this page holds is sessions - one per sign-in, still running - and a visitor
       // should be told that before they open it, not after.
       activeSessions: 'Active sessions',
+      // Both queues, under one word: the account's own conversation with support
+      // (`/client/tickets`) and the administrator's list of every conversation
+      // (`/admin/tickets`). The card below each names which of the two it is.
+      tickets: 'Tickets',
     },
   },
   header: {
@@ -2868,6 +2876,71 @@ const en = {
     selectAll: 'Select all',
     clear: 'Clear',
   },
+  // The support tickets: the account's own queue and the administrator's. One block for both
+  // screens because the two are one resource seen from two sides - the words for a status, a
+  // column or an action are the same words whichever side draws them, and a second block
+  // would be a second place for "Closed" to become "Resolved" on one screen only.
+  tickets: {
+    listTitle: 'Tickets',
+    // The detail card's title is the ticket's own subject. This is what it says while that
+    // subject has not arrived - a loading read, a failed one, or a ticket that no longer
+    // exists - because the card must carry a title in those states too.
+    detailTitle: 'Ticket',
+    // The dialog that opens a ticket, its one field, and the two buttons it draws.
+    createTitle: 'New ticket',
+    create: 'Create',
+    createAction: 'Create ticket',
+    subjectLabel: 'Subject',
+    subjectRequired: 'Enter a subject.',
+    // The conversation.
+    messageLabel: 'Message',
+    send: 'Send',
+    closedNotice: 'The ticket is closed. You cannot reply.',
+    noMessages: 'No messages yet',
+    // The read mark under an own message: what its tooltip and its accessible name say.
+    readMarkRead: 'Read',
+    readMarkUnread: 'Not read yet',
+    // The three wire values. `unread` is the active conversation, `read` one already seen and
+    // `closed` one that is over; the colour says the first from the other two and the label
+    // says which of the quiet ones it is.
+    statuses: {
+      unread: 'Open',
+      read: 'Read',
+      closed: 'Closed',
+    },
+    columns: {
+      subject: 'Subject',
+      user: 'User',
+      status: 'Status',
+      createdAt: 'Opened',
+      lastReplyAt: 'Last reply',
+      actions: 'Actions',
+    },
+    actions: {
+      view: 'Open ticket',
+      markUnread: 'Mark unread',
+      close: 'Close',
+      reopen: 'Reopen',
+      delete: 'Delete',
+    },
+    deleteConfirmTitle: 'Delete this ticket?',
+    deleteConfirmBody:
+      'The ticket "{{name}}" and its whole conversation will be deleted. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+    searchLabel: 'Search tickets',
+    searchPlaceholder: 'Search',
+    filterAnyStatus: 'Any status',
+    empty: 'No tickets yet.',
+    noMatches: 'No tickets match these filters.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    // The auto-refresh toggle on both lists: the accessible name and the tooltip of an
+    // icon-only button, in the words the log screens already use.
+    pauseRefresh: 'Pause auto-refresh',
+    resumeRefresh: 'Resume auto-refresh',
+    autoRefreshHint: 're-reads the table every {{seconds}} seconds',
+  },
   messages: {
     // Shown by the login forms, whose endpoints have no server code to translate yet.
     sent: 'Form submitted',
@@ -3156,6 +3229,21 @@ const en = {
       // The stream problem log's one write, worded the same way: the command wipes the
       // table, and the sentence says every entry went rather than naming a row.
       stream_problems_cleared: 'Every stream problem entry has been deleted.',
+      // The support tickets: the seven successes, the absence of a row, and the three
+      // refusals only a conversation can produce. `ticket_is_closed` and `invalid_status`
+      // are both state contradictions - one names the ticket, the other is the account
+      // endpoints' code reused - and `ticket_reply_limit_reached` is a ceiling rather than a
+      // mistake in what was typed.
+      ticket_created: 'The ticket has been created.',
+      ticket_reply_created: 'The message has been sent.',
+      ticket_marked_read: 'The ticket has been marked as read.',
+      ticket_marked_unread: 'The ticket has been marked as unread.',
+      ticket_closed: 'The ticket has been closed.',
+      ticket_reopened: 'The ticket has been reopened.',
+      ticket_deleted: 'The ticket has been deleted.',
+      ticket_not_found: 'There is no ticket with that identifier.',
+      ticket_is_closed: 'This ticket is closed, so it cannot accept a reply.',
+      ticket_reply_limit_reached: 'This ticket has reached its limit of messages.',
       // The mass source replacement. One success code covers a run that changed rows and one
       // that matched nothing; the two refusals are per entity, and the dialog translates them.
       source_replacement_completed: 'The source addresses have been replaced.',

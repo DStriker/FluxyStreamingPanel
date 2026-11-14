@@ -15,6 +15,7 @@ import {
   ImportOutlined,
   InboxOutlined,
   LaptopOutlined,
+  MessageOutlined,
   PlaySquareOutlined,
   PlusOutlined,
   ShoppingCartOutlined,
@@ -322,6 +323,24 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
+      // The account's own door to support, immediately before the account group. The rail
+      // order is the owner's requirement: «Поддержка» before «Аккаунт», because a visitor
+      // looking for help should meet it before their own settings. The administrator has no
+      // such group: they answer tickets from `nav.items.tickets` in the users section.
+      key: 'support',
+      labelKey: 'nav.groups.support',
+      icon: CustomerServiceOutlined,
+      items: [
+        {
+          key: 'tickets',
+          path: 'tickets',
+          labelKey: 'nav.items.tickets',
+          icon: MessageOutlined,
+          page: () => import('../pages/account/TicketsPage'),
+        },
+      ],
+    },
+    {
       key: 'account',
       labelKey: 'nav.groups.account',
       icon: UserOutlined,
@@ -377,6 +396,22 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: 'clients',
           labelKey: 'nav.items.clients',
           icon: TeamOutlined,
+        },
+      ],
+    },
+    {
+      // The reseller's own door to support, in the same place the Client entry gives it:
+      // immediately before the account group. Same page, same address, same reasoning.
+      key: 'support',
+      labelKey: 'nav.groups.support',
+      icon: CustomerServiceOutlined,
+      items: [
+        {
+          key: 'tickets',
+          path: 'tickets',
+          labelKey: 'nav.items.tickets',
+          icon: MessageOutlined,
+          page: () => import('../pages/account/TicketsPage'),
         },
       ],
     },
@@ -516,6 +551,18 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.userLogs',
           icon: AuditOutlined,
           page: () => import('../pages/admin/UserLogsPage'),
+        },
+        {
+          // The support queue, last in the group and after the audit log: an administrator
+          // answers what the accounts reported, so the conversation sits after the record of
+          // what those accounts did. `tickets` rather than `admin/tickets`-style prefix
+          // because the address is already under the admin area, and the same item is absent
+          // from the two account-area menus - they get their own `support` group instead.
+          key: 'tickets',
+          path: 'tickets',
+          labelKey: 'nav.items.tickets',
+          icon: MessageOutlined,
+          page: () => import('../pages/admin/TicketsPage'),
         },
       ],
     },

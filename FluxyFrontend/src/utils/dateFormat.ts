@@ -24,6 +24,16 @@ const dateFormatters = new Map<string, Intl.DateTimeFormat | null>()
 const dayFormatters = new Map<string, Intl.DateTimeFormat | null>()
 
 /**
+ * The three formatters the chat bubble's time line reads: a bare time, a short date with a
+ * time, and a day key used to decide which of the two a message gets. Cached like the two
+ * above, and for the same reason - a thread may hold hundreds of bubbles and is repainted on
+ * every keystroke in the composer.
+ */
+const chatTimeFormatters = new Map<string, Intl.DateTimeFormat | null>()
+const chatMomentFormatters = new Map<string, Intl.DateTimeFormat | null>()
+const chatDayKeyFormatters = new Map<string, Intl.DateTimeFormat | null>()
+
+/**
  * A formatter for this locale and zone, or `null` when the zone cannot be formatted in.
  *
  * The refusal is cached as well as the answer: a zone stored by an older build, or one this
@@ -127,4 +137,130 @@ function dayFormatterFor(
 
   dayFormatters.set(key, formatter)
   return formatter
+}
+
+/**
+ * A cached formatter from one of the chat caches, built from the options it is given.
+ *
+ * The three chat caches are separate rather than one keyed by an option hash because each is
+ * asked for one shape only, and one map's key is then the locale and the zone - the same
+ * two facts `dateFormatterFor` remembers. A refusal is cached too, for the reason it is
+ * above: a zone this ICU build cannot format in must not be re-discovered per bubble.
+ */
+function chatFormatterFor(
+  cache: Map<string, Intl.DateTimeFormat | null>,
+  locale: string,
+  timeZone: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat | null {
+  const key = `${locale}|${timeZone ?? ''}`
+  const cached = cache.get(key)
+  if (cached !== undefined) return cached
+
+  let formatter: Intl.DateTimeFormat | null = null
+
+  try {
+    formatter = new Intl.DateTimeFormat(locale, {
+      ...options,
+      ...(timeZone ? { timeZone } : {}),
+    })
+  } catch {
+    formatter = null
+  }
+
+  cache.set(key, formatter)
+  return formatter
+}
+
+/**
+ * The time line under a chat bubble: `HH:mm` for a message written today, a short date and a
+ * time for anything older.
+ *
+ * "Today" is judged **in the viewer's zone**, not the browser's: the profile page promises
+ * that dates and times are shown in the chosen zone, and a bubble that called a message from
+ * 00:30 "yesterday" because the browser is one zone west would be that promise failing on
+ * the one screen a person reads most carefully. The day comparison is a formatted key rather
+ * than arithmetic on milliseconds, because a day is not twenty-four hours in a zone with a
+ * daylight-saving shift.
+ *
+ * `reference` exists for the tests and for a future caller that renders a transcript at a
+ * fixed moment; every real call site leaves it out.
+ */
+export function formatChatTime(
+  value: string | null | undefined,
+  locale: string,
+  timeZone: string | null | undefined,
+  reference: Date = new Date(),
+): string {
+  if (!value) return '—'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  const zone = timeZone ?? undefined
+
+  /**
+   * A comparison key for "which day is this", in one zone.
+   *
+   * `en-CA` is deliberate and replaces the page's language: its numeric date order is
+   * `YYYY-MM-DD`, so two equal days produce equal keys whatever the reader's locale is. The
+   * locale under which the *reader* sees the date is a different question and is answered by
+   * the two formatters below.
+   */
+  const dayKeyFormatter =
+    chatFormatterFor(chatDayKeyFormatters, 'en-CA', zone, CHAT_DAY_KEY_OPTIONS) ??
+    chatFormatterFor(chatDayKeyFormatters, 'en-CA', undefined, CHAT_DAY_KEY_OPTIONS)
+
+  const sameDay = dayKeyFormatter
+    ? dayKeyFormatter.format(date) === dayKeyFormatter.format(reference)
+    : false
+
+  if (sameDay) {
+    const time =
+      chatFormatterFor(chatTimeFormatters, locale, zone, CHAT_TIME_OPTIONS) ??
+      chatFormatterFor(chatTimeFormatters, locale, undefined, CHAT_TIME_OPTIONS)
+
+    return time ? time.format(date) : '—'
+  }
+
+  const moment =
+    chatFormatterFor(chatMomentFormatters, locale, zone, CHAT_MOMENT_OPTIONS) ??
+    chatFormatterFor(chatMomentFormatters, locale, undefined, CHAT_MOMENT_OPTIONS)
+
+  return moment ? moment.format(date) : '—'
+}
+
+/** The bare clock reading of a message written today - 24-hour, whatever the locale. */
+const CHAT_TIME_OPTIONS: Intl.DateTimeFormatOptions = {
+  hour: '2-digit',
+  minute: '2-digit',
+  // `HH:mm` is the spec's own spelling, and it is also the one clock reading that does not
+  // change shape between a locale that writes 14:30 and one that writes 2:30 PM: a thread
+  // whose times switched family halfway down would be harder to scan than a slightly foreign
+  // convention. The earlier-day branch below carries the same `hourCycle` for that reason.
+  hourCycle: 'h23',
+}
+
+/**
+ * A short date and a short time, for a message from an earlier day.
+ *
+ * Written as explicit fields rather than `dateStyle`/`timeStyle` so it can carry `hourCycle`:
+ * `dateStyle` cannot be combined with an hour field, and the point is that both branches of
+ * `formatChatTime` print the same 24-hour clock. A thread whose "today" messages read `14:30`
+ * and whose older ones read `2:30 PM` would be one screen speaking two conventions.
+ */
+const CHAT_MOMENT_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: '2-digit',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+}
+
+/** The parts a day comparison key is built from. */
+const CHAT_DAY_KEY_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
 }

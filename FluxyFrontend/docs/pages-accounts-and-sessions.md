@@ -85,5 +85,38 @@
   writes its own filter and drops `page` in the same write. The refusal
   (`profile answered and the grant is absent`) draws the card, its title and one `Alert` as the
   only body - no toolbar, no filters, no table - and the logs query is `enabled: false` there;
-  an unanswered profile draws the ordinary shell, which is the state every `probe:render`
-  assertion lands in.
+- `src/pages/admin/TicketsPage.tsx`, `src/pages/admin/TicketPage.tsx`,
+  `src/pages/account/TicketsPage.tsx` and `src/pages/account/TicketPage.tsx` are the support
+  tickets: the administrator's queue and one conversation, and the account's own queue and one
+  conversation. The two lists share their words, status colours and the account list's widths
+  arithmetic but not their data (`/admin/tickets` vs `/auth/tickets`); the two details share
+  `features/tickets/components/TicketChat.tsx`, which draws the conversation the same way for
+  both viewers - a client's message always left, an administrator's always right, fixed by the
+  author and not by the reader - and owns only the draft, the scroll position and the
+  composer's breakpoint rule.
+  - Both lists carry the established **auto-refresh toggle** (`AUTO_REFRESH_MS = 30_000`, ON by
+    default, `PauseCircleOutlined`/`ReloadOutlined` icon-only with its accessible name and
+    tooltip in the card head, `setInterval` through a ref holding `refetch`), the shape
+    `UserLogsPage`/`StreamProblemsPage` set. No `refetchInterval` and no per-page cache
+    settings: the query client's defaults are the decision.
+  - Both details **poll every 10 seconds** (`POLL_MS = 10_000`) while mounted and while the
+    ticket is open (`canReply(status)`), and stop on unmount or once it is `closed`. A tick is
+    skipped while one of the page's own writes is pending (reply, mark-read, close, reopen), so
+    a poll never races the send; the reply's own success handler still calls `refetch()`
+    immediately. This is the one deliberate polling exception in the app - see
+    `FluxyBackend/docs/tickets.md`.
+  - The **one-shot mark-read** is a ref holding the id already marked, so a poll that re-reads
+    the same unread ticket never fires the write again.
+  - `features/tickets/ticketAddress.ts` holds `createdTicketPath`: the create's `Location` is
+    the API's `/auth/tickets/{id}`, which the router does not serve (following it was a live
+    404), so the id is taken from the header and the address is rebuilt under the caller's own
+    list path. `features/tickets/ticketRules.ts` holds the two predicates both sides ask
+    (`canCreateTicket`, `canReply`) and `ticketStatus.ts` the tag colour and label key.
+  - The rail order is the owner's: `support` (the account areas) immediately before `account`,
+    and in the administrator's `users` group `tickets` last, after `userLogs`. The two list
+    pages are menu items; both details are `tickets/:id` routes with no entry of their own.
+  - The account list's actions column is `actionsColumnWidth(1) + 45` = 101 rather than the 56
+    a bare cluster needs: its header is the word "Actions"/«Действия» at antd's `600 14px`, and
+    a 56px cell wrapped the Russian heading onto three lines - a real screenshot of the page
+    showed it. The 45 pixels come out of the subject, which is the column with room to give
+    (the connection log made the same correction for the same reason).

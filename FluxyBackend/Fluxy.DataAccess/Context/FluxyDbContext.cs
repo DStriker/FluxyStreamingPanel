@@ -241,6 +241,18 @@ namespace Fluxy.DataAccess.Context
         public DbSet<MagEventEntity> MagEvents => Set<MagEventEntity>();
 
         /// <summary>
+        /// Support tickets: the conversations accounts open with the operator, each carrying its
+        /// lifecycle and the two sides' unread state.
+        /// </summary>
+        public DbSet<TicketEntity> Tickets => Set<TicketEntity>();
+
+        /// <summary>
+        /// The messages of those conversations, one row per message, with the side that wrote it
+        /// and the moment the other side read it.
+        /// </summary>
+        public DbSet<TicketReplyEntity> TicketReplies => Set<TicketReplyEntity>();
+
+        /// <summary>
         /// Entries of the three access-control blacklists. The kind of list is a column of the
         /// row, so one table holds the IP, ISP and user-agent entries.
         /// </summary>

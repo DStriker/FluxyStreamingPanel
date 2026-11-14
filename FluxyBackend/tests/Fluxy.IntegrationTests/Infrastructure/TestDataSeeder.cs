@@ -14,6 +14,8 @@ using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Subscriptions.Commands;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Repositories;
+using Fluxy.Core.Tickets.Commands;
+using Fluxy.Core.Tickets.Repositories;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Repositories;
@@ -1085,6 +1087,101 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 connection);
 
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        /// <summary>
+        /// Plants one ticket and, when asked, its first message through the Core repository, in
+        /// one save.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="userId">Account that opens the conversation.</param>
+        /// <param name="subject">Subject line the row is filed under.</param>
+        /// <param name="firstMessage">Opening message, or null for an empty thread.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>Identifier of the staged ticket.</returns>
+        /// <remarks>
+        /// The production write path for a conversation is <c>ITicketService.CreateAsync</c>, which
+        /// carries the create endpoint's subject rules. This helper stages the same rows the same
+        /// way the service does - one save - but names them directly, so a test can plant a
+        /// conversation into any account without a signed-in visitor of that account, and can
+        /// leave the thread empty to prove the <c>lastReplyAt</c> fallback.
+        /// </remarks>
+        public static async Task<Guid> PlantTicketAsync(
+            IServiceProvider services,
+            Guid userId,
+            string subject,
+            string? firstMessage = null,
+            CancellationToken cancellationToken = default)
+        {
+            var tickets = services.GetRequiredService<ITicketRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var id = await tickets.AddAsync(
+                new NewTicket { UserId = userId, Subject = subject },
+                cancellationToken);
+
+            if (firstMessage is not null)
+            {
+                await tickets.AddReplyAsync(
+                    new NewTicketReply
+                    {
+                        TicketId = id,
+                        AuthorId = userId,
+                        Message = firstMessage,
+                        IsAdminReply = false
+                    },
+                    cancellationToken);
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>
+        /// Stages <paramref name="count"/> messages of one side into an existing conversation and
+        /// commits them in one save, so a test can reach the thread bound without spending one
+        /// request per message.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="ticketId">Conversation the messages are written into.</param>
+        /// <param name="count">How many messages to stage.</param>
+        /// <param name="authorId">Account the messages name as their author.</param>
+        /// <param name="isAdminReply">Whether the operator wrote them rather than the account.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// The production write path is <c>ITicketService.ReplyAsync</c>, which carries the bound
+        /// this helper exists to approach: a test that planted the last allowed message over HTTP
+        /// would spend five hundred requests to prove the five hundred and first is refused. The
+        /// rows are staged through the same <see cref="ITicketRepository"/> the service stages with
+        /// and committed once, so the whole thread shares one instant - the audit columns are the
+        /// context's.
+        /// </remarks>
+        public static async Task PlantTicketRepliesAsync(
+            IServiceProvider services,
+            Guid ticketId,
+            int count,
+            Guid authorId,
+            bool isAdminReply = false,
+            CancellationToken cancellationToken = default)
+        {
+            var tickets = services.GetRequiredService<ITicketRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            for (var index = 0; index < count; index++)
+            {
+                await tickets.AddReplyAsync(
+                    new NewTicketReply
+                    {
+                        TicketId = ticketId,
+                        AuthorId = authorId,
+                        Message = $"planted message {index + 1}",
+                        IsAdminReply = isAdminReply
+                    },
+                    cancellationToken);
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
         /// <summary>

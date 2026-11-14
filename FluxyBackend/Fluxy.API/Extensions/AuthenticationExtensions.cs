@@ -170,6 +170,32 @@ namespace Fluxy.API.Extensions
         public const string ViewApiRequestFailuresPolicy = "Permission.ViewApiRequestFailures";
 
         /// <summary>
+        /// Policy that accepts an operator who may read the support tickets: any one of the three
+        /// account read grants, because which accounts a ticket is about is decided per row.
+        /// </summary>
+        /// <remarks>
+        /// The ticket surface is one resource seen from two sides, and the operator's side reads
+        /// the conversations of the accounts its grants reach. A dedicated ticket permission would
+        /// have to be a new bit in <c>UserPermission</c>, which is a <c>long</c> the enum has
+        /// already exhausted its int ceiling for; more importantly, reading a client's
+        /// conversation is the same question as reading the client, so the grant that answers one
+        /// answers the other. The policy is coarse; the service narrows it to the row's role.
+        /// </remarks>
+        public const string ViewTicketsPolicy = "Permission.ViewTickets";
+
+        /// <summary>
+        /// Policy that accepts an operator who may change the support tickets: any one of the
+        /// three account write grants.
+        /// </summary>
+        /// <remarks>
+        /// Answering, closing, reopening, deleting and the read marks all change what the account
+        /// surface holds about a conversation, so they need the grant that changes the account -
+        /// not the read one. The same reuse and the same reasoning as
+        /// <see cref="ViewTicketsPolicy"/>.
+        /// </remarks>
+        public const string EditTicketsPolicy = "Permission.EditTickets";
+
+        /// <summary>
         /// Registers the JWT scheme and the authorization policies.
         /// </summary>
         /// <param name="services">Service collection to register into.</param>
@@ -415,13 +441,31 @@ namespace Fluxy.API.Extensions
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(
-                            Fluxy.Core.Users.Enums.UserPermission.ViewApiRequestFailures)));
+                            Fluxy.Core.Users.Enums.UserPermission.ViewApiRequestFailures)))
+
+                // The ticket policies are the "any of" pair: the account read grants for the
+                // reads, the account write grants for everything that changes a conversation. A
+                // dedicated pair was rejected - see the constant's remarks - so these reuse the
+                // existing members and add no catalog entry, no migration and no frontend mirror.
+                .AddPolicy(ViewTicketsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionAnyRequirement(
+                            Fluxy.Core.Users.Utils.UserPermissionCatalog.ViewingAccounts.ToArray())))
+                .AddPolicy(EditTicketsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionAnyRequirement(
+                            Fluxy.Core.Users.Utils.UserPermissionCatalog.EditingAccounts.ToArray())));
 
             // Authorization handlers are resolved per request, and they depend on a scoped access checker
             // (which reads the DbContext). Registering as Scoped avoids the singleton->scoped
             // validation failure, and there is no state worth keeping for the lifetime of the app.
             services.AddScoped<IAuthorizationHandler, RoleRequirementHandler>();
             services.AddScoped<IAuthorizationHandler, PermissionRequirementHandler>();
+            services.AddScoped<IAuthorizationHandler, PermissionAnyRequirementHandler>();
 
             // The shared read of the account, scoped so that one request's answer is never
             // another request's - and so the result handler can ask the same question again

@@ -143,8 +143,18 @@ namespace Fluxy.API.Middleware
             // policy that carries one requirement per attribute - and reading only the first
             // would answer "your role changed" for an account whose role is fine and whose
             // group is simply missing the second, third or fourth grant.
+            //
+            // The "any of" requirement is read beside it so the explanation a refusal carries
+            // is the same word whichever of the two shapes the endpoint declared.
             var demanded = policy.Requirements
-                .OfType<PermissionRequirement>()
+                .Select(requirement => requirement switch
+                {
+                    PermissionRequirement permission => permission.Permissions,
+                    PermissionAnyRequirement any => any.Permissions,
+                    _ => null
+                })
+                .Where(permissions => permissions is not null)
+                .Select(permissions => permissions!)
                 .ToArray();
 
             if (demanded.Length == 0)
@@ -185,7 +195,7 @@ namespace Fluxy.API.Middleware
             // them must succeed. An endpoint demanding four grants therefore answers
             // permission_denied unless the group holds all four, and the client can put the
             // refusal where it belongs - on the screen, not on a sign-in page.
-            return demanded.All(requirement => requirement.Permissions.Any(standing.Grants))
+            return demanded.All(permissions => permissions.Any(standing.Grants))
                 ? AuthenticationResponses.RoleChangedCode
                 : AuthenticationResponses.PermissionDeniedCode;
         }

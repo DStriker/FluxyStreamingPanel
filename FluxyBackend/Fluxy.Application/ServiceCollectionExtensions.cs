@@ -11,6 +11,7 @@ using Fluxy.Application.Security.Services;
 using Fluxy.Application.Series.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Subscriptions.Services;
+using Fluxy.Application.Tickets.Services;
 using Fluxy.Application.Users.Options;
 using Fluxy.Application.Users.Services;
 using Fluxy.Application.Vod.Services;
@@ -25,6 +26,7 @@ using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Subscriptions.Interfaces;
+using Fluxy.Core.Tickets.Interfaces;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Vod.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -226,6 +228,13 @@ namespace Fluxy.Application
             // stream is a real foreign key, so it reads the streams through the Core repository and
             // never invents one - the shape the connection log's seeder follows.
             services.AddScoped<IStreamProblemSeeder, DevelopmentStreamProblemSeeder>();
+
+            // The support tickets: the account's own queue and the operator's. It is its own
+            // service because one conversation carries rules no journal has - which side of it a
+            // caller is on, which flag a message raises, when a thread refuses another message,
+            // and which lifecycle transition is admitted. Scoped because it reads and writes
+            // through the context, and the clock it stamps read marks from is the request's.
+            services.AddScoped<ITicketService, TicketService>();
 
             // The three access-control blacklists: one resource behind two permissions and
             // three menu entries. It is its own service because an entry has rules none of the

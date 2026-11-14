@@ -1382,6 +1382,98 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("tariff_plan_user_groups", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TicketEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AdminUnread")
+                        .HasColumnType("boolean")
+                        .HasColumnName("admin_unread");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<bool>("UserUnread")
+                        .HasColumnType("boolean")
+                        .HasColumnName("user_unread");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .IsDescending();
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("tickets", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TicketReplyEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AuthorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsAdminReply")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_admin_reply");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("TicketId", "CreatedAt");
+
+                    b.ToTable("ticket_replies", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2207,6 +2299,29 @@ namespace Fluxy.DataAccess.Migrations
                     b.Navigation("TariffPlan");
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TicketEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TicketReplyEntity", b =>
+                {
+                    b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Fluxy.DataAccess.Entities.TicketEntity", null)
+                        .WithMany("Replies")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
                 {
                     b.HasOne("Fluxy.DataAccess.Entities.UserGroupEntity", "Group")
@@ -2325,6 +2440,11 @@ namespace Fluxy.DataAccess.Migrations
             modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionEntity", b =>
                 {
                     b.Navigation("Bouquets");
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TicketEntity", b =>
+                {
+                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserGroupEntity", b =>

@@ -61,6 +61,11 @@ import ApiRequestFailuresPage from '../src/pages/admin/ApiRequestFailuresPage'
 import StreamProblemsPage from '../src/pages/admin/StreamProblemsPage'
 import SourceReplacementPage from '../src/pages/admin/SourceReplacementPage'
 import MagEventsPage from '../src/pages/admin/MagEventsPage'
+import AdminTicketsPage from '../src/pages/admin/TicketsPage'
+import AdminTicketPage from '../src/pages/admin/TicketPage'
+import AccountTicketsPage from '../src/pages/account/TicketsPage'
+import AccountTicketPage from '../src/pages/account/TicketPage'
+import { createdTicketPath } from '../src/features/tickets/ticketAddress'
 import ConnectionNetworkCell from '../src/features/connection-logs/components/ConnectionNetworkCell'
 import { COLUMN_WIDTHS_KEYS } from '../src/features/connection-logs/layout'
 import {
@@ -4080,19 +4085,491 @@ async function main() {
     `items: ${creditLogItemKeys.join(', ')}; opens ${menuPath('Admin', 'credit-logs')}`,
   )
 
-  // The user-log entry: appended after the credit log, so the group ends with the wider record.
+  // The ticket entry: appended after the user log, so the group ends with the conversation
+  // the accounts opened rather than with the record of what they did.
   const userLogGroup = NAVIGATION.Admin.find((group) => group.key === 'users')
   const userLogItemKeys = (userLogGroup?.items ?? []).map((item) => item.key)
   const userLogItem = userLogGroup?.items.find((item) => item.key === 'userLogs')
   const userLogModule = userLogItem?.page ? await userLogItem.page() : null
   check(
-    'the admin users group ends with the user-log entry, right after the credit log',
-    userLogItemKeys[userLogItemKeys.length - 1] === 'userLogs' &&
+    'the admin users group ends with the ticket entry, right after the user log',
+    userLogItemKeys[userLogItemKeys.length - 1] === 'tickets' &&
+      userLogItemKeys.indexOf('tickets') === userLogItemKeys.indexOf('userLogs') + 1 &&
       userLogItemKeys.indexOf('userLogs') === userLogItemKeys.indexOf('creditLogs') + 1 &&
       userLogItemKeys.indexOf('creditLogs') === userLogItemKeys.indexOf('adminSessions') + 1 &&
       menuPath('Admin', 'user-logs') === '/admin/user-logs' &&
       userLogModule?.default === UserLogsPage,
     `items: ${userLogItemKeys.join(', ')}; opens ${menuPath('Admin', 'user-logs')}`,
+  )
+
+  // --- The support tickets -----------------------------------------------------
+  //
+  // Four screens behind one feature: the administrator's queue, the account's own queue, and
+  // one detail page per side. Every render below lands before the first answer arrives, so
+  // what a static render can assert is the shape - the card title, the toolbar order, the
+  // column headers and widths - and the loaded states (a closed banner, an empty thread, a
+  // composer) come from a seeded cache, which is the only way `renderToStaticMarkup` sees a
+  // page after its data arrived.
+  const adminTicketsHtml = renderToStaticMarkup(
+    withRouter('/admin/tickets', withQuery(
+      <AntApp>
+        <AdminTicketsPage sectionKey="nav.items.tickets" />
+      </AntApp>,
+    )),
+  )
+
+  check(
+    'the administrator ticket queue draws its heading and its table before any rows arrive',
+    adminTicketsHtml.includes('>Tickets<') &&
+      adminTicketsHtml.includes('ant-table') &&
+      !adminTicketsHtml.includes('nav.items.tickets'),
+    `rendered ${adminTicketsHtml.length} bytes with the queue still being fetched`,
+  )
+
+  const adminTicketCols = [...adminTicketsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const adminTicketWidths = adminTicketCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  check(
+    'the administrator ticket queue draws its six column headers in order, fixed-layout totalling 1190',
+    ['Subject', 'User', 'Status', 'Opened', 'Last reply', 'Actions'].every((heading) =>
+      adminTicketsHtml.includes(`>${heading}<`),
+    ) &&
+      adminTicketsHtml.indexOf('>Subject<') < adminTicketsHtml.indexOf('>User<') &&
+      adminTicketsHtml.indexOf('>User<') < adminTicketsHtml.indexOf('>Status<') &&
+      adminTicketsHtml.indexOf('>Status<') < adminTicketsHtml.indexOf('>Opened<') &&
+      adminTicketsHtml.indexOf('>Opened<') < adminTicketsHtml.indexOf('>Last reply<') &&
+      adminTicketsHtml.indexOf('>Last reply<') < adminTicketsHtml.indexOf('>Actions<') &&
+      /table-layout:\s*fixed/.test(adminTicketsHtml) &&
+      adminTicketWidths.join(',') === `340,200,130,190,190,${actionsColumnWidth(4)}` &&
+      adminTicketWidths.reduce((sum, width) => sum + (Number(width) || 0), 0) === 1190,
+    `${adminTicketCols.length} columns: [${adminTicketWidths.join(', ')}]`,
+  )
+
+  // The toolbar order the specification names: auto-refresh, search, the status picker, the
+  // width reset. The toggle is icon-only, so its position is read from its accessible name -
+  // and the name is the whole sentence, interval included, which is also the tooltip.
+  const adminTicketRefreshAt = adminTicketsHtml.indexOf(
+    'Pause auto-refresh (re-reads the table every 30 seconds)',
+  )
+  check(
+    'the administrator ticket toolbar runs auto-refresh (on by default), search, the status picker and the width reset',
+    adminTicketRefreshAt !== -1 &&
+      adminTicketsHtml.includes('Search tickets') &&
+      adminTicketsHtml.includes('Any status') &&
+      adminTicketsHtml.includes('aria-label="Reset widths"') &&
+      adminTicketRefreshAt < adminTicketsHtml.indexOf('Search tickets') &&
+      adminTicketsHtml.indexOf('Search tickets') < adminTicketsHtml.indexOf('Any status') &&
+      adminTicketsHtml.indexOf('Any status') < adminTicketsHtml.indexOf('aria-label="Reset widths"'),
+    `refresh@${adminTicketRefreshAt}, search@${adminTicketsHtml.indexOf('Search tickets')}, reset@${adminTicketsHtml.indexOf('aria-label="Reset widths"')}`,
+  )
+
+  // The account's own queue: the same table minus the user column, with the one write the
+  // account side owns. A session is published because the create button and the row link are
+  // both derived from the signed-in role - the static render of the page alone would draw
+  // neither, and the point here is that the toolbar's last control is the create command.
+  const ticketsSession = {
+    userId: '2',
+    username: 'alice',
+    role: 'Client',
+    refresh: async () => null,
+  }
+  const accountTicketsHtml = renderToStaticMarkup(
+    withRouter(
+      '/client/tickets',
+      withQuery(
+        <AntApp>
+          <SessionContext.Provider value={ticketsSession}>
+            <AccountTicketsPage sectionKey="nav.items.tickets" />
+          </SessionContext.Provider>
+        </AntApp>,
+      ),
+    ),
+  )
+
+  const accountTicketCols = [...accountTicketsHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const accountTicketWidths = accountTicketCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  check(
+    'the account ticket queue draws five headers, no user column, and totals 1190',
+    accountTicketsHtml.includes('>Tickets<') &&
+      accountTicketsHtml.includes('>Subject<') &&
+      accountTicketsHtml.includes('>Status<') &&
+      accountTicketsHtml.includes('>Opened<') &&
+      accountTicketsHtml.includes('>Last reply<') &&
+      accountTicketsHtml.includes('>Actions<') &&
+      !accountTicketsHtml.includes('>User<') &&
+      accountTicketWidths.join(',') ===
+        `519,150,210,210,${actionsColumnWidth(1) + 45}` &&
+      accountTicketWidths.reduce((sum, width) => sum + (Number(width) || 0), 0) === 1190,
+    `${accountTicketCols.length} columns: [${accountTicketWidths.join(', ')}]`,
+  )
+
+  const accountRefreshAt = accountTicketsHtml.indexOf(
+    'Pause auto-refresh (re-reads the table every 30 seconds)',
+  )
+  check(
+    'the account ticket toolbar runs auto-refresh, search, the status picker, the width reset and the create command',
+    accountRefreshAt !== -1 &&
+      accountTicketsHtml.includes('Search tickets') &&
+      accountTicketsHtml.includes('Any status') &&
+      accountTicketsHtml.includes('aria-label="Reset widths"') &&
+      accountTicketsHtml.includes('Create ticket') &&
+      accountRefreshAt < accountTicketsHtml.indexOf('Create ticket'),
+    `refresh@${accountRefreshAt}, create@${accountTicketsHtml.indexOf('Create ticket')}`,
+  )
+
+  // One conversation, already loaded, from a seeded cache. The detail read's key is stated
+  // here exactly as the hook states it (`['admin-tickets', 'detail', id]`), because a seeded
+  // key that does not match is a page that draws its spinner and asserts nothing.
+  const ticketId = '77777777-7777-7777-7777-777777777777'
+  const ticketReplies = [
+    {
+      id: '88888888-8888-8888-8888-888888888888',
+      message: 'The stream keeps stopping.',
+      isAdminReply: false,
+      authorId: '2',
+      authorName: 'alice',
+      readAt: '2026-05-01T10:05:00Z',
+      createdAt: '2026-05-01T10:00:00Z',
+    },
+    {
+      id: '99999999-9999-9999-9999-999999999999',
+      message: 'Please restart your router.',
+      isAdminReply: true,
+      authorId: '1',
+      authorName: 'root',
+      readAt: null,
+      createdAt: '2026-05-01T10:10:00Z',
+    },
+  ]
+  const ticketDetail = {
+    id: ticketId,
+    userId: '2',
+    username: 'alice',
+    subject: 'Stream stops',
+    status: 'closed',
+    createdAt: '2026-05-01T10:00:00Z',
+    updatedAt: '2026-05-01T10:15:00Z',
+    lastReplyAt: '2026-05-01T10:10:00Z',
+    replies: ticketReplies,
+  }
+
+  const renderAdminTicketDetail = (detail) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['admin-tickets', 'detail', ticketId], detail)
+
+    return renderToStaticMarkup(
+      withRoutes(`/admin/tickets/${ticketId}`, [
+        {
+          path: '/admin/tickets/:id',
+          element: (
+            <QueryClientProvider client={client}>
+              <AntApp>
+                <AdminTicketPage sectionKey="nav.items.tickets" />
+              </AntApp>
+            </QueryClientProvider>
+          ),
+        },
+      ]),
+    )
+  }
+
+  const closedAdminTicketHtml = renderAdminTicketDetail(ticketDetail)
+  check(
+    'a closed admin ticket draws its whole thread, the closed banner and the reopen control, and no composer',
+    closedAdminTicketHtml.includes('>Stream stops<') &&
+      closedAdminTicketHtml.includes('The stream keeps stopping.') &&
+      closedAdminTicketHtml.includes('Please restart your router.') &&
+      closedAdminTicketHtml.includes('The ticket is closed. You cannot reply.') &&
+      closedAdminTicketHtml.includes('>Reopen<') &&
+      closedAdminTicketHtml.includes('>Closed<') &&
+      // The composer and its field are absent, not disabled: a control nobody can use is
+      // still a promise that the conversation accepts input.
+      !closedAdminTicketHtml.includes('aria-label="Message"') &&
+      !closedAdminTicketHtml.includes('>Send<'),
+    `rendered ${closedAdminTicketHtml.length} bytes of a closed thread`,
+  )
+
+  // The sides are the author's, fixed for both viewers: a client's message on the left and an
+  // administrator's on the right, in the same markup whichever side is reading it.
+  check(
+    'the chat keeps a client message left and an administrator message right, whatever the viewer',
+    closedAdminTicketHtml.includes('align-items:flex-start') &&
+      closedAdminTicketHtml.includes('align-items:flex-end') &&
+      closedAdminTicketHtml.indexOf('The stream keeps stopping.') <
+        closedAdminTicketHtml.indexOf('Please restart your router.'),
+    'both sides and the oldest-first order are present',
+  )
+
+  // An open ticket: the composer is there, its send button waits for a draft, and the closed
+  // banner is absent. `unread` is the active status, which is also the state the detail read
+  // would mark read if effects ran - they do not here.
+  const openAdminTicketHtml = renderAdminTicketDetail({
+    ...ticketDetail,
+    status: 'unread',
+    replies: ticketDetail.replies.slice(0, 1),
+  })
+  check(
+    'an open admin ticket draws the composer with a disabled send and no closed banner',
+    openAdminTicketHtml.includes('aria-label="Message"') &&
+      openAdminTicketHtml.includes('>Send<') &&
+      /<button[^>]*disabled[^>]*>[\s\S]{0,900}?Send/.test(openAdminTicketHtml) &&
+      !openAdminTicketHtml.includes('The ticket is closed. You cannot reply.'),
+    `rendered ${openAdminTicketHtml.length} bytes; message ${openAdminTicketHtml.includes('aria-label="Message"')}, send ${openAdminTicketHtml.includes('>Send<')}, button ${/<button[^>]*>[\s\S]{0,900}?Send/.exec(openAdminTicketHtml)?.[0]?.slice(0, 160) ?? 'none'}`,
+  )
+
+  // An empty thread: the sentence instead of a conversation, and the composer still offered.
+  const emptyAdminTicketHtml = renderAdminTicketDetail({
+    ...ticketDetail,
+    status: 'read',
+    replies: [],
+  })
+  check(
+    'a ticket with no messages says so instead of drawing an empty box',
+    emptyAdminTicketHtml.includes('No messages yet') &&
+      emptyAdminTicketHtml.includes('aria-label="Message"'),
+    emptyAdminTicketHtml.includes('No messages yet')
+      ? 'the empty-chat sentence is drawn'
+      : 'THE EMPTY-CHAT SENTENCE IS MISSING',
+  )
+
+  // The account's side of the same thread. It is the same component and the same sides; what
+  // differs is the absence of every support control - no reopen in the banner, no head actions.
+  const renderAccountTicketDetail = (detail) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['tickets', 'detail', ticketId], detail)
+
+    return renderToStaticMarkup(
+      withRoutes(`/client/tickets/${ticketId}`, [
+        {
+          path: '/client/tickets/:id',
+          element: (
+            <QueryClientProvider client={client}>
+              <AntApp>
+                <SessionContext.Provider value={ticketsSession}>
+                  <AccountTicketPage sectionKey="nav.items.tickets" />
+                </SessionContext.Provider>
+              </AntApp>
+            </QueryClientProvider>
+          ),
+        },
+      ]),
+    )
+  }
+
+  const closedAccountTicketHtml = renderAccountTicketDetail(ticketDetail)
+  check(
+    'a closed account ticket shows the banner with no control and no composer',
+    closedAccountTicketHtml.includes('>Stream stops<') &&
+      closedAccountTicketHtml.includes('The ticket is closed. You cannot reply.') &&
+      closedAccountTicketHtml.includes('>Closed<') &&
+      !closedAccountTicketHtml.includes('>Reopen<') &&
+      !closedAccountTicketHtml.includes('aria-label="Message"'),
+    `rendered ${closedAccountTicketHtml.length} bytes of the account's closed thread`,
+  )
+
+  // The unloaded detail: the card keeps its generic title while the row is still on its way,
+  // which is the page-title rule on the one page whose title is data.
+  const loadingAccountTicketHtml = renderToStaticMarkup(
+    withRoutes(`/client/tickets/${ticketId}`, [
+      {
+        path: '/client/tickets/:id',
+        element: withQuery(
+          <AntApp>
+            <AccountTicketPage sectionKey="nav.items.tickets" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+  check(
+    'an unloaded ticket keeps the card title and draws a spinner',
+    loadingAccountTicketHtml.includes('>Ticket<') &&
+      loadingAccountTicketHtml.includes('ant-spin') &&
+      !loadingAccountTicketHtml.includes('nav.items.tickets'),
+    `rendered ${loadingAccountTicketHtml.length} bytes before the detail answers`,
+  )
+
+  // The source shape of the runtime behaviour the static render cannot reach: the lists carry
+  // the 30-second toggle, the details the 10-second poll, the poll is off while closed and
+  // while a write of the page's own is in flight, and the mark-read stays a one-shot ref guard
+  // so a poll can never re-fire it. `refetchInterval` is asserted absent in the whole `src/`.
+  const adminTicketsSource = readFileSync('src/pages/admin/TicketsPage.tsx', 'utf8')
+  const accountTicketsSource = readFileSync('src/pages/account/TicketsPage.tsx', 'utf8')
+  const adminTicketSource = readFileSync('src/pages/admin/TicketPage.tsx', 'utf8')
+  const accountTicketSource = readFileSync('src/pages/account/TicketPage.tsx', 'utf8')
+  const ticketsQueriesSource = readFileSync('src/features/tickets/hooks/queries.ts', 'utf8')
+  const ticketsFeatureFiles = [
+    'src/features/tickets/api.ts',
+    'src/features/tickets/ticketRules.ts',
+    'src/features/tickets/ticketStatus.ts',
+    'src/features/tickets/ticketAddress.ts',
+    'src/features/tickets/hooks/queries.ts',
+    'src/features/tickets/hooks/mutations.ts',
+    'src/features/tickets/components/CreateTicketModal.tsx',
+    'src/features/tickets/components/TicketChat.tsx',
+    'src/features/tickets/types/index.ts',
+    'src/features/tickets/types/AdminTicket.ts',
+    'src/features/tickets/types/AdminTicketDetail.ts',
+    'src/features/tickets/types/AdminTicketList.ts',
+    'src/features/tickets/types/Ticket.ts',
+    'src/features/tickets/types/TicketDetail.ts',
+    'src/features/tickets/types/TicketList.ts',
+    'src/features/tickets/types/TicketReply.ts',
+    'src/features/tickets/types/TicketStatus.ts',
+  ]
+  const ticketsCrossImports = ticketsFeatureFiles.flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/from '([^']+)'/g)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier.includes('/features/'))
+      .filter((specifier) => !specifier.includes('features/tickets/')),
+  )
+
+  check(
+    'both ticket lists start with auto-refresh on at thirty seconds, through the ref the log pages use',
+    [adminTicketsSource, accountTicketsSource].every(
+      (source) =>
+        /const AUTO_REFRESH_MS = 30_000/.test(source) &&
+        /useState\(true\)/.test(source) &&
+        /const refreshRef = useRef<\(\) => void>\(\(\) => \{\}\)/.test(source) &&
+        /setInterval\(\(\) => refreshRef\.current\(\), AUTO_REFRESH_MS\)/.test(source) &&
+        !/refetchInterval/.test(source),
+    ),
+    'both lists carry the 30 s toggle and neither uses refetchInterval',
+  )
+
+  check(
+    'both ticket details poll every ten seconds, stop when closed, and never use refetchInterval',
+    [adminTicketSource, accountTicketSource].every(
+      (source) =>
+        /const POLL_MS = 10_000/.test(source) &&
+        /setInterval\(\(\) => pollRef\.current\(\), POLL_MS\)/.test(source) &&
+        /if \(!open\) return/.test(source) &&
+        !/refetchInterval/.test(source),
+    ) &&
+      !ticketsQueriesSource.includes('refetchInterval'),
+    'both details poll at 10 s, gated on the ticket being open',
+  )
+
+  check(
+    'the poll skips a tick while a write is in flight, and the reply still re-reads immediately',
+    /if \([\s\S]{0,240}?reply\.isPending[\s\S]{0,240}?\) \{[\s\S]{0,40}?return/.test(
+      adminTicketSource,
+    ) &&
+      /if \(markRead\.isPending \|\| reply\.isPending\) return/.test(accountTicketSource) &&
+      (adminTicketSource.match(/detailQuery\.refetch\(\)/g) ?? []).length >= 3,
+    'the pending guard is present on both sides and the send refetches',
+  )
+
+  check(
+    'the one-shot mark-read is a ref guard, so a poll cannot fire it again',
+    /const markedReadRef = useRef<string \| null>\(null\)/.test(adminTicketSource) &&
+      /markedReadRef\.current === ticketId/.test(adminTicketSource) &&
+      /const markedReadRef = useRef<string \| null>\(null\)/.test(accountTicketSource) &&
+      /markedReadRef\.current === ticketId/.test(accountTicketSource),
+    'both pages hold the id they have already marked',
+  )
+
+  check(
+    'nothing inside the tickets feature imports another feature',
+    ticketsCrossImports.length === 0,
+    ticketsCrossImports.length === 0
+      ? `${ticketsFeatureFiles.length} feature files, no cross-feature imports`
+      : `CROSS-FEATURE IMPORTS: ${ticketsCrossImports.join(', ')}`,
+  )
+
+  // The create flow's address, as a value: the 201's `Location` is the API's `/auth/tickets/{id}`,
+  // which the router does not serve - following it was a live 404. The page rebuilds the path
+  // under its own area, and the rule is pinned here because a render cannot reach a navigation.
+  check(
+    'a created ticket is addressed under its own area, not at the API’s Location path',
+    createdTicketPath('/client/tickets', `/auth/tickets/${ticketId}`) ===
+      `/client/tickets/${ticketId}` &&
+      createdTicketPath('/reseller/tickets', `/auth/tickets/${ticketId}`) ===
+        `/reseller/tickets/${ticketId}` &&
+      createdTicketPath('/client/tickets', null) === null &&
+      accountTicketsSource.includes('createdTicketPath(listPath, result.location)') &&
+      !accountTicketsSource.includes('internalPath(result.location)'),
+    'the create flow rebuilds the row address instead of following /auth/tickets/{id}',
+  )
+
+  // The rail: the two account areas meet support before their own settings, and the
+  // administrator answers in the users section. The group precedes `account` - the owner's
+  // order - and the entry opens the real page at the area's own prefix.
+  const clientGroupKeys = NAVIGATION.Client.map((group) => group.key)
+  const resellerGroupKeys = NAVIGATION.Reseller.map((group) => group.key)
+  const clientSupportGroup = NAVIGATION.Client.find((group) => group.key === 'support')
+  const resellerSupportGroup = NAVIGATION.Reseller.find((group) => group.key === 'support')
+  const clientTicketsItem = clientSupportGroup?.items.find((item) => item.key === 'tickets')
+  const resellerTicketsItem = resellerSupportGroup?.items.find((item) => item.key === 'tickets')
+  const clientTicketsModule = clientTicketsItem?.page ? await clientTicketsItem.page() : null
+  const resellerTicketsModule = resellerTicketsItem?.page
+    ? await resellerTicketsItem.page()
+    : null
+  const adminTicketsGroup = NAVIGATION.Admin.find((group) => group.key === 'users')
+  const adminTicketsItem = adminTicketsGroup?.items.find((item) => item.key === 'tickets')
+  const adminTicketsModule = adminTicketsItem?.page ? await adminTicketsItem.page() : null
+  const adminTicketMatch = matchRoutes(routeTable, `/admin/tickets/${ticketId}`)
+  const clientTicketMatch = matchRoutes(routeTable, `/client/tickets/${ticketId}`)
+  const resellerTicketMatch = matchRoutes(routeTable, `/reseller/tickets/${ticketId}`)
+  const adminTicketLeaf = adminTicketMatch?.[adminTicketMatch.length - 1]?.route
+  const clientTicketLeaf = clientTicketMatch?.[clientTicketMatch.length - 1]?.route
+  const resellerTicketLeaf = resellerTicketMatch?.[resellerTicketMatch.length - 1]?.route
+
+  check(
+    'the support group precedes the account group in both account-area rails, at the area’s own prefix',
+    clientGroupKeys.indexOf('support') === clientGroupKeys.indexOf('account') - 1 &&
+      resellerGroupKeys.indexOf('support') === resellerGroupKeys.indexOf('account') - 1 &&
+      clientGroupKeys.includes('support') &&
+      menuPath('Client', 'tickets') === '/client/tickets' &&
+      menuPath('Reseller', 'tickets') === '/reseller/tickets' &&
+      clientTicketsModule?.default === AccountTicketsPage &&
+      resellerTicketsModule?.default === AccountTicketsPage &&
+      clientTicketsItem?.labelKey === 'nav.items.tickets',
+    `client: ${clientGroupKeys.join(', ')}; reseller: ${resellerGroupKeys.join(', ')}`,
+  )
+
+  check(
+    'the administrator answers from the users group, and every detail route resolves to its real page',
+    adminTicketsItem?.path === 'tickets' &&
+      adminTicketsItem?.labelKey === 'nav.items.tickets' &&
+      menuPath('Admin', 'tickets') === '/admin/tickets' &&
+      adminTicketsModule?.default === AdminTicketsPage &&
+      adminTicketLeaf?.path === 'tickets/:id' &&
+      clientTicketLeaf?.path === 'tickets/:id' &&
+      resellerTicketLeaf?.path === 'tickets/:id' &&
+      clientTicketLeaf?.path !== '*',
+    `admin item ${adminTicketsItem?.path ?? 'none'}; detail routes ${adminTicketLeaf?.path ?? 'none'}, ${clientTicketLeaf?.path ?? 'none'}, ${resellerTicketLeaf?.path ?? 'none'}`,
+  )
+
+  // The words: the rail entry, both list titles (one word), the generic detail title, the
+  // three statuses and the auto-refresh triple exist in both bundles. Everything the four
+  // pages call literally is covered by `probe:i18n`; these are the ones a render only reaches
+  // in a state it cannot be asked to draw here.
+  check(
+    'the ticket rail entry, titles, statuses and auto-refresh words are all translated',
+    i18n.getResource('en', 'translation', 'nav.groups.support') === 'Support' &&
+      i18n.getResource('ru', 'translation', 'nav.groups.support') === 'Поддержка' &&
+      i18n.getResource('en', 'translation', 'nav.items.tickets') === 'Tickets' &&
+      i18n.getResource('ru', 'translation', 'nav.items.tickets') === 'Тикеты' &&
+      i18n.getResource('en', 'translation', 'tickets.listTitle') === 'Tickets' &&
+      i18n.getResource('ru', 'translation', 'tickets.listTitle') === 'Тикеты' &&
+      i18n.getResource('en', 'translation', 'tickets.detailTitle') === 'Ticket' &&
+      i18n.getResource('ru', 'translation', 'tickets.detailTitle') === 'Тикет' &&
+      ['unread', 'read', 'closed'].every(
+        (status) =>
+          i18n.getResource('en', 'translation', `tickets.statuses.${status}`) &&
+          i18n.getResource('ru', 'translation', `tickets.statuses.${status}`),
+      ) &&
+      ['pauseRefresh', 'resumeRefresh', 'autoRefreshHint'].every(
+        (key) =>
+          i18n.getResource('en', 'translation', `tickets.${key}`) &&
+          i18n.getResource('ru', 'translation', `tickets.${key}`),
+      ) &&
+      i18n.getResource('en', 'translation', 'tickets.closedNotice') ===
+        'The ticket is closed. You cannot reply.' &&
+      i18n.getResource('en', 'translation', 'tickets.noMessages') === 'No messages yet',
+    `en ${i18n.getResource('en', 'translation', 'tickets.listTitle')}, ru ${i18n.getResource('ru', 'translation', 'tickets.listTitle')}`,
   )
 
   check(

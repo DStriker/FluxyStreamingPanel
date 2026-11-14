@@ -175,6 +175,18 @@ const TariffPlanFormPage = lazy(() => import('../pages/admin/TariffPlanFormPage'
 const SubscriptionFormPage = lazy(() => import('../pages/admin/SubscriptionFormPage'))
 
 /**
+ * The two ticket detail pages - one per area, and no menu item for either.
+ *
+ * `/admin/tickets/{id}` and the account areas' `tickets/{id}` are reached from a row of their
+ * lists, so neither is a menu entry: an entry saying "a ticket" is a page that is empty until
+ * the visitor says which. Two loaders rather than one component behind a role switch, because
+ * the two screens differ in what they may do - the administrator closes and reopens, the
+ * owner only answers - and each is a page of its own.
+ */
+const AdminTicketPage = lazy(() => import('../pages/admin/TicketPage'))
+const AccountTicketPage = lazy(() => import('../pages/account/TicketPage'))
+
+/**
  * The three sign-in areas, each of which has to answer the path the backend names in its
  * `redirect` field - a page inside the area, and therefore a child of it.
  *
@@ -346,8 +358,26 @@ export const routes: RouteObject[] = [
       </GuestOnly>
     ),
   }),
-  withFallback(area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea')),
-  withFallback(area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea')),
+  withFallback(
+    area('Client', config.CLIENT_HOME_ROUTE, 'titles.clientArea', [
+      {
+        // One ticket's conversation, reached from a row of the account's own list. No menu
+        // entry: a page that is empty until the visitor says which ticket.
+        path: 'tickets/:id',
+        element: <AccountTicketPage sectionKey="nav.items.tickets" />,
+      },
+    ]),
+  ),
+  withFallback(
+    area('Reseller', config.RESELLER_HOME_ROUTE, 'titles.resellerArea', [
+      {
+        // The same page and the same address shape as the Client area's - one component behind
+        // both, because an account's own conversation does not change with its job.
+        path: 'tickets/:id',
+        element: <AccountTicketPage sectionKey="nav.items.tickets" />,
+      },
+    ]),
+  ),
   withFallback(
     area('Admin', config.ADMIN_HOME_ROUTE, 'titles.adminArea', [
       {
@@ -453,6 +483,12 @@ export const routes: RouteObject[] = [
       {
         path: 'subscriptions/:id',
         element: <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />,
+      },
+      // One ticket's conversation, as the administrator reads it. No menu item: it is reached
+      // from a row of the admin list, the same shape every other detail address here has.
+      {
+        path: 'tickets/:id',
+        element: <AdminTicketPage sectionKey="nav.items.tickets" />,
       },
     ]),
   ),

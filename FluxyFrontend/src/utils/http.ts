@@ -318,6 +318,46 @@ export async function apiFetch<T = MessageResponse>(
 }
 
 /**
+ * Creates a resource and answers with its body **and** the `Location` the 201 carries: the
+ * leaf exception to a header nothing else in this file reads.
+ *
+ * It exists for one contract: a create endpoint may answer `201 ticket_created` with a
+ * `MessageResponse` body and put the new row's address in `Location`, so a caller that has to
+ * open what it just made has no identifier in the body to build one from. The alternative -
+ * a page guessing a route from a body that does not carry an id - would be a page that cannot
+ * be right about the server it is talking to.
+ *
+ * It has the same refresh-and-retry rule as `apiFetch`, and the same reason: a 201 whose
+ * access token expired is retried once, with a freshly minted token, and the `Location` is
+ * read from the answer that actually succeeded.
+ */
+export async function apiCreate<T = MessageResponse>(
+  path: string,
+  {
+    body,
+    csrfToken,
+    captchaToken,
+    method = 'POST',
+    signal,
+  }: RequestOptions & { method?: 'POST' | 'PUT' } = {},
+): Promise<{ data: T; location: string | null }> {
+  try {
+    return await rawAnswer<T>(path, { body, csrfToken, captchaToken, method, signal })
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error
+    if (!(await recoverFromExpiry(error, path))) throw error
+
+    return rawAnswer<T>(path, {
+      body,
+      csrfToken: await getCsrfToken(),
+      captchaToken,
+      method,
+      signal,
+    })
+  }
+}
+
+/**
  * Gets from the API and turns any non-2xx into an {@link ApiError}, with the same
  * refresh-and-retry behaviour as {@link apiFetch}.
  *
@@ -337,13 +377,28 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
 }
 
 /**
- * One request, and one answer. This is the part everything else is built on; `apiFetch` and
- * `apiGet` add the session handling around it.
+ * One request, and one answer, with the two things a 201 can carry.
+ *
+ * An answer is the parsed body and the `Location` header. Almost every caller wants only the
+ * body, and `rawFetch` below hands them exactly that; the one that needs the header is a
+ * create whose new row's address is in it rather than in the body - `apiCreate` is that
+ * caller, and it is exported so a feature does not have to reach for a second `fetch`.
  */
-async function rawFetch<T>(
+interface RawAnswer<T> {
+  /** The parsed body, or `{}` when the answer carried no JSON at all. */
+  data: T
+  /** The `Location` header, or null when the answer carried none. */
+  location: string | null
+}
+
+/**
+ * One request, and one answer. This is the part everything else is built on; `apiFetch`,
+ * `apiGet` and `apiCreate` add the session handling around it.
+ */
+async function rawAnswer<T>(
   path: string,
   { method, body, csrfToken, captchaToken, signal }: RawOptions = {},
-): Promise<T> {
+): Promise<RawAnswer<T>> {
   const isWrite = method !== 'GET'
 
   // A `FormData` body is an encoded request already: the browser writes the multipart
@@ -421,7 +476,17 @@ async function rawFetch<T>(
     })
   }
 
-  return (data ?? {}) as T
+  return {
+    data: (data ?? {}) as T,
+    // Read after the refusal branch so a failed answer contributes nothing: a `Location` on
+    // an error describes a destination this caller has no business following.
+    location: response.headers.get('Location'),
+  }
+}
+
+/** The body of one request, for the callers that do not need the headers. */
+async function rawFetch<T>(path: string, options: RawOptions = {}): Promise<T> {
+  return (await rawAnswer<T>(path, options)).data
 }
 
 /**
