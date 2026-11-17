@@ -69,6 +69,12 @@ namespace Fluxy.Core.Streams.Models
         /// <summary>Extra headers the relayed requests carry, as typed.</summary>
         public string? RestreamHeaders { get; init; }
 
+        /// <summary>
+        /// Transcoding profile the relay converts this stream with, or null when it is relayed
+        /// untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
+
         /// <summary>The addresses this stream relays from, in the order they are tried.</summary>
         public required IReadOnlyList<string> Sources { get; init; }
     }

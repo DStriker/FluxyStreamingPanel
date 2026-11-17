@@ -53,6 +53,9 @@ namespace Fluxy.Core.Series.ReadModels
         /// <summary>Rating from 0 to 10, or null.</summary>
         public decimal? Rating { get; init; }
 
+        /// <summary>Transcoding profile the episodes are converted with, or null.</summary>
+        public Guid? TranscodingProfileId { get; init; }
+
         /// <summary>The largest season number the series holds, or zero.</summary>
         public required int SeasonsCount { get; init; }
 

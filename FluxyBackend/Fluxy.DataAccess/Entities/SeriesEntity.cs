@@ -64,6 +64,12 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>Rating from 0 to 10, or null.</summary>
         public decimal? Rating { get; set; }
 
+        /// <summary>
+        /// Transcoding profile the episodes are converted with, or null when they are served
+        /// untouched. A real foreign key with `Restrict`.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; set; }
+
         /// <summary>The episodes filed under this series, deleted with it.</summary>
         public ICollection<EpisodeEntity> Episodes { get; set; } = new List<EpisodeEntity>();
 
@@ -83,7 +89,8 @@ namespace Fluxy.DataAccess.Entities
             Director = Director,
             Genres = Genres,
             ReleaseDate = ReleaseDate,
-            Rating = Rating
+            Rating = Rating,
+            TranscodingProfileId = TranscodingProfileId
         };
     }
 }

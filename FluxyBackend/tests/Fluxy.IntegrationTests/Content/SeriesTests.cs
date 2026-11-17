@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Fluxy.IntegrationTests.Content
 {
@@ -495,6 +496,65 @@ namespace Fluxy.IntegrationTests.Content
                 "/admin/series",
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        }
+
+        [Fact]
+        public async Task ATranscodingProfileIsSetKeptAndCleared()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Shows");
+
+            Guid profileId;
+            await using (var scope = Fixture.Factory.Services.CreateAsyncScope())
+            {
+                profileId = await TestDataSeeder.CreateTranscodingProfileAsync(
+                    scope.ServiceProvider,
+                    "Series round trip",
+                    TestContext.Current.CancellationToken);
+            }
+
+            using var created = await PostSeriesAsync(new
+            {
+                name = "Converted series",
+                categoryId,
+                transcodingProfileId = profileId.ToString()
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "series_created");
+            var seriesId = IdFromLocation(created);
+
+            var detail = await DetailOfAsync(seriesId);
+            Assert.Equal(profileId.ToString(), detail.GetProperty("transcodingProfileId").GetString());
+
+            var csrf = await GetCsrfTokenAsync();
+            using var renamed = await PatchJsonAsync(
+                $"/admin/series/{seriesId}",
+                new { name = "Converted series renamed" },
+                csrf);
+            await AssertCodeAsync(renamed, HttpStatusCode.OK, "series_updated");
+            Assert.Equal(
+                profileId.ToString(),
+                (await DetailOfAsync(seriesId)).GetProperty("transcodingProfileId").GetString());
+
+            csrf = await GetCsrfTokenAsync();
+            using var cleared = await PatchJsonAsync(
+                $"/admin/series/{seriesId}",
+                new { transcodingProfileId = "" },
+                csrf);
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "series_updated");
+            Assert.Equal(
+                JsonValueKind.Null,
+                (await DetailOfAsync(seriesId)).GetProperty("transcodingProfileId").ValueKind);
+        }
+
+        private async Task<JsonElement> DetailOfAsync(string id)
+        {
+            using var response = await Client.GetAsync(
+                $"/admin/series/{id}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+
+            return body.RootElement.Clone();
         }
 
         private async Task<string> CreateCategoryAsync(string name)

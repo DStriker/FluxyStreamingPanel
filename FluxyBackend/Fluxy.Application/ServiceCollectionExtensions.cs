@@ -12,6 +12,7 @@ using Fluxy.Application.Series.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Application.Tickets.Services;
+using Fluxy.Application.Transcoding.Services;
 using Fluxy.Application.Users.Options;
 using Fluxy.Application.Users.Services;
 using Fluxy.Application.Vod.Services;
@@ -27,6 +28,7 @@ using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Subscriptions.Interfaces;
 using Fluxy.Core.Tickets.Interfaces;
+using Fluxy.Core.Transcoding.Interfaces;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.Core.Vod.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -242,6 +244,13 @@ namespace Fluxy.Application
             // address - and a service carrying those plus a subscription's would answer
             // "whose row?" on every call.
             services.AddScoped<IBlacklistEntryService, BlacklistEntryService>();
+
+            // The ffmpeg profiles: a name plus a set of optional encoder options. It is its own
+            // service because a profile has no content of its own - it is what the four content
+            // rows point *at* - and its deletion is refused while any of them still does. The
+            // options the content forms draw are a second read of the same rows behind a
+            // different grant, which is why they are a method here rather than a second service.
+            services.AddScoped<ITranscodingProfileService, TranscodingProfileService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

@@ -47,6 +47,9 @@ namespace Fluxy.API.Contracts.Series
         /// <summary>Rating from 0 to 10, or none.</summary>
         public decimal? Rating { get; init; }
 
+        /// <summary>Transcoding profile the episodes are converted with, or none. As text.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// Bouquets the new series joins, as text; absent or empty means none.
         /// </summary>

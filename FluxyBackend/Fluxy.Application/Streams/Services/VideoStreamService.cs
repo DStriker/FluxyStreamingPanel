@@ -11,6 +11,8 @@ using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Core.Transcoding.Repositories;
+using Fluxy.Core.Transcoding.Utils;
 using Fluxy.Core.Vod.Repositories;
 using Fluxy.Application.Content.Utils;
 using Fluxy.Application.Streams.Utils;
@@ -98,10 +100,14 @@ namespace Fluxy.Application.Streams.Services
             "There is no programme guide source with that identifier."
         ];
 
+        /// <summary>The sentence a transcoding profile that names no existing profile gets.</summary>
+        private static string[] TranscodingProfileRule => TranscodingProfileReference.UnknownRule;
+
         private readonly IVideoStreamRepository _streams;
         private readonly IEpgSourceRepository _epgSources;
         private readonly IVodRepository _videos;
         private readonly IBouquetRepository _bouquets;
+        private readonly ITranscodingProfileRepository _transcodingProfiles;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
@@ -118,18 +124,23 @@ namespace Fluxy.Application.Streams.Services
         /// Repository that answers whether the bouquets a stream names exist, and stages the
         /// membership rows that tie the two together.
         /// </param>
+        /// <param name="transcodingProfiles">
+        /// Repository that answers whether the transcoding profile a stream names exists.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public VideoStreamService(
             IVideoStreamRepository streams,
             IEpgSourceRepository epgSources,
             IVodRepository videos,
             IBouquetRepository bouquets,
+            ITranscodingProfileRepository transcodingProfiles,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
             _epgSources = epgSources;
             _videos = videos;
             _bouquets = bouquets;
+            _transcodingProfiles = transcodingProfiles;
             _unitOfWork = unitOfWork;
         }
 
@@ -196,6 +207,14 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(Field(nameof(NewVideoStream.EpgSourceId), EpgSourceRule));
             }
 
+            // A transcoding profile is a row of this database as well: a stream may only name one
+            // that exists, and a refusal here names the field instead of failing at the write.
+            if (input.TranscodingProfileId is { } createProfileId
+                && await _transcodingProfiles.ExistsAsync(createProfileId, cancellationToken) is false)
+            {
+                return Invalid(Field(nameof(NewVideoStream.TranscodingProfileId), TranscodingProfileRule));
+            }
+
             // Every video a playlist names has to exist, for the reason the guide source above
             // does: the membership rows carry a real foreign key, so a missing one would be
             // refused at the write - and a refusal naming the field is worth more to the
@@ -251,7 +270,8 @@ namespace Fluxy.Application.Streams.Services
                 input.RestreamCookies,
                 input.RestreamHeaders,
                 input.Sources,
-                input.Files);
+                input.Files,
+                input.TranscodingProfileId);
 
             var streamId = await _streams.AddAsync(stream, cancellationToken);
 
@@ -330,6 +350,17 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(Field(nameof(VideoStreamPatch.EpgSourceId), epgError ?? IdentifierRule), id);
             }
 
+            if (!TryMergeIdentifier(
+                patch.TranscodingProfileId,
+                stream.TranscodingProfileId,
+                out var transcodingProfileId,
+                out var profileError))
+            {
+                return Invalid(
+                    Field(nameof(VideoStreamPatch.TranscodingProfileId), profileError ?? IdentifierRule),
+                    id);
+            }
+
             // The lists take the shape the caller sent: absent keeps, empty clears, anything
             // else replaces wholesale. Replacing is what makes the order on the operator's
             // screen the order the relay plays in.
@@ -366,6 +397,17 @@ namespace Fluxy.Application.Streams.Services
             {
                 return Invalid(
                     Field(nameof(VideoStreamPatch.EpgSourceId), EpgSourceRule),
+                    id);
+            }
+
+            // The merged profile reference is checked against the profile table for the reason
+            // the guide source above is: a key that names no row would be refused at the write,
+            // and a refusal naming the field is worth more to the operator.
+            if (transcodingProfileId is { } updateProfileId
+                && await _transcodingProfiles.ExistsAsync(updateProfileId, cancellationToken) is false)
+            {
+                return Invalid(
+                    Field(nameof(VideoStreamPatch.TranscodingProfileId), TranscodingProfileRule),
                     id);
             }
 
@@ -415,7 +457,8 @@ namespace Fluxy.Application.Streams.Services
                 restreamCookies,
                 restreamHeaders,
                 sources,
-                files);
+                files,
+                transcodingProfileId);
 
             await _streams.UpdateAsync(id, write, cancellationToken);
 
@@ -634,7 +677,8 @@ namespace Fluxy.Application.Streams.Services
             string? restreamCookies,
             string? restreamHeaders,
             IReadOnlyList<string> sources,
-            IReadOnlyList<string> files)
+            IReadOnlyList<string> files,
+            Guid? transcodingProfileId)
         {
             var hasEpg = epgSourceId is not null
                 && !string.IsNullOrWhiteSpace(epgChannelKey);
@@ -662,7 +706,8 @@ namespace Fluxy.Application.Streams.Services
                     : Array.Empty<string>(),
                 Files = type is VideoStreamType.FilePlaylist
                     ? CleanList(files)
-                    : Array.Empty<string>()
+                    : Array.Empty<string>(),
+                TranscodingProfileId = transcodingProfileId
             };
         }
 

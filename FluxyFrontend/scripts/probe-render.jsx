@@ -52,6 +52,8 @@ import BlacklistEntriesPage from '../src/pages/admin/BlacklistEntriesPage'
 import BlacklistEntryFields from '../src/features/blacklists/components/BlacklistEntryFields'
 import TariffPlansPage from '../src/pages/admin/TariffPlansPage'
 import TariffPlanFormPage from '../src/pages/admin/TariffPlanFormPage'
+import TranscodingProfilesPage from '../src/pages/admin/TranscodingProfilesPage'
+import TranscodingProfileFormPage from '../src/pages/admin/TranscodingProfileFormPage'
 import SubscriptionsPage from '../src/pages/admin/SubscriptionsPage'
 import SubscriptionFormPage from '../src/pages/admin/SubscriptionFormPage'
 import ConnectionLogsPage from '../src/pages/admin/ConnectionLogsPage'
@@ -2170,9 +2172,11 @@ async function main() {
   const blacklistGroup = NAVIGATION.Admin.find((group) => group.key === 'blacklists')
   const blacklistItemKeys = blacklistGroup?.items.map((item) => item.key) ?? []
   check(
-    'the blacklists group sits directly under the programme guide, with its four items in order',
-    adminGroupKeysForBlacklists.indexOf('blacklists') ===
+    'the transcoding group sits directly under the programme guide and the blacklists under it, with its four items in order',
+    adminGroupKeysForBlacklists.indexOf('transcoding') ===
       adminGroupKeysForBlacklists.indexOf('epg') + 1 &&
+      adminGroupKeysForBlacklists.indexOf('blacklists') ===
+        adminGroupKeysForBlacklists.indexOf('epg') + 2 &&
       blacklistItemKeys.join(',') ===
         'blacklistIp,blacklistIsp,blacklistUa,apiRequestFailures',
     `the rail reads ${adminGroupKeysForBlacklists.join(', ')}; the group reads ${blacklistItemKeys.join(', ')}`,
@@ -2344,6 +2348,153 @@ async function main() {
       tariffPlanEditModule?.default === TariffPlanFormPage,
     `the entry opens ${tariffPlanAddModule?.default?.name ?? 'nothing'}, the form imports ${
       tariffPlanEditModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
+  // The transcoding section: two entries, a table whose options cell draws only the options a
+  // row names, and a form drawn in the frequency order the owner specified. Both are asserted
+  // before any answer arrives, which is the state `probe:render` can reach - no backend.
+  const transcodingItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('transcodingProfiles'))
+    .map((item) => item.key)
+    .join(',')
+  const [transcodingAddModule, transcodingManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'transcodingProfilesAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'transcodingProfilesManage')?.page?.(),
+  ])
+  check(
+    'the transcoding section has two entries, in that order, and each opens its own page',
+    transcodingItemKeys === 'transcodingProfilesAdd,transcodingProfilesManage' &&
+      transcodingAddModule?.default === TranscodingProfileFormPage &&
+      transcodingManageModule?.default === TranscodingProfilesPage,
+    `${transcodingItemKeys}; add opens ${transcodingAddModule?.default?.name ?? 'nothing'}, manage opens ${
+      transcodingManageModule?.default?.name ?? 'nothing'
+    }`,
+  )
+
+  check(
+    'the transcoding rail entries carry the short Russian words, and English is untouched',
+    // The group heading already says what the two entries act on, and the longer Russian
+    // pair ("Добавить профиль", "Управление профилями") widened the rail for nothing. Only the
+    // RU bundle was shortened; the EN words are pinned so a later edit cannot quietly do both.
+    i18n.getResource('ru', 'translation', 'nav.items.transcodingProfilesAdd') === 'Добавить' &&
+      i18n.getResource('ru', 'translation', 'nav.items.transcodingProfilesManage') === 'Управление' &&
+      i18n.getResource('en', 'translation', 'nav.items.transcodingProfilesAdd') === 'Add profile' &&
+      i18n.getResource('en', 'translation', 'nav.items.transcodingProfilesManage') === 'Manage profiles',
+    `ru: ${i18n.getResource('ru', 'translation', 'nav.items.transcodingProfilesAdd')}, ${i18n.getResource('ru', 'translation', 'nav.items.transcodingProfilesManage')}`,
+  )
+
+  const transcodingProfilesHtml = renderToStaticMarkup(
+    withRouter('/admin/transcoding-profiles', withQuery(
+      <AntApp>
+        <TranscodingProfilesPage sectionKey="nav.items.transcodingProfilesManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the transcoding profile table draws its four columns and its toolbar',
+    transcodingProfilesHtml.includes('Transcoding profiles') &&
+      transcodingProfilesHtml.includes('>Name<') &&
+      transcodingProfilesHtml.includes('>Options<') &&
+      transcodingProfilesHtml.includes('>Actions<') &&
+      transcodingProfilesHtml.includes('Search by name') &&
+      !transcodingProfilesHtml.includes('ant-table-selection-column') &&
+      !transcodingProfilesHtml.includes('nav.items.transcodingProfilesManage'),
+    `rendered ${transcodingProfilesHtml.length} bytes`,
+  )
+
+  check(
+    'the transcoding profile table carries the page-card class the compact rules key on',
+    transcodingProfilesHtml.includes('page-card'),
+    `rendered ${transcodingProfilesHtml.length} bytes`,
+  )
+
+  // The create button's refusal is a *disabled* state's explanation, so the grant decides
+  // whether the hinted span is drawn at all. Wrapping every state put "your group does not
+  // allow this" over an enabled button - the defect this pins. `display:inline-flex` is the
+  // wrapper `hinted` draws and the only part of it a static render can see: the sentence
+  // itself lives in a popup that exists only after a hover (see the source-replacement pair).
+  const renderTranscodingProfilesSeeded = (permissions) => {
+    const client = createQueryClient()
+
+    client.setQueryData(['profile'], {
+      username: 'probeadmin',
+      email: 'probeadmin@localhost',
+      role: 'Admin',
+      permissions,
+      credits: 0,
+      timeZone: null,
+      geoProtectionEnabled: false,
+      bindSessionToIp: false,
+      allowedIps: [],
+      allowedCountry: null,
+      allowedAutonomousSystemNumber: null,
+    })
+
+    return renderToStaticMarkup(
+      withRouter(
+        '/admin/transcoding-profiles',
+        <QueryClientProvider client={client}>
+          <AntApp>
+            <TranscodingProfilesPage sectionKey="nav.items.transcodingProfilesManage" />
+          </AntApp>
+        </QueryClientProvider>,
+      ),
+    )
+  }
+
+  const grantedProfilesHtml = renderTranscodingProfilesSeeded([
+    'viewTranscodingProfiles',
+    'editTranscodingProfiles',
+  ])
+  const refusedProfilesHtml = renderTranscodingProfilesSeeded(['viewTranscodingProfiles'])
+
+  // `display:inline-flex` is the span `hinted` draws, and a static render can only see that
+  // span, not the sentence inside its popup. So the check is adjacency: the create button is
+  // wrapped only in the refused render.
+  const wrappedCreate = (html) =>
+    /display:\s*inline-flex;?"><button[^>]*ant-btn-primary/.test(html)
+  const grantedCreateWrapped = wrappedCreate(grantedProfilesHtml)
+  const refusedCreateWrapped = wrappedCreate(refusedProfilesHtml)
+
+  check(
+    'the transcoding create button carries the refusal hint only while it is refused',
+    !grantedCreateWrapped &&
+      refusedCreateWrapped &&
+      /<button[^>]*ant-btn-primary[^"]*"[^>]*disabled/.test(refusedProfilesHtml),
+    `granted wrapper: ${grantedCreateWrapped}, refused wrapper: ${refusedCreateWrapped}`,
+  )
+
+  const transcodingProfileFormHtml = renderToStaticMarkup(
+    withRouter('/admin/transcoding-profiles/add', withQuery(
+      <AntApp>
+        <TranscodingProfileFormPage sectionKey="nav.items.transcodingProfilesAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the transcoding profile form draws its name, the ffmpeg section and every option',
+    transcodingProfileFormHtml.includes('Add transcoding profile') &&
+      transcodingProfileFormHtml.includes('Name') &&
+      transcodingProfileFormHtml.includes('ffmpeg options') &&
+      transcodingProfileFormHtml.includes('Video codec') &&
+      transcodingProfileFormHtml.includes('Audio codec') &&
+      transcodingProfileFormHtml.includes('Preset') &&
+      transcodingProfileFormHtml.includes('CRF') &&
+      transcodingProfileFormHtml.includes('Redaction rectangle') &&
+      transcodingProfileFormHtml.includes('Create') &&
+      transcodingProfileFormHtml.includes('Back to profiles') &&
+      !transcodingProfileFormHtml.includes('transcodingProfilesForm.'),
+    `rendered ${transcodingProfileFormHtml.length} bytes`,
+  )
+
+  check(
+    'the transcoding profile form says each rule once - width, threads and the one section hint',
+    transcodingProfileFormHtml.split('-1 keeps the aspect ratio').length - 1 === 1 &&
+      transcodingProfileFormHtml.split('0 means automatic').length - 1 === 1 &&
+      transcodingProfileFormHtml.includes('An empty one is not passed to ffmpeg'),
+    `hints: -1: ${transcodingProfileFormHtml.split('-1 keeps the aspect ratio').length - 1}, 0: ${
+      transcodingProfileFormHtml.split('0 means automatic').length - 1
     }`,
   )
 
@@ -6319,6 +6470,7 @@ async function main() {
     `/admin/series/11111111-1111-1111-1111-111111111111/episodes/add`,
     `/admin/series/11111111-1111-1111-1111-111111111111/episodes/22222222-2222-2222-2222-222222222222`,
     `/admin/series/11111111-1111-1111-1111-111111111111/seasons/add`,
+    `/admin/transcoding-profiles/11111111-1111-1111-1111-111111111111`,
   ]
   const extraLandedOnNotFound = EXTRA_ADMIN_ADDRESSES.filter((address) => {
     const matched = matchRoutes(routeTable, address)?.[0]?.route

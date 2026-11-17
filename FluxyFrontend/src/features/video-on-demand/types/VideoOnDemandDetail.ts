@@ -31,4 +31,7 @@ export interface VideoOnDemandDetail extends VideoOnDemand {
    * picker on the form and says nothing about the video's position inside one.
    */
   bouquetIds: string[]
+
+  /** Transcoding profile the row is converted with, as text, or null. */
+  transcodingProfileId: string | null
 }

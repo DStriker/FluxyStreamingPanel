@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Fluxy.IntegrationTests.Content
 {
@@ -485,6 +486,61 @@ namespace Fluxy.IntegrationTests.Content
                 "/admin/video-on-demand",
                 TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        }
+
+        [Fact]
+        public async Task ATranscodingProfileIsSetKeptAndCleared()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Films");
+
+            Guid profileId;
+            await using (var scope = Fixture.Factory.Services.CreateAsyncScope())
+            {
+                profileId = await TestDataSeeder.CreateTranscodingProfileAsync(
+                    scope.ServiceProvider,
+                    "Video round trip",
+                    TestContext.Current.CancellationToken);
+            }
+
+            var videoId = await CreateVideoAsync(
+                categoryId,
+                "Converted film",
+                new { transcodingProfileId = profileId.ToString() });
+
+            var detail = await DetailOfAsync(videoId);
+            Assert.Equal(profileId.ToString(), detail.GetProperty("transcodingProfileId").GetString());
+
+            var csrf = await GetCsrfTokenAsync();
+            using var renamed = await PatchJsonAsync(
+                $"/admin/video-on-demand/{videoId}",
+                new { name = "Converted film renamed" },
+                csrf);
+            await AssertCodeAsync(renamed, HttpStatusCode.OK, "video_on_demand_updated");
+            Assert.Equal(
+                profileId.ToString(),
+                (await DetailOfAsync(videoId)).GetProperty("transcodingProfileId").GetString());
+
+            csrf = await GetCsrfTokenAsync();
+            using var cleared = await PatchJsonAsync(
+                $"/admin/video-on-demand/{videoId}",
+                new { transcodingProfileId = "" },
+                csrf);
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "video_on_demand_updated");
+            Assert.Equal(
+                JsonValueKind.Null,
+                (await DetailOfAsync(videoId)).GetProperty("transcodingProfileId").ValueKind);
+        }
+
+        private async Task<JsonElement> DetailOfAsync(string id)
+        {
+            using var response = await Client.GetAsync(
+                $"/admin/video-on-demand/{id}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+
+            return body.RootElement.Clone();
         }
 
         private async Task<string> CreateCategoryAsync(string name)

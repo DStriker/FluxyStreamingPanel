@@ -16,6 +16,9 @@ using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Tickets.Commands;
 using Fluxy.Core.Tickets.Repositories;
+using Fluxy.Core.Transcoding.Commands;
+using Fluxy.Core.Transcoding.Enums;
+using Fluxy.Core.Transcoding.Repositories;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Repositories;
@@ -132,6 +135,33 @@ namespace Fluxy.IntegrationTests.Infrastructure
                     GeoProtectionEnabled = geoProtectionEnabled,
                     BindSessionToIp = bindSessionToIp,
                     Credits = credits
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>
+        /// Creates a transcoding profile through the Core repository, so a test that needs a
+        /// profile to reference does not have to go through the profile surface first.
+        /// </summary>
+        public static async Task<Guid> CreateTranscodingProfileAsync(
+            IServiceProvider services,
+            string name,
+            CancellationToken cancellationToken = default)
+        {
+            var profiles = services.GetRequiredService<ITranscodingProfileRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var id = await profiles.AddAsync(
+                new TranscodingProfileWrite
+                {
+                    Name = name,
+                    VideoCodec = VideoCodec.Libx264,
+                    AudioCodec = AudioCodec.Aac,
+                    Preset = TranscodingPreset.Default
                 },
                 cancellationToken);
 

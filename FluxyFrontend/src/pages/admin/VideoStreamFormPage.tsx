@@ -32,6 +32,7 @@ import {
   useUpdateVideoStream,
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreamDetail } from '../../features/video-streams/hooks/queries'
+import { useAllTranscodingProfiles } from '../../features/transcoding-profiles/hooks/queries'
 import {
   acceptsArchive,
   acceptsDelay,
@@ -118,6 +119,7 @@ const CREATE_VALUES: VideoStreamValues = {
   sources: [''],
   files: [''],
   bouquetIds: [],
+  transcodingProfileId: '',
 }
 
 /**
@@ -150,6 +152,7 @@ const FIELD_NAMES: readonly (keyof VideoStreamValues)[] = [
   'sources',
   'files',
   'bouquetIds',
+  'transcodingProfileId',
 ]
 
 /** One list of one thing a stream relays: trims what is there and drops what nobody typed. */
@@ -199,6 +202,9 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
     // Always sent, and an empty array is the statement "in no bouquet" - the set is what the
     // picker holds, and the form never means "leave this field alone".
     bouquetIds: values.bouquetIds ?? [],
+    // Always sent, like the bouquet set: a create has nothing to keep and the edit form holds
+    // the whole answer, so an empty string is "clear" rather than "leave it alone".
+    transcodingProfileId: values.transcodingProfileId ?? '',
   }
 }
 
@@ -223,6 +229,7 @@ const detailToFormValues = (detail: {
   sources: string[]
   files: string[]
   bouquetIds: string[]
+  transcodingProfileId: string | null
 }): VideoStreamValues => {
   const restream = acceptsRestream(detail.type)
 
@@ -254,6 +261,7 @@ const detailToFormValues = (detail: {
     sources: detail.sources.length > 0 ? detail.sources : [''],
     files: detail.files.length > 0 ? detail.files : [''],
     bouquetIds: [...detail.bouquetIds],
+    transcodingProfileId: detail.transcodingProfileId ?? '',
   }
 }
 
@@ -392,6 +400,21 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
     label: bouquet.name,
   }))
   const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
+
+  /**
+   * The transcoding profiles the picker offers.
+   *
+   * A separate query, and one behind its own grant: the options endpoint is opened by any one
+   * of the four content-view grants, so a form that may be opened at all can fill this picker.
+   * A failed read still disables the control rather than leaving it empty and silent - an
+   * operator must not read "no profiles" into a lookup that did not answer.
+   */
+  const profilesQuery = useAllTranscodingProfiles()
+  const profileOptions = (profilesQuery.data ?? []).map((profile) => ({
+    value: profile.id,
+    label: profile.name,
+  }))
+  const profilesError = profilesQuery.isError ? messageForError(profilesQuery.error) : null
 
   /**
    * The guide sources the picker offers. A source is a row of this installation now, so the
@@ -748,6 +771,28 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
           >
             <Select options={typeOptions} />
           </Form.Item>
+
+          {/* The transcoding profile: one optional choice, drawn immediately after the last
+              required core field and before the first divider - it applies to every kind of
+              stream, so it belongs beside the stream's own facts rather than inside any one
+              payload block. A failed read disables it rather than emptying it silently. */}
+          <Form.Item
+            name="transcodingProfileId"
+            label={t('bouquets.transcodingProfileField')}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={profileOptions}
+              placeholder={t('bouquets.transcodingProfileNone')}
+              disabled={profilesError !== null}
+            />
+          </Form.Item>
+
+          {profilesError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={profilesError} />
+          )}
 
           <Divider titlePlacement="start">{t('videoStreamsForm.payloadDivider')}</Divider>
 

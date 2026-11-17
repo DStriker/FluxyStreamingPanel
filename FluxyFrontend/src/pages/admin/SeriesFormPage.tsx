@@ -27,6 +27,7 @@ import {
   useUpdateSeries,
 } from '../../features/series/hooks/mutations'
 import { useSeriesDetail } from '../../features/series/hooks/queries'
+import { useAllTranscodingProfiles } from '../../features/transcoding-profiles/hooks/queries'
 import type { SeriesStatus } from '../../features/series/types'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
@@ -60,6 +61,7 @@ const CREATE_VALUES: SeriesValues = {
   releaseDate: '',
   rating: null,
   bouquetIds: [],
+  transcodingProfileId: '',
 }
 
 /** Every field this form draws, so a refusal can be cleared before the next attempt. */
@@ -77,6 +79,7 @@ const FIELD_NAMES: readonly (keyof SeriesValues)[] = [
   'releaseDate',
   'rating',
   'bouquetIds',
+  'transcodingProfileId',
 ]
 
 /** Trims what is there, drops what nobody typed, and keeps the order. */
@@ -107,6 +110,7 @@ const toBody = (values: SeriesValues): SeriesValues => ({
   releaseDate: (values.releaseDate ?? '').trim(),
   rating: values.rating ?? null,
   bouquetIds: values.bouquetIds ?? [],
+  transcodingProfileId: values.transcodingProfileId ?? '',
 })
 
 /** The stored series spelled as form content. */
@@ -124,6 +128,7 @@ const detailToFormValues = (detail: {
   releaseDate: string | null
   rating: number | null
   bouquetIds: string[]
+  transcodingProfileId: string | null
 }): SeriesValues => ({
   name: detail.name,
   status: detail.status,
@@ -138,6 +143,7 @@ const detailToFormValues = (detail: {
   releaseDate: detail.releaseDate ?? '',
   rating: detail.rating,
   bouquetIds: [...detail.bouquetIds],
+  transcodingProfileId: detail.transcodingProfileId ?? '',
 })
 
 interface SeriesFormPageProps {
@@ -193,6 +199,15 @@ export default function SeriesFormPage(_props: SeriesFormPageProps) {
     label: bouquet.name,
   }))
   const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
+
+  // The transcoding profiles the picker offers: its own read behind its own grant, and a failed
+  // read disables the control rather than leaving it empty and silent.
+  const profilesQuery = useAllTranscodingProfiles()
+  const profileOptions = (profilesQuery.data ?? []).map((profile) => ({
+    value: profile.id,
+    label: profile.name,
+  }))
+  const profilesError = profilesQuery.isError ? messageForError(profilesQuery.error) : null
 
   const area = session ? areaForRole(session.role) : ''
   const listPath = `${area}/series`
@@ -361,6 +376,23 @@ export default function SeriesFormPage(_props: SeriesFormPageProps) {
         >
           <Select options={statusOptions} />
         </Form.Item>
+
+        {/* The transcoding profile: one optional choice, drawn immediately after the last
+            required core field and before the first divider. A failed read disables it. */}
+        <Form.Item name="transcodingProfileId" label={t('bouquets.transcodingProfileField')}>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={profileOptions}
+            placeholder={t('bouquets.transcodingProfileNone')}
+            disabled={profilesError !== null}
+          />
+        </Form.Item>
+
+        {profilesError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={profilesError} />
+        )}
 
         <Divider titlePlacement="start">{t('seriesForm.metadataDivider')}</Divider>
 

@@ -157,12 +157,18 @@ Reading a client's conversation is the same question as reading the client, and 
 same question as changing the client; the base Administrators group already holds all six grants.
 
 **The dedicated-grant alternative was rejected.** A `viewTickets`/`editTickets` pair would need two
-free bits in `UserPermission`, which is an `int`-based flags enum: the highest member today is
-`ViewApiRequestFailures = 1 << 29`, so only `1 << 30` is left before the sign bit. A pair cannot fit,
-and widening the enum to `long` would make the stored grant column `bigint` and force a migration of
-every group row — a schema change bought only to let a new screen duplicate a grant the operator
-already has. Reuse keeps the two questions ("may I read this account", "may I change this account")
-answered in one place.
+free bits in `UserPermission`, and when this decision was taken the enum was `int`-based: the
+highest member was `ViewApiRequestFailures = 1 << 29`, so only `1 << 30` was left before the sign
+bit. A pair could not fit, and widening the enum to `long` would have made the stored grant column
+`bigint` and forced a migration of every group row — a schema change bought only to let a new
+screen duplicate a grant the operator already has. Reuse keeps the two questions ("may I read this
+account", "may I change this account") answered in one place.
+
+> **Reversal (2026-11-16).** The enum *has* since widened to `long` and the column to `bigint`,
+> because the transcoding-profile pair needed both `1L << 30` and `1L << 31` - see
+> [admin-transcoding-profiles.md](admin-transcoding-profiles.md). The reversal does not reopen this
+> decision: the ticket pair is still rejected on its own merits (the account grants already answer
+> the same question), and the widened bits went to the profiles instead.
 
 ### Reading and writing — `admin/tickets`
 

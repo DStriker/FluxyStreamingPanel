@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Fluxy.IntegrationTests.Content
 {
@@ -1066,6 +1067,58 @@ namespace Fluxy.IntegrationTests.Content
             {
                 Assert.True(item.GetProperty("errors").TryGetProperty(errorField, out _));
             }
+        }
+
+        [Fact]
+        public async Task ATranscodingProfileIsSetKeptAndCleared()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Live", "VideoStream");
+
+            Guid profileId;
+            await using (var scope = Fixture.Factory.Services.CreateAsyncScope())
+            {
+                profileId = await TestDataSeeder.CreateTranscodingProfileAsync(
+                    scope.ServiceProvider,
+                    "Round trip",
+                    TestContext.Current.CancellationToken);
+            }
+
+            using var created = await PostStreamAsync(new
+            {
+                name = "Converted",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingProfileId = profileId.ToString()
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "video_stream_created");
+            var streamId = IdFromLocation(created);
+
+            var detail = await DetailOfAsync(streamId);
+            Assert.Equal(profileId.ToString(), detail.GetProperty("transcodingProfileId").GetString());
+
+            // A change that names no reference keeps the stored one.
+            var csrf = await GetCsrfTokenAsync();
+            using var renamed = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { name = "Converted renamed" },
+                csrf);
+            await AssertCodeAsync(renamed, HttpStatusCode.OK, "video_stream_updated");
+            Assert.Equal(
+                profileId.ToString(),
+                (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").GetString());
+
+            // An empty string clears it; null would have kept it.
+            csrf = await GetCsrfTokenAsync();
+            using var cleared = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { transcodingProfileId = "" },
+                csrf);
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "video_stream_updated");
+            Assert.Equal(
+                JsonValueKind.Null,
+                (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").ValueKind);
         }
 
         private async Task<JsonElement> DetailOfAsync(string id)

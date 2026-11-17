@@ -713,6 +713,36 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
+      // The transcoding profiles: the named sets of ffmpeg options the streams, the on-demand
+      // videos and the series are converted with. The group sits between the programme guide
+      // and the blacklists on the owner's call - it is configuration the content points *at*
+      // rather than a catalogue of content, so a reader who has just met every catalogue meets
+      // it before the access rules.
+      //
+      // Two entries, the same add/manage pair the guide section carries: a profile has a form
+      // and a table, and the edit form is an address with no item of its own because it is only
+      // reached from a row.
+      key: 'transcoding',
+      labelKey: 'nav.groups.transcoding',
+      icon: SwapOutlined,
+      items: [
+        {
+          key: 'transcodingProfilesAdd',
+          path: 'transcoding-profiles/add',
+          labelKey: 'nav.items.transcodingProfilesAdd',
+          icon: PlusOutlined,
+          page: () => import('../pages/admin/TranscodingProfileFormPage'),
+        },
+        {
+          key: 'transcodingProfilesManage',
+          path: 'transcoding-profiles',
+          labelKey: 'nav.items.transcodingProfilesManage',
+          icon: TableOutlined,
+          page: () => import('../pages/admin/TranscodingProfilesPage'),
+        },
+      ],
+    },
+    {
       // The three access-control blacklists, immediately after the programme guide because
       // that is where the owner asked for them. One item per list rather than one item with a
       // filter: the three lists are separate questions an operator arrives with, and the rail

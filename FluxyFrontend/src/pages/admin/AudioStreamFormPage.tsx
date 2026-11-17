@@ -27,6 +27,7 @@ import {
   useUpdateAudioStream,
 } from '../../features/audio-streams/hooks/mutations'
 import { useAudioStreamDetail } from '../../features/audio-streams/hooks/queries'
+import { useAllTranscodingProfiles } from '../../features/transcoding-profiles/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import type { AudioStreamStatus, AudioStreamType } from '../../features/audio-streams/types'
 
@@ -82,6 +83,7 @@ const CREATE_VALUES: AudioStreamValues = {
   restreamHeaders: '',
   sources: [''],
   bouquetIds: [],
+  transcodingProfileId: '',
 }
 
 /**
@@ -107,6 +109,7 @@ const FIELD_NAMES: readonly (keyof AudioStreamValues)[] = [
   'restreamHeaders',
   'sources',
   'bouquetIds',
+  'transcodingProfileId',
 ]
 
 /** One list of one thing a stream relays: trims what is there and drops what nobody typed. */
@@ -136,6 +139,7 @@ const toBody = (values: AudioStreamValues): AudioStreamValues => ({
   restreamHeaders: values.restreamHeaders ?? '',
   sources: cleanList(values.sources),
   bouquetIds: values.bouquetIds ?? [],
+  transcodingProfileId: values.transcodingProfileId ?? '',
 })
 
 /** The stored stream spelled as form content, drawn over `CREATE_VALUES` when the answer arrives. */
@@ -152,6 +156,7 @@ const detailToFormValues = (detail: {
   restreamHeaders: string | null
   sources: string[]
   bouquetIds: string[]
+  transcodingProfileId: string | null
 }): AudioStreamValues => ({
   name: detail.name,
   type: detail.type,
@@ -169,6 +174,7 @@ const detailToFormValues = (detail: {
   // that could not be saved.
   sources: detail.sources.length > 0 ? detail.sources : [''],
   bouquetIds: [...detail.bouquetIds],
+  transcodingProfileId: detail.transcodingProfileId ?? '',
 })
 
 interface AudioStreamFormPageProps {
@@ -291,6 +297,15 @@ export default function AudioStreamFormPage(_props: AudioStreamFormPageProps) {
     label: bouquet.name,
   }))
   const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
+
+  // The transcoding profiles the picker offers: its own read behind its own grant, and a failed
+  // read disables the control rather than leaving it empty and silent.
+  const profilesQuery = useAllTranscodingProfiles()
+  const profileOptions = (profilesQuery.data ?? []).map((profile) => ({
+    value: profile.id,
+    label: profile.name,
+  }))
+  const profilesError = profilesQuery.isError ? messageForError(profilesQuery.error) : null
 
   // The area this page hangs from, for both buttons below. `null` only under the probes,
   // which render no provider: `RequireAuth` publishes one for every visitor this page can
@@ -531,8 +546,24 @@ export default function AudioStreamFormPage(_props: AudioStreamFormPageProps) {
             <Select options={typeOptions} />
           </Form.Item>
 
-          <Divider titlePlacement="start">{t('audioStreamsForm.payloadDivider')}</Divider>
+          {/* The transcoding profile: one optional choice, drawn immediately after the last
+              required core field and before the first divider. A failed read disables it. */}
+          <Form.Item name="transcodingProfileId" label={t('bouquets.transcodingProfileField')}>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={profileOptions}
+              placeholder={t('bouquets.transcodingProfileNone')}
+              disabled={profilesError !== null}
+            />
+          </Form.Item>
 
+          {profilesError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={profilesError} />
+          )}
+
+          <Divider titlePlacement="start">{t('audioStreamsForm.payloadDivider')}</Divider>
           {/* The one list both kinds carry. There is no branch here: an audio stream has no
               kind whose payload another kind can switch off, so the editor is drawn once and
               the rule under it is the server's own - a stream with no source could never

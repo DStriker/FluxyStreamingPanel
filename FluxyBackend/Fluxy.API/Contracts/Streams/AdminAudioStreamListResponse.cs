@@ -119,6 +119,9 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Extra headers the relayed requests carry, as typed, or null.</summary>
         public string? RestreamHeaders { get; init; }
 
+        /// <summary>Transcoding profile the relay converts the stream with, as text, or null.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>Sources to relay from, in order, first as the primary.</summary>
         public required IReadOnlyList<string> Sources { get; init; }
 

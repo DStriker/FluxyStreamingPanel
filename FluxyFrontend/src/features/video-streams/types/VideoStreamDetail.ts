@@ -54,4 +54,7 @@ export interface VideoStreamDetail extends VideoStream {
    * picker on the form and says nothing about the stream's position inside one.
    */
   bouquetIds: string[]
+
+  /** Transcoding profile the row is converted with, as text, or null. */
+  transcodingProfileId: string | null
 }

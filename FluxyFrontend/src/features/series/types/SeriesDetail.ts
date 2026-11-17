@@ -24,4 +24,7 @@ export interface SeriesDetail extends Series {
    * picker on the form and says nothing about the series' position inside one.
    */
   bouquetIds: string[]
+
+  /** Transcoding profile the row is converted with, as text, or null. */
+  transcodingProfileId: string | null
 }

@@ -97,6 +97,9 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("restream_headers")
                 .HasColumnType("text");
 
+            builder.Property(stream => stream.TranscodingProfileId)
+                .HasColumnName("transcoding_profile_id");
+
             builder.Property(nameof(AuditableEntity.CreatedAt))
                 .HasColumnName("created_at");
 
@@ -114,6 +117,15 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasOne(stream => stream.Category)
                 .WithMany()
                 .HasForeignKey(stream => stream.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A stream's transcoding profile: the row references a configuration this
+            // installation owns, the reference may be cleared, and a profile still referenced may
+            // not be deleted. Restrict answers that in the database; the profile service counts
+            // the references first so the operator reads a code instead of a database failure.
+            builder.HasOne<TranscodingProfileEntity>()
+                .WithMany()
+                .HasForeignKey(stream => stream.TranscodingProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // One name per category, compared case sensitively. Scoped to the category rather

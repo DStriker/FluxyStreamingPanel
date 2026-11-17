@@ -172,6 +172,14 @@ export interface VideoStreamValues {
    * alone" - so an empty array is the statement "in no bouquet".
    */
   bouquetIds: string[]
+
+  /**
+   * Transcoding profile the relay converts the stream with, or an empty string for none.
+   *
+   * Always sent, like the bouquet set: a create has nothing to keep and the edit form holds the
+   * whole answer, so an empty string is "clear" rather than "leave it alone".
+   */
+  transcodingProfileId: string
 }
 
 /**

@@ -67,6 +67,9 @@ namespace Fluxy.API.Contracts.Vod
         /// <summary>Upper case ISO 3166-1 alpha-2 country code, or none.</summary>
         public string? CountryCode { get; init; }
 
+        /// <summary>Transcoding profile the video is converted with, or none. As text.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// Bouquets the new video joins, as text; absent or empty means none.
         /// </summary>

@@ -48,6 +48,9 @@ namespace Fluxy.API.Contracts.Series
         /// <summary>New rating as text; null keeps, empty clears.</summary>
         public string? Rating { get; init; }
 
+        /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// New set of bouquets the series belongs to, as text; null keeps, empty clears.
         /// </summary>

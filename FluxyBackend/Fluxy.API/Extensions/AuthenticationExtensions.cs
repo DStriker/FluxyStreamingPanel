@@ -144,6 +144,26 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the blacklists.</summary>
         public const string EditBlacklistsPolicy = "Permission.EditBlacklists";
 
+        /// <summary>Policy that accepts an operator who may read the transcoding profiles.</summary>
+        public const string ViewTranscodingProfilesPolicy = "Permission.ViewTranscodingProfiles";
+
+        /// <summary>Policy that accepts an operator who may change the transcoding profiles.</summary>
+        public const string EditTranscodingProfilesPolicy = "Permission.EditTranscodingProfiles";
+
+        /// <summary>
+        /// Policy that accepts an operator who may read the profile picker: any one of the four
+        /// content-view grants, because the picker is a field of a content form rather than a
+        /// screen of its own.
+        /// </summary>
+        /// <remarks>
+        /// Choosing a profile while editing a stream is part of editing the stream, so an
+        /// operator who may run the streams must be able to read the names to choose from
+        /// without being granted the profiles table. Browsing, changing and deleting profiles
+        /// stay behind the dedicated pair - those are a different job, and a different screen.
+        /// </remarks>
+        public const string ViewTranscodingProfileOptionsPolicy =
+            "Permission.ViewTranscodingProfileOptions";
+
         /// <summary>
         /// Policy that accepts an operator who may read the user audit log.
         /// </summary>
@@ -424,6 +444,32 @@ namespace Fluxy.API.Extensions
                     .AddRequirements(
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(Fluxy.Core.Users.Enums.UserPermission.EditBlacklists)))
+                .AddPolicy(ViewTranscodingProfilesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewTranscodingProfiles)))
+                .AddPolicy(EditTranscodingProfilesPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.EditTranscodingProfiles)))
+
+                // The profile picker is an "any of" policy: the four content-view grants, in the
+                // order the catalog names them. A content form is the only caller, so the grant
+                // that opens the form is the grant that fills its picker - see the constant's
+                // remarks for why the dedicated pair is deliberately not reused here.
+                .AddPolicy(ViewTranscodingProfileOptionsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionAnyRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewStreams,
+                            Fluxy.Core.Users.Enums.UserPermission.ViewAudioStreams,
+                            Fluxy.Core.Users.Enums.UserPermission.ViewVideoOnDemand,
+                            Fluxy.Core.Users.Enums.UserPermission.ViewSeries)))
 
                 // The user audit log has one grant: reading it. The role requirement stays on top
                 // of the permission for the reason every other policy here carries it - a grant

@@ -136,6 +136,9 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Programme guide the schedule is read from, as text, or null.</summary>
         public string? EpgSourceId { get; init; }
 
+        /// <summary>Transcoding profile the relay converts the stream with, as text, or null.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>Key the channel is filed under inside that guide, or null.</summary>
         public string? EpgChannelKey { get; init; }
 

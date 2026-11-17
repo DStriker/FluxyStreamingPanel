@@ -62,6 +62,9 @@ namespace Fluxy.API.Contracts.Vod
         /// <summary>New country code; null keeps, empty clears.</summary>
         public string? CountryCode { get; init; }
 
+        /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// New set of bouquets the video belongs to, as text; null keeps, empty clears.
         /// </summary>

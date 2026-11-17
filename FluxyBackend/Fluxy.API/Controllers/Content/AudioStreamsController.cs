@@ -303,6 +303,13 @@ namespace Fluxy.API.Controllers.Content
             var bouquetIds = BouquetTextParser.ParseOrNull(
                 request.BouquetIds, nameof(CreateAudioStreamRequest.BouquetIds), errors);
 
+            // The reference is parsed here rather than by the service: a create has nothing to
+            // keep, so an empty value means "none" and an unparsable one is refused by name.
+            var transcodingProfileId = ParseProfileId(
+                request.TranscodingProfileId,
+                nameof(CreateAudioStreamRequest.TranscodingProfileId),
+                errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -321,6 +328,7 @@ namespace Fluxy.API.Controllers.Content
                     RestreamProxy = request.RestreamProxy,
                     RestreamCookies = request.RestreamCookies,
                     RestreamHeaders = request.RestreamHeaders,
+                    TranscodingProfileId = transcodingProfileId,
                     Sources = request.Sources ?? [],
                     BouquetIds = bouquetIds
                 },
@@ -430,6 +438,7 @@ namespace Fluxy.API.Controllers.Content
                     RestreamProxy = request.RestreamProxy,
                     RestreamCookies = request.RestreamCookies,
                     RestreamHeaders = request.RestreamHeaders,
+                    TranscodingProfileId = request.TranscodingProfileId,
                     Sources = request.Sources
                 },
                 cancellationToken);
@@ -640,6 +649,29 @@ namespace Fluxy.API.Controllers.Content
             return new ObjectResult(body) { StatusCode = status };
         }
 
+        /// <summary>
+        /// Parses the optional transcoding profile reference of a create: absent and empty both
+        /// mean "none", anything else must be a uuid.
+        /// </summary>
+        private static Guid? ParseProfileId(
+            string? sent,
+            string field,
+            Dictionary<string, string[]> errors)
+        {
+            if (string.IsNullOrWhiteSpace(sent))
+            {
+                return null;
+            }
+
+            if (Guid.TryParse(sent.Trim(), out var parsed))
+            {
+                return parsed;
+            }
+
+            errors[field] = [IdHint];
+            return null;
+        }
+
         private static AdminAudioStreamItemResponse ToItem(AudioStreamListItem item) => new()
         {
             Id = item.Id.ToString(),
@@ -669,6 +701,7 @@ namespace Fluxy.API.Controllers.Content
             RestreamProxy = stream.RestreamProxy,
             RestreamCookies = stream.RestreamCookies,
             RestreamHeaders = stream.RestreamHeaders,
+            TranscodingProfileId = stream.TranscodingProfileId?.ToString(),
             Sources = stream.Sources,
             BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()
         };

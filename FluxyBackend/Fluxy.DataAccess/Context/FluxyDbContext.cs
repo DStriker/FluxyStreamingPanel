@@ -258,6 +258,12 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<BlacklistEntryEntity> BlacklistEntries => Set<BlacklistEntryEntity>();
 
+        /// <summary>
+        /// Named sets of ffmpeg options. A nullable reference from four content tables points at
+        /// one of these, and a profile nothing points at may be deleted.
+        /// </summary>
+        public DbSet<TranscodingProfileEntity> TranscodingProfiles => Set<TranscodingProfileEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

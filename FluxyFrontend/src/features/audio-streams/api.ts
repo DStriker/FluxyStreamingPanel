@@ -148,6 +148,14 @@ export interface AudioStreamValues {
    * screen's to decide. Always sent, so an empty array means "in no bouquet".
    */
   bouquetIds: string[]
+
+  /**
+   * Transcoding profile the relay converts the row with, or an empty string for none.
+   *
+   * Always sent, like the bouquet set: a create has nothing to keep and the form holds the
+   * whole answer, so an empty string means "clear" rather than "leave it alone".
+   */
+  transcodingProfileId: string
 }
 
 /**

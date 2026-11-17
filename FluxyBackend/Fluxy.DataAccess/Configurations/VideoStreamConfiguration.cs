@@ -113,6 +113,12 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(stream => stream.EpgSourceId)
                 .HasColumnName("epg_source_id");
 
+            // The transcoding profile is a real foreign key too: a stream that names a profile
+            // is converted by it, and a profile deleted under a stream would leave a row whose
+            // relay cannot answer. See the constraint below for why the delete is restricted.
+            builder.Property(stream => stream.TranscodingProfileId)
+                .HasColumnName("transcoding_profile_id");
+
             builder.Property(stream => stream.EpgChannelKey)
                 .HasColumnName("epg_channel_key")
                 .HasMaxLength(EpgChannelKeyMaxLength);
@@ -173,6 +179,16 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasOne<EpgSourceEntity>()
                 .WithMany()
                 .HasForeignKey(stream => stream.EpgSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A stream's transcoding profile is the same shape of fact: the row references a
+            // configuration this installation owns, the reference may be cleared, and a profile
+            // still referenced may not be deleted. Restrict answers that in the database, and
+            // the profile service counts the references first so the operator reads a code
+            // instead of a database failure.
+            builder.HasOne<TranscodingProfileEntity>()
+                .WithMany()
+                .HasForeignKey(stream => stream.TranscodingProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // One name per category, compared case sensitively for the same reason username

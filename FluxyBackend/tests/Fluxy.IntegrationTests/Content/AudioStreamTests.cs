@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Fluxy.IntegrationTests.Content
 {
@@ -693,6 +694,57 @@ namespace Fluxy.IntegrationTests.Content
             Assert.True(
                 document.RootElement.GetProperty("errors").TryGetProperty(field, out _),
                 $"The refusal did not name '{field}'.");
+        }
+
+        [Fact]
+        public async Task ATranscodingProfileIsSetKeptAndCleared()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Radio", "AudioStream");
+
+            Guid profileId;
+            await using (var scope = Fixture.Factory.Services.CreateAsyncScope())
+            {
+                profileId = await TestDataSeeder.CreateTranscodingProfileAsync(
+                    scope.ServiceProvider,
+                    "Audio round trip",
+                    TestContext.Current.CancellationToken);
+            }
+
+            using var created = await PostStreamAsync(new
+            {
+                name = "Converted radio",
+                type = "ondemand",
+                categoryId,
+                sources = new[] { "https://example.test/radio" },
+                transcodingProfileId = profileId.ToString()
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "audio_stream_created");
+            var streamId = IdFromLocation(created);
+
+            Assert.Equal(
+                profileId.ToString(),
+                (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").GetString());
+
+            var csrf = await GetCsrfTokenAsync();
+            using var renamed = await PatchJsonAsync(
+                $"/admin/audio-streams/{streamId}",
+                new { name = "Converted radio renamed" },
+                csrf);
+            await AssertCodeAsync(renamed, HttpStatusCode.OK, "audio_stream_updated");
+            Assert.Equal(
+                profileId.ToString(),
+                (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").GetString());
+
+            csrf = await GetCsrfTokenAsync();
+            using var cleared = await PatchJsonAsync(
+                $"/admin/audio-streams/{streamId}",
+                new { transcodingProfileId = "" },
+                csrf);
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "audio_stream_updated");
+            Assert.Equal(
+                JsonValueKind.Null,
+                (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").ValueKind);
         }
 
         private async Task<JsonElement> DetailOfAsync(string id)

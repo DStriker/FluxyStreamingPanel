@@ -69,6 +69,13 @@ namespace Fluxy.DataAccess.Entities
         public Guid? SeriesId { get; set; }
 
         /// <summary>
+        /// Transcoding profile the relay converts this stream with, or null when it relays the
+        /// stream untouched. A real foreign key with `Restrict`: a profile a stream depends on
+        /// must not vanish under it.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; set; }
+
+        /// <summary>
         /// On-demand items this stream plays, in order, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else.
         /// </summary>
@@ -140,6 +147,7 @@ namespace Fluxy.DataAccess.Entities
             Enigma2Sid = Enigma2Sid,
             DelayMinutes = DelayMinutes,
             SeriesId = SeriesId,
+            TranscodingProfileId = TranscodingProfileId,
             VodItems = vodItems,
             EpgSourceId = EpgSourceId,
             EpgChannelKey = EpgChannelKey,

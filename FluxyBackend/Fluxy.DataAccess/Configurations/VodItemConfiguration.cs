@@ -100,6 +100,9 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("country_code")
                 .HasMaxLength(VodLimits.CountryCodeLength);
 
+            builder.Property(item => item.TranscodingProfileId)
+                .HasColumnName("transcoding_profile_id");
+
             builder.Property(nameof(AuditableEntity.CreatedAt)).HasColumnName("created_at");
             builder.Property(nameof(AuditableEntity.UpdatedAt)).HasColumnName("updated_at");
 
@@ -110,6 +113,14 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasOne(item => item.Category)
                 .WithMany()
                 .HasForeignKey(item => item.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // A video's transcoding profile: the reference may be cleared, and a profile still
+            // referenced may not be deleted. Restrict answers that in the database; the profile
+            // service counts the references first so the operator reads a code.
+            builder.HasOne<TranscodingProfileEntity>()
+                .WithMany()
+                .HasForeignKey(item => item.TranscodingProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             // One name per category, compared case sensitively for the same reason username

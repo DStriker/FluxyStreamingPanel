@@ -27,6 +27,7 @@ import {
   useUpdateVideoOnDemand,
 } from '../../features/video-on-demand/hooks/mutations'
 import { useVideoOnDemandDetail } from '../../features/video-on-demand/hooks/queries'
+import { useAllTranscodingProfiles } from '../../features/transcoding-profiles/hooks/queries'
 import type {
   VideoOnDemandStatus,
   VideoOnDemandType,
@@ -78,6 +79,7 @@ const CREATE_VALUES: VideoOnDemandValues = {
   rating: null,
   countryCode: '',
   bouquetIds: [],
+  transcodingProfileId: '',
 }
 
 /** Every field this form draws, so a refusal can be cleared before the next attempt. */
@@ -99,6 +101,7 @@ const FIELD_NAMES: readonly (keyof VideoOnDemandValues)[] = [
   'rating',
   'countryCode',
   'bouquetIds',
+  'transcodingProfileId',
 ]
 
 /** Trims what is there, drops what nobody typed, and keeps the order. */
@@ -140,6 +143,7 @@ const toBody = (values: VideoOnDemandValues): VideoOnDemandValues => ({
   rating: values.rating ?? null,
   countryCode: (values.countryCode ?? '').trim().toUpperCase(),
   bouquetIds: values.bouquetIds ?? [],
+  transcodingProfileId: values.transcodingProfileId ?? '',
 })
 
 /** The stored video spelled as form content. */
@@ -161,6 +165,7 @@ const detailToFormValues = (detail: {
   rating: number | null
   countryCode: string | null
   bouquetIds: string[]
+  transcodingProfileId: string | null
 }): VideoOnDemandValues => ({
   name: detail.name,
   type: detail.type,
@@ -179,6 +184,7 @@ const detailToFormValues = (detail: {
   rating: detail.rating,
   countryCode: detail.countryCode ?? '',
   bouquetIds: [...detail.bouquetIds],
+  transcodingProfileId: detail.transcodingProfileId ?? '',
 })
 
 interface VideoOnDemandFormPageProps {
@@ -244,6 +250,15 @@ export default function VideoOnDemandFormPage(_props: VideoOnDemandFormPageProps
     label: bouquet.name,
   }))
   const bouquetsError = bouquetsQuery.isError ? messageForError(bouquetsQuery.error) : null
+
+  // The transcoding profiles the picker offers: its own read behind its own grant, and a failed
+  // read disables the control rather than leaving it empty and silent.
+  const profilesQuery = useAllTranscodingProfiles()
+  const profileOptions = (profilesQuery.data ?? []).map((profile) => ({
+    value: profile.id,
+    label: profile.name,
+  }))
+  const profilesError = profilesQuery.isError ? messageForError(profilesQuery.error) : null
 
   const area = session ? areaForRole(session.role) : ''
   const listPath = `${area}/video-on-demand`
@@ -431,6 +446,23 @@ export default function VideoOnDemandFormPage(_props: VideoOnDemandFormPageProps
         >
           <Select options={typeOptions} />
         </Form.Item>
+
+        {/* The transcoding profile: one optional choice, drawn immediately after the last
+            required core field and before the first divider. A failed read disables it. */}
+        <Form.Item name="transcodingProfileId" label={t('bouquets.transcodingProfileField')}>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={profileOptions}
+            placeholder={t('bouquets.transcodingProfileNone')}
+            disabled={profilesError !== null}
+          />
+        </Form.Item>
+
+        {profilesError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={profilesError} />
+        )}
 
         <Divider titlePlacement="start">{t('videoOnDemandForm.mediaDivider')}</Divider>
 

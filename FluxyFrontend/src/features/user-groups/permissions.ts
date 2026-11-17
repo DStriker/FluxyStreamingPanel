@@ -15,7 +15,7 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all twenty-eight belong to
+ * - **A permission belongs to exactly one role.** On this installation all thirty belong to
  *   `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
@@ -31,11 +31,12 @@ import type { Role, UserPermission } from '../../types'
  * - **The last pairs are not about accounts at all.** `viewStreams`/`editStreams`,
  *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries`,
  *   `viewEpgSources`/`editEpgSources`, `viewBouquets`/`editBouquets`,
- *   `viewTariffPlans`/`editTariffPlans`, `viewSubscriptions`/`editSubscriptions` and
- *   `viewBlacklists`/`editBlacklists` name
+ *   `viewTariffPlans`/`editTariffPlans`, `viewSubscriptions`/`editSubscriptions`,
+ *   `viewBlacklists`/`editBlacklists` and `viewTranscodingProfiles`/`editTranscodingProfiles`
+ *   name
  *   content catalogues, guide sources, the packages content is delivered in, the price list a
- *   subscription is sold under, the issued rows themselves and the three access-control lists,
- *   so they sit
+ *   subscription is sold under, the issued rows themselves, the three access-control lists and
+ *   the ffmpeg profiles, so they sit
  *   in `ALL_PERMISSIONS` (a group form has to offer them) but in
  *   neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account being acted
  *   on, and a stream, a video, a series, a bouquet or a plan has no such role). `canView` and
@@ -83,6 +84,11 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   'editSubscriptions',
   'viewBlacklists',
   'editBlacklists',
+  // The transcoding profile pair: the ffmpeg profiles table and its form. A profile is a set of
+  // ffmpeg options rather than a piece of content, so it is a pair of its own rather than a
+  // reuse of any content grant - the same argument every pair above records.
+  'viewTranscodingProfiles',
+  'editTranscodingProfiles',
   // The user audit log's single grant, last in the catalog: it gates both the read and the
   // whole-table wipe, and it is deliberately not a pair - an operator never writes a row.
   'viewUserLogs',
@@ -120,6 +126,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editSubscriptions: 'Admin',
   viewBlacklists: 'Admin',
   editBlacklists: 'Admin',
+  viewTranscodingProfiles: 'Admin',
+  editTranscodingProfiles: 'Admin',
   viewUserLogs: 'Admin',
   viewApiRequestFailures: 'Admin',
 }

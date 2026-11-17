@@ -253,6 +253,7 @@ namespace Fluxy.DataAccess.Repositories
                 SeriesId = stream.SeriesId,
                 EpgSourceId = stream.EpgSourceId,
                 EpgChannelKey = stream.EpgChannelKey,
+                TranscodingProfileId = stream.TranscodingProfileId,
                 ArchiveDays = stream.ArchiveDays,
                 RestreamUserAgent = stream.RestreamUserAgent,
                 RestreamProxy = stream.RestreamProxy,
@@ -290,6 +291,7 @@ namespace Fluxy.DataAccess.Repositories
             entity.SeriesId = stream.SeriesId;
             entity.EpgSourceId = stream.EpgSourceId;
             entity.EpgChannelKey = stream.EpgChannelKey;
+            entity.TranscodingProfileId = stream.TranscodingProfileId;
             entity.ArchiveDays = stream.ArchiveDays;
             entity.RestreamUserAgent = stream.RestreamUserAgent;
             entity.RestreamProxy = stream.RestreamProxy;

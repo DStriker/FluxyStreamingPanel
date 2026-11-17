@@ -55,6 +55,9 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>New series reference; null keeps, empty clears.</summary>
         public string? SeriesId { get; init; }
 
+        /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// New on-demand list, in the order the stream plays it; null keeps, empty clears.
         /// </summary>

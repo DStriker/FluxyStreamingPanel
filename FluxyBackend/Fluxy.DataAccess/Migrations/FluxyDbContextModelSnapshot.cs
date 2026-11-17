@@ -153,6 +153,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("TranscodingProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transcoding_profile_id");
+
                     b.Property<short>("Type")
                         .HasColumnType("smallint")
                         .HasColumnName("stream_type");
@@ -164,6 +168,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TranscodingProfileId");
 
                     b.HasIndex("Type");
 
@@ -1036,6 +1042,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("TranscodingProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transcoding_profile_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1047,6 +1057,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("ReleaseDate");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TranscodingProfileId");
 
                     b.HasIndex("CategoryId", "Name")
                         .IsUnique();
@@ -1474,6 +1486,126 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("ticket_replies", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.TranscodingProfileEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AspectRatio")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("aspect_ratio");
+
+                    b.Property<int?>("AudioBitrateAvg")
+                        .HasColumnType("integer")
+                        .HasColumnName("audio_bitrate_avg");
+
+                    b.Property<int?>("AudioChannels")
+                        .HasColumnType("integer")
+                        .HasColumnName("audio_channels");
+
+                    b.Property<short>("AudioCodec")
+                        .HasColumnType("smallint")
+                        .HasColumnName("audio_codec");
+
+                    b.Property<int?>("AudioSampleRate")
+                        .HasColumnType("integer")
+                        .HasColumnName("audio_sample_rate");
+
+                    b.Property<int?>("BufferSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("buffer_size");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("Crf")
+                        .HasColumnType("integer")
+                        .HasColumnName("crf");
+
+                    b.Property<decimal?>("Framerate")
+                        .HasPrecision(9, 3)
+                        .HasColumnType("numeric(9,3)")
+                        .HasColumnName("framerate");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<int?>("MaxBitrateTolerance")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_bitrate_tolerance");
+
+                    b.Property<int?>("MinBitrateTolerance")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_bitrate_tolerance");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<short>("Preset")
+                        .HasColumnType("smallint")
+                        .HasColumnName("preset");
+
+                    b.Property<int?>("RedactionHeight")
+                        .HasColumnType("integer")
+                        .HasColumnName("redaction_height");
+
+                    b.Property<int?>("RedactionWidth")
+                        .HasColumnType("integer")
+                        .HasColumnName("redaction_width");
+
+                    b.Property<int?>("RedactionX")
+                        .HasColumnType("integer")
+                        .HasColumnName("redaction_x");
+
+                    b.Property<int?>("RedactionY")
+                        .HasColumnType("integer")
+                        .HasColumnName("redaction_y");
+
+                    b.Property<int?>("Threads")
+                        .HasColumnType("integer")
+                        .HasColumnName("threads");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("VideoBitrateAvg")
+                        .HasColumnType("integer")
+                        .HasColumnName("video_bitrate_avg");
+
+                    b.Property<short>("VideoCodec")
+                        .HasColumnType("smallint")
+                        .HasColumnName("video_codec");
+
+                    b.Property<short?>("VideoProfile")
+                        .HasColumnType("smallint")
+                        .HasColumnName("video_profile");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_transcoding_profiles_name");
+
+                    b.ToTable("transcoding_profiles", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.UserEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1608,8 +1740,8 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<int>("Permission")
-                        .HasColumnType("integer")
+                    b.Property<long>("Permission")
+                        .HasColumnType("bigint")
                         .HasColumnName("permission");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -1807,6 +1939,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("TranscodingProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transcoding_profile_id");
+
                     b.Property<short>("Type")
                         .HasColumnType("smallint")
                         .HasColumnName("stream_type");
@@ -1820,6 +1956,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("EpgSourceId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TranscodingProfileId");
 
                     b.HasIndex("Type");
 
@@ -2019,6 +2157,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("character varying(2048)")
                         .HasColumnName("subtitle_url");
 
+                    b.Property<Guid?>("TranscodingProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transcoding_profile_id");
+
                     b.Property<short>("Type")
                         .HasColumnType("smallint")
                         .HasColumnName("vod_type");
@@ -2035,6 +2177,8 @@ namespace Fluxy.DataAccess.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("TranscodingProfileId");
+
                     b.HasIndex("Type");
 
                     b.HasIndex("CategoryId", "Name")
@@ -2050,6 +2194,11 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.TranscodingProfileEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TranscodingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");
                 });
@@ -2215,6 +2364,11 @@ namespace Fluxy.DataAccess.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Fluxy.DataAccess.Entities.TranscodingProfileEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TranscodingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
                 });
 
@@ -2374,6 +2528,11 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("EpgSourceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Fluxy.DataAccess.Entities.TranscodingProfileEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TranscodingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
                 });
 
@@ -2423,6 +2582,11 @@ namespace Fluxy.DataAccess.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Fluxy.DataAccess.Entities.TranscodingProfileEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TranscodingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");
                 });

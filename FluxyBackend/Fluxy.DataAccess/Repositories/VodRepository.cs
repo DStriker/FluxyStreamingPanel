@@ -251,6 +251,7 @@ namespace Fluxy.DataAccess.Repositories
             entity.ReleaseDate = item.ReleaseDate;
             entity.Rating = item.Rating;
             entity.CountryCode = item.CountryCode;
+            entity.TranscodingProfileId = item.TranscodingProfileId;
 
             return true;
         }
@@ -307,7 +308,8 @@ namespace Fluxy.DataAccess.Repositories
             Genres = item.Genres.ToArray(),
             ReleaseDate = item.ReleaseDate,
             Rating = item.Rating,
-            CountryCode = item.CountryCode
+            CountryCode = item.CountryCode,
+            TranscodingProfileId = item.TranscodingProfileId
         };
 
         private static IQueryable<VodItemEntity> Order(

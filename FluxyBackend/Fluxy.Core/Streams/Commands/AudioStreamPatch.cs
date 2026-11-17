@@ -53,6 +53,9 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>New headers; null keeps, empty clears.</summary>
         public string? RestreamHeaders { get; init; }
 
+        /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>New source list; null keeps, a list replaces. An empty list is refused.</summary>
         public IReadOnlyList<string>? Sources { get; init; }
 

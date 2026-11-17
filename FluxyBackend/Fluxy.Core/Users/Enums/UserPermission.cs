@@ -61,9 +61,18 @@ namespace Fluxy.Core.Users.Enums
     /// is needed for an addition, because the catalog is code and the base groups are
     /// reconciled with it at startup.
     /// </para>
+    /// <para>
+    /// <b>The enum is a <see cref="long"/>, and the storage is a <c>bigint</c>, on purpose.</b>
+    /// The underlying type was <see cref="int"/> until the transcoding pair arrived, and
+    /// <c>1 &lt;&lt; 30</c> was the last free bit an <see cref="int"/> had. A pair cannot fit in
+    /// one bit, and reusing the free one would have been a grant that means two things. The
+    /// widening is lossless for every value already stored - the migration alters
+    /// <c>user_group_permissions.permission</c> from <c>integer</c> to <c>bigint</c> without
+    /// touching a row - so no stored grant is reinterpreted.
+    /// </para>
     /// </remarks>
     [Flags]
-    public enum UserPermission
+    public enum UserPermission : long
     {
         /// <summary>No permission at all. Also the empty set a group may be saved with.</summary>
         None = 0,
@@ -244,6 +253,30 @@ namespace Fluxy.Core.Users.Enums
         /// gives.
         /// </summary>
         EditBlacklists = 134217728,
+
+        /// <summary>
+        /// May read the transcoding profiles: the profiles table, one profile in full and the
+        /// profile picker on the four content forms.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A profile is a set of ffmpeg options rather than a piece of content, so it is a pair
+        /// of its own rather than a reuse of any content grant. A group that may decide how a
+        /// stream is converted and a group that may run the streams are two different jobs.
+        /// </para>
+        /// <para>
+        /// <b>This is the first value above <c>1 &lt;&lt; 29</c>.</b> The enum and the
+        /// <c>permission</c> column both had to widen from 32-bit to 64-bit to hold it - see the
+        /// remarks on <see cref="UserPermission"/>.
+        /// </para>
+        /// </remarks>
+        ViewTranscodingProfiles = 1L << 30,
+
+        /// <summary>
+        /// May change the transcoding profiles: create, edit and delete them. Separate from
+        /// <see cref="ViewTranscodingProfiles"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditTranscodingProfiles = 1L << 31,
 
         /// <summary>
         /// May read the user audit log: the log table, its filters and every entry it draws.

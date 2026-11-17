@@ -93,6 +93,9 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("rating")
                 .HasColumnType("numeric(3,1)");
 
+            builder.Property(series => series.TranscodingProfileId)
+                .HasColumnName("transcoding_profile_id");
+
             builder.Property(nameof(AuditableEntity.CreatedAt)).HasColumnName("created_at");
             builder.Property(nameof(AuditableEntity.UpdatedAt)).HasColumnName("updated_at");
 
@@ -109,6 +112,14 @@ namespace Fluxy.DataAccess.Configurations
                 .WithOne(episode => episode.Series)
                 .HasForeignKey(episode => episode.SeriesId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // A series' transcoding profile: the reference may be cleared, and a profile still
+            // referenced may not be deleted. Restrict answers that in the database; the profile
+            // service counts the references first so the operator reads a code.
+            builder.HasOne<TranscodingProfileEntity>()
+                .WithMany()
+                .HasForeignKey(series => series.TranscodingProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // One name per category. Scoped to the category for the same reason the on-demand
             // catalogue scopes its own: two categories are two sections of a catalogue.

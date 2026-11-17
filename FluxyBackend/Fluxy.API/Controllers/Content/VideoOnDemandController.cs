@@ -260,6 +260,13 @@ namespace Fluxy.API.Controllers.Content
             var bouquetIds = BouquetTextParser.ParseOrNull(
                 request.BouquetIds, nameof(CreateVodItemRequest.BouquetIds), errors);
 
+            // The reference is parsed here rather than by the service: a create has nothing to
+            // keep, so an empty value means "none" and an unparsable one is refused by name.
+            var transcodingProfileId = ParseProfileId(
+                request.TranscodingProfileId,
+                nameof(CreateVodItemRequest.TranscodingProfileId),
+                errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -284,6 +291,7 @@ namespace Fluxy.API.Controllers.Content
                     ReleaseDate = request.ReleaseDate,
                     Rating = request.Rating,
                     CountryCode = request.CountryCode,
+                    TranscodingProfileId = transcodingProfileId,
                     BouquetIds = bouquetIds
                 },
                 cancellationToken);
@@ -385,7 +393,8 @@ namespace Fluxy.API.Controllers.Content
                     Genres = request.Genres,
                     ReleaseDate = request.ReleaseDate,
                     Rating = request.Rating,
-                    CountryCode = request.CountryCode
+                    CountryCode = request.CountryCode,
+                    TranscodingProfileId = request.TranscodingProfileId
                 },
                 cancellationToken);
 
@@ -680,8 +689,32 @@ namespace Fluxy.API.Controllers.Content
             ReleaseDate = FormatDate(item.ReleaseDate),
             Rating = item.Rating,
             CountryCode = item.CountryCode,
+            TranscodingProfileId = item.TranscodingProfileId?.ToString(),
             BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()
         };
+
+        /// <summary>
+        /// Parses the optional transcoding profile reference of a create: absent and empty both
+        /// mean "none", anything else must be a uuid.
+        /// </summary>
+        private static Guid? ParseProfileId(
+            string? sent,
+            string field,
+            Dictionary<string, string[]> errors)
+        {
+            if (string.IsNullOrWhiteSpace(sent))
+            {
+                return null;
+            }
+
+            if (Guid.TryParse(sent.Trim(), out var parsed))
+            {
+                return parsed;
+            }
+
+            errors[field] = [IdHint];
+            return null;
+        }
 
         private static string? FormatDate(DateOnly? value)
             => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

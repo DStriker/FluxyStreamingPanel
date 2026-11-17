@@ -161,6 +161,21 @@ const BouquetContentPage = lazy(() => import('../pages/admin/BouquetContentPage'
 const TariffPlanFormPage = lazy(() => import('../pages/admin/TariffPlanFormPage'))
 
 /**
+ * The transcoding profile form, one component behind two addresses.
+ *
+ * `/admin/transcoding-profiles/add` is a menu item and `transcoding-profiles/:id` is not: the
+ * edit address is only ever reached by choosing a row, and a third entry saying "edit" would be
+ * a page that is empty until you tell it *which*.
+ *
+ * A second `lazy()` over the same module, so a move between the two addresses remounts the form
+ * instead of carrying a half-filled one across - which is what you want when the identifier
+ * under it just changed from "no profile" to "this profile".
+ */
+const TranscodingProfileFormPage = lazy(
+  () => import('../pages/admin/TranscodingProfileFormPage'),
+)
+
+/**
  * The subscription form, one component behind two addresses.
  *
  * `/admin/subscriptions/add` is a menu item (its label is the verb a visitor scans for, exactly
@@ -475,6 +490,13 @@ export const routes: RouteObject[] = [
       {
         path: 'tariff-plans/:id',
         element: <TariffPlanFormPage sectionKey="nav.items.tariffPlans" />,
+      },
+      // The transcoding profile form's edit address. `transcoding-profiles/add` is a menu item
+      // and a static segment, so react-router ranks it above `:id`. This one has no menu item:
+      // it is reached only by choosing a row of the profiles table.
+      {
+        path: 'transcoding-profiles/:id',
+        element: <TranscodingProfileFormPage sectionKey="nav.items.transcodingProfilesAdd" />,
       },
       // The subscription form's edit address. `subscriptions/add` is a menu item and is a static
       // segment, so react-router ranks it above `:id` - the same reason `users/add` can be a menu

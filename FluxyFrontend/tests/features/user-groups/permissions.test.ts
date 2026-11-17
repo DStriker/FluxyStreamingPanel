@@ -53,6 +53,10 @@ describe('ALL_PERMISSIONS', () => {
       // their own, behind one screen family and one API.
       'viewBlacklists',
       'editBlacklists',
+      // The transcoding profile pair follows them: ffmpeg profiles are a resource of their own,
+      // behind one table and one form.
+      'viewTranscodingProfiles',
+      'editTranscodingProfiles',
       // The audit log's single grant closes the catalog: it gates the read and the wipe
       // together, and it has no write sibling because an operator never writes a log row.
       'viewUserLogs',
@@ -134,6 +138,10 @@ describe('canViewAny / canEditAny', () => {
     // not satisfy these gates either.
     expect(canViewAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
     expect(canEditAny(['viewBlacklists', 'editBlacklists'])).toBe(false)
+    // The transcoding profile pair names ffmpeg profiles rather than accounts, so it must not
+    // satisfy these gates either - the same rule every resource pair above follows.
+    expect(canViewAny(['viewTranscodingProfiles', 'editTranscodingProfiles'])).toBe(false)
+    expect(canEditAny(['viewTranscodingProfiles', 'editTranscodingProfiles'])).toBe(false)
     // The audit log's single grant names the log rather than accounts, so it must not satisfy
     // these gates either.
     expect(canViewAny(['viewUserLogs'])).toBe(false)

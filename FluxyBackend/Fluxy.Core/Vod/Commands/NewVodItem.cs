@@ -62,6 +62,11 @@ namespace Fluxy.Core.Vod.Commands
         public string? CountryCode { get; init; }
 
         /// <summary>
+        /// Transcoding profile the video is converted with, or null to serve it untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
+
+        /// <summary>
         /// Bouquets the new video joins, or null for none. A <b>set</b> rather than an order:
         /// the video is appended to the end of every bouquet it joins.
         /// </summary>

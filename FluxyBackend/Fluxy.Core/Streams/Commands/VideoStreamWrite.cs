@@ -47,6 +47,9 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>Series the stream plays, or null when its type does not use one.</summary>
         public Guid? SeriesId { get; init; }
 
+        /// <summary>Transcoding profile the relay converts it with, or null for none.</summary>
+        public Guid? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// On-demand items the stream plays, in order, or empty when its type does not use any.
         /// </summary>

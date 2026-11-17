@@ -314,6 +314,10 @@ namespace Fluxy.API.Controllers.Content
                 request.VodItems, nameof(CreateVideoStreamRequest.VodItems), errors);
             var epgSourceId = ParseIdentifierOrNull(
                 request.EpgSourceId, nameof(CreateVideoStreamRequest.EpgSourceId), errors);
+            var transcodingProfileId = ParseIdentifierOrNull(
+                request.TranscodingProfileId,
+                nameof(CreateVideoStreamRequest.TranscodingProfileId),
+                errors);
 
             // A set rather than an order: the service appends the stream to the end of every
             // bouquet it joins, and the position inside one belongs to the bouquet's own screen.
@@ -339,6 +343,7 @@ namespace Fluxy.API.Controllers.Content
                     VodItems = vodItems,
                     EpgSourceId = epgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
+                    TranscodingProfileId = transcodingProfileId,
                     ArchiveDays = request.ArchiveDays ?? 0,
                     RestreamUserAgent = request.RestreamUserAgent,
                     RestreamProxy = request.RestreamProxy,
@@ -463,6 +468,7 @@ namespace Fluxy.API.Controllers.Content
                         request.VodItems, nameof(UpdateVideoStreamRequest.VodItems), errors),
                     EpgSourceId = request.EpgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
+                    TranscodingProfileId = request.TranscodingProfileId,
                     ArchiveDays = request.ArchiveDays,
                     RestreamUserAgent = request.RestreamUserAgent,
                     RestreamProxy = request.RestreamProxy,
@@ -800,6 +806,7 @@ namespace Fluxy.API.Controllers.Content
             Enigma2Sid = stream.Enigma2Sid,
             DelayMinutes = stream.DelayMinutes,
             SeriesId = stream.SeriesId?.ToString(),
+        TranscodingProfileId = stream.TranscodingProfileId?.ToString(),
             VodItems = stream.VodItems.Select(id => id.ToString()).ToList(),
             EpgSourceId = stream.EpgSourceId?.ToString(),
             EpgChannelKey = stream.EpgChannelKey,

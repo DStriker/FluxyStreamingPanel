@@ -13,6 +13,8 @@ using Fluxy.Core.Streams.Outcomes;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Core.Transcoding.Repositories;
+using Fluxy.Core.Transcoding.Utils;
 
 namespace Fluxy.Application.Streams.Services
 {
@@ -39,6 +41,7 @@ namespace Fluxy.Application.Streams.Services
     {
         private readonly IAudioStreamRepository _streams;
         private readonly IBouquetRepository _bouquets;
+        private readonly ITranscodingProfileRepository _transcodingProfiles;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
@@ -49,14 +52,19 @@ namespace Fluxy.Application.Streams.Services
         /// Repository that answers whether the bouquets a stream names exist, and stages the
         /// membership rows that tie the two together.
         /// </param>
+        /// <param name="transcodingProfiles">
+        /// Repository that answers whether the transcoding profile a stream names exists.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public AudioStreamService(
             IAudioStreamRepository streams,
             IBouquetRepository bouquets,
+            ITranscodingProfileRepository transcodingProfiles,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
             _bouquets = bouquets;
+            _transcodingProfiles = transcodingProfiles;
             _unitOfWork = unitOfWork;
         }
 
@@ -107,6 +115,16 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(errors);
             }
 
+            // A transcoding profile is a row of this database, so a stream may only name one
+            // that exists - the foreign key would refuse it anyway, and a refusal here names
+            // the field instead of failing at the write.
+            if (input.TranscodingProfileId is { } createProfileId
+                && await _transcodingProfiles.ExistsAsync(createProfileId, cancellationToken) is false)
+            {
+                return Invalid(
+                    Field(nameof(NewAudioStream.TranscodingProfileId), TranscodingProfileReference.UnknownRule));
+            }
+
             // The category is checked after the shape rather than before it, because a body
             // that already broke a rule of its own has nothing to say about the database yet.
             if (await _streams.CategoryIsUsableAsync(input.CategoryId, cancellationToken) is false)
@@ -141,7 +159,8 @@ namespace Fluxy.Application.Streams.Services
                 input.RestreamProxy,
                 input.RestreamCookies,
                 input.RestreamHeaders,
-                input.Sources);
+                input.Sources,
+                input.TranscodingProfileId);
 
             var streamId = await _streams.AddAsync(write, cancellationToken);
 
@@ -203,6 +222,21 @@ namespace Fluxy.Application.Streams.Services
             var restreamHeaders = MergeText(patch.RestreamHeaders, stream.RestreamHeaders);
             var sources = patch.Sources ?? stream.Sources;
 
+            // The reference travels as text so that "clear" and "keep" are two different
+            // answers; this is where the text stops being text.
+            if (!TranscodingProfileReference.TryMerge(
+                patch.TranscodingProfileId,
+                stream.TranscodingProfileId,
+                out var transcodingProfileId,
+                out var profileError))
+            {
+                return Invalid(
+                    Field(
+                        nameof(AudioStreamPatch.TranscodingProfileId),
+                        profileError ?? TranscodingProfileReference.IdentifierRule),
+                    id);
+            }
+
             var errors = ValidateShape(
                 name,
                 type,
@@ -229,6 +263,18 @@ namespace Fluxy.Application.Streams.Services
                 return AlreadyExists(nameof(AudioStreamPatch.Name), id);
             }
 
+            // The merged reference is checked against the profile table for the reason the
+            // create is: a key that names no row would be refused at the write.
+            if (transcodingProfileId is { } updateProfileId
+                && await _transcodingProfiles.ExistsAsync(updateProfileId, cancellationToken) is false)
+            {
+                return Invalid(
+                    Field(
+                        nameof(AudioStreamPatch.TranscodingProfileId),
+                        TranscodingProfileReference.UnknownRule),
+                    id);
+            }
+
             // Null keeps every link, an empty list leaves every bouquet.
             if (!await BouquetMembership.AreKnownAsync(_bouquets, patch.BouquetIds, cancellationToken))
             {
@@ -246,7 +292,8 @@ namespace Fluxy.Application.Streams.Services
                 restreamProxy,
                 restreamCookies,
                 restreamHeaders,
-                sources);
+                sources,
+                transcodingProfileId);
 
             await _streams.UpdateAsync(id, write, cancellationToken);
 
@@ -394,7 +441,8 @@ namespace Fluxy.Application.Streams.Services
             string? restreamProxy,
             string? restreamCookies,
             string? restreamHeaders,
-            IReadOnlyList<string> sources)
+            IReadOnlyList<string> sources,
+            Guid? transcodingProfileId)
             => new()
             {
                 Name = name,
@@ -407,7 +455,8 @@ namespace Fluxy.Application.Streams.Services
                 RestreamProxy = AudioStreamRules.NullIfBlank(restreamProxy),
                 RestreamCookies = AudioStreamRules.NullIfBlank(restreamCookies),
                 RestreamHeaders = AudioStreamRules.NullIfBlank(restreamHeaders),
-                Sources = CleanList(sources)
+                Sources = CleanList(sources),
+                TranscodingProfileId = transcodingProfileId
             };
 
         /// <summary>Drops blank entries and trims every survivor.</summary>

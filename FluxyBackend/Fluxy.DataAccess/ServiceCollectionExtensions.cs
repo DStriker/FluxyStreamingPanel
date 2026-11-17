@@ -11,6 +11,7 @@ using Fluxy.Core.Series.Repositories;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Tickets.Repositories;
+using Fluxy.Core.Transcoding.Repositories;
 using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Vod.Repositories;
 using Fluxy.DataAccess.Context;
@@ -115,6 +116,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IMagEventRepository, MagEventRepository>();
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<ITicketRepository, TicketRepository>();
+            services.AddScoped<ITranscodingProfileRepository, TranscodingProfileRepository>();
 
             // The mass source replacement reads and stages rows of four aggregates owned by
             // other repositories. It is a repository of its own rather than extra methods on

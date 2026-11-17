@@ -119,6 +119,7 @@ namespace Fluxy.DataAccess.Repositories
                     Genres = entry.Genres,
                     ReleaseDate = entry.ReleaseDate,
                     Rating = entry.Rating,
+                    TranscodingProfileId = entry.TranscodingProfileId,
                     SeasonsCount = entry.Episodes
                         .Select(episode => (int?)episode.SeasonNumber)
                         .Max() ?? 0,
@@ -207,6 +208,7 @@ namespace Fluxy.DataAccess.Repositories
             entity.Genres = series.Genres.ToArray();
             entity.ReleaseDate = series.ReleaseDate;
             entity.Rating = series.Rating;
+            entity.TranscodingProfileId = series.TranscodingProfileId;
 
             return true;
         }
@@ -241,7 +243,8 @@ namespace Fluxy.DataAccess.Repositories
             Director = series.Director,
             Genres = series.Genres.ToArray(),
             ReleaseDate = series.ReleaseDate,
-            Rating = series.Rating
+            Rating = series.Rating,
+            TranscodingProfileId = series.TranscodingProfileId
         };
 
         private static IQueryable<SeriesEntity> Order(
@@ -343,6 +346,7 @@ namespace Fluxy.DataAccess.Repositories
             Genres = row.Genres,
             ReleaseDate = row.ReleaseDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             Rating = row.Rating,
+            TranscodingProfileId = row.TranscodingProfileId,
             SeasonsCount = row.SeasonsCount,
             EpisodesCount = row.EpisodesCount
         };
@@ -379,6 +383,7 @@ namespace Fluxy.DataAccess.Repositories
             public string[] Genres { get; init; } = [];
             public DateOnly? ReleaseDate { get; init; }
             public decimal? Rating { get; init; }
+            public Guid? TranscodingProfileId { get; init; }
             public int SeasonsCount { get; init; }
             public int EpisodesCount { get; init; }
         }

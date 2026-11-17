@@ -50,6 +50,11 @@ namespace Fluxy.Core.Series.Commands
         public decimal? Rating { get; init; }
 
         /// <summary>
+        /// Transcoding profile the episodes are converted with, or null to serve them untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
+
+        /// <summary>
         /// Bouquets the new series joins, or null for none. A <b>set</b> rather than an order:
         /// the series is appended to the end of every bouquet it joins.
         /// </summary>

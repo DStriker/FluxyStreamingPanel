@@ -75,6 +75,12 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>Upper case ISO 3166-1 alpha-2 country code, or null.</summary>
         public string? CountryCode { get; set; }
 
+        /// <summary>
+        /// Transcoding profile the video is converted with, or null when it is served
+        /// untouched. A real foreign key with `Restrict`.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; set; }
+
         /// <summary>Builds the business model out of this row.</summary>
         public VodItem ToModel() => new()
         {
@@ -95,7 +101,8 @@ namespace Fluxy.DataAccess.Entities
             Genres = Genres,
             ReleaseDate = ReleaseDate,
             Rating = Rating,
-            CountryCode = CountryCode
+            CountryCode = CountryCode,
+            TranscodingProfileId = TranscodingProfileId
         };
     }
 }

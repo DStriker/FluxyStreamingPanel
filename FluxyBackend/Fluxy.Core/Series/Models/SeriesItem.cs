@@ -59,5 +59,11 @@ namespace Fluxy.Core.Series.Models
 
         /// <summary>Rating from 0 to 10, or null when the series is not rated.</summary>
         public decimal? Rating { get; init; }
+
+        /// <summary>
+        /// Transcoding profile the episodes are converted with, or null when they are served
+        /// untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
     }
 }

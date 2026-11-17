@@ -134,6 +134,10 @@ const ru: Translation = {
       // четырёх разделов контента, потому что программа — то, к чему привязаны потоки, а не
       // пятый каталог контента.
       epg: 'Программа передач',
+      // Профили транскодирования — именованные наборы опций ffmpeg, с которыми конвертируются
+      // поток, видео или сериал. Раздел стоит между программой передач и чёрными списками:
+      // это конфигурация, на которую ссылается контент, а не каталог контента.
+      transcoding: 'Транскодирование',
       // Три чёрных списка контроля доступа — сразу после программы передач, как просил
       // владелец. Одна группа, а не три: три списка — это один ресурс за одним экраном,
       // группа называет семейство, пункты — сами списки.
@@ -219,6 +223,11 @@ const ru: Translation = {
       // плейлиста был бы вторым способом добавить тот же один файл, а не вторым экраном.
       epgAdd: 'Добавить',
       epgManage: 'Управление',
+      // Профили транскодирования: пара «добавить/управление», как у любого раздела — у профиля
+      // есть форма и таблица, и больше ничего. Слова короткие, потому что заголовок группы
+      // «Транскодирование» уже называет предмет, а длинные пункты распирали колонку.
+      transcodingProfilesAdd: 'Добавить',
+      transcodingProfilesManage: 'Управление',
       // Три пункта чёрных списков. Названы полностью, а не голыми «IP»/«ISP»/«UA»: пункт «IP»
       // рядом с «Программой передач» ничего не говорит о том, для чего этот список.
       blacklistIp: 'Чёрный список IP',
@@ -629,6 +638,12 @@ const ru: Translation = {
     // и одно семейство экранов за тремя пунктами меню.
     viewBlacklists: 'Просмотр чёрных списков',
     editBlacklists: 'Редактирование чёрных списков',
+    // Пара профилей транскодирования охраняет ffmpeg-профили: таблицу профилей и форму
+    // профиля. Профиль — это набор опций ffmpeg, а не контент, поэтому это отдельная пара;
+    // та же пара открывает выбор профиля на четырёх формах контента со стороны чтения — через
+    // общий эндпоинт «любое из четырёх прав на просмотр контента».
+    viewTranscodingProfiles: 'Просмотр профилей транскодирования',
+    editTranscodingProfiles: 'Редактирование профилей транскодирования',
     // Единственное право журнала действий: открывает и сам журнал, и команду очистки, потому
     // что очистка уничтожает те же доказательства. `editUserLogs` сознательно нет — оператор
     // никогда не пишет строку, её пишет тот сценарий, который она описывает.
@@ -933,6 +948,10 @@ const ru: Translation = {
     fieldHint:
       'Пакеты, в которые входит этот объект. В букете он встаёт в конец списка; порядок внутри букета задаётся на экране букета.',
     fieldPlaceholder: 'Ни одного букета',
+    // Поле профиля на четырёх формах контента. Один ключ на все четыре, по той же причине,
+    // что и подпись букетов: контрол спрашивает одно и то же у любого вида контента.
+    transcodingProfileField: 'Профиль транскодирования',
+    transcodingProfileNone: 'Без профиля',
     actions: {
       content: 'Управление контентом',
       rename: 'Переименовать',
@@ -1351,6 +1370,191 @@ const ru: Translation = {
     },
     noteLabel: 'Примечание',
     maxLength: 'Не больше {{max}} символов.',
+  },
+  // Профили транскодирования: именованные наборы опций ffmpeg, с которыми конвертируются поток,
+  // видео или сериал. Страница — одна таблица; ячейка опций рисует пары `label: value` только
+  // для тех опций, которые строка действительно задаёт.
+  transcodingProfiles: {
+    listTitle: 'Профили транскодирования',
+    addTitle: 'Добавить профиль',
+    create: 'Создать',
+    save: 'Сохранить',
+    backToList: 'К профилям',
+    columns: {
+      id: 'ID',
+      name: 'Название',
+      options: 'Опции',
+      actions: 'Действия',
+    },
+    options: {
+      videoCodec: 'Видеокодек',
+      audioCodec: 'Аудиокодек',
+      preset: 'Пресет',
+      videoProfile: 'Профиль',
+      videoBitrateAvg: 'Битрейт видео',
+      audioBitrateAvg: 'Битрейт аудио',
+      minBitrateTolerance: 'Мин. допуск',
+      maxBitrateTolerance: 'Макс. допуск',
+      bufferSize: 'Буфер',
+      crf: 'CRF',
+      width: 'Ширина',
+      height: 'Высота',
+      aspectRatio: 'Соотношение сторон',
+      framerate: 'Частота кадров',
+      audioSampleRate: 'Частота дискретизации',
+      audioChannels: 'Каналы',
+      threads: 'Потоки',
+      logoUrl: 'Логотип',
+      redaction: 'Затемнение',
+    },
+    units: {
+      kbps: 'кбит/с',
+      px: 'px',
+      fps: 'кадр/с',
+      hz: 'Гц',
+    },
+    actions: {
+      edit: 'Изменить',
+      delete: 'Удалить',
+    },
+    noPermission: 'Ваша группа не разрешает это действие.',
+    searchLabel: 'Поиск по названию',
+    searchPlaceholder: 'Поиск по названию',
+    empty: 'Профилей пока нет.',
+    noMatches: 'Ни один профиль не подходит под этот поиск.',
+    range: '{{from}}–{{to}} из {{total}}',
+    resizeColumn: 'Изменить ширину столбца «{{column}}»',
+    resetWidths: 'Сбросить ширины',
+    deleteConfirmTitle: 'Удалить этот профиль?',
+    deleteConfirmBody: '«{{name}}» будет удалён. Отменить это нельзя.',
+    deleteConfirmOk: 'Удалить',
+  },
+  // Форма добавления и изменения одного профиля транскодирования. Один блок: один компонент
+  // обслуживает оба адреса, поэтому заголовок выбирается здесь, а не из `sectionKey`.
+  transcodingProfilesForm: {
+    addTitle: 'Добавление профиля транскодирования',
+    editTitle: 'Изменение профиля транскодирования',
+    idLabel: 'ID',
+    nameLabel: 'Название',
+    nameRequired: 'Введите название',
+    maxLength: 'Не больше {{max}} символов.',
+    optionsDivider: 'Опции ffmpeg',
+    // Единственное предложение секции: что значит пустое поле.
+    optionsHint:
+      'Каждая опция необязательна. Пустая не передаётся в ffmpeg — кодек решает сам.',
+    videoCodecLabel: 'Видеокодек',
+    videoCodecRequired: 'Выберите видеокодек',
+    audioCodecLabel: 'Аудиокодек',
+    audioCodecRequired: 'Выберите аудиокодек',
+    presetLabel: 'Пресет',
+    presetRequired: 'Выберите пресет',
+    videoProfileLabel: 'Профиль H.264',
+    videoBitrateAvgLabel: 'Средний битрейт видео (кбит/с)',
+    audioBitrateAvgLabel: 'Средний битрейт аудио (кбит/с)',
+    minBitrateToleranceLabel: 'Нижний допуск битрейта (кбит/с)',
+    maxBitrateToleranceLabel: 'Верхний допуск битрейта (кбит/с)',
+    bufferSizeLabel: 'Размер буфера (кбит/с)',
+    crfLabel: 'CRF (0–51)',
+    widthLabel: 'Ширина',
+    widthHint: '-1 — сохранить пропорции',
+    heightLabel: 'Высота',
+    aspectRatioLabel: 'Соотношение сторон',
+    framerateLabel: 'Частота кадров',
+    audioSampleRateLabel: 'Частота дискретизации',
+    audioChannelsLabel: 'Каналы',
+    threadsLabel: 'Потоки',
+    threadsHint: '0 — автоматически',
+    logoUrlLabel: 'Адрес логотипа',
+    redactionLabel: 'Прямоугольник затемнения',
+    redactionRequired: 'Заполните все четыре значения или ни одного',
+    redactionX: 'X',
+    redactionY: 'Y',
+    redactionWidth: 'Ширина',
+    redactionHeight: 'Высота',
+    codecs: {
+      copy: 'copy (без перекодирования)',
+      libx264: 'H.264 (libx264)',
+      libx265: 'H.265 (libx265)',
+      libvpx: 'VP8 (libvpx)',
+      libvpxVp9: 'VP9 (libvpx-vp9)',
+      libaomAv1: 'AV1 (libaom)',
+      libsvtav1: 'AV1 (SVT-AV1)',
+      librav1e: 'AV1 (rav1e)',
+      mpeg4: 'MPEG-4 Part 2',
+      msmpeg4v2: 'Microsoft MPEG-4 v2',
+      msmpeg4: 'Microsoft MPEG-4 v3',
+      libtheora: 'Theora',
+      libxvid: 'MPEG-4 (Xvid)',
+      h264Nvenc: 'H.264 (NVENC)',
+      hevcNvenc: 'H.265 (NVENC)',
+      av1Nvenc: 'AV1 (NVENC)',
+      h264Qsv: 'H.264 (Quick Sync)',
+      hevcQsv: 'H.265 (Quick Sync)',
+      av1Qsv: 'AV1 (Quick Sync)',
+      h264Vaapi: 'H.264 (VA-API)',
+      hevcVaapi: 'H.265 (VA-API)',
+      av1Vaapi: 'AV1 (VA-API)',
+      h264Amf: 'H.264 (AMF)',
+      hevcAmf: 'H.265 (AMF)',
+      av1Amf: 'AV1 (AMF)',
+      h264Videotoolbox: 'H.264 (VideoToolbox)',
+      hevcVideotoolbox: 'H.265 (VideoToolbox)',
+      prores: 'Apple ProRes',
+      mjpeg: 'Motion JPEG',
+      dnxhd: 'Avid DNxHD',
+      ffv1: 'FFV1 (без потерь)',
+      huffyuv: 'HuffYUV (без потерь)',
+      wmv2: 'Windows Media Video 8',
+      rawvideo: 'Несжатое видео',
+      aac: 'AAC',
+      libmp3lame: 'MP3 (LAME)',
+      libopus: 'Opus (libopus)',
+      libvorbis: 'Vorbis',
+      ac3: 'AC-3',
+      eac3: 'E-AC-3',
+      mp2: 'MPEG-2 audio',
+      alac: 'Apple Lossless',
+      flac: 'FLAC (без потерь)',
+      pcmS16le: 'PCM 16 бит',
+      pcmS24le: 'PCM 24 бита',
+      pcmAlaw: 'PCM A-law',
+      pcmMulaw: 'PCM µ-law',
+      wmav2: 'Windows Media Audio 2',
+      libopencoreAmrnb: 'AMR narrowband',
+      libvoAmrwbenc: 'AMR wideband',
+      dca: 'DTS',
+      truehd: 'TrueHD',
+      libmpegh: 'MPEG-H 3D audio',
+      libspeex: 'Speex',
+      libfdkAac: 'AAC (FDK)',
+      mp3: 'MP3',
+      ac4: 'AC-4',
+      opus: 'Opus',
+      mp1: 'MPEG-1 audio',
+      aacAt: 'AAC (AudioToolbox)',
+    },
+    presets: {
+      default: 'default (решает кодек)',
+      ultrafast: 'ultrafast',
+      superfast: 'superfast',
+      veryfast: 'veryfast',
+      faster: 'faster',
+      fast: 'fast',
+      medium: 'medium',
+      slow: 'slow',
+      slower: 'slower',
+      veryslow: 'veryslow',
+    },
+    videoProfiles: {
+      none: 'нет',
+      baseline30: 'Baseline 3.0',
+      baseline31: 'Baseline 3.1',
+      main31: 'Main 3.1',
+      main40: 'Main 4.0',
+      high40: 'High 4.0',
+      high41: 'High 4.1',
+      high42: 'High 4.2',
+    },
   },
   // Серии одного сериала: экран открывается из строки таблицы сериалов.
   seriesEpisodes: {
@@ -3195,6 +3399,15 @@ const ru: Translation = {
       blacklist_entries_cleared: 'Все записи списка удалены.',
       blacklist_entry_not_found: 'Записи с таким идентификатором нет.',
       blacklist_value_exists: 'Это значение в списке уже есть.',
+      // Профиль транскодирования: три успеха, два отказа, возможных только у профиля, и один,
+      // который производит строка, всё ещё на него ссылающаяся.
+      transcoding_profile_created: 'Профиль транскодирования создан.',
+      transcoding_profile_updated: 'Профиль транскодирования обновлён.',
+      transcoding_profile_deleted: 'Профиль транскодирования удалён.',
+      transcoding_profile_not_found: 'Профиля транскодирования с таким идентификатором нет.',
+      transcoding_profile_already_exists: 'Профиль транскодирования с таким названием уже есть.',
+      transcoding_profile_in_use:
+        'Профиль всё ещё используется потоком, видео или сериалом. Сначала выберите другой профиль в этих строках.',
       // Единственная запись журнала подключений. Называет таблицу, а не строку: команда стирает
       // всё, и предложение так и говорит.
       connection_logs_cleared: 'Все записи журнала подключений удалены.',

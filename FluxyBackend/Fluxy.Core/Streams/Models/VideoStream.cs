@@ -89,6 +89,12 @@ namespace Fluxy.Core.Streams.Models
         public Guid? SeriesId { get; init; }
 
         /// <summary>
+        /// Transcoding profile the relay converts this stream with, or null when it is relayed
+        /// untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
+
+        /// <summary>
         /// On-demand items this stream plays, in the order it plays them, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other
         /// kind.

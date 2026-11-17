@@ -52,6 +52,9 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Extra headers the relayed requests carry, as typed.</summary>
         public string? RestreamHeaders { get; init; }
 
+        /// <summary>Transcoding profile the relay converts the stream with, or none. As text.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>
         /// Sources to relay from, in order, the first as the primary and the rest as the
         /// fallback.
@@ -115,6 +118,9 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>New headers; null keeps, empty clears.</summary>
         public string? RestreamHeaders { get; init; }
+
+        /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
+        public string? TranscodingProfileId { get; init; }
 
         /// <summary>New source list; null keeps, a list replaces. An empty list is refused.</summary>
         public IReadOnlyList<string>? Sources { get; init; }

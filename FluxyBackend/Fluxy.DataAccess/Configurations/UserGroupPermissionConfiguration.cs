@@ -32,13 +32,13 @@ namespace Fluxy.DataAccess.Configurations
                 .HasColumnName("user_group_id")
                 .IsRequired();
 
-            // Stored as integer rather than smallint: the flags are powers of two from a
-            // fixed catalog, and the catalog has grown past 32767 - the largest value a
-            // smallint can hold. Widening is lossless for every value already stored, and a
-            // wrap-around would silently turn a grant into a different one.
+            // Stored as bigint rather than integer: the flags are powers of two from a fixed
+            // catalog, and the catalog has outgrown both smallint and integer - the transcoding
+            // pair took 2^30 and 2^31. Widening is lossless for every value already stored, and
+            // a wrap-around would silently turn a grant into a different one.
             builder.Property(grant => grant.Permission)
                 .HasColumnName("permission")
-                .HasConversion<int>()
+                .HasConversion<long>()
                 .IsRequired();
 
             builder.Property(nameof(AuditableEntity.CreatedAt))

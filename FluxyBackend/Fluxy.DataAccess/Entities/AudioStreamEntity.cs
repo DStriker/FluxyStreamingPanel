@@ -67,6 +67,13 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>Extra headers the relayed requests carry, as typed.</summary>
         public string? RestreamHeaders { get; set; }
 
+        /// <summary>
+        /// Transcoding profile the relay converts this stream with, or null when it relays the
+        /// stream untouched. A real foreign key with `Restrict`, answered by the profile service
+        /// with a code before the database has to refuse it.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; set; }
+
         /// <summary>The addresses this stream relays from, in the order they are used.</summary>
         public ICollection<AudioStreamSourceEntity> StreamSources { get; set; } =
             new List<AudioStreamSourceEntity>();
@@ -88,6 +95,7 @@ namespace Fluxy.DataAccess.Entities
             RestreamProxy = RestreamProxy,
             RestreamCookies = RestreamCookies,
             RestreamHeaders = RestreamHeaders,
+            TranscodingProfileId = TranscodingProfileId,
             Sources = sources
         };
     }

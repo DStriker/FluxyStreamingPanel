@@ -57,6 +57,12 @@ namespace Fluxy.Core.Streams.Commands
         public Guid? SeriesId { get; init; }
 
         /// <summary>
+        /// Transcoding profile the relay converts this stream with, or null to relay it
+        /// untouched. Not part of the payload rule: a profile applies to any kind.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
+
+        /// <summary>
         /// On-demand items this stream plays, in the order it plays them, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other
         /// kind, and refused by the service when the kind is the playlist and the list is empty.

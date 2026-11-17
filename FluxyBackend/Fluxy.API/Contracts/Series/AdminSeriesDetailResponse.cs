@@ -47,6 +47,9 @@ namespace Fluxy.API.Contracts.Series
         /// <summary>Rating from 0 to 10, or null.</summary>
         public decimal? Rating { get; init; }
 
+        /// <summary>Transcoding profile the episodes are converted with, as text, or null.</summary>
+        public string? TranscodingProfileId { get; init; }
+
         /// <summary>The largest season number the series holds, or zero.</summary>
         public required int SeasonsCount { get; init; }
 

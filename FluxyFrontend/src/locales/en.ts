@@ -130,6 +130,10 @@ const en = {
       // content sections because a guide is what the streams are filed against rather than a
       // fifth catalogue of content.
       epg: 'Programme guide',
+      // The transcoding profiles: the named sets of ffmpeg options a stream, a video or a
+      // series is converted with. It sits between the guide and the blacklists because it is
+      // configuration the content points *at* rather than a catalogue of content.
+      transcoding: 'Transcoding',
       // The three access-control blacklists, immediately after the programme guide because
       // that is where the owner asked for them. One group rather than three, because the three
       // lists are one resource behind one screen - the group is the family, the items are the
@@ -219,6 +223,11 @@ const en = {
       // look at. The owner asked for these two words, so they are what the rail says.
       epgAdd: 'Add',
       epgManage: 'Manage',
+      // The transcoding profiles: the named sets of ffmpeg options a stream is converted with.
+      // Two entries, the same add/manage pair every section uses, because a profile has a form
+      // and a table and nothing else.
+      transcodingProfilesAdd: 'Add profile',
+      transcodingProfilesManage: 'Manage profiles',
       // The three blacklist entries. Named in full rather than as bare "IP"/"ISP"/"UA", because
       // a rail reading "IP" beside "Programme guide" says nothing about what the list is for.
       blacklistIp: 'IP blacklist',
@@ -636,6 +645,12 @@ const en = {
     // one API and one screen family behind three menu entries.
     viewBlacklists: 'View blacklists',
     editBlacklists: 'Edit blacklists',
+    // The transcoding profile pair guards the ffmpeg profiles: the profiles table and the
+    // profile form. A profile is a set of ffmpeg options rather than a piece of content, so it
+    // is a pair of its own; the same pair also gates the option picker on the four content
+    // forms' read side, through the shared "any of the four content views" endpoint.
+    viewTranscodingProfiles: 'View transcoding profiles',
+    editTranscodingProfiles: 'Edit transcoding profiles',
     // The audit log's single grant: it opens the user log and its clear command, because the
     // wipe destroys the same evidence. There is deliberately no `editUserLogs` - an operator
     // never writes a row; a row is written by the flow it records.
@@ -932,6 +947,10 @@ const en = {
     fieldHint:
       'The packages this item belongs to. A bouquet it joins puts it at the end of its list; the order inside a bouquet is arranged on the bouquet screen.',
     fieldPlaceholder: 'No bouquet',
+    // The profile field the four content forms carry. One key for all four, for the reason the
+    // bouquet label gives: the control asks the same question of every kind of content.
+    transcodingProfileField: 'Transcoding profile',
+    transcodingProfileNone: 'No profile',
     actions: {
       content: 'Manage content',
       rename: 'Rename',
@@ -1350,6 +1369,197 @@ const en = {
     },
     noteLabel: 'Note',
     maxLength: 'Up to {{max}} characters.',
+  },
+  // The transcoding profiles: the named sets of ffmpeg options a stream, a video or a series is
+  // converted with. The page is one table; its options cell draws `label: value` pairs for the
+  // options a row actually names, because a profile that sends no flag for an option has
+  // nothing to say about it.
+  transcodingProfiles: {
+    listTitle: 'Transcoding profiles',
+    addTitle: 'Add profile',
+    create: 'Create',
+    save: 'Save',
+    backToList: 'Back to profiles',
+    columns: {
+      id: 'ID',
+      name: 'Name',
+      options: 'Options',
+      actions: 'Actions',
+    },
+    // The labels of the option pairs in the table cell. Each names the ffmpeg flag it stands
+    // for, because that is what the value beside it is.
+    options: {
+      videoCodec: 'Video codec',
+      audioCodec: 'Audio codec',
+      preset: 'Preset',
+      videoProfile: 'Profile',
+      videoBitrateAvg: 'Video bitrate',
+      audioBitrateAvg: 'Audio bitrate',
+      minBitrateTolerance: 'Min tolerance',
+      maxBitrateTolerance: 'Max tolerance',
+      bufferSize: 'Buffer',
+      crf: 'CRF',
+      width: 'Width',
+      height: 'Height',
+      aspectRatio: 'Aspect ratio',
+      framerate: 'Frame rate',
+      audioSampleRate: 'Sample rate',
+      audioChannels: 'Channels',
+      threads: 'Threads',
+      logoUrl: 'Logo',
+      redaction: 'Redaction',
+    },
+    units: {
+      kbps: 'kbps',
+      px: 'px',
+      fps: 'fps',
+      hz: 'Hz',
+    },
+    actions: {
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    noPermission: 'Your group does not allow this.',
+    searchLabel: 'Search by name',
+    searchPlaceholder: 'Search by name',
+    empty: 'No profiles yet.',
+    noMatches: 'No profile matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    deleteConfirmTitle: 'Delete this profile?',
+    deleteConfirmBody: '"{{name}}" will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form of one transcoding profile. One block, because one component serves
+  // both addresses: the title is chosen here rather than read from `sectionKey`.
+  transcodingProfilesForm: {
+    addTitle: 'Add transcoding profile',
+    editTitle: 'Edit transcoding profile',
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a name',
+    maxLength: 'Up to {{max}} characters.',
+    optionsDivider: 'ffmpeg options',
+    // The section's one sentence: what an empty field means. Everything below is optional, and
+    // this is the fact that makes that safe rather than vague.
+    optionsHint:
+      'Every option is optional. An empty one is not passed to ffmpeg, and the encoder decides for itself.',
+    videoCodecLabel: 'Video codec',
+    videoCodecRequired: 'Choose a video codec',
+    audioCodecLabel: 'Audio codec',
+    audioCodecRequired: 'Choose an audio codec',
+    presetLabel: 'Preset',
+    presetRequired: 'Choose a preset',
+    videoProfileLabel: 'H.264 profile',
+    videoBitrateAvgLabel: 'Average video bitrate (kbps)',
+    audioBitrateAvgLabel: 'Average audio bitrate (kbps)',
+    minBitrateToleranceLabel: 'Minimum bitrate tolerance (kbps)',
+    maxBitrateToleranceLabel: 'Maximum bitrate tolerance (kbps)',
+    bufferSizeLabel: 'Buffer size (kbps)',
+    crfLabel: 'CRF (0–51)',
+    widthLabel: 'Width',
+    widthHint: '-1 keeps the aspect ratio',
+    heightLabel: 'Height',
+    aspectRatioLabel: 'Aspect ratio',
+    framerateLabel: 'Frame rate',
+    audioSampleRateLabel: 'Audio sample rate',
+    audioChannelsLabel: 'Audio channels',
+    threadsLabel: 'Threads',
+    threadsHint: '0 means automatic',
+    logoUrlLabel: 'Logo address',
+    redactionLabel: 'Redaction rectangle',
+    redactionRequired: 'Fill all four values, or none of them',
+    redactionX: 'X',
+    redactionY: 'Y',
+    redactionWidth: 'Width',
+    redactionHeight: 'Height',
+    // The labels of the four option selects. The video and audio lists share one map because
+    // the overlapping names (`copy`, `aac`, `opus`) are the same encoder either way.
+    codecs: {
+      copy: 'copy (no re-encode)',
+      libx264: 'H.264 (libx264)',
+      libx265: 'H.265 (libx265)',
+      libvpx: 'VP8 (libvpx)',
+      libvpxVp9: 'VP9 (libvpx-vp9)',
+      libaomAv1: 'AV1 (libaom)',
+      libsvtav1: 'AV1 (SVT-AV1)',
+      librav1e: 'AV1 (rav1e)',
+      mpeg4: 'MPEG-4 Part 2',
+      msmpeg4v2: 'Microsoft MPEG-4 v2',
+      msmpeg4: 'Microsoft MPEG-4 v3',
+      libtheora: 'Theora',
+      libxvid: 'MPEG-4 (Xvid)',
+      h264Nvenc: 'H.264 (NVENC)',
+      hevcNvenc: 'H.265 (NVENC)',
+      av1Nvenc: 'AV1 (NVENC)',
+      h264Qsv: 'H.264 (Quick Sync)',
+      hevcQsv: 'H.265 (Quick Sync)',
+      av1Qsv: 'AV1 (Quick Sync)',
+      h264Vaapi: 'H.264 (VA-API)',
+      hevcVaapi: 'H.265 (VA-API)',
+      av1Vaapi: 'AV1 (VA-API)',
+      h264Amf: 'H.264 (AMF)',
+      hevcAmf: 'H.265 (AMF)',
+      av1Amf: 'AV1 (AMF)',
+      h264Videotoolbox: 'H.264 (VideoToolbox)',
+      hevcVideotoolbox: 'H.265 (VideoToolbox)',
+      prores: 'Apple ProRes',
+      mjpeg: 'Motion JPEG',
+      dnxhd: 'Avid DNxHD',
+      ffv1: 'FFV1 (lossless)',
+      huffyuv: 'HuffYUV (lossless)',
+      wmv2: 'Windows Media Video 8',
+      rawvideo: 'Uncompressed video',
+      aac: 'AAC',
+      libmp3lame: 'MP3 (LAME)',
+      libopus: 'Opus (libopus)',
+      libvorbis: 'Vorbis',
+      ac3: 'AC-3',
+      eac3: 'E-AC-3',
+      mp2: 'MPEG-2 audio',
+      alac: 'Apple Lossless',
+      flac: 'FLAC (lossless)',
+      pcmS16le: 'PCM 16-bit',
+      pcmS24le: 'PCM 24-bit',
+      pcmAlaw: 'PCM A-law',
+      pcmMulaw: 'PCM µ-law',
+      wmav2: 'Windows Media Audio 2',
+      libopencoreAmrnb: 'AMR narrowband',
+      libvoAmrwbenc: 'AMR wideband',
+      dca: 'DTS',
+      truehd: 'TrueHD',
+      libmpegh: 'MPEG-H 3D audio',
+      libspeex: 'Speex',
+      libfdkAac: 'AAC (FDK)',
+      mp3: 'MP3',
+      ac4: 'AC-4',
+      opus: 'Opus',
+      mp1: 'MPEG-1 audio',
+      aacAt: 'AAC (AudioToolbox)',
+    },
+    presets: {
+      default: 'default (encoder decides)',
+      ultrafast: 'ultrafast',
+      superfast: 'superfast',
+      veryfast: 'veryfast',
+      faster: 'faster',
+      fast: 'fast',
+      medium: 'medium',
+      slow: 'slow',
+      slower: 'slower',
+      veryslow: 'veryslow',
+    },
+    videoProfiles: {
+      none: 'none',
+      baseline30: 'Baseline 3.0',
+      baseline31: 'Baseline 3.1',
+      main31: 'Main 3.1',
+      main40: 'Main 4.0',
+      high40: 'High 4.0',
+      high41: 'High 4.1',
+      high42: 'High 4.2',
+    },
   },
   // The episodes of one series, reached from a row of the series table.
   seriesEpisodes: {
@@ -3214,6 +3424,15 @@ const en = {
       blacklist_entries_cleared: 'Every entry of the list has been deleted.',
       blacklist_entry_not_found: 'There is no blacklist entry with that identifier.',
       blacklist_value_exists: 'This list already holds that value.',
+      // The transcoding profile resource: three successes, the two refusals only a profile can
+      // produce, and the one that a still-referenced row produces.
+      transcoding_profile_created: 'The transcoding profile has been created.',
+      transcoding_profile_updated: 'The transcoding profile has been updated.',
+      transcoding_profile_deleted: 'The transcoding profile has been deleted.',
+      transcoding_profile_not_found: 'There is no transcoding profile with that identifier.',
+      transcoding_profile_already_exists: 'Another transcoding profile already has that name.',
+      transcoding_profile_in_use:
+        'A stream, a video or a series still uses this profile. Choose another profile on those rows first.',
       // The connection log's one write. It names the table rather than a row: the command wipes
       // everything, and the sentence says so.
       connection_logs_cleared: 'Every connection log entry has been deleted.',

@@ -78,5 +78,10 @@ namespace Fluxy.Core.Vod.Models
 
         /// <summary>Upper case ISO 3166-1 alpha-2 country code, or null.</summary>
         public string? CountryCode { get; init; }
+
+        /// <summary>
+        /// Transcoding profile the video is converted with, or null when it is served untouched.
+        /// </summary>
+        public Guid? TranscodingProfileId { get; init; }
     }
 }

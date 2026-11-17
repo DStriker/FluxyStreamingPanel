@@ -235,7 +235,8 @@ namespace Fluxy.DataAccess.Repositories
                 RestreamUserAgent = stream.RestreamUserAgent,
                 RestreamProxy = stream.RestreamProxy,
                 RestreamCookies = stream.RestreamCookies,
-                RestreamHeaders = stream.RestreamHeaders
+                RestreamHeaders = stream.RestreamHeaders,
+                TranscodingProfileId = stream.TranscodingProfileId
             };
 
             AppendSources(entity, stream.Sources);
@@ -266,6 +267,7 @@ namespace Fluxy.DataAccess.Repositories
             entity.RestreamProxy = stream.RestreamProxy;
             entity.RestreamCookies = stream.RestreamCookies;
             entity.RestreamHeaders = stream.RestreamHeaders;
+            entity.TranscodingProfileId = stream.TranscodingProfileId;
 
             ReplaceSources(entity, stream.Sources);
 

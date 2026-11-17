@@ -210,6 +210,13 @@ namespace Fluxy.API.Controllers.Content
             var bouquetIds = BouquetTextParser.ParseOrNull(
                 request.BouquetIds, nameof(CreateSeriesRequest.BouquetIds), errors);
 
+            // The reference is parsed here rather than by the service: a create has nothing to
+            // keep, so an empty value means "none" and an unparsable one is refused by name.
+            var transcodingProfileId = ParseProfileId(
+                request.TranscodingProfileId,
+                nameof(CreateSeriesRequest.TranscodingProfileId),
+                errors);
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -230,6 +237,7 @@ namespace Fluxy.API.Controllers.Content
                     Genres = request.Genres ?? [],
                     ReleaseDate = request.ReleaseDate,
                     Rating = request.Rating,
+                    TranscodingProfileId = transcodingProfileId,
                     BouquetIds = bouquetIds
                 },
                 cancellationToken);
@@ -312,7 +320,8 @@ namespace Fluxy.API.Controllers.Content
                     Director = request.Director,
                     Genres = request.Genres,
                     ReleaseDate = request.ReleaseDate,
-                    Rating = request.Rating
+                    Rating = request.Rating,
+                    TranscodingProfileId = request.TranscodingProfileId
                 },
                 cancellationToken);
 
@@ -386,6 +395,29 @@ namespace Fluxy.API.Controllers.Content
             return new ObjectResult(body) { StatusCode = status };
         }
 
+        /// <summary>
+        /// Parses the optional transcoding profile reference of a create: absent and empty both
+        /// mean "none", anything else must be a uuid.
+        /// </summary>
+        private static Guid? ParseProfileId(
+            string? sent,
+            string field,
+            Dictionary<string, string[]> errors)
+        {
+            if (string.IsNullOrWhiteSpace(sent))
+            {
+                return null;
+            }
+
+            if (Guid.TryParse(sent.Trim(), out var parsed))
+            {
+                return parsed;
+            }
+
+            errors[field] = [IdHint];
+            return null;
+        }
+
         private static AdminSeriesItemResponse ToItem(SeriesListItem item) => new()
         {
             Id = item.Id.ToString(),
@@ -420,6 +452,7 @@ namespace Fluxy.API.Controllers.Content
             Genres = item.Genres,
             ReleaseDate = item.ReleaseDate,
             Rating = item.Rating,
+            TranscodingProfileId = item.TranscodingProfileId?.ToString(),
             SeasonsCount = item.SeasonsCount,
             EpisodesCount = item.EpisodesCount,
             BouquetIds = bouquetIds.Select(bouquetId => bouquetId.ToString()).ToList()

@@ -138,35 +138,37 @@ namespace Fluxy.UnitTests.Users
         [Fact]
         public void NumericValuesKeepTheSchemaAndRetiredSlotsFree()
         {
-            Assert.Equal(0, (int)UserPermission.None);
-            Assert.Equal(4, (int)UserPermission.ViewUserGroups);
-            Assert.Equal(8, (int)UserPermission.EditUserGroups);
-            Assert.Equal(16, (int)UserPermission.ViewClients);
-            Assert.Equal(32, (int)UserPermission.ViewResellers);
-            Assert.Equal(64, (int)UserPermission.ViewAdmins);
-            Assert.Equal(128, (int)UserPermission.EditClients);
-            Assert.Equal(256, (int)UserPermission.EditResellers);
-            Assert.Equal(512, (int)UserPermission.EditAdmins);
-            Assert.Equal(1024, (int)UserPermission.ViewStreams);
-            Assert.Equal(2048, (int)UserPermission.EditStreams);
-            Assert.Equal(4096, (int)UserPermission.ViewAudioStreams);
-            Assert.Equal(8192, (int)UserPermission.EditAudioStreams);
-            Assert.Equal(16384, (int)UserPermission.ViewVideoOnDemand);
-            Assert.Equal(32768, (int)UserPermission.EditVideoOnDemand);
-            Assert.Equal(65536, (int)UserPermission.ViewSeries);
-            Assert.Equal(131072, (int)UserPermission.EditSeries);
-            Assert.Equal(262144, (int)UserPermission.ViewEpgSources);
-            Assert.Equal(524288, (int)UserPermission.EditEpgSources);
-            Assert.Equal(1048576, (int)UserPermission.ViewBouquets);
-            Assert.Equal(2097152, (int)UserPermission.EditBouquets);
-            Assert.Equal(4194304, (int)UserPermission.ViewTariffPlans);
-            Assert.Equal(8388608, (int)UserPermission.EditTariffPlans);
-            Assert.Equal(16777216, (int)UserPermission.ViewSubscriptions);
-            Assert.Equal(33554432, (int)UserPermission.EditSubscriptions);
-            Assert.Equal(67108864, (int)UserPermission.ViewBlacklists);
-            Assert.Equal(134217728, (int)UserPermission.EditBlacklists);
-            Assert.Equal(268435456, (int)UserPermission.ViewUserLogs);
-            Assert.Equal(536870912, (int)UserPermission.ViewApiRequestFailures);
+            Assert.Equal(0, (long)UserPermission.None);
+            Assert.Equal(4, (long)UserPermission.ViewUserGroups);
+            Assert.Equal(8, (long)UserPermission.EditUserGroups);
+            Assert.Equal(16, (long)UserPermission.ViewClients);
+            Assert.Equal(32, (long)UserPermission.ViewResellers);
+            Assert.Equal(64, (long)UserPermission.ViewAdmins);
+            Assert.Equal(128, (long)UserPermission.EditClients);
+            Assert.Equal(256, (long)UserPermission.EditResellers);
+            Assert.Equal(512, (long)UserPermission.EditAdmins);
+            Assert.Equal(1024, (long)UserPermission.ViewStreams);
+            Assert.Equal(2048, (long)UserPermission.EditStreams);
+            Assert.Equal(4096, (long)UserPermission.ViewAudioStreams);
+            Assert.Equal(8192, (long)UserPermission.EditAudioStreams);
+            Assert.Equal(16384, (long)UserPermission.ViewVideoOnDemand);
+            Assert.Equal(32768, (long)UserPermission.EditVideoOnDemand);
+            Assert.Equal(65536, (long)UserPermission.ViewSeries);
+            Assert.Equal(131072, (long)UserPermission.EditSeries);
+            Assert.Equal(262144, (long)UserPermission.ViewEpgSources);
+            Assert.Equal(524288, (long)UserPermission.EditEpgSources);
+            Assert.Equal(1048576, (long)UserPermission.ViewBouquets);
+            Assert.Equal(2097152, (long)UserPermission.EditBouquets);
+            Assert.Equal(4194304, (long)UserPermission.ViewTariffPlans);
+            Assert.Equal(8388608, (long)UserPermission.EditTariffPlans);
+            Assert.Equal(16777216, (long)UserPermission.ViewSubscriptions);
+            Assert.Equal(33554432, (long)UserPermission.EditSubscriptions);
+            Assert.Equal(67108864, (long)UserPermission.ViewBlacklists);
+            Assert.Equal(134217728, (long)UserPermission.EditBlacklists);
+            Assert.Equal(1L << 30, (long)UserPermission.ViewTranscodingProfiles);
+            Assert.Equal(1L << 31, (long)UserPermission.EditTranscodingProfiles);
+            Assert.Equal(268435456, (long)UserPermission.ViewUserLogs);
+            Assert.Equal(536870912, (long)UserPermission.ViewApiRequestFailures);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -176,7 +178,7 @@ namespace Fluxy.UnitTests.Users
         {
             foreach (var permission in UserPermissionCatalog.All)
             {
-                var value = (int)permission;
+                var value = (long)permission;
 
                 Assert.True(value > 0);
                 Assert.Equal(0, value & (value - 1));
@@ -235,10 +237,12 @@ namespace Fluxy.UnitTests.Users
             // pair arrived (1 << 20), again when the tariff plan pair took the next two
             // slots, again when the subscription pair took the two after those, again when the
             // blacklist pair took 2^26 and 2^27, again when the user-log read grant took
-            // 2^28, again when the API request failure read grant took 2^29, and it moves each
-            // time a permission takes one - which is exactly what this line is for.
+            // 2^28, again when the API request failure read grant took 2^29, and again when the
+            // transcoding pair took 2^30 and 2^31 - the widening to long is what made the
+            // second of those two fit. It moves each time a permission takes one, which is
+            // exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1 << 30)));
+                UserPermission.ViewClients | (UserPermission)(1L << 32)));
         }
 
         [Fact]
