@@ -15,8 +15,8 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all thirty belong to
- *   `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
+ * - **A permission belongs to exactly one role.** On this installation all thirty-two belong
+ *   to `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
  *   operator who granted `editAdmins` to a group of clients would be granting something the
@@ -32,11 +32,12 @@ import type { Role, UserPermission } from '../../types'
  *   `viewAudioStreams`/`editAudioStreams`, `viewSeries`/`editSeries`,
  *   `viewEpgSources`/`editEpgSources`, `viewBouquets`/`editBouquets`,
  *   `viewTariffPlans`/`editTariffPlans`, `viewSubscriptions`/`editSubscriptions`,
- *   `viewBlacklists`/`editBlacklists` and `viewTranscodingProfiles`/`editTranscodingProfiles`
+ *   `viewBlacklists`/`editBlacklists`, `viewTranscodingProfiles`/`editTranscodingProfiles`
+ *   and `viewServers`/`editServers`
  *   name
  *   content catalogues, guide sources, the packages content is delivered in, the price list a
- *   subscription is sold under, the issued rows themselves, the three access-control lists and
- *   the ffmpeg profiles, so they sit
+ *   subscription is sold under, the issued rows themselves, the three access-control lists,
+ *   the ffmpeg profiles and the relay addresses, so they sit
  *   in `ALL_PERMISSIONS` (a group form has to offer them) but in
  *   neither `VIEW_FOR` nor `EDIT_FOR` (those are keyed by the role of the account being acted
  *   on, and a stream, a video, a series, a bouquet or a plan has no such role). `canView` and
@@ -96,6 +97,11 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   // gates the read and the wipe together, because the wipe destroys the same evidence. This
   // capability has no write sibling at all - it has no production write path.
   'viewApiRequestFailures',
+  // The server pair closes the catalog, the order the backend's own list keeps: the servers
+  // this installation relays through are their own resource, so they are a read/write pair
+  // rather than a reuse of any grant above.
+  'viewServers',
+  'editServers',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -130,6 +136,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   editTranscodingProfiles: 'Admin',
   viewUserLogs: 'Admin',
   viewApiRequestFailures: 'Admin',
+  viewServers: 'Admin',
+  editServers: 'Admin',
 }
 
 /**

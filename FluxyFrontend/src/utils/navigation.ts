@@ -462,6 +462,35 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
       ],
     },
     {
+      // The servers: the addresses this installation relays through, and the machine behind
+      // each one. It is the **first** group of the admin rail on the owner's call - a relay is
+      // what everything else is served *from*, so it is met before the accounts, the
+      // catalogues and the logs.
+      //
+      // Two entries, the same add/manage pair the guide and transcoding sections carry: a
+      // server has a form and a table, and the edit form is an address with no item of its own
+      // because it is only reached from a row.
+      key: 'servers',
+      labelKey: 'nav.groups.servers',
+      icon: CloudServerOutlined,
+      items: [
+        {
+          key: 'serversAdd',
+          path: 'servers/add',
+          labelKey: 'nav.items.serversAdd',
+          icon: PlusOutlined,
+          page: () => import('../pages/admin/ServersFormPage'),
+        },
+        {
+          key: 'serversManage',
+          path: 'servers',
+          labelKey: 'nav.items.serversManage',
+          icon: TableOutlined,
+          page: () => import('../pages/admin/ServersPage'),
+        },
+      ],
+    },
+    {
       // The admin's own section: four addresses behind one heading. It replaces the old
       // `management` group, whose `users` entry was a placeholder pointing at nothing -
       // `SectionPage` saying the section was unfinished - and whose `settings` entry went

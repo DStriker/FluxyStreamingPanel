@@ -29,6 +29,8 @@ import UsersPage from '../src/pages/admin/UsersPage'
 import UserFormPage from '../src/pages/admin/UserFormPage'
 import UserGroupsPage from '../src/pages/admin/UserGroupsPage'
 import UserGroupFormPage from '../src/pages/admin/UserGroupFormPage'
+import ServersPage from '../src/pages/admin/ServersPage'
+import ServersFormPage from '../src/pages/admin/ServersFormPage'
 import AdminSessionsPage from '../src/pages/admin/AdminSessionsPage'
 import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
@@ -1209,6 +1211,198 @@ async function main() {
       groupEditHtml.includes('ant-spin') &&
       !groupEditHtml.includes('Create'),
     `rendered ${groupEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // --- The servers pages -------------------------------------------------------
+  //
+  // The admin rail's first content group, and a pair of pages with no bulk selection at
+  // all: a server is one row an operator edits. What is asserted here is the shape the
+  // feature was specified with rather than the shape the pages happen to draw - the seven
+  // columns *in order*, the absence of the selection column the other tables carry, the
+  // field set of the add form and the rail's own order - because all of it is satisfied by
+  // a page that renders and by every checker above.
+  //
+  // The column order is read off the resize handles rather than off the headings: each
+  // handle is named for its own column and antd emits them in the order the columns are
+  // declared, so a column moved or a selection column slipped in front is one string away
+  // from failing, where a plain text search for "Name" would pass on a heading anywhere.
+  const serversHtml = renderToStaticMarkup(
+    withRouter('/admin/servers', withQuery(
+      <AntApp>
+        <ServersPage sectionKey="nav.items.serversManage" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the servers table draws its own heading and its page card before any rows arrive',
+    /<div[^>]*class="ant-card-head-title"[^>]*>Servers<\/div>/.test(serversHtml) &&
+      serversHtml.includes('page-card') &&
+      serversHtml.includes('ant-table') &&
+      !serversHtml.includes('nav.items.serversManage'),
+    `rendered ${serversHtml.length} bytes with the list still being fetched`,
+  )
+
+  check(
+    'the servers toolbar offers the search, the width reset and the way to add',
+    serversHtml.includes('Search by name, host name or address') &&
+      serversHtml.includes('aria-label="Reset widths"') &&
+      serversHtml.includes('Add server'),
+    `rendered ${serversHtml.length} bytes`,
+  )
+
+  const serversHandles = [...serversHtml.matchAll(/<span[^>]*table-col-resizer[^>]*>/g)].map(
+    (m) => m[0],
+  )
+  const serversResizeLabels = serversHandles
+    .map((handle) => /aria-label="([^"]*)"/.exec(handle)?.[1])
+    .join(',')
+  check(
+    'the servers table draws its seven columns in the required order, named for resizing',
+    serversResizeLabels ===
+      'Resize the Name column,Resize the Status column,Resize the Latency column,Resize the Host name column,Resize the Address column,Resize the Clients column,Resize the Actions column' &&
+      serversHandles.every(
+        (handle) =>
+          handle.includes('role="separator"') &&
+          handle.includes('aria-orientation="vertical"') &&
+          handle.includes('tabindex="0"'),
+      ),
+    `${serversHandles.length} handles: ${serversResizeLabels || 'none'}`,
+  )
+
+  // No selection column, and no bulk menu to act on one: both are absences the other
+  // administration tables make loudly, so a table that grew either would be visible here.
+  check(
+    'the servers table carries no selection column and no bulk menu',
+    !serversHtml.includes('ant-table-selection-column') &&
+      !serversHtml.includes('type="checkbox"') &&
+      !/<span[^>]*>Actions<\/span>/.test(serversHtml),
+    `rendered ${serversHtml.length} bytes`,
+  )
+
+  // Six sortable headers of the seven: `actions` is the one the endpoint has no field for,
+  // and the widths are the page's own 250/120/130/250/176/180 plus the measured 84 an
+  // actions column needs for two buttons - 1190, the total every table here reaches.
+  const serversCols = [...serversHtml.matchAll(/<col\s[^>]*>/g)].map((m) => m[0])
+  const serversWidths = serversCols.map((col) => /width:(\d+)px/.exec(col)?.[1])
+  const serversTotal = serversWidths.reduce((sum, width) => sum + (Number(width) || 0), 0)
+  const serversHeaders = [...serversHtml.matchAll(/<th\b[^>]*>/g)].map((m) => m[0])
+  check(
+    'the servers table is fixed-layout with its seven deliberate widths in order',
+    /table-layout:\s*fixed/.test(serversHtml) &&
+      serversWidths.join(',') === '250,120,130,250,176,180,84' &&
+      serversTotal === 1190,
+    `${serversCols.length} columns: [${serversWidths.join(', ')}] = ${serversTotal}px`,
+  )
+  check(
+    'six of the seven servers headers sort, and the actions one does not',
+    serversHeaders.length === 7 &&
+      serversHeaders.filter((th) => th.includes('aria-description="sortable"')).length === 6 &&
+      serversHeaders.some((th) => th.includes('aria-label="Name"') && th.includes('tabindex="0"')),
+    `${serversHeaders.length} header cells, ${
+      serversHeaders.filter((th) => th.includes('aria-description="sortable"')).length
+    } sortable`,
+  )
+
+  // The main row's delete is disabled with its reason rather than removed: the row is the
+  // installation's own address and the server answers `409 server_immutable` for it. No
+  // render in this probe draws a row, so the rule is read off the page's source - the same
+  // kind of assertion the accounts form's credits rule gets, and the only witness to a
+  // delete that came back enabled on the one row that can never be deleted.
+  const serversSource = readFileSync('src/pages/admin/ServersPage.tsx', 'utf8')
+  check(
+    "the servers row still offers both actions, and delete is disabled on the main row with its reason",
+    /key: 'edit'/.test(serversSource) &&
+      /key: 'delete'/.test(serversSource) &&
+      /danger: true/.test(serversSource) &&
+      /disabled:\s*!canEdit \|\| server\.isMain \|\| busy/.test(serversSource) &&
+      /server\.isMain\s*\?\s*t\('servers\.deleteDisabled'\)/.test(serversSource),
+    /disabled:\s*!canEdit \|\| server\.isMain \|\| busy/.test(serversSource)
+      ? 'the main row is refused the delete in the page source'
+      : 'THE MAIN ROW WOULD OFFER THE DELETE',
+  )
+
+  const serversFormHtml = renderToStaticMarkup(
+    withRouter('/admin/servers/add', withQuery(
+      <AntApp>
+        <ServersFormPage sectionKey="nav.items.serversAdd" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the server add form draws its whole field set at once and no latency field',
+    serversFormHtml.includes('Add server') &&
+      serversFormHtml.includes('Create') &&
+      serversFormHtml.includes('title="Name"') &&
+      serversFormHtml.includes('title="Address"') &&
+      serversFormHtml.includes('title="Port"') &&
+      serversFormHtml.includes('title="Status"') &&
+      serversFormHtml.includes('title="Operating system"') &&
+      serversFormHtml.includes('title="Network interface"') &&
+      serversFormHtml.includes('title="Client limit"') &&
+      serversFormHtml.includes('title="Guaranteed speed (Mbps)"') &&
+      serversFormHtml.includes('title="Timeshift only"') &&
+      serversFormHtml.includes('title="Host name"') &&
+      serversFormHtml.includes('title="VPN address"') &&
+      serversFormHtml.includes('title="Countries"') &&
+      // Latency is an edit-only field: the create contract has no such property, so a
+      // form that asked for it would be collecting a value it cannot send.
+      !serversFormHtml.includes('title="Latency (seconds)"') &&
+      !serversFormHtml.includes('Edit server') &&
+      !serversFormHtml.includes('anticon-copy'),
+    `rendered ${serversFormHtml.length} bytes of the add form`,
+  )
+
+  // The edit address needs a real route for `useParams`, and it is rendered rather than
+  // only counted so the spinner state is observable - a form of empty fields pointed at a
+  // server that has not arrived would look exactly like a healthy add form.
+  const serverEditHtml = renderToStaticMarkup(
+    withRoutes('/admin/servers/11111111-1111-1111-1111-111111111111', [
+      {
+        path: '/admin/servers/:id',
+        element: withQuery(
+          <AntApp>
+            <ServersFormPage sectionKey="nav.items.serversAdd" />
+          </AntApp>,
+        ),
+      },
+    ]),
+  )
+  check(
+    'the server edit address waits for the server instead of drawing fields against nothing',
+    serverEditHtml.includes('Edit server') &&
+      serverEditHtml.includes('ant-spin') &&
+      !serverEditHtml.includes('Create'),
+    `rendered ${serverEditHtml.length} bytes under the edit title with the spinner up`,
+  )
+
+  // The rail's own order, asserted explicitly rather than as "somewhere before users": the
+  // servers are the first *content* group (the overview's dashboard opens the rail), they
+  // sit directly above the accounts, and the subscriptions are still directly below them.
+  const adminGroupKeysForServers = NAVIGATION.Admin.map((group) => group.key)
+  const serversItemKeys = flatItems('Admin')
+    .filter((item) => item.key.startsWith('servers'))
+    .map((item) => item.key)
+    .join(',')
+  const [serversAddModule, serversManageModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'serversAdd')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'serversManage')?.page?.(),
+  ])
+  check(
+    'the servers group is the first content group, directly above the accounts, with the subscriptions still below them',
+    adminGroupKeysForServers[0] === 'overview' &&
+      adminGroupKeysForServers.indexOf('servers') === 1 &&
+      adminGroupKeysForServers.indexOf('users') === adminGroupKeysForServers.indexOf('servers') + 1 &&
+      adminGroupKeysForServers.indexOf('subscriptions') === adminGroupKeysForServers.indexOf('users') + 1,
+    `the rail reads ${adminGroupKeysForServers.join(', ')}`,
+  )
+  check(
+    'the servers section has two entries, in that order, and each opens its own page',
+    serversItemKeys === 'serversAdd,serversManage' &&
+      serversAddModule?.default === ServersFormPage &&
+      serversManageModule?.default === ServersPage,
+    `${serversItemKeys}; serversAdd opens ${serversAddModule?.default?.name ?? 'nothing'}, serversManage opens ${
+      serversManageModule?.default?.name ?? 'nothing'
+    }`,
   )
 
   // --- The content categories page --------------------------------------------
@@ -6033,6 +6227,7 @@ async function main() {
     apiRequestFailuresHtml,
     streamProblemsHtml,
     magEventsHtml,
+    serversHtml,
   ]
   const cardWithoutClass = toolbarCards.findIndex((html) => !html.includes('page-card'))
   check(
@@ -6471,6 +6666,7 @@ async function main() {
     `/admin/series/11111111-1111-1111-1111-111111111111/episodes/22222222-2222-2222-2222-222222222222`,
     `/admin/series/11111111-1111-1111-1111-111111111111/seasons/add`,
     `/admin/transcoding-profiles/11111111-1111-1111-1111-111111111111`,
+    `/admin/servers/11111111-1111-1111-1111-111111111111`,
   ]
   const extraLandedOnNotFound = EXTRA_ADMIN_ADDRESSES.filter((address) => {
     const matched = matchRoutes(routeTable, address)?.[0]?.route

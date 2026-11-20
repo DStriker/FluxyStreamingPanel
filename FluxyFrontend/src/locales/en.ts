@@ -117,6 +117,9 @@ const en = {
     // label added here and nothing else shows up nowhere.
     groups: {
       overview: 'Overview',
+      // The servers: the addresses this installation relays through. It is the first group of
+      // the admin rail, because a relay is what everything else is served from.
+      servers: 'Servers',
       // The admin's own category, holding the three pages that make, mind and group
       // accounts.
       users: 'Users',
@@ -157,6 +160,10 @@ const en = {
       dashboard: 'Dashboard',
       orders: 'Orders',
       clients: 'Clients',
+      // The servers section's two entries, the same add/manage pair every section carries: a
+      // server has a form and a table and nothing else.
+      serversAdd: 'Add server',
+      serversManage: 'Manage servers',
       // The first two entries of the category above, named for what each one does rather
       // than for what it shows: the first is a form that makes an account, the second is the
       // table of the ones that exist, and a visitor scanning the rail decides by the verb.
@@ -659,6 +666,10 @@ const en = {
     // wipes it, because the wipe destroys the same evidence. There is no write sibling here
     // either - this capability has no production write path at all.
     viewApiRequestFailures: 'View failed API requests',
+    // The server pair guards the servers this installation relays through: the table and its
+    // form. A server is neither content nor an account, so it is a pair of its own.
+    viewServers: 'View servers',
+    editServers: 'Edit servers',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -1560,6 +1571,94 @@ const en = {
       high41: 'High 4.1',
       high42: 'High 4.2',
     },
+  },
+  // The servers: the addresses this installation relays through, and the machine behind each
+  // one. The page is one table - six content columns and the row's two actions - and the main
+  // row is the installation's own address, which is editable but never deletable.
+  servers: {
+    listTitle: 'Servers',
+    addTitle: 'Add server',
+    backToList: 'Back to servers',
+    columns: {
+      name: 'Name',
+      status: 'Status',
+      latency: 'Latency',
+      hostname: 'Host name',
+      ip: 'Address',
+      clientCount: 'Clients',
+      actions: 'Actions',
+    },
+    statuses: {
+      Active: 'Active',
+      Disabled: 'Disabled',
+    },
+    // The three sentinels, each drawn as a word rather than as a zero: 0 is a real state on
+    // this contract, not a missing value.
+    unlimited: 'Unlimited',
+    notMeasured: 'Not measured',
+    // Latency is measured in seconds, to a thousandth - one millisecond.
+    latencyValue: '{{value}} s',
+    actions: {
+      edit: 'Edit',
+      delete: 'Delete',
+    },
+    noPermission: 'Your group does not allow this.',
+    // The main row's delete button is disabled with this reason: the row is the installation's
+    // own address, and the server answers `409 server_immutable` for it.
+    deleteDisabled: 'The main server cannot be deleted.',
+    searchLabel: 'Search servers',
+    searchPlaceholder: 'Search by name, host name or address',
+    empty: 'No servers yet.',
+    noMatches: 'No server matches this search.',
+    range: '{{from}}–{{to}} of {{total}}',
+    resizeColumn: 'Resize the {{column}} column',
+    resetWidths: 'Reset widths',
+    deleteConfirmTitle: 'Delete this server?',
+    deleteConfirmBody: '"{{name}}" will be removed. This cannot be undone.',
+    deleteConfirmOk: 'Delete',
+  },
+  // The add and edit form of one server. One block, because one component serves both
+  // addresses: the title is chosen here rather than read from `sectionKey`.
+  serversForm: {
+    addTitle: 'Add server',
+    editTitle: 'Edit server',
+    idLabel: 'ID',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a server name',
+    ipLabel: 'Address',
+    ipRequired: 'Enter an address',
+    ipPlaceholder: '192.0.2.10',
+    portLabel: 'Port',
+    portPlaceholder: '8080',
+    portRequired: 'Enter a port',
+    portHint: 'Between {{min}} and {{max}}.',
+    statusLabel: 'Status',
+    statusRequired: 'Choose a state',
+    osNameLabel: 'Operating system',
+    osNameRequired: 'Enter the operating system',
+    networkInterfaceLabel: 'Network interface',
+    networkInterfaceRequired: 'Enter the network interface',
+    networkInterfacePlaceholder: 'eth0',
+    clientCountLabel: 'Client limit',
+    clientCountHint: '0 means unlimited.',
+    guaranteedMbpsLabel: 'Guaranteed speed (Mbps)',
+    guaranteedMbpsHint: '0 means unknown. Up to {{max}} Mbps.',
+    latencyLabel: 'Latency (seconds)',
+    latencyHint:
+      'A measurement, recorded after the server exists. 0 means it has not been measured yet.',
+    timeshiftOnlyLabel: 'Timeshift only',
+    timeshiftOnlyHint: 'The server serves only timeshifted content.',
+    hostnameLabel: 'Host name',
+    hostnamePlaceholder: 'relay-1.example.com',
+    vpnIpLabel: 'VPN address',
+    vpnIpPlaceholder: '10.8.0.2',
+    countryCodesLabel: 'Countries',
+    countryCodesPlaceholder: 'Every country',
+    maxLength: 'Up to {{max}} characters.',
+    create: 'Create',
+    save: 'Save',
+    cancel: 'Cancel',
+    noPermission: 'Your group does not allow this.',
   },
   // The episodes of one series, reached from a row of the series table.
   seriesEpisodes: {
@@ -3433,6 +3532,14 @@ const en = {
       transcoding_profile_already_exists: 'Another transcoding profile already has that name.',
       transcoding_profile_in_use:
         'A stream, a video or a series still uses this profile. Choose another profile on those rows first.',
+      // The server resource: three successes and the two refusals only a server can produce.
+      // `server_immutable` is the main row refusing deletion; every other row is ordinary.
+      server_created: 'The server has been created.',
+      server_updated: 'The server has been updated.',
+      server_deleted: 'The server has been deleted.',
+      server_not_found: 'There is no server with that identifier.',
+      server_already_exists: 'Another server already has that name.',
+      server_immutable: 'The main server cannot be deleted.',
       // The connection log's one write. It names the table rather than a row: the command wipes
       // everything, and the sentence says so.
       connection_logs_cleared: 'Every connection log entry has been deleted.',

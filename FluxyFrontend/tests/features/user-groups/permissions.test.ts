@@ -63,6 +63,10 @@ describe('ALL_PERMISSIONS', () => {
       // The refused-request log's single grant follows it for the same reason: one grant for
       // the read and the wipe, with no write sibling - this log has no production write path.
       'viewApiRequestFailures',
+      // The server pair closes the catalog, as on the backend: the relay addresses are a
+      // resource of their own, so they keep a read grant beside their write one.
+      'viewServers',
+      'editServers',
     ])
   })
 })
@@ -149,6 +153,10 @@ describe('canViewAny / canEditAny', () => {
     // The refused-request log's grant is the second of that shape and follows the same rule.
     expect(canViewAny(['viewApiRequestFailures'])).toBe(false)
     expect(canEditAny(['viewApiRequestFailures'])).toBe(false)
+    // The server pair names the relay addresses rather than accounts, so it must not satisfy
+    // these gates either.
+    expect(canViewAny(['viewServers', 'editServers'])).toBe(false)
+    expect(canEditAny(['viewServers', 'editServers'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

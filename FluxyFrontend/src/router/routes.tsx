@@ -176,6 +176,23 @@ const TranscodingProfileFormPage = lazy(
 )
 
 /**
+ * The server form's edit address, as a second `lazy()` over the same module as the
+ * `servers/add` item.
+ *
+ * `/admin/servers/add` is a menu item (its label is the verb a visitor scans for, exactly
+ * like `usersAdd`), while `/admin/servers/{id}` is an `extra` route with no menu item beside
+ * it - it is only ever reached by choosing a row to edit, and a third entry saying "edit"
+ * would be a page that is empty until you tell it *which*.
+ *
+ * The second wrapper is deliberate rather than an oversight: the bundler resolves both
+ * imports to one chunk, so nothing is fetched twice; what differs is the component *type*,
+ * and two types is what makes a move between the two addresses remount the form instead of
+ * carrying a half-filled one across - which is what you want when the identifier under it
+ * just changed from "no server" to "this server".
+ */
+const ServersFormPage = lazy(() => import('../pages/admin/ServersFormPage'))
+
+/**
  * The subscription form, one component behind two addresses.
  *
  * `/admin/subscriptions/add` is a menu item (its label is the verb a visitor scans for, exactly
@@ -505,6 +522,13 @@ export const routes: RouteObject[] = [
       {
         path: 'subscriptions/:id',
         element: <SubscriptionFormPage sectionKey="nav.items.subscriptionsAdd" />,
+      },
+      // The server form's edit address. `servers/add` is a menu item and a static segment, so
+      // react-router ranks it above `:id`. This one has no menu item: it is reached only by
+      // choosing a row of the servers table.
+      {
+        path: 'servers/:id',
+        element: <ServersFormPage sectionKey="nav.items.serversAdd" />,
       },
       // One ticket's conversation, as the administrator reads it. No menu item: it is reached
       // from a row of the admin list, the same shape every other detail address here has.
