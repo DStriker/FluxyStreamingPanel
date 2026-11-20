@@ -8,6 +8,7 @@ using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Series.Commands;
 using Fluxy.Core.Series.Enums;
 using Fluxy.Core.Series.Repositories;
+using Fluxy.Core.Servers.Interfaces;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Repositories;
@@ -98,6 +99,26 @@ namespace Fluxy.IntegrationTests.Infrastructure
             }
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Recreates the main server row through the seeder, so every test starts with the row
+        /// the installation cannot operate without.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// The seeder is idempotent and reads the identity through the interface, so this is the
+        /// same call the composition root makes on startup - and the same row. It runs after the
+        /// truncation, because the reset removes every table that is not the migration history.
+        /// </remarks>
+        public static async Task EnsureMainServerAsync(
+            IServiceProvider services,
+            CancellationToken cancellationToken = default)
+        {
+            var seeder = services.GetRequiredService<IServerSeeder>();
+
+            await seeder.SeedAsync(cancellationToken);
         }
 
         /// <summary>

@@ -264,6 +264,12 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<TranscodingProfileEntity> TranscodingProfiles => Set<TranscodingProfileEntity>();
 
+        /// <summary>
+        /// Servers: the addresses this installation may relay through, one of which is the main
+        /// server the seeder creates and no operator can delete.
+        /// </summary>
+        public DbSet<ServerEntity> Servers => Set<ServerEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

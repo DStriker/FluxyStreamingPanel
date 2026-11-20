@@ -80,6 +80,7 @@ Fluxy.Core/
   Requests/          Models 1 · ReadModels 2 · Commands 1 · Enums 3 · Utils 4 · Interfaces 2 · Repositories 1
   Tickets/           Models 2 · ReadModels 6 · Commands 2 · Outcomes 3 · Enums 4 · Utils 5 · Interfaces 1 · Repositories 1
   Transcoding/       Models 1 · ReadModels 3 · Commands 3 · Outcomes 1 · Enums 7 · Utils 3 · Interfaces 1 · Repositories 1
+  Servers/           Models 2 · ReadModels 2 · Commands 3 · Outcomes 1 · Enums 4 · Utils 3 · Interfaces 3 · Repositories 1
 ```
 
 **Domain is decided by what the type is about, not who reads it.** `IGeoIpResolver` is GeoIP (a question about an address); `ILoginGuardService` is Users (allow lists belong to an account; GeoIP is only where the answer comes from); `ITokenRevocationStore` is Authentication (it ends a session, not "security").
@@ -101,7 +102,7 @@ Fluxy.Core/
 | `Options/` | the configuration | `AuthenticationOptions` |
 | `Base/` | base types to inherit from | `AuditableEntity` |
 
-**`Models/` holds the business model and nothing else** — **twenty-eight** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `UserLog` (Users), `RefreshToken` (Authentication), `ContentCategory`, `Bouquet` (Content), `VideoStream`, `AudioStream`, `StreamProblem` (Streams), `VodItem` (Vod), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `BlacklistEntry` (Blacklists), `TranscodingProfile` (Transcoding), `Subscription`, `TariffPlan`, `ConnectionLog`, `MagEvent` (Subscriptions), `ApiRequestFailure` (Requests), `Ticket`, `TicketReply` (Tickets). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
+**`Models/` holds the business model and nothing else** — **thirty** types, one per persisted business thing: `User`, `UserGroup`, `LoginGuardRule`, `PendingChange`, `LoginGuardSettings`, `CreditLog` (Users), `UserLog` (Users), `RefreshToken` (Authentication), `ContentCategory`, `Bouquet` (Content), `VideoStream`, `AudioStream`, `StreamProblem` (Streams), `VodItem` (Vod), `SeriesItem`, `Episode` (Series), `EpgSource`, `EpgData` (Epg), `AttemptPolicy` (Security), `BlacklistEntry` (Blacklists), `TranscodingProfile` (Transcoding), `Server`, `ServerIdentity` (Servers), `Subscription`, `TariffPlan`, `ConnectionLog`, `MagEvent` (Subscriptions), `ApiRequestFailure` (Requests), `Ticket`, `TicketReply` (Tickets). Anything else is a projection, read model, command or result and lives in the folder that says so. The `Stored` prefix means exactly *a projection shaped for a single query* and survives only in `Rows/`.
 
 **One type per file.** Twelve files once held two or three types each; they were split, so the file name is the type name and nothing else.
 
@@ -120,12 +121,12 @@ Fluxy.API/
     ApiControllerBase.cs      the antiforgery pair and NoStore(), shared by every area
     Support/                  stateless helpers plus the scoped AttemptLimiter and CaptchaGuard
     Auth/                     guest, profile and session controllers, and the account's own support tickets; AuthControllerBase adds ClientAddress
-    Admin/                    accounts, groups, admin sessions, the user and credit logs, the refused-request log, the support tickets, the transcoding profiles
+    Admin/                    accounts, groups, admin sessions, the user and credit logs, the refused-request log, the support tickets, the transcoding profiles, the servers
     Content/                  content categories, video streams, audio streams
     Subscriptions/            subscriptions, their bulk writes, tariff plans, the connection logs and the MAG event journal
 ```
 
-**A controller lives in the area its route starts with** - `auth` in `Auth/`, `admin/users|user-groups|sessions|api-request-failures|stream-problems|tickets|transcoding-profiles` in `Admin/`, `admin/content-categories|video-streams|audio-streams` in `Content/`, and `admin/mag-events` beside the other subscription routes it belongs to in `Subscriptions/` - namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). Split a file by a **seam** (separate resource or request shape), not by length: `ProfileController` gave session history to `SessionsController`; `UsersController`/`UserGroupsController` gave bulk endpoints their own controllers; one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery, `NoStore`); `AuthControllerBase` adds only `ClientAddress`; the two guest checks compose as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset, profile), so `SessionsController`, `Admin`, `Content` and `Subscriptions` never inject an unused throttle. Contracts follow the same split in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
+**A controller lives in the area its route starts with** - `auth` in `Auth/`, `admin/users|user-groups|sessions|api-request-failures|stream-problems|tickets|transcoding-profiles|servers` in `Admin/`, `admin/content-categories|video-streams|audio-streams` in `Content/`, and `admin/mag-events` beside the other subscription routes it belongs to in `Subscriptions/` - namespace mirrors the folder (`Fluxy.API.Controllers.<Area>`). Split a file by a **seam** (separate resource or request shape), not by length: `ProfileController` gave session history to `SessionsController`; `UsersController`/`UserGroupsController` gave bulk endpoints their own controllers; one-resource controllers stay whole. `ApiControllerBase` carries only what every area needs (antiforgery, `NoStore`); `AuthControllerBase` adds only `ClientAddress`; the two guest checks compose as `AttemptLimiter`/`CaptchaGuard` into the four controllers that spend them (registration, authentication, password reset, profile), so `SessionsController`, `Admin`, `Content` and `Subscriptions` never inject an unused throttle. Contracts follow the same split in `Contracts/<Feature>/`; `Common/` is for a type a second feature names.
 
 **The envelope is API-owned, including the framework's own refusals.** Every action answers `{ code, message }`; the two paths that never reach an action use the same shape: an unhandled exception is `500 server_error` through `ApiExceptionHandler`, a bodyless 404/405/415 is `not_found` / `method_not_allowed` / `unsupported_media_type` through `UseFluxyStatusCodePages()`. Both write `Cache-Control: no-store`; the exception is logged, never sent to the client. Development keeps `UseDeveloperExceptionPage` for 500s; the handler sits only on the other branch.
 
@@ -152,6 +153,7 @@ Fluxy.Application/
   Subscriptions/   Services 6 · Utils 5
   Tickets/         Services 1
   Transcoding/     Services 1 · Utils 1
+  Servers/         Services 3 · Utils 1
   Users/           Services 11 · Utils 8 · Options 1
   Vod/             Services 4 · Utils 1
 ```
@@ -300,3 +302,4 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/admin-source-replacement.md](docs/admin-source-replacement.md) | `admin/source-replacements`, the four-grant fence, the four playback columns it may write, the ordinal all-occurrence rule, the per-entity refusal codes, the in-place/one-save semantics, `active_source` staleness and the no-index scan |
 | [docs/tickets.md](docs/tickets.md) | the support tickets: `tickets`/`ticket_replies` shape (cascades, `SET NULL` author), the derived status matrix (closed > viewer's flag > read), `read_at` receipts, the reused account grants and the rejected dedicated pair, the query contract, the full code list, the computed `lastReplyAt`, the `POST {id}/…` departure, the `405` fences and the frontend's polling note |
 | [docs/admin-transcoding-profiles.md](docs/admin-transcoding-profiles.md) | `admin/transcoding-profiles`: the ffmpeg option table and its wire names, the create defaults, the guarded seed, the query contract, the four `transcoding_profile_id` references with the three-state PATCH, the in-use refusal, the permission pair that widened `UserPermission` to `long`, and the options endpoint's four-grant gate |
+| [docs/admin-servers.md](docs/admin-servers.md) | `admin/servers`: the field and sentinel table, the full-write PATCH, the query contract, the seeded main row and its editable-but-not-deletable rule, the identity chain (`Servers:MainIp`, `Servers:MainPort`, `Urls`), the codes, and the `viewServers`/`editServers` pair |

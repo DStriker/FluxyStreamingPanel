@@ -3,6 +3,7 @@ using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Servers.Interfaces;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
 using Fluxy.IntegrationTests.Infrastructure.Fakes;
@@ -100,6 +101,11 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
                 services.RemoveAll<IUserSeeder>();
                 services.AddScoped<IUserSeeder, TestUserSeeder>();
+
+                // The identity the main row is seeded from. A fake keeps the seeded values the
+                // same on every machine, which is what lets the wire test assert them.
+                services.RemoveAll<IServerIdentityProvider>();
+                services.AddSingleton<IServerIdentityProvider, FakeServerIdentityProvider>();
             });
         }
 

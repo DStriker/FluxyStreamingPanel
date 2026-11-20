@@ -150,6 +150,12 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the transcoding profiles.</summary>
         public const string EditTranscodingProfilesPolicy = "Permission.EditTranscodingProfiles";
 
+        /// <summary>Policy that accepts an operator who may read the servers.</summary>
+        public const string ViewServersPolicy = "Permission.ViewServers";
+
+        /// <summary>Policy that accepts an operator who may change the servers.</summary>
+        public const string EditServersPolicy = "Permission.EditServers";
+
         /// <summary>
         /// Policy that accepts an operator who may read the profile picker: any one of the four
         /// content-view grants, because the picker is a field of a content form rather than a
@@ -456,6 +462,18 @@ namespace Fluxy.API.Extensions
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(
                             Fluxy.Core.Users.Enums.UserPermission.EditTranscodingProfiles)))
+                .AddPolicy(ViewServersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewServers)))
+                .AddPolicy(EditServersPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.EditServers)))
 
                 // The profile picker is an "any of" policy: the four content-view grants, in the
                 // order the catalog names them. A content form is the only caller, so the grant

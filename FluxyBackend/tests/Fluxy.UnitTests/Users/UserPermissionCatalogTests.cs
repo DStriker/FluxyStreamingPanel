@@ -108,6 +108,41 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheServerPairBelongsToTheAdministratorBaseGroup()
+        {
+            // A server is neither content nor an account, so it carries a pair of its own. The
+            // seeder reconciles the base groups against this catalog on every start, so the pair
+            // reaches the Administrators group without a backfill migration - the reason no
+            // migration accompanies it, as with every addition since the transcoding pair.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewServers, admin);
+            Assert.Contains(UserPermission.EditServers, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewServers,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.EditServers,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
+        public void TheServerPairIsKnownAndParsesFromItsWireNames()
+        {
+            Assert.True(UserPermissionCatalog.IsKnown(UserPermission.ViewServers));
+            Assert.True(UserPermissionCatalog.IsKnown(UserPermission.EditServers));
+            Assert.True(UserPermissionCatalog.IsKnown(
+                UserPermission.ViewServers | UserPermission.EditServers));
+
+            Assert.True(UserPermissionCatalog.TryParse("viewServers", out var view));
+            Assert.Equal(UserPermission.ViewServers, view);
+
+            Assert.True(UserPermissionCatalog.TryParse("editServers", out var edit));
+            Assert.Equal(UserPermission.EditServers, edit);
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -169,6 +204,8 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(1L << 31, (long)UserPermission.EditTranscodingProfiles);
             Assert.Equal(268435456, (long)UserPermission.ViewUserLogs);
             Assert.Equal(536870912, (long)UserPermission.ViewApiRequestFailures);
+            Assert.Equal(1L << 32, (long)UserPermission.ViewServers);
+            Assert.Equal(1L << 33, (long)UserPermission.EditServers);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -237,12 +274,12 @@ namespace Fluxy.UnitTests.Users
             // pair arrived (1 << 20), again when the tariff plan pair took the next two
             // slots, again when the subscription pair took the two after those, again when the
             // blacklist pair took 2^26 and 2^27, again when the user-log read grant took
-            // 2^28, again when the API request failure read grant took 2^29, and again when the
+            // 2^28, again when the API request failure read grant took 2^29, again when the
             // transcoding pair took 2^30 and 2^31 - the widening to long is what made the
-            // second of those two fit. It moves each time a permission takes one, which is
-            // exactly what this line is for.
+            // second of those two fit - and again when the server pair took 2^32 and 2^33. It
+            // moves each time a permission takes one, which is exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1L << 32)));
+                UserPermission.ViewClients | (UserPermission)(1L << 34)));
         }
 
         [Fact]

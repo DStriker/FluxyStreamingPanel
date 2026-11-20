@@ -71,6 +71,11 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 await TestDataSeeder.EnsureBaseGroupsAsync(scope.ServiceProvider);
             }
 
+            await using (var scope = Factory.Services.CreateAsyncScope())
+            {
+                await TestDataSeeder.EnsureMainServerAsync(scope.ServiceProvider);
+            }
+
             await using (var connection = new NpgsqlConnection(PostgresConnectionString))
             {
                 await connection.OpenAsync();
@@ -102,6 +107,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
             await using var scope = Factory.Services.CreateAsyncScope();
             await TestDataSeeder.EnsureBaseGroupsAsync(scope.ServiceProvider);
+            await TestDataSeeder.EnsureMainServerAsync(scope.ServiceProvider);
         }
 
         public HttpClient CreateClient()

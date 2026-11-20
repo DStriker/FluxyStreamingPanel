@@ -8,6 +8,7 @@ using Fluxy.Application.Email.Services;
 using Fluxy.Application.Requests.Services;
 using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
+using Fluxy.Application.Servers.Services;
 using Fluxy.Application.Series.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Subscriptions.Services;
@@ -25,6 +26,7 @@ using Fluxy.Core.Epg.Interfaces;
 using Fluxy.Core.Requests.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
+using Fluxy.Core.Servers.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Subscriptions.Interfaces;
 using Fluxy.Core.Tickets.Interfaces;
@@ -252,6 +254,24 @@ namespace Fluxy.Application
             // different grant, which is why they are a method here rather than a second service.
             services.AddScoped<ITranscodingProfileService, TranscodingProfileService>();
 
+            // The servers this installation relays through. One service, because the whole
+            // resource is a single row with rules of its own - a unique name, an address parsed
+            // as an address, three numeric sentinels - and the one write it refuses is the
+            // deletion of the main row.
+            services.AddScoped<IServerService, ServerService>();
+
+            // What the machine says about itself, read once by the seeder below. Singleton
+            // because the answer describes the process rather than a request: the address, the
+            // port and the operating system cannot change between two calls in one run. It is
+            // registered as its own service rather than as a value so that the integration
+            // suite can replace it with a deterministic one.
+            services.AddSingleton<IServerIdentityProvider, ServerIdentityProvider>();
+
+            // The main server row, created on the first start and never touched afterwards.
+            // Scoped like the user seeder, because it writes through the request-scoped
+            // repository and unit of work.
+            services.AddScoped<IServerSeeder, ServerSeeder>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();
@@ -322,7 +342,8 @@ namespace Fluxy.Application
         }
 
         /// <summary>
-        /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IConnectionLogSeeder.SeedAsync"/>,
+        /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IServerSeeder.SeedAsync"/>,
+        /// <see cref="IConnectionLogSeeder.SeedAsync"/>,
         /// <see cref="IApiRequestFailureSeeder.SeedAsync"/> and
         /// <see cref="IStreamProblemSeeder.SeedAsync"/> in a scope of their own, so they can be
         /// called from the composition root without resolving anything there.
@@ -337,10 +358,15 @@ namespace Fluxy.Application
         /// <c>app.Run()</c> and before the first request is served.
         /// </para>
         /// <para>
-        /// The connection-log seeder runs **after** the user seeder because the schema and the
-        /// first account are what it reads its prerequisites against - and because its own
-        /// Development gate makes it a no-op everywhere else, including the Testing host the
-        /// integration suite runs on.
+        /// The main server seeder runs **after** the user seeder, because the table it writes has
+        /// to exist first, and it is idempotent - every later start finds the row and leaves it
+        /// alone. It never throws, so a failed probe cannot stop the boot.
+        /// </para>
+        /// <para>
+        /// The connection-log seeder runs after both because the schema and the first account
+        /// are what it reads its prerequisites against - and because its own Development gate
+        /// makes it a no-op everywhere else, including the Testing host the integration suite
+        /// runs on.
         /// </para>
         /// <para>
         /// The API request failure seeder follows it and has the same Development gate. It reads
@@ -360,6 +386,10 @@ namespace Fluxy.Application
             var seeder = scope.ServiceProvider.GetRequiredService<IUserSeeder>();
 
             await seeder.SeedAsync(cancellationToken);
+
+            var servers = scope.ServiceProvider.GetRequiredService<IServerSeeder>();
+
+            await servers.SeedAsync(cancellationToken);
 
             var logs = scope.ServiceProvider.GetRequiredService<IConnectionLogSeeder>();
 

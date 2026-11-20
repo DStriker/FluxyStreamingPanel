@@ -8,6 +8,7 @@ using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Repositories;
+using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Tickets.Repositories;
@@ -117,6 +118,7 @@ namespace Fluxy.DataAccess
             services.AddScoped<IBlacklistEntryRepository, BlacklistEntryRepository>();
             services.AddScoped<ITicketRepository, TicketRepository>();
             services.AddScoped<ITranscodingProfileRepository, TranscodingProfileRepository>();
+            services.AddScoped<IServerRepository, ServerRepository>();
 
             // The mass source replacement reads and stages rows of four aggregates owned by
             // other repositories. It is a repository of its own rather than extra methods on

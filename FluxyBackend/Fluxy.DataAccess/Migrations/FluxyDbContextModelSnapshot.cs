@@ -1066,6 +1066,96 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("series", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.ServerEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("ClientCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("client_count");
+
+                    b.PrimitiveCollection<string[]>("CountryCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("country_codes");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("GuaranteedSpeedKbps")
+                        .HasColumnType("integer")
+                        .HasColumnName("guaranteed_speed_kbps");
+
+                    b.Property<string>("Hostname")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("hostname");
+
+                    b.Property<string>("Ip")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip");
+
+                    b.Property<bool>("IsMain")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_main");
+
+                    b.Property<double>("Latency")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latency");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NetworkInterface")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("network_interface");
+
+                    b.Property<string>("OsName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("os_name");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<bool>("TimeshiftOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("timeshift_only");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("VpnIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("vpn_ip");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_servers_name");
+
+                    b.ToTable("servers", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.StreamProblemEntity", b =>
                 {
                     b.Property<Guid>("Id")

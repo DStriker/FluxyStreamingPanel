@@ -308,6 +308,31 @@ namespace Fluxy.Core.Users.Enums
         /// installation that restarts receives the new bit without one.
         /// </para>
         /// </remarks>
-        ViewApiRequestFailures = 536870912
+        ViewApiRequestFailures = 536870912,
+
+        /// <summary>
+        /// May read the servers: the servers table and one server in full.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A server is neither content nor an account, so it is a pair of its own rather than a
+        /// reuse of another grant: a group that may read the servers and a group that may change
+        /// them are two different jobs, the split every pair here keeps.
+        /// </para>
+        /// <para>
+        /// <b>This is the third value above <c>1 &lt;&lt; 29</c></b>, after the transcoding
+        /// profile pair took <c>1 &lt;&lt; 30</c> and <c>1 &lt;&lt; 31</c>, and
+        /// <see cref="EditServers"/> takes the fourth, at <c>1 &lt;&lt; 33</c>. The enum and the
+        /// <c>permission</c> column are both 64-bit by now, so no widening accompanies the pair -
+        /// see the remarks on <see cref="UserPermission"/>.
+        /// </para>
+        /// </remarks>
+        ViewServers = 1L << 32,
+
+        /// <summary>
+        /// May change the servers: create, edit and delete them. Separate from
+        /// <see cref="ViewServers"/> for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditServers = 1L << 33
     }
 }
