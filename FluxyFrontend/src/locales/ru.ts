@@ -161,6 +161,11 @@ const ru: Translation = {
     },
     items: {
       dashboard: 'Главная',
+      // Два экрана самой установки, сразу после главной: это не каталог и не аккаунт, а то,
+      // чем настроена сама панель. Карточки ниже озаглавлены `settingsForm.title` /
+      // `magSettingsForm.title`, так что меню называет место, а карточка — экран.
+      settings: 'Настройки',
+      magSettings: 'Настройки MAG',
       orders: 'Заказы',
       clients: 'Клиенты',
       // Два пункта раздела серверов — та же пара «добавить/управление», что у любого раздела:
@@ -663,6 +668,11 @@ const ru: Translation = {
     // Сервер — не контент и не аккаунт, поэтому это отдельная пара.
     viewServers: 'Просмотр серверов',
     editServers: 'Редактирование серверов',
+    // Пара настроек охраняет два экрана установки: настройки самой панели и настройки
+    // MAG-портала. Это не контент и не аккаунты, а однострочная конфигурация установки,
+    // поэтому пара своя и стоит последней — в порядке каталога сервера.
+    viewSettings: 'Просмотр настроек',
+    editSettings: 'Редактирование настроек',
   },
   // Админская таблица групп и её форма. Отдельный блок, а не ещё одна пачка ключей внутри
   // `users`: эти две страницы стоят за разными правами (`viewClients` и `viewUserGroups`), и
@@ -1651,6 +1661,111 @@ const ru: Translation = {
     countryCodesPlaceholder: 'Все страны',
     maxLength: 'Не больше {{max}} символов.',
     create: 'Создать',
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    noPermission: 'Ваша группа не разрешает это действие.',
+  },
+  // Настройки самой установки: одна строка, читается и пишется целиком. Это не таблица и не
+  // каталог — разделы здесь это шесть действительно разных вопросов, поэтому `Divider` между
+  // ними — то единственное место в этой области, где разделители оправданы.
+  settingsForm: {
+    title: 'Настройки',
+    sections: {
+      general: 'Общие',
+      recaptcha: 'reCAPTCHA',
+      access: 'Доступ',
+      retention: 'Хранение журналов',
+      backups: 'Резервные копии',
+      fallback: 'Резервные видео',
+    },
+    serviceNameLabel: 'Название сервиса',
+    enigma2BouquetNameLabel: 'Название букета Enigma2',
+    defaultTimeZoneLabel: 'Часовой пояс по умолчанию',
+    recaptchaSiteKeyLabel: 'Ключ сайта',
+    recaptchaSecretKeyLabel: 'Секретный ключ',
+    // Единственное предложение, которое форме разрешено и которое не повторяет подпись:
+    // ответ никогда не отдаёт сохранённый секрет, поэтому пустое поле может значить только
+    // «оставить как есть».
+    recaptchaSecretKeepHint: 'Оставьте пустым, чтобы сохранить текущий ключ.',
+    recaptchaStatusLabel: 'Статус секретного ключа',
+    recaptchaConfigured: 'Секретный ключ задан.',
+    recaptchaNotConfigured: 'Секретный ключ не задан.',
+    enableTrialsLabel: 'Разрешить пробные подписки',
+    publicApiFloodLimitLabel: 'Лимит запросов публичного API',
+    publicApiFloodLimitHint: '0 — без ограничения.',
+    publicApiFloodWhitelistLabel: 'Исключённые адреса',
+    publicApiFloodWhitelistHint: 'Адрес или диапазон CIDR, не больше {{max}} записей.',
+    publicApiFloodWhitelistInvalid: 'Каждая запись должна быть адресом или диапазоном CIDR.',
+    publicApiFloodWhitelistPlaceholder: '192.168.1.0/24',
+    requireUserAgentLabel: 'Требовать user-agent',
+    retentionUserLogsLabel: 'Журнал действий',
+    retentionCreditLogsLabel: 'Журнал кредитов',
+    retentionConnectionLogsLabel: 'Журнал подключений',
+    retentionApiRequestFailuresLabel: 'Неудачные запросы API',
+    retentionStreamProblemsLabel: 'Проблемы потоков',
+    retentionMagEventsLabel: 'События MAG',
+    retentionDays: 'Дней, от {{min}} до {{max}}.',
+    backupEnabledLabel: 'Включить резервное копирование',
+    backupPeriodLabel: 'Период резервного копирования',
+    backupPeriods: {
+      hourly: 'Каждый час',
+      daily: 'Ежедневно',
+      weekly: 'Еженедельно',
+      monthly: 'Ежемесячно',
+    },
+    backupRotationCountLabel: 'Сколько копий хранить',
+    backupRotationCountHint: '0 — хранить все копии.',
+    fallbackStreamDownUrlLabel: 'Поток недоступен',
+    fallbackUserBannedUrlLabel: 'Просмотр запрещён',
+    fallbackUserExpiredUrlLabel: 'Подписка истекла',
+    fallbackMaxConnectionsUrlLabel: 'Достигнут лимит подключений',
+    fallbackUrlPlaceholder: 'https://example.com/notice.mp4',
+    fallbackUrlInvalid: 'Введите абсолютный адрес http или https.',
+    required: 'Это поле обязательно.',
+    maxLength: 'Не больше {{max}} символов.',
+    numberRange: 'От {{min}} до {{max}}.',
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    noPermission: 'Ваша группа не разрешает это действие.',
+  },
+  // Настройки MAG-портала, второй ресурс из одной строки. Два его словаря — контейнеры и
+  // темы — берутся из слов владельца на проводе, а не из имён членов перечисления, поэтому
+  // подписи здесь — отображение, а не `t()` от сырого значения.
+  magSettingsForm: {
+    title: 'Настройки MAG',
+    sections: {
+      playback: 'Воспроизведение',
+      appearance: 'Внешний вид',
+      recording: 'Запись',
+      devices: 'Устройства',
+    },
+    showAllCategoriesLabel: 'Показывать все категории',
+    strictSecurityLabel: 'Строгая безопасность',
+    playbackLimitLabel: 'Лимит одновременного просмотра',
+    showChannelLogosLabel: 'Показывать логотипы каналов',
+    showPreviewLogosLabel: 'Показывать логотипы в превью',
+    defaultThemeLabel: 'Тема по умолчанию',
+    defaultContainerLabel: 'Контейнер по умолчанию',
+    themes: {
+      default: 'По умолчанию',
+      digital: 'Digital',
+      emerald: 'Emerald',
+      // Написание владельца на проводе, а значит и здесь: `cappucino`, не `cappuccino`.
+      cappucino: 'Cappucino',
+      oceanBlue: 'Ocean blue',
+    },
+    containers: {
+      mpegTs: 'MPEG-TS',
+      hls: 'HLS',
+    },
+    recordingMaxLengthMinutesLabel: 'Максимальная длина записи (минуты)',
+    maxLocalRecordingsLabel: 'Локальных записей на устройство',
+    maxLocalRecordingsHint: '0 — записи запрещены.',
+    allowedStbTypesLabel: 'Разрешённые устройства',
+    allowedRecordingStbTypesLabel: 'Устройства с правом записи',
+    stbRequired: 'Выберите хотя бы одну модель.',
+    required: 'Это поле обязательно.',
+    numberRange: 'От {{min}} до {{max}}.',
     save: 'Сохранить',
     cancel: 'Отмена',
     noPermission: 'Ваша группа не разрешает это действие.',
@@ -3586,6 +3701,10 @@ const ru: Translation = {
       // дал бы тот же отказ, поэтому фраза не должна никуда за ним посылать.
       permission_denied: 'У вашего аккаунта нет прав для этого действия.',
       signed_out: 'Вы вышли из системы.',
+      // Коды успеха двух экранов установки. Без них показывалось бы английское предложение
+      // сервера вместо собственных слов страницы.
+      settings_updated: 'Настройки сохранены.',
+      mag_settings_updated: 'Настройки MAG сохранены.',
     },
   },
 }

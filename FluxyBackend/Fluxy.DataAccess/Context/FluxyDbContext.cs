@@ -270,6 +270,19 @@ namespace Fluxy.DataAccess.Context
         /// </summary>
         public DbSet<ServerEntity> Servers => Set<ServerEntity>();
 
+        /// <summary>
+        /// The installation's own settings, one row: the panel's name, the reCAPTCHA pair, the
+        /// trial switch, the retention windows, the backup schedule and the fallback addresses.
+        /// </summary>
+        public DbSet<ApplicationSettingsEntity> ApplicationSettings =>
+            Set<ApplicationSettingsEntity>();
+
+        /// <summary>
+        /// The MAG portal settings, one row: what the portal would show and which devices it
+        /// would admit.
+        /// </summary>
+        public DbSet<MagSettingsEntity> MagSettings => Set<MagSettingsEntity>();
+
         /// <inheritdoc />
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {

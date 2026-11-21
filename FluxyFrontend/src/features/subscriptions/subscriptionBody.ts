@@ -58,8 +58,18 @@ export interface SubscriptionValues {
  * The two nullable values are sent as an explicit `null` rather than omitted: an absent key and a
  * null key mean the same thing to this endpoint, and writing the null states "no plan" and "no
  * ceiling" rather than leaving a reader to infer it from what is missing.
+ *
+ * **`trialsEnabled: false` pins `isTrial` to false**, and that is the installation's own answer
+ * rather than a form decision: the server refuses any create whose effective trial flag is true
+ * while trials are off - including one derived from a trial tariff plan - so a form that sent
+ * the flag it happened to hold would be sending a value the server is going to ignore or
+ * refuse. The default is `true` so the mapping is unchanged for every caller that has not read
+ * the setting, which is also the state of the page while the read is in flight.
  */
-export const toCreateBody = (values: SubscriptionValues) => ({
+export const toCreateBody = (
+  values: SubscriptionValues,
+  { trialsEnabled = true }: { trialsEnabled?: boolean } = {},
+) => ({
   userId: values.userId,
   playlistId: values.playlistId,
   // A create has no stored expiry to keep, so the empty-string clear collapses into "none" here.
@@ -71,7 +81,7 @@ export const toCreateBody = (values: SubscriptionValues) => ({
   userAgentWhitelist: values.userAgentWhitelist,
   isIspLock: values.isIspLock,
   isCountryLock: values.isCountryLock,
-  isTrial: values.isTrial,
+  isTrial: trialsEnabled ? values.isTrial : false,
   outputFormats: values.outputFormats,
   magMac: values.magMac,
   isStbLock: values.isStbLock,

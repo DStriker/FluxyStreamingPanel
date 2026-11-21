@@ -152,6 +152,13 @@ namespace Fluxy.Application.Subscriptions.Utils
                 "the plan supplies the length to extend it by."
         ];
 
+        /// <summary>The sentence a subscription refused because trials are switched off gets.</summary>
+        public static readonly string[] TrialsDisabledRule =
+        [
+            "Trials are switched off for this installation, so a subscription cannot be issued " +
+                "as a trial."
+        ];
+
         /// <summary>
         /// Whether a tariff plan's parameters let it be attached to a subscription whose owner
         /// belongs to <paramref name="ownerGroupId"/>.

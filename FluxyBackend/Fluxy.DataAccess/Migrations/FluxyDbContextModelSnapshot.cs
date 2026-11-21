@@ -96,6 +96,132 @@ namespace Fluxy.DataAccess.Migrations
                     b.ToTable("api_request_failures", (string)null);
                 });
 
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.ApplicationSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("BackupEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("backup_enabled");
+
+                    b.Property<short>("BackupPeriod")
+                        .HasColumnType("smallint")
+                        .HasColumnName("backup_period");
+
+                    b.Property<int>("BackupRotationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("backup_rotation_count");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DefaultTimeZone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("default_timezone");
+
+                    b.Property<bool>("EnableTrials")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enable_trials");
+
+                    b.Property<string>("Enigma2BouquetName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("enigma2_bouquet_name");
+
+                    b.Property<string>("FallbackMaxConnectionsUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("fallback_max_connections_url");
+
+                    b.Property<string>("FallbackStreamDownUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("fallback_stream_down_url");
+
+                    b.Property<string>("FallbackUserBannedUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("fallback_user_banned_url");
+
+                    b.Property<string>("FallbackUserExpiredUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("fallback_user_expired_url");
+
+                    b.Property<int>("PublicApiFloodLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("public_api_flood_limit");
+
+                    b.PrimitiveCollection<string[]>("PublicApiFloodWhitelist")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("public_api_flood_whitelist");
+
+                    b.Property<string>("RecaptchaSecretKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("recaptcha_secret_key");
+
+                    b.Property<string>("RecaptchaSiteKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("recaptcha_site_key");
+
+                    b.Property<bool>("RequireUserAgent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_user_agent");
+
+                    b.Property<int>("RetentionApiRequestFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_api_request_failures");
+
+                    b.Property<int>("RetentionConnectionLogs")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_connection_logs");
+
+                    b.Property<int>("RetentionCreditLogs")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_credit_logs");
+
+                    b.Property<int>("RetentionMagEvents")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_mag_events");
+
+                    b.Property<int>("RetentionStreamProblems")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_stream_problems");
+
+                    b.Property<int>("RetentionUserLogs")
+                        .HasColumnType("integer")
+                        .HasColumnName("retention_user_logs");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("service_name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_settings", (string)null);
+                });
+
             modelBuilder.Entity("Fluxy.DataAccess.Entities.AudioStreamEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -856,6 +982,71 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("SubscriptionId", "CreatedAt");
 
                     b.ToTable("mag_events", (string)null);
+                });
+
+            modelBuilder.Entity("Fluxy.DataAccess.Entities.MagSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<string[]>("AllowedRecordingStbTypes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("allowed_recording_stb_types");
+
+                    b.PrimitiveCollection<string[]>("AllowedStbTypes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("allowed_stb_types");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<short>("DefaultContainer")
+                        .HasColumnType("smallint")
+                        .HasColumnName("default_container");
+
+                    b.Property<short>("DefaultTheme")
+                        .HasColumnType("smallint")
+                        .HasColumnName("default_theme");
+
+                    b.Property<int>("MaxLocalRecordings")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_local_recordings");
+
+                    b.Property<int>("PlaybackLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("playback_limit");
+
+                    b.Property<int>("RecordingMaxLengthMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("recording_max_length_minutes");
+
+                    b.Property<bool>("ShowAllCategories")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_all_categories");
+
+                    b.Property<bool>("ShowChannelLogos")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_channel_logos");
+
+                    b.Property<bool>("ShowPreviewLogos")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_preview_logos");
+
+                    b.Property<bool>("StrictSecurity")
+                        .HasColumnType("boolean")
+                        .HasColumnName("strict_security");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("mag_settings", (string)null);
                 });
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.PendingChangeEntity", b =>

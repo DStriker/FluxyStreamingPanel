@@ -59,6 +59,20 @@ describe('toCreateBody', () => {
     expect(body).not.toHaveProperty('clearTariffPlan')
     expect(body).not.toHaveProperty('clearMaxConnections')
   })
+
+  it('pins isTrial to false when the installation has trials switched off', () => {
+    // The server refuses a create whose effective trial flag is true while trials are off, so
+    // the form must send the installation's answer rather than the checkbox it happened to show.
+    expect(toCreateBody(values({ isTrial: true })).isTrial).toBe(true)
+    expect(toCreateBody(values({ isTrial: true }), { trialsEnabled: true }).isTrial).toBe(true)
+    expect(toCreateBody(values({ isTrial: true }), { trialsEnabled: false }).isTrial).toBe(false)
+  })
+
+  it('keeps the stored trial flag on an update, whatever the installation says', () => {
+    // The owner scoped enforcement to creation: an existing trial must round-trip on edit, and
+    // the update body has no switch to consult.
+    expect(toUpdateBody(values({ isTrial: true })).isTrial).toBe(true)
+  })
 })
 
 describe('toUpdateBody', () => {

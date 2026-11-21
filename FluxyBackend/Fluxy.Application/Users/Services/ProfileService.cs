@@ -7,6 +7,7 @@ using Fluxy.Core.GeoIp.Interfaces;
 using Fluxy.Core.Persistence.Exceptions;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
+using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -62,6 +63,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IUserLogService _userLogs;
         private readonly IHostEnvironment _environment;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
+        private readonly ISettingsSnapshotProvider _settings;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<ProfileService> _logger;
 
@@ -78,6 +80,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="userLogs">The audit log every profile outcome is recorded in.</param>
         /// <param name="environment">Host environment, for the Development bypass of local networks.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
+        /// <param name="settings">Stored settings the email subject's service name is read from.</param>
         /// <param name="timeProvider">
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
         /// without waiting for it.
@@ -94,6 +97,7 @@ namespace Fluxy.Application.Users.Services
             IUserLogService userLogs,
             IHostEnvironment environment,
             IOptionsMonitor<RegistrationOptions> options,
+            ISettingsSnapshotProvider settings,
             TimeProvider timeProvider,
             ILogger<ProfileService> logger)
         {
@@ -107,6 +111,7 @@ namespace Fluxy.Application.Users.Services
             _userLogs = userLogs;
             _environment = environment;
             _options = options;
+            _settings = settings;
             _timeProvider = timeProvider;
             _logger = logger;
         }
@@ -401,7 +406,7 @@ namespace Fluxy.Application.Users.Services
                 new EmailMessage
                 {
                     To = candidate.Account.Email,
-                    Subject = "Your Fluxy confirmation code",
+                    Subject = $"Your {_settings.ApplicationSnapshot.ServiceName} confirmation code",
                     Body = BuildCodeBody(
                         candidate.Account.Username,
                         PendingChangeKind.ChangeLoginGuard,
@@ -941,7 +946,7 @@ namespace Fluxy.Application.Users.Services
                 new EmailMessage
                 {
                     To = recipient,
-                    Subject = "Your Fluxy confirmation code",
+                    Subject = $"Your {_settings.ApplicationSnapshot.ServiceName} confirmation code",
                     Body = BuildCodeBody(
                         candidate.Account.Username,
                         kind,

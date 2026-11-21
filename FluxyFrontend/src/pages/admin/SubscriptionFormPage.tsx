@@ -42,6 +42,8 @@ import SubscriptionExpiryField from '../../features/subscriptions/components/Sub
 import { useAllUsers } from '../../features/users/hooks/queries'
 import { useBouquets } from '../../features/bouquets/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
+import { useProfile } from '../../features/profile/hooks/queries'
+import { useSettings } from '../../features/settings/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
 import { areaForRole } from '../../utils/session'
@@ -149,6 +151,29 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     sortOrder: 'asc',
   })
   const bouquetsQuery = useBouquets()
+
+  /**
+   * The installation's trial switch, which decides whether the trial checkbox exists at all.
+   *
+   * A second feature's read from a page, which the layering allows: the setting is not the
+   * subscription's - it is the installation's - and asking the subscriptions feature to own a
+   * copy would be a second place for the answer to go stale.
+   *
+   * **The read is disabled without `viewSettings`.** An operator who may issue a subscription
+   * but not open the settings screen would otherwise spend every visit on a request the server
+   * answers `403 permission_denied`. With the read disabled the answer is absent, which is the
+   * same "not known yet" state below.
+   *
+   * **`?? true` is the loading, failed and withheld state, on purpose.** While the answer is in
+   * flight the form keeps today's behaviour and draws the control rather than flashing it away
+   * and back; on an installation whose settings read fails, or for an operator who may not read
+   * them, the operator meets the server's own refusal through the ordinary
+   * `fieldErrors`/`textForCode` path instead of a silently missing field.
+   */
+  const profileQuery = useProfile()
+  const canReadSettings = (profileQuery.data?.permissions ?? []).includes('viewSettings')
+  const settingsQuery = useSettings({ enabled: canReadSettings })
+  const trialsEnabled = settingsQuery.data?.enableTrials ?? true
 
   const usersError = usersQuery.isError ? messageForError(usersQuery.error) : null
   const plansError = plansQuery.isError ? messageForError(plansQuery.error) : null
@@ -420,7 +445,12 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     try {
       const answer = isEdit
         ? await update.mutateAsync({ id: id!, values: body })
-        : await create.mutateAsync({ values: { ...body, userId: values.userId } })
+        : await create.mutateAsync({
+            values: { ...body, userId: values.userId },
+            // The installation's own switch, not the form's: with trials off the create pins
+            // `isTrial: false`, because the server refuses a trial create outright.
+            trialsEnabled,
+          })
 
       message.success(successTextFor(answer))
       setDirty(false)
@@ -729,13 +759,20 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
           <Checkbox>{t('subscriptionsForm.ispLockLabel')}</Checkbox>
         </Form.Item>
 
-        <Form.Item
-          name="isTrial"
-          valuePropName="checked"
-          extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.trialHint')}
-        >
-          <Checkbox disabled={planed}>{t('subscriptionsForm.trialLabel')}</Checkbox>
-        </Form.Item>
+        {/* The trial flag exists only while the installation allows trials. It stays in the
+            field list and in the edit load either way, so a row that was a trial before the
+            switch moved still round-trips its stored `isTrial` through `visibleValues()` - the
+            control is what disappears, not the value. See `trialsEnabled` above for why the
+            loading state draws the control. */}
+        {trialsEnabled && (
+          <Form.Item
+            name="isTrial"
+            valuePropName="checked"
+            extra={planed ? t('subscriptionsForm.planOwnedHint') : t('subscriptionsForm.trialHint')}
+          >
+            <Checkbox disabled={planed}>{t('subscriptionsForm.trialLabel')}</Checkbox>
+          </Form.Item>
+        )}
 
         <Divider titlePlacement="start">{t('subscriptionsForm.accessSection')}</Divider>
 

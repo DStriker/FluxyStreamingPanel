@@ -158,6 +158,12 @@ const en = {
     },
     items: {
       dashboard: 'Dashboard',
+      // The installation's own two screens, beside the dashboard: they are not a catalog or an
+      // account, they are what the panel itself is configured as. The cards below are headed
+      // `settingsForm.title`/`magSettingsForm.title`, so the rail names the place and the card
+      // names the screen.
+      settings: 'Settings',
+      magSettings: 'MAG settings',
       orders: 'Orders',
       clients: 'Clients',
       // The servers section's two entries, the same add/manage pair every section carries: a
@@ -670,6 +676,12 @@ const en = {
     // form. A server is neither content nor an account, so it is a pair of its own.
     viewServers: 'View servers',
     editServers: 'Edit servers',
+    // The settings pair guards the two installation screens: the panel's own settings and the
+    // MAG portal's. They are neither content nor accounts - they are the installation's
+    // one-row configuration - so they are a pair of their own, appended last on the server's
+    // catalog order.
+    viewSettings: 'View settings',
+    editSettings: 'Edit settings',
   },
   // The admin's group table and its form. Its own block rather than more keys under `users`,
   // because the two are behind different permissions (`view*Clients` vs. `viewUserGroups`) and
@@ -1656,6 +1668,110 @@ const en = {
     countryCodesPlaceholder: 'Every country',
     maxLength: 'Up to {{max}} characters.',
     create: 'Create',
+    save: 'Save',
+    cancel: 'Cancel',
+    noPermission: 'Your group does not allow this.',
+  },
+  // The installation's own settings: one row, read and written whole. It is not a table page
+  // and not a catalog - the sections are the six separate concerns the row holds, so a
+  // `Divider` between them is the one place in this feature dividers are justified.
+  settingsForm: {
+    title: 'Settings',
+    sections: {
+      general: 'General',
+      recaptcha: 'reCAPTCHA',
+      access: 'Access',
+      retention: 'Log retention',
+      backups: 'Backups',
+      fallback: 'Fallback videos',
+    },
+    serviceNameLabel: 'Service name',
+    enigma2BouquetNameLabel: 'Enigma2 bouquet name',
+    defaultTimeZoneLabel: 'Default time zone',
+    recaptchaSiteKeyLabel: 'Site key',
+    recaptchaSecretKeyLabel: 'Secret key',
+    // The one sentence a form is allowed that repeats no label: the response never carries
+    // the stored secret, so the empty field can only mean "keep it".
+    recaptchaSecretKeepHint: 'Leave empty to keep the current key.',
+    recaptchaStatusLabel: 'Secret key status',
+    recaptchaConfigured: 'A secret key is configured.',
+    recaptchaNotConfigured: 'No secret key is configured.',
+    enableTrialsLabel: 'Allow trials',
+    publicApiFloodLimitLabel: 'Public API request limit',
+    publicApiFloodLimitHint: '0 means unlimited.',
+    publicApiFloodWhitelistLabel: 'Exempt addresses',
+    publicApiFloodWhitelistHint: 'An address or a CIDR range, up to {{max}} entries.',
+    publicApiFloodWhitelistInvalid: 'Every entry must be an address or a CIDR range.',
+    publicApiFloodWhitelistPlaceholder: '192.168.1.0/24',
+    requireUserAgentLabel: 'Require a user agent',
+    retentionUserLogsLabel: 'User logs',
+    retentionCreditLogsLabel: 'Credit logs',
+    retentionConnectionLogsLabel: 'Connection logs',
+    retentionApiRequestFailuresLabel: 'Failed API requests',
+    retentionStreamProblemsLabel: 'Stream problems',
+    retentionMagEventsLabel: 'MAG events',
+    retentionDays: 'Days, {{min}} to {{max}}.',
+    backupEnabledLabel: 'Enable backups',
+    backupPeriodLabel: 'Backup period',
+    backupPeriods: {
+      hourly: 'Hourly',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+    },
+    backupRotationCountLabel: 'Backups to keep',
+    backupRotationCountHint: '0 keeps every backup.',
+    fallbackStreamDownUrlLabel: 'Stream down',
+    fallbackUserBannedUrlLabel: 'Viewer banned',
+    fallbackUserExpiredUrlLabel: 'Subscription expired',
+    fallbackMaxConnectionsUrlLabel: 'Connection limit reached',
+    fallbackUrlPlaceholder: 'https://example.com/notice.mp4',
+    fallbackUrlInvalid: 'Enter an absolute http or https address.',
+    required: 'This field is required.',
+    maxLength: 'Up to {{max}} characters.',
+    numberRange: 'Between {{min}} and {{max}}.',
+    save: 'Save',
+    cancel: 'Cancel',
+    noPermission: 'Your group does not allow this.',
+  },
+  // The MAG portal's own settings, the second one-row resource. Its two vocabularies - the
+  // containers and the themes - are drawn from the owner's wire words rather than from enum
+  // member names, which is why the labels are a mapping and not a `t()` on the raw value.
+  magSettingsForm: {
+    title: 'MAG settings',
+    sections: {
+      playback: 'Playback',
+      appearance: 'Appearance',
+      recording: 'Recording',
+      devices: 'Devices',
+    },
+    showAllCategoriesLabel: 'Show all categories',
+    strictSecurityLabel: 'Strict security',
+    playbackLimitLabel: 'Playback limit',
+    showChannelLogosLabel: 'Show channel logos',
+    showPreviewLogosLabel: 'Show preview logos',
+    defaultThemeLabel: 'Default theme',
+    defaultContainerLabel: 'Default container',
+    themes: {
+      default: 'Default',
+      digital: 'Digital',
+      emerald: 'Emerald',
+      // The owner's spelling on the wire, and therefore here: `cappucino`, not `cappuccino`.
+      cappucino: 'Cappucino',
+      oceanBlue: 'Ocean blue',
+    },
+    containers: {
+      mpegTs: 'MPEG-TS',
+      hls: 'HLS',
+    },
+    recordingMaxLengthMinutesLabel: 'Maximum recording length (minutes)',
+    maxLocalRecordingsLabel: 'Local recordings per device',
+    maxLocalRecordingsHint: '0 allows none.',
+    allowedStbTypesLabel: 'Allowed devices',
+    allowedRecordingStbTypesLabel: 'Devices allowed to record',
+    stbRequired: 'Choose at least one model.',
+    required: 'This field is required.',
+    numberRange: 'Between {{min}} and {{max}}.',
     save: 'Save',
     cancel: 'Cancel',
     noPermission: 'Your group does not allow this.',
@@ -3612,6 +3728,10 @@ const en = {
       // again would produce the same refusal, so the sentence must not send anybody to do it.
       permission_denied: 'Your account does not have permission for this.',
       signed_out: 'You have signed out.',
+      // The two installation screens' success codes. Without them the server's English
+      // sentence would be shown instead of the page's own words.
+      settings_updated: 'The settings have been saved.',
+      mag_settings_updated: 'The MAG settings have been saved.',
     },
   },
 }

@@ -20,12 +20,23 @@ namespace Fluxy.Application.Security.Options
         public string VerifyUrl { get; set; } = "https://www.google.com/recaptcha/api/siteverify";
 
         /// <summary>
-        /// Secret shared with the site key the browser uses. Absent means the check is bypassed.
+        /// Secret shared with the site key the browser uses. <b>Read once, at startup, to seed
+        /// the stored settings row; not read by the check itself.</b>
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Read from the gitignored <c>.env</c> file as <c>RECAPTCHA_SECRET_KEY</c>, never from
         /// <c>appsettings.json</c>: a key that exists in appsettings shadows the file, so even an
         /// empty placeholder there would silently win over the real secret.
+        /// </para>
+        /// <para>
+        /// The private key now lives in the <c>application_settings</c> row, where an operator
+        /// edits it on <c>/admin/settings</c>. This configuration value is copied into the row on
+        /// its first creation only - so an installation that already had a key in <c>.env</c>
+        /// keeps working after the upgrade - and is ignored afterwards. Editing <c>.env</c> later
+        /// changes nothing: an operator who cleared the key in the panel must not have it silently
+        /// restored by a restart.
+        /// </para>
         /// </remarks>
         public string? SecretKey { get; set; }
 
@@ -35,14 +46,4 @@ namespace Fluxy.Application.Security.Options
         /// </summary>
         public double MinimumScore { get; set; } = 0.5;
     }
-
-    /// <summary>
-    /// Verifies reCAPTCHA tokens against Google's siteverify endpoint.
-    /// </summary>
-    /// <remarks>
-    /// An installation without a secret key skips the check. That is what makes a development
-    /// machine usable - the frontend does not even ask for a token there - but it also means a
-    /// production deployment that forgot the key has quietly lost the protection, so the
-    /// situation is logged as a warning rather than passed over.
-    /// </remarks>
 }

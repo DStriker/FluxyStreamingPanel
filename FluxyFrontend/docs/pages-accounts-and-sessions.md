@@ -21,7 +21,7 @@
 
 - `src/pages/admin/ServersFormPage.tsx` is the add **and** edit form for one server — one component behind `servers/add` (a menu item) and `servers/:id` (an `extra` route with no menu item, reached only by choosing a row; a second `lazy()` over the same module makes a move between the two remount rather than carry a half-filled form across). The heading comes from whether there is an `id` (`serversForm.addTitle`/`editTitle`), not from `sectionKey`. **Latency exists only in edit mode**: the create contract has no such property, so a new row always starts at "not measured" and the add form draws no control it could not send; the full-write `PATCH` is the one body that carries it. The fields are the read-only id (edit only), the name, the address and port, the status, the operating system and network interface, the client limit (`0` means unlimited), the guaranteed speed in **Mbps** (converted to the wire's kbps by `features/servers/serverFields.ts`, `0` meaning unknown), the timeshift switch, the host name, the VPN address and the countries multi-select (empty means every country), one field per row. Every refusal arrives keyed by the wire's `guaranteedSpeedKbps` and is put back under the `guaranteedMbps` control by `FIELD_NAME_OF`, so a field error lands where the operator can see it. Edit mode fetches by URL and draws a spinner until the answer arrives, and the unsaved-changes guard is the shared `useUnsavedChangesWarning`.
 
-- `src/features/user-groups/permissions.ts` holds `ALL_PERMISSIONS`, `OWNER` and `permissionsForRole` — the frontend's copy of which permissions each role owns, mirroring `UserPermissionCatalog` on the backend. It is what makes "a Client group has no boxes" a decision taken *before* a request rather than a refusal explained after one. All thirty-two permissions are owned by `Admin` today, so `permissionsForRole` answers `[]` for Client and Reseller; a permission added on the server must be added here and to the two locale `permissions.*` blocks, or its checkbox label degrades to the raw key. `probe:render` calls it directly — no render reaches it, since the add form opens at `Client` — and asserts Admin gets all of them while the other two get none, which is the precondition that keeps the bulk buttons from being dead code everywhere. **The grant pairs that are not the accounts' are the content resources'** — `viewStreams`/`editStreams`, `viewAudioStreams`/`editAudioStreams`, `viewVideoOnDemand`/`editVideoOnDemand`, `viewSeries`/`editSeries`, `viewEpgSources`/`editEpgSources`, `viewTranscodingProfiles`/`editTranscodingProfiles` and the **servers**' `viewServers`/`editServers` — and they are deliberately **not** the same pair: a group that may read the video streams may not read the audio ones, a group that may read the catalogue may change neither, and a group that may read the relay addresses may not change them.
+- `src/features/user-groups/permissions.ts` holds `ALL_PERMISSIONS`, `OWNER` and `permissionsForRole` — the frontend's copy of which permissions each role owns, mirroring `UserPermissionCatalog` on the backend. It is what makes "a Client group has no boxes" a decision taken *before* a request rather than a refusal explained after one. All thirty-four permissions are owned by `Admin` today — the pair appended last is `viewSettings`/`editSettings`, after `editServers`, mirroring the server's `1L << 34`/`1L << 35` — so `permissionsForRole` answers `[]` for Client and Reseller; a permission added on the server must be added here and to the two locale `permissions.*` blocks, or its checkbox label degrades to the raw key. `probe:render` calls it directly — no render reaches it, since the add form opens at `Client` — and asserts Admin gets all of them while the other two get none, which is the precondition that keeps the bulk buttons from being dead code everywhere. **The grant pairs that are not the accounts' are the content resources'** — `viewStreams`/`editStreams`, `viewAudioStreams`/`editAudioStreams`, `viewVideoOnDemand`/`editVideoOnDemand`, `viewSeries`/`editSeries`, `viewEpgSources`/`editEpgSources`, `viewTranscodingProfiles`/`editTranscodingProfiles` and the **servers**' `viewServers`/`editServers` — and they are deliberately **not** the same pair: a group that may read the video streams may not read the audio ones, a group that may read the catalogue may change neither, and a group that may read the relay addresses may not change them.
 - `src/features/users/userStatus.ts` holds `combineStatus` — the frontend's copy of `UserStatusComposition.Combine`. An account's **effective** status is the most restrictive of its own and its group's (`Blocked` > `Unregistered` > `Registered`), and it is what the accounts list shows. The local `RESTRICTIVENESS` map exists because the `UserStatus` enum's *numbers* are in the wrong order for this question (`Unregistered=0, Registered=1, Blocked=2`) — comparing them directly would rank an unregistered account above a registered one. The map is written out rather than derived for exactly that reason: a numeric comparison here would compile, pass a glance, and be wrong.
 - `src/features/profile/loginGuardForm.ts` holds `GuardFieldValues`, `guardToFormValues` and `formValuesToGuard` — extracted out of `LoginGuardFields.tsx` because both flows (the profile card and this form) share them, and `react-refresh/only-export-components` flags non-component exports in a component's file. One conversion point so the two call sites cannot drift; the component file now exports only its component.
 
@@ -124,3 +124,39 @@
     a 56px cell wrapped the Russian heading onto three lines - a real screenshot of the page
     showed it. The 45 pixels come out of the subject, which is the column with room to give
     (the connection log made the same correction for the same reason).
+
+- **The two installation settings screens are pages, not table pages.** `/admin/settings`
+  (`SettingsPage`) and `/admin/mag-settings` (`MagSettingsPage`) sit in the admin `overview`
+  group immediately after `dashboard`, in that order, both as real `page` loaders so
+  `sectionRoutes` builds their routes; `src/router/routes.tsx` and `src/config/index.ts` are
+  untouched by them. They are the first pages in this repo that **gate themselves on a
+  permission inside the page** rather than in the rail: the sidebar is role-only, so the two
+  items are drawn for every administrator, and the card's content requires `viewSettings` from
+  `useProfile()` while the save button alone requires `editSettings`. The card title is drawn in
+  the loading, failed-read and refused states (the rule every page follows), the refused state
+  is an `Alert` under that title, and the save/cancel row sits **outside** the `Form` so a
+  visitor who may not save can still leave. Neither page carries `page-card`: they have no
+  toolbar, and are not registered in `probe:render`'s `toolbarCards`.
+  - `SettingsPage` groups its 21 stored values into six sections - General, reCAPTCHA, Access,
+    Log retention, Backups, Fallback videos - and those dividers are the one form in the repo
+    where a `Divider` is justified: each is a genuinely separate concern rather than a heading
+    over the key fields. The time zone uses the profile card's `knownZones()` selector. The private
+    reCAPTCHA key is **write-only**: the read answers `recaptchaConfigured` and never the key,
+    so the password input opens empty with "leave empty to keep the current key", and
+    `toSettingsBody` drops a blank secret rather than sending `''` (both mean "keep"; absence
+    says it plainly). The flood whitelist is a tags input judged by `isIpOrCidr` - the login
+    guard's own predicate - and the four fallback addresses by an absolute `http`/`https`
+    parse.
+  - `MagSettingsPage` groups its eleven values into Playback, Appearance, Recording and
+    Devices. `STB_TYPES` (the backend's 31 catalogue entries, verbatim and in its order),
+    `MAG_THEMES` (`default, digital, emerald, cappucino, ocean blue` - the owner's spellings,
+    `cappucino` deliberately uncorrected), `MAG_CONTAINERS` and `BACKUP_PERIODS` are runtime
+    values at the feature root, because `types/` is type-only; both model multi-selects offer
+    exactly the catalogue and require at least one entry, because the endpoint refuses the
+    whole list for a name outside it.
+  - `features/settings/` owns both resources and the guest read. `publicSettings.ts` memoises
+    `GET /auth/public-settings` (one in-flight promise, an exported reset called by the
+    settings mutation's `onSuccess`), `utils/recaptcha.ts` resolves the site key through it when
+    no explicit key is passed, and a failed read answers "no key" - the same no-token path an
+    empty key has always taken - so a settings outage can never block a sign-in. The memo is
+    not cleared on failure, so the next submit asks again.

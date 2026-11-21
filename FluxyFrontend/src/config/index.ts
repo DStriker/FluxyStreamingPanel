@@ -56,7 +56,6 @@ export const config = {
   CLIENT_HOME_ROUTE: pick('CLIENT_HOME_ROUTE'),
   RESELLER_HOME_ROUTE: pick('RESELLER_HOME_ROUTE'),
   ADMIN_HOME_ROUTE: pick('ADMIN_HOME_ROUTE'),
-  RECAPTCHA_SITE_KEY: raw('VITE_RECAPTCHA_SITE_KEY', '').trim(),
   // Trailing slashes are trimmed so that joining a path never yields a doubled separator.
   API_BASE_URL: raw('VITE_API_BASE_URL', '').trim().replace(/\/+$/, ''),
 }

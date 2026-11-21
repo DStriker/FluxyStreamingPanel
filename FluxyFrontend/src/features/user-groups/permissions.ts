@@ -15,7 +15,7 @@ import type { Role, UserPermission } from '../../types'
  * Four rules are mirrored here rather than inferred, because each one is a fact only the
  * catalog states:
  *
- * - **A permission belongs to exactly one role.** On this installation all thirty-two belong
+ * - **A permission belongs to exactly one role.** On this installation all thirty-four belong
  *   to `Admin`, so `permissionsForRole` answers an empty list for `Client` and `Reseller`. That
  *   is not a limitation of the table - a level decides which part of the API an account
  *   reaches at all, and a permission only answers a question asked *inside* that part. An
@@ -102,6 +102,11 @@ export const ALL_PERMISSIONS: readonly UserPermission[] = [
   // rather than a reuse of any grant above.
   'viewServers',
   'editServers',
+  // The settings pair closes the catalog, appended immediately after the servers on the
+  // server's own order: the two installation screens are a resource of their own - neither
+  // content nor an account, but the one-row configuration the panel and the MAG portal read.
+  'viewSettings',
+  'editSettings',
 ]
 
 /** The role that owns each permission. Every member of the catalog is owned by `Admin`. */
@@ -138,6 +143,8 @@ const OWNER: Readonly<Record<UserPermission, Role>> = {
   viewApiRequestFailures: 'Admin',
   viewServers: 'Admin',
   editServers: 'Admin',
+  viewSettings: 'Admin',
+  editSettings: 'Admin',
 }
 
 /**

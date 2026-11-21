@@ -2,7 +2,6 @@ using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Application;
-using Fluxy.Application.Security.Options;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;
 
@@ -93,18 +92,6 @@ namespace Fluxy.API
                     "may call this API. The frontend needs its origin added there to work.");
             }
 
-            if (string.IsNullOrWhiteSpace(builder.Configuration[$"{RecaptchaOptions.SectionName}:SecretKey"]))
-            {
-                // Deliberately loud. An installation without the secret does not fail, it silently
-                // stops checking anything, and that is exactly the kind of gap nobody notices until
-                // it has been exploited.
-                app.Logger.LogWarning(
-                    $"'{RecaptchaOptions.SectionName}:SecretKey' is not set, so the reCAPTCHA check " +
-                    "is bypassed entirely and every registration is accepted on its word. Put " +
-                    "RECAPTCHA_SECRET_KEY in .env before exposing this installation.");
-            }
-
-            // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi(); 
@@ -172,8 +159,23 @@ namespace Fluxy.API
 
             // Applies the pending migrations and creates the first administrator, which prints
             // its generated password once. It runs before app.Run() so that the schema exists
-            // by the time the first request arrives.
+            // by the time the first request arrives. The settings seeder runs inside it and
+            // primes the cached snapshot the reCAPTCHA check reads.
             await app.Services.SeedDatabaseAsync();
+
+            // An empty reCAPTCHA secret is now an explicit, default admin state rather than a
+            // forgotten key: an operator configures it on /admin/settings. The line says which
+            // state the installation is in and where to change it - it is not a warning, because
+            // a fresh installation starting without the check is doing what it was built to do.
+            var settings = app.Services
+                .GetRequiredService<Fluxy.Core.Settings.Interfaces.ISettingsSnapshotProvider>()
+                .ApplicationSnapshot;
+
+            app.Logger.LogInformation(
+                settings.RecaptchaConfigured
+                    ? "reCAPTCHA is enabled. Change the keys on /admin/settings."
+                    : "reCAPTCHA is disabled because no private key is stored. Configure it on " +
+                        "/admin/settings before exposing this installation to the internet.");
 
             app.Run();
         }

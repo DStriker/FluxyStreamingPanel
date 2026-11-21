@@ -10,6 +10,7 @@ using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
 using Fluxy.Application.Servers.Services;
 using Fluxy.Application.Series.Services;
+using Fluxy.Application.Settings.Services;
 using Fluxy.Application.Streams.Services;
 using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Application.Tickets.Services;
@@ -27,6 +28,7 @@ using Fluxy.Core.Requests.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Interfaces;
 using Fluxy.Core.Servers.Interfaces;
+using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Streams.Interfaces;
 using Fluxy.Core.Subscriptions.Interfaces;
 using Fluxy.Core.Tickets.Interfaces;
@@ -272,6 +274,18 @@ namespace Fluxy.Application
             // repository and unit of work.
             services.AddScoped<IServerSeeder, ServerSeeder>();
 
+            // The installation-wide settings: one cached reading shared by every scope (the
+            // reCAPTCHA check runs outside a request's own scope and needs it), and the two
+            // services that read and write the rows behind an operator's grants.
+            services.AddSingleton<ISettingsSnapshotProvider, SettingsSnapshotProvider>();
+            services.AddScoped<ISettingsService, SettingsService>();
+            services.AddScoped<IMagSettingsService, MagSettingsService>();
+
+            // The two settings rows, created on the first start and never overwritten afterwards.
+            // Scoped like the server seeder, because it writes through the request-scoped
+            // repositories and unit of work.
+            services.AddScoped<ISettingsSeeder, SettingsSeeder>();
+
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.
             services.AddScoped<PendingChangeService>();
@@ -343,6 +357,7 @@ namespace Fluxy.Application
 
         /// <summary>
         /// Runs <see cref="IUserSeeder.SeedAsync"/>, <see cref="IServerSeeder.SeedAsync"/>,
+        /// <see cref="ISettingsSeeder.SeedAsync"/>,
         /// <see cref="IConnectionLogSeeder.SeedAsync"/>,
         /// <see cref="IApiRequestFailureSeeder.SeedAsync"/> and
         /// <see cref="IStreamProblemSeeder.SeedAsync"/> in a scope of their own, so they can be
@@ -361,6 +376,11 @@ namespace Fluxy.Application
         /// The main server seeder runs **after** the user seeder, because the table it writes has
         /// to exist first, and it is idempotent - every later start finds the row and leaves it
         /// alone. It never throws, so a failed probe cannot stop the boot.
+        /// </para>
+        /// <para>
+        /// The settings seeder runs after it for the same reason and primes the cached snapshot
+        /// the reCAPTCHA check reads, so the first guest request after a boot already sees the
+        /// stored settings rather than the built-in defaults for one window.
         /// </para>
         /// <para>
         /// The connection-log seeder runs after both because the schema and the first account
@@ -390,6 +410,10 @@ namespace Fluxy.Application
             var servers = scope.ServiceProvider.GetRequiredService<IServerSeeder>();
 
             await servers.SeedAsync(cancellationToken);
+
+            var settings = scope.ServiceProvider.GetRequiredService<ISettingsSeeder>();
+
+            await settings.SeedAsync(cancellationToken);
 
             var logs = scope.ServiceProvider.GetRequiredService<IConnectionLogSeeder>();
 

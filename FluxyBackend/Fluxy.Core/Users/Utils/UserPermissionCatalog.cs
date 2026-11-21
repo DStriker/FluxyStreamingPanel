@@ -39,7 +39,8 @@ namespace Fluxy.Core.Users.Utils
         /// the on-demand catalogue, the series), then the guide sources, then the bouquets,
         /// then the tariff plans a subscription is sold under, then the subscriptions
         /// themselves, then the blacklists, then the transcoding profiles, then the two
-        /// logs - the user audit log and the API request failure log - and finally the servers,
+        /// logs - the user audit log and the API request failure log - then the servers, and
+        /// finally the installation settings,
         /// and inside each subject as a read beside its write, which is the shape the first two
         /// permissions had. Each log has a read grant and no write one, because an operator
         /// never writes an entry; the failure log's single grant also covers its whole-table
@@ -78,7 +79,9 @@ namespace Fluxy.Core.Users.Utils
             UserPermission.ViewUserLogs,
             UserPermission.ViewApiRequestFailures,
             UserPermission.ViewServers,
-            UserPermission.EditServers
+            UserPermission.EditServers,
+            UserPermission.ViewSettings,
+            UserPermission.EditSettings
         ];
 
         /// <summary>
@@ -142,7 +145,9 @@ namespace Fluxy.Core.Users.Utils
                 [UserPermission.ViewUserLogs] = UserRole.Admin,
                 [UserPermission.ViewApiRequestFailures] = UserRole.Admin,
                 [UserPermission.ViewServers] = UserRole.Admin,
-                [UserPermission.EditServers] = UserRole.Admin
+                [UserPermission.EditServers] = UserRole.Admin,
+                [UserPermission.ViewSettings] = UserRole.Admin,
+                [UserPermission.EditSettings] = UserRole.Admin
             };
 
         /// <summary>

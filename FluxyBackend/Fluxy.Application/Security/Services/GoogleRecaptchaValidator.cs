@@ -1,6 +1,7 @@
 using Fluxy.Application.Security.Options;
 using Fluxy.Core.Security.Enums;
 using Fluxy.Core.Security.Interfaces;
+using Fluxy.Core.Settings.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Json;
@@ -12,30 +13,42 @@ namespace Fluxy.Application.Security.Services
     /// Verifies reCAPTCHA tokens against Google's siteverify endpoint.
     /// </summary>
     /// <remarks>
-    /// An installation without a secret key skips the check. That is what makes a development
-    /// machine usable - the frontend does not even ask for a token there - but it also means a
-    /// production deployment that forgot the key has quietly lost the protection, so the
-    /// situation is logged as a warning rather than passed over.
+    /// <para>
+    /// <b>The private key comes from the stored settings, not from configuration.</b> An empty
+    /// stored secret skips the check, which is the explicit default a fresh installation starts
+    /// with and the state an operator clears the field to reach. The configuration's
+    /// <c>Recaptcha:SecretKey</c> is copied into the row once, on its first creation, and is not
+    /// read here at all - otherwise an operator who cleared the key in the panel would still be
+    /// enforcing an old one from <c>.env</c>.
+    /// </para>
+    /// <para>
+    /// <see cref="RecaptchaOptions.VerifyUrl"/> and <see cref="RecaptchaOptions.MinimumScore"/>
+    /// stay configuration: they describe the integration, not the installation's state.
+    /// </para>
     /// </remarks>
     public sealed class GoogleRecaptchaValidator : IRecaptchaValidator
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IOptionsMonitor<RecaptchaOptions> _options;
+        private readonly ISettingsSnapshotProvider _settings;
         private readonly ILogger<GoogleRecaptchaValidator> _logger;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="GoogleRecaptchaValidator"/> class.
         /// </summary>
         /// <param name="httpClientFactory">Factory producing the client used for the check.</param>
-        /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
+        /// <param name="options">Live options for the endpoint and the score cut-off.</param>
+        /// <param name="settings">Stored settings the private key is read from.</param>
         /// <param name="logger">Logger problems with the verification service are reported to.</param>
         public GoogleRecaptchaValidator(
             IHttpClientFactory httpClientFactory,
             IOptionsMonitor<RecaptchaOptions> options,
+            ISettingsSnapshotProvider settings,
             ILogger<GoogleRecaptchaValidator> logger)
         {
             _httpClientFactory = httpClientFactory;
             _options = options;
+            _settings = settings;
             _logger = logger;
         }
 
@@ -47,14 +60,14 @@ namespace Fluxy.Application.Security.Services
             CancellationToken cancellationToken = default)
         {
             var options = _options.CurrentValue;
+            var secretKey = _settings.ApplicationSnapshot.RecaptchaSecretKey;
 
-            if (string.IsNullOrWhiteSpace(options.SecretKey))
+            if (string.IsNullOrWhiteSpace(secretKey))
             {
                 _logger.LogWarning(
                     "reCAPTCHA is not configured, so the check for action '{Action}' was skipped " +
-                    "entirely. Put the private key in .env as {EnvKey} to enforce it.",
-                    expectedAction,
-                    "RECAPTCHA_SECRET_KEY");
+                    "entirely. Set the site key and the private key in /admin/settings to enforce it.",
+                    expectedAction);
 
                 return RecaptchaValidationOutcome.Skipped;
             }
@@ -68,7 +81,7 @@ namespace Fluxy.Application.Security.Services
 
             var form = new Dictionary<string, string>
             {
-                ["secret"] = options.SecretKey,
+                ["secret"] = secretKey,
                 ["response"] = token
             };
 

@@ -67,6 +67,10 @@ describe('ALL_PERMISSIONS', () => {
       // resource of their own, so they keep a read grant beside their write one.
       'viewServers',
       'editServers',
+      // The settings pair is appended last: the two installation screens are a one-row
+      // resource of their own, so they follow the server pair in the catalog's order.
+      'viewSettings',
+      'editSettings',
     ])
   })
 })
@@ -157,6 +161,10 @@ describe('canViewAny / canEditAny', () => {
     // these gates either.
     expect(canViewAny(['viewServers', 'editServers'])).toBe(false)
     expect(canEditAny(['viewServers', 'editServers'])).toBe(false)
+    // The settings pair names the installation's own configuration rather than accounts, and
+    // follows the same rule as every resource pair above it.
+    expect(canViewAny(['viewSettings', 'editSettings'])).toBe(false)
+    expect(canEditAny(['viewSettings', 'editSettings'])).toBe(false)
   })
 
   it('takes every member of the union without a branch for a name that is not one', () => {

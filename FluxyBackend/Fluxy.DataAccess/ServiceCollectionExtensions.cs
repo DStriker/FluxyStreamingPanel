@@ -9,6 +9,7 @@ using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Repositories;
 using Fluxy.Core.Servers.Repositories;
+using Fluxy.Core.Settings.Repositories;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Tickets.Repositories;
@@ -119,6 +120,8 @@ namespace Fluxy.DataAccess
             services.AddScoped<ITicketRepository, TicketRepository>();
             services.AddScoped<ITranscodingProfileRepository, TranscodingProfileRepository>();
             services.AddScoped<IServerRepository, ServerRepository>();
+            services.AddScoped<IApplicationSettingsRepository, ApplicationSettingsRepository>();
+            services.AddScoped<IMagSettingsRepository, MagSettingsRepository>();
 
             // The mass source replacement reads and stages rows of four aggregates owned by
             // other repositories. It is a repository of its own rather than extra methods on

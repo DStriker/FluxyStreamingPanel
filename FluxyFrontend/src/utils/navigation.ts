@@ -16,8 +16,10 @@ import {
   InboxOutlined,
   LaptopOutlined,
   MessageOutlined,
+  MobileOutlined,
   PlaySquareOutlined,
   PlusOutlined,
+  SettingOutlined,
   ShoppingCartOutlined,
   StopOutlined,
   SwapOutlined,
@@ -458,6 +460,29 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.dashboard',
           icon: DashboardOutlined,
           page: () => import('../pages/account/DashboardPage'),
+        },
+        {
+          // The installation's own two screens, immediately after the dashboard: they are not
+          // a catalogue, an account or a log but what the panel itself is configured as, and
+          // the rail's first group is where a reader meets the installation before its content.
+          // Both pages are self-gated on `viewSettings`/`editSettings` - the rail is role-only
+          // and does not filter by grant - so the item is drawn for every administrator and the
+          // card says why it is empty for the one whose group withholds the read.
+          key: 'settings',
+          path: 'settings',
+          labelKey: 'nav.items.settings',
+          icon: SettingOutlined,
+          page: () => import('../pages/admin/SettingsPage'),
+        },
+        {
+          // The MAG portal's half of the same resource, beside it: `mag-settings` mirrors the
+          // backend's own route (`admin/mag-settings`), so menu, page and endpoint name one
+          // resource the same way.
+          key: 'magSettings',
+          path: 'mag-settings',
+          labelKey: 'nav.items.magSettings',
+          icon: MobileOutlined,
+          page: () => import('../pages/admin/MagSettingsPage'),
         },
       ],
     },

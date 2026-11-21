@@ -60,7 +60,9 @@ A real conflict between two reasonable requirements with no clean code fix. Exem
 
 ### reCAPTCHA
 
-Bypassed when `Recaptcha:SecretKey` is empty — keeps a dev machine usable and is why `getCaptchaToken()` can return `null` in DEV. **A startup warning is logged when the key is missing** so a production deployment that forgot it does not silently have no protection.
+Bypassed when the stored secret is empty. That is the explicit default a fresh installation starts with, and the state an operator reaches by clearing the key on `/admin/settings` - the frontend does not even ask for a token while the site key is empty, which keeps a development machine usable.
+
+**The private key lives in `application_settings.recaptcha_secret_key`, not in configuration.** `RECAPTCHA_SECRET_KEY` in `.env` is copied into the row once, on its first creation, so an installation that already had a key keeps working after the upgrade; after that the database is the only source. `Recaptcha:VerifyUrl` and `Recaptcha:MinimumScore` stay configuration. Startup logs whether the check is enabled and points at `/admin/settings` rather than warning about a "missing" key.
 
 The action is fixed per endpoint, not chosen by the caller: `register` for `POST /auth/registrations`, `register_confirm` for `POST /auth/registrations/confirm`. The captcha action is a token property, not a path — its spelling did not move with the rename. The frontend must call `getCaptchaToken('register')` to match.
 

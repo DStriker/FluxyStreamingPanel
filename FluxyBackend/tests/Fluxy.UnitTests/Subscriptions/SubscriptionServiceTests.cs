@@ -1,4 +1,4 @@
-﻿using Fluxy.Application.Subscriptions.Services;
+using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Application.Subscriptions.Utils;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Subscriptions.Commands;
@@ -10,6 +10,7 @@ using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Subscriptions.Rows;
 using Fluxy.Core.Subscriptions.Utils;
 using Fluxy.Core.Users.Enums;
+using Fluxy.UnitTests.Settings;
 
 namespace Fluxy.UnitTests.Subscriptions
 {
@@ -336,10 +337,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 SubscriptionRules.PlaylistIdIndexName,
                 null);
             var repository = new FakeSubscriptions();
-            var service = new SubscriptionService(
-                repository,
-                new FakeUnitOfWork(violation),
-                TimeProvider.System);
+            var service = new SubscriptionService(repository, new FakeUnitOfWork(violation), new FakeSettingsSnapshotProvider(), TimeProvider.System);
 
             var outcome = await service.CreateAsync(
                 New(playlistId: Playlist()),
@@ -358,6 +356,7 @@ namespace Fluxy.UnitTests.Subscriptions
             var service = new SubscriptionService(
                 new FakeSubscriptions(),
                 new FakeUnitOfWork(violation),
+                new FakeSettingsSnapshotProvider(),
                 TimeProvider.System);
 
             await Assert.ThrowsAsync<Core.Persistence.Exceptions.UniqueViolationException>(
@@ -698,7 +697,7 @@ namespace Fluxy.UnitTests.Subscriptions
         }
 
         private static SubscriptionService NewService(FakeSubscriptions repository)
-            => new(repository, new FakeUnitOfWork(null), TimeProvider.System);
+            => new(repository, new FakeUnitOfWork(null), new FakeSettingsSnapshotProvider(), TimeProvider.System);
 
         private static string Playlist() => "0123456789abcdef0123456789abcdef";
 
@@ -979,3 +978,4 @@ namespace Fluxy.UnitTests.Subscriptions
         }
     }
 }
+

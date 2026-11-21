@@ -31,6 +31,8 @@ import UserGroupsPage from '../src/pages/admin/UserGroupsPage'
 import UserGroupFormPage from '../src/pages/admin/UserGroupFormPage'
 import ServersPage from '../src/pages/admin/ServersPage'
 import ServersFormPage from '../src/pages/admin/ServersFormPage'
+import SettingsPage from '../src/pages/admin/SettingsPage'
+import MagSettingsPage from '../src/pages/admin/MagSettingsPage'
 import AdminSessionsPage from '../src/pages/admin/AdminSessionsPage'
 import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
@@ -150,6 +152,17 @@ import {
   canViewAny,
   permissionsForRole,
 } from '../src/features/user-groups/permissions'
+import {
+  BACKUP_PERIODS,
+  MAG_CONTAINERS,
+  MAG_THEMES,
+  STB_TYPES,
+} from '../src/features/settings/options'
+import {
+  isValidFallbackUrl,
+  isValidWhitelist,
+  toSettingsBody,
+} from '../src/features/settings/settingsForm'
 import {
   GENERATED_PASSWORD_LENGTH,
   generatePassword,
@@ -1403,6 +1416,344 @@ async function main() {
     `${serversItemKeys}; serversAdd opens ${serversAddModule?.default?.name ?? 'nothing'}, serversManage opens ${
       serversManageModule?.default?.name ?? 'nothing'
     }`,
+  )
+
+  // --- The two installation settings screens ----------------------------------
+  //
+  // Two one-row resources behind their own permission pair, and pages that gate themselves: the
+  // rail is role-only, so `viewSettings`/`editSettings` are decided inside the card. What is
+  // asserted here is the shape the feature was specified with rather than the shape the pages
+  // happen to draw - both card titles in the loading state (the rule is that the address names
+  // the screen even when its data has not arrived), the field set of each form, the absence of
+  // `page-card` (these are forms, not toolbars), the write-only secret with its one sentence, and
+  // the permission pair appended last in the catalog.
+  //
+  // The seeded renders are what reach the answered states: with a profile and a settings row in
+  // the cache the page draws its form rather than the spinner, which is the only way to see the
+  // disabled save, the Cancel beside it, and the refusal for a visitor without the read grant.
+  const settingsProbeResponse = {
+    serviceName: 'Fluxy Streaming panel',
+    defaultTimeZone: 'Europe/Berlin',
+    enigma2BouquetName: 'Fluxy IPTV',
+    recaptchaSiteKey: '',
+    recaptchaConfigured: true,
+    enableTrials: true,
+    publicApiFloodLimit: 20,
+    publicApiFloodWhitelist: [],
+    requireUserAgent: false,
+    retentionUserLogs: 30,
+    retentionCreditLogs: 30,
+    retentionConnectionLogs: 30,
+    retentionApiRequestFailures: 30,
+    retentionStreamProblems: 30,
+    retentionMagEvents: 30,
+    backupEnabled: false,
+    backupPeriod: 'daily',
+    backupRotationCount: 10,
+    fallbackStreamDownUrl: '',
+    fallbackUserBannedUrl: '',
+    fallbackUserExpiredUrl: '',
+    fallbackMaxConnectionsUrl: '',
+  }
+
+  const magSettingsProbeResponse = {
+    showAllCategories: true,
+    strictSecurity: true,
+    showChannelLogos: true,
+    showPreviewLogos: true,
+    defaultContainer: 'mpeg-ts',
+    defaultTheme: 'cappucino',
+    recordingMaxLengthMinutes: 180,
+    maxLocalRecordings: 10,
+    playbackLimit: 3,
+    allowedStbTypes: [...STB_TYPES],
+    allowedRecordingStbTypes: ['MAG255', 'MAG256', 'MAG257'],
+  }
+
+  const probeProfile = (permissions) => ({
+    username: 'probeadmin',
+    email: 'probeadmin@localhost',
+    role: 'Admin',
+    permissions,
+    credits: 0,
+    timeZone: null,
+    geoProtectionEnabled: false,
+    bindSessionToIp: false,
+    allowedIps: [],
+    allowedCountry: null,
+    allowedAutonomousSystemNumber: null,
+  })
+
+  /** One render with several answers already in the cache - see `withSeededQuery`. */
+  const renderSettingsSeeded = (seeds, element) => {
+    const client = createQueryClient()
+
+    for (const [key, data] of seeds) client.setQueryData(key, data)
+
+    return renderToStaticMarkup(
+      withRouter(
+        '/admin/settings',
+        <QueryClientProvider client={client}>
+          <AntApp>{element}</AntApp>
+        </QueryClientProvider>,
+      ),
+    )
+  }
+
+  const settingsLoadingHtml = renderToStaticMarkup(
+    withRouter('/admin/settings', withQuery(
+      <AntApp>
+        <SettingsPage sectionKey="nav.items.settings" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the settings page draws its card title and a spinner while the row is still being read',
+    /<div[^>]*class="ant-card-head-title"[^>]*>Settings<\/div>/.test(settingsLoadingHtml) &&
+      settingsLoadingHtml.includes('ant-spin') &&
+      !settingsLoadingHtml.includes('page-card') &&
+      !settingsLoadingHtml.includes('nav.items.settings'),
+    `rendered ${settingsLoadingHtml.length} bytes with the settings still being fetched`,
+  )
+
+  const settingsEditableHtml = renderSettingsSeeded(
+    [
+      [['profile'], probeProfile([...ALL_PERMISSIONS])],
+      [['settings'], settingsProbeResponse],
+    ],
+    <SettingsPage sectionKey="nav.items.settings" />,
+  )
+  check(
+    'the settings form draws every section and field, one per row, with the secret field empty and explained',
+    settingsEditableHtml.includes('General') &&
+      settingsEditableHtml.includes('reCAPTCHA') &&
+      settingsEditableHtml.includes('Access') &&
+      settingsEditableHtml.includes('Log retention') &&
+      settingsEditableHtml.includes('Backups') &&
+      settingsEditableHtml.includes('Fallback videos') &&
+      settingsEditableHtml.includes('title="Service name"') &&
+      settingsEditableHtml.includes('title="Default time zone"') &&
+      settingsEditableHtml.includes('title="Enigma2 bouquet name"') &&
+      settingsEditableHtml.includes('title="Site key"') &&
+      settingsEditableHtml.includes('title="Secret key"') &&
+      settingsEditableHtml.includes('Leave empty to keep the current key.') &&
+      settingsEditableHtml.includes('A secret key is configured.') &&
+      settingsEditableHtml.includes('title="Allow trials"') &&
+      settingsEditableHtml.includes('title="Public API request limit"') &&
+      settingsEditableHtml.includes('title="Exempt addresses"') &&
+      settingsEditableHtml.includes('title="Require a user agent"') &&
+      settingsEditableHtml.includes('title="User logs"') &&
+      settingsEditableHtml.includes('title="MAG events"') &&
+      settingsEditableHtml.includes('title="Enable backups"') &&
+      settingsEditableHtml.includes('title="Backup period"') &&
+      settingsEditableHtml.includes('title="Backups to keep"') &&
+      settingsEditableHtml.includes('title="Stream down"') &&
+      settingsEditableHtml.includes('title="Connection limit reached"') &&
+      // A secret is never drawn back into the field, so a password input is empty here.
+      settingsEditableHtml.includes('type="password"') &&
+      !settingsEditableHtml.includes('page-card'),
+    `rendered ${settingsEditableHtml.length} bytes with the row and the grants seeded`,
+  )
+
+  // The save button is the class assertion: enabled with `editSettings`, and drawn disabled with
+  // its refusal hinted when the grant is absent. Cancel is asserted beside it in both states,
+  // because it is the control a disabled form would have swallowed inside the `<Form>`.
+  const settingsReadOnlyHtml = renderSettingsSeeded(
+    [
+      [['profile'], probeProfile(['viewSettings'])],
+      [['settings'], settingsProbeResponse],
+    ],
+    <SettingsPage sectionKey="nav.items.settings" />,
+  )
+  const editableSaveAt = settingsEditableHtml.indexOf('>Save</span>')
+  const editableSaveTag = settingsEditableHtml.slice(
+    settingsEditableHtml.lastIndexOf('<button', editableSaveAt),
+    editableSaveAt,
+  )
+  const readOnlySaveAt = settingsReadOnlyHtml.indexOf('>Save</span>')
+  const readOnlySaveTag = settingsReadOnlyHtml.slice(
+    settingsReadOnlyHtml.lastIndexOf('<button', readOnlySaveAt),
+    readOnlySaveAt,
+  )
+  check(
+    'the settings save is enabled with editSettings and disabled without it, and Cancel survives both',
+    editableSaveAt !== -1 &&
+      !editableSaveTag.includes('disabled') &&
+      readOnlySaveAt !== -1 &&
+      readOnlySaveTag.includes('disabled') &&
+      settingsEditableHtml.includes('>Cancel</span>') &&
+      settingsReadOnlyHtml.includes('>Cancel</span>'),
+    `editable save ${editableSaveTag.includes('disabled') ? 'DISABLED' : 'enabled'}, read-only save ${readOnlySaveTag.includes('disabled') ? 'disabled' : 'ENABLED'}`,
+  )
+
+  const settingsRefusedHtml = renderSettingsSeeded(
+    [
+      [['profile'], probeProfile([])],
+      [['settings'], settingsProbeResponse],
+    ],
+    <SettingsPage sectionKey="nav.items.settings" />,
+  )
+  check(
+    'a visitor without viewSettings gets the card title and the refusal rather than the form',
+    settingsRefusedHtml.includes('>Settings</div>') &&
+      settingsRefusedHtml.includes('Your group does not allow this.') &&
+      !settingsRefusedHtml.includes('title="Service name"'),
+    `rendered ${settingsRefusedHtml.length} bytes without the read grant`,
+  )
+
+  const magSettingsLoadingHtml = renderToStaticMarkup(
+    withRouter('/admin/mag-settings', withQuery(
+      <AntApp>
+        <MagSettingsPage sectionKey="nav.items.magSettings" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the MAG settings page draws its card title and a spinner while the row is still being read',
+    /<div[^>]*class="ant-card-head-title"[^>]*>MAG settings<\/div>/.test(magSettingsLoadingHtml) &&
+      magSettingsLoadingHtml.includes('ant-spin') &&
+      !magSettingsLoadingHtml.includes('page-card') &&
+      !magSettingsLoadingHtml.includes('nav.items.magSettings'),
+    `rendered ${magSettingsLoadingHtml.length} bytes with the MAG row still being fetched`,
+  )
+
+  const magSettingsEditableHtml = renderSettingsSeeded(
+    [
+      [['profile'], probeProfile([...ALL_PERMISSIONS])],
+      [['magSettings'], magSettingsProbeResponse],
+    ],
+    <MagSettingsPage sectionKey="nav.items.magSettings" />,
+  )
+  check(
+    'the MAG settings form draws its four sections and every control, with the owner theme spellings',
+    magSettingsEditableHtml.includes('Playback') &&
+      magSettingsEditableHtml.includes('Appearance') &&
+      magSettingsEditableHtml.includes('Recording') &&
+      magSettingsEditableHtml.includes('Devices') &&
+      magSettingsEditableHtml.includes('title="Show all categories"') &&
+      magSettingsEditableHtml.includes('title="Strict security"') &&
+      magSettingsEditableHtml.includes('title="Playback limit"') &&
+      magSettingsEditableHtml.includes('title="Show channel logos"') &&
+      magSettingsEditableHtml.includes('title="Default theme"') &&
+      magSettingsEditableHtml.includes('title="Default container"') &&
+      magSettingsEditableHtml.includes('title="Maximum recording length (minutes)"') &&
+      magSettingsEditableHtml.includes('title="Local recordings per device"') &&
+      magSettingsEditableHtml.includes('title="Allowed devices"') &&
+      magSettingsEditableHtml.includes('title="Devices allowed to record"') &&
+      // A closed `Select` draws no options, so the two vocabularies are asserted as values and
+      // as locale keys rather than as markup: the owner's spellings are what the wire carries.
+      MAG_THEMES.join(',') === 'default,digital,emerald,cappucino,ocean blue' &&
+      MAG_CONTAINERS.join(',') === 'mpeg-ts,hls' &&
+      Boolean(i18n.getResource('en', 'translation', 'magSettingsForm.themes.cappucino')) &&
+      Boolean(i18n.getResource('en', 'translation', 'magSettingsForm.themes.oceanBlue')) &&
+      !magSettingsEditableHtml.includes('page-card'),
+    `rendered ${magSettingsEditableHtml.length} bytes with the MAG row and the grants seeded`,
+  )
+
+  const magSettingsRefusedHtml = renderSettingsSeeded(
+    [
+      [['profile'], probeProfile([])],
+      [['magSettings'], magSettingsProbeResponse],
+    ],
+    <MagSettingsPage sectionKey="nav.items.magSettings" />,
+  )
+  check(
+    'a visitor without viewSettings gets the MAG title and the refusal rather than the form',
+    magSettingsRefusedHtml.includes('>MAG settings</div>') &&
+      magSettingsRefusedHtml.includes('Your group does not allow this.') &&
+      !magSettingsRefusedHtml.includes('title="Playback limit"'),
+    `rendered ${magSettingsRefusedHtml.length} bytes without the read grant`,
+  )
+
+  // The two wire vocabularies and the catalogue, as values: the endpoint refuses a word outside
+  // them, so a "corrected" spelling here is a form whose save the server rejects. `cappucino` and
+  // `ocean blue` are the owner's, and `WR320`/`Aura HD9` are the catalogue's ends.
+  check(
+    'the settings vocabularies match the wire exactly, including the owner spellings',
+    MAG_THEMES.join(',') === 'default,digital,emerald,cappucino,ocean blue' &&
+      MAG_CONTAINERS.join(',') === 'mpeg-ts,hls' &&
+      BACKUP_PERIODS.join(',') === 'hourly,daily,weekly,monthly' &&
+      STB_TYPES.length === 31 &&
+      STB_TYPES[0] === 'Aura HD' &&
+      STB_TYPES[11] === 'MAG245D' &&
+      STB_TYPES[30] === 'WR320' &&
+      new Set(STB_TYPES).size === 31,
+    `${MAG_THEMES.length} themes, ${MAG_CONTAINERS.length} containers, ${BACKUP_PERIODS.length} periods, ${STB_TYPES.length} STB models`,
+  )
+
+  // The two validators the page refuses with before the wire.
+  check(
+    'the whitelist and fallback-address validators agree with the server rules',
+    isValidWhitelist([]) &&
+      isValidWhitelist(['10.0.0.0/8', '2001:db8::/32']) &&
+      !isValidWhitelist(['not-an-address']) &&
+      !isValidWhitelist(['10.0.0.0/33']) &&
+      isValidFallbackUrl('') &&
+      isValidFallbackUrl('https://example.com/notice.mp4') &&
+      !isValidFallbackUrl('example.com/notice.mp4') &&
+      !isValidFallbackUrl('ftp://example.com/notice.mp4'),
+    'empty and real addresses pass; a typo and a relative or ftp address fail',
+  )
+
+  // The body mapping: the blank secret is an absence (the endpoint's "keep"), and the whitelist
+  // is trimmed. A render never submits, so this is the only witness to either rule.
+  const settingsProbeBody = toSettingsBody({
+    ...settingsProbeResponse,
+    recaptchaSecretKey: '   ',
+    publicApiFloodWhitelist: [' 10.0.0.0/8 ', ''],
+  })
+  check(
+    'a blank reCAPTCHA secret is left out of the body, and the whitelist is trimmed, not invented',
+    !Object.prototype.hasOwnProperty.call(settingsProbeBody, 'recaptchaSecretKey') &&
+      settingsProbeBody.publicApiFloodWhitelist.join(',') === '10.0.0.0/8' &&
+      !Object.prototype.hasOwnProperty.call(settingsProbeBody, 'recaptchaConfigured'),
+    `body keys: ${Object.keys(settingsProbeBody).length}, whitelist ${settingsProbeBody.publicApiFloodWhitelist.join(',')}`,
+  )
+
+  // The menu entries: the first group's dashboard then both screens, their own addresses, real
+  // pages behind the loaders, and the two success codes translated in both bundles - a code with
+  // no translation shows the server's English sentence instead of the page's own words.
+  const adminOverviewItems = (NAVIGATION.Admin.find((group) => group.key === 'overview')?.items ?? []).map(
+    (item) => item.key,
+  )
+  const [settingsModule, magSettingsModule] = await Promise.all([
+    flatItems('Admin').find((item) => item.key === 'settings')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'magSettings')?.page?.(),
+  ])
+  check(
+    'the overview group reads dashboard, settings, magSettings, each opening its own page at its own address',
+    adminOverviewItems.join(',') === 'dashboard,settings,magSettings' &&
+      menuPath('Admin', 'settings') === '/admin/settings' &&
+      menuPath('Admin', 'mag-settings') === '/admin/mag-settings' &&
+      settingsModule?.default === SettingsPage &&
+      magSettingsModule?.default === MagSettingsPage &&
+      ['en', 'ru'].every(
+        (lng) =>
+          Boolean(i18n.getResource(lng, 'translation', 'nav.items.settings')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'nav.items.magSettings')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'permissions.viewSettings')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'permissions.editSettings')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'messages.api.settings_updated')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'messages.api.mag_settings_updated')),
+      ) &&
+      i18n.getResource('ru', 'translation', 'nav.items.settings') === 'Настройки' &&
+      i18n.getResource('ru', 'translation', 'nav.items.magSettings') === 'Настройки MAG',
+    `overview: ${adminOverviewItems.join(', ')}; settings opens ${
+      settingsModule?.default?.name ?? 'nothing'
+    }, magSettings opens ${magSettingsModule?.default?.name ?? 'nothing'}`,
+  )
+
+  // The permission pair is the catalog's last two entries, in the server's order, and both are
+  // Admin-owned - so the group form offers them and a Client group is not offered one it cannot
+  // hold.
+  check(
+    'the settings pair is appended after editServers and is owned by Admin alone',
+    ALL_PERMISSIONS.slice(-2).join(',') === 'viewSettings,editSettings' &&
+      ALL_PERMISSIONS.length === 34 &&
+      permissionsForRole('Admin').slice(-2).join(',') === 'viewSettings,editSettings' &&
+      permissionsForRole('Client').length === 0 &&
+      permissionsForRole('Reseller').length === 0,
+    `${ALL_PERMISSIONS.length} permissions, last two ${ALL_PERMISSIONS.slice(-2).join(', ')}`,
   )
 
   // --- The content categories page --------------------------------------------

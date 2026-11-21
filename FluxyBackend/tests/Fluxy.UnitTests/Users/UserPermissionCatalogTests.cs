@@ -143,6 +143,42 @@ namespace Fluxy.UnitTests.Users
         }
 
         [Fact]
+        public void TheSettingsPairBelongsToTheAdministratorBaseGroup()
+        {
+            // The seeder reconciles the base groups against this catalog on every start, and the
+            // migration `GrantSettingsPermissions` backfills the same pair for an installation
+            // that has been migrated but not yet restarted. Both decisions rest on this one: the
+            // pair is owned by Admin, so it is granted to the Administrators group and to nobody
+            // else.
+            var admin = UserPermissionCatalog.ForRole(UserRole.Admin);
+
+            Assert.Contains(UserPermission.ViewSettings, admin);
+            Assert.Contains(UserPermission.EditSettings, admin);
+
+            Assert.DoesNotContain(
+                UserPermission.ViewSettings,
+                UserPermissionCatalog.ForRole(UserRole.Client));
+            Assert.DoesNotContain(
+                UserPermission.EditSettings,
+                UserPermissionCatalog.ForRole(UserRole.Reseller));
+        }
+
+        [Fact]
+        public void TheSettingsPairIsKnownAndParsesFromItsWireNames()
+        {
+            Assert.True(UserPermissionCatalog.IsKnown(UserPermission.ViewSettings));
+            Assert.True(UserPermissionCatalog.IsKnown(UserPermission.EditSettings));
+            Assert.True(UserPermissionCatalog.IsKnown(
+                UserPermission.ViewSettings | UserPermission.EditSettings));
+
+            Assert.True(UserPermissionCatalog.TryParse("viewSettings", out var view));
+            Assert.Equal(UserPermission.ViewSettings, view);
+
+            Assert.True(UserPermissionCatalog.TryParse("editSettings", out var edit));
+            Assert.Equal(UserPermission.EditSettings, edit);
+        }
+
+        [Fact]
         public void ClientAndResellerBaseGroupsOwnNoPermissions()
         {
             Assert.Empty(UserPermissionCatalog.ForRole(UserRole.Client));
@@ -206,6 +242,10 @@ namespace Fluxy.UnitTests.Users
             Assert.Equal(536870912, (long)UserPermission.ViewApiRequestFailures);
             Assert.Equal(1L << 32, (long)UserPermission.ViewServers);
             Assert.Equal(1L << 33, (long)UserPermission.EditServers);
+            Assert.Equal(1L << 34, (long)UserPermission.ViewSettings);
+            Assert.Equal(1L << 35, (long)UserPermission.EditSettings);
+            Assert.Equal(17179869184, (long)UserPermission.ViewSettings);
+            Assert.Equal(34359738368, (long)UserPermission.EditSettings);
             Assert.False(Enum.IsDefined((UserPermission)1));
             Assert.False(Enum.IsDefined((UserPermission)2));
         }
@@ -276,10 +316,11 @@ namespace Fluxy.UnitTests.Users
             // blacklist pair took 2^26 and 2^27, again when the user-log read grant took
             // 2^28, again when the API request failure read grant took 2^29, again when the
             // transcoding pair took 2^30 and 2^31 - the widening to long is what made the
-            // second of those two fit - and again when the server pair took 2^32 and 2^33. It
-            // moves each time a permission takes one, which is exactly what this line is for.
+            // second of those two fit - and again when the server pair took 2^32 and 2^33 - and
+            // again when the settings pair took 2^34 and 2^35. It moves each time a permission
+            // takes one, which is exactly what this line is for.
             Assert.False(UserPermissionCatalog.IsKnown(
-                UserPermission.ViewClients | (UserPermission)(1L << 34)));
+                UserPermission.ViewClients | (UserPermission)(1L << 36)));
         }
 
         [Fact]

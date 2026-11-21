@@ -11,6 +11,7 @@ using Fluxy.Core.Subscriptions.ReadModels;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Subscriptions.Rows;
 using Fluxy.Core.Subscriptions.Utils;
+using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Users.Enums;
 
 namespace Fluxy.Application.Subscriptions.Services
@@ -46,6 +47,7 @@ namespace Fluxy.Application.Subscriptions.Services
 
         private readonly ISubscriptionRepository _subscriptions;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ISettingsSnapshotProvider _settings;
         private readonly TimeProvider _time;
 
         /// <summary>
@@ -53,14 +55,17 @@ namespace Fluxy.Application.Subscriptions.Services
         /// </summary>
         /// <param name="subscriptions">Repository holding the subscriptions.</param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
+        /// <param name="settings">Stored settings the trial switch is read from.</param>
         /// <param name="time">Clock the expiry arithmetic is measured from.</param>
         public SubscriptionService(
             ISubscriptionRepository subscriptions,
             IUnitOfWork unitOfWork,
+            ISettingsSnapshotProvider settings,
             TimeProvider time)
         {
             _subscriptions = subscriptions;
             _unitOfWork = unitOfWork;
+            _settings = settings;
             _time = time;
         }
 
@@ -224,6 +229,16 @@ namespace Fluxy.Application.Subscriptions.Services
                 CreatedAt = now,
                 UpdatedAt = now
             };
+
+            // The installation may have trials switched off. The check reads the effective row
+            // rather than the request, so the trial-tariff-plan path is covered for free: a plan
+            // whose IsTrial is true lands here exactly as a request's own flag does. It sits
+            // after the plan has decided the row and before the duplicate probe, so a create that
+            // is about to be refused for its trial flag is not first answered as a collision.
+            if (effective.IsTrial && !_settings.ApplicationSnapshot.EnableTrials)
+            {
+                errors[nameof(NewSubscription.IsTrial)] = SubscriptionRules.TrialsDisabledRule;
+            }
 
             // The services the plan cannot deliver are cleared *before* the uniqueness probe, so
             // a value that is about to be dropped is not refused as a duplicate of one it will

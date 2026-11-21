@@ -333,6 +333,32 @@ namespace Fluxy.Core.Users.Enums
         /// May change the servers: create, edit and delete them. Separate from
         /// <see cref="ViewServers"/> for the reason <see cref="EditStreams"/> gives.
         /// </summary>
-        EditServers = 1L << 33
+        EditServers = 1L << 33,
+
+        /// <summary>
+        /// May read the installation-wide settings: the application settings screen and the MAG
+        /// settings screen.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// One pair covers both screens because they are one capability - what this installation
+        /// is and how its portal would behave - behind two forms. A second pair would be two
+        /// grants nobody could tell apart; an operator who may read one settings value has no
+        /// narrower screen to be kept out of.
+        /// </para>
+        /// <para>
+        /// <b>This is the fifth value above <c>1 &lt;&lt; 29</c></b>, after the transcoding pair
+        /// and the server pair. The enum and the <c>permission</c> column are both 64-bit by now,
+        /// so no widening accompanies the pair. The migration <c>GrantSettingsPermissions</c>
+        /// backfills the pair for an installation that has migrated but not yet restarted.
+        /// </para>
+        /// </remarks>
+        ViewSettings = 1L << 34,
+
+        /// <summary>
+        /// May change the installation-wide settings. Separate from <see cref="ViewSettings"/>
+        /// for the reason <see cref="EditStreams"/> gives.
+        /// </summary>
+        EditSettings = 1L << 35
     }
 }

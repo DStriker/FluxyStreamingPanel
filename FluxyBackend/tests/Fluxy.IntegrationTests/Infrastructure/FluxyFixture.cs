@@ -98,6 +98,19 @@ namespace Fluxy.IntegrationTests.Infrastructure
             GeoIp.Clear();
             Recaptcha.Outcome = Fluxy.Core.Security.Enums.RecaptchaValidationOutcome.Passed;
 
+            // Move the shared clock up to the wall clock when it has fallen behind. Tests advance
+            // it deliberately, and without this the process-wide provider drifts behind real time
+            // for the rest of the run - which a fixture that compares it against PostgreSQL's
+            // `now()` (the expired-registration-code fixture does) eventually notices as a code
+            // that was supposed to have expired but has not yet. Moving forward only, because the
+            // fake provider refuses to go back and no test needs the clock to rewind.
+            var behind = DateTimeOffset.UtcNow - Clock.GetUtcNow();
+
+            if (behind > TimeSpan.Zero)
+            {
+                Clock.Advance(behind);
+            }
+
             await using (var connection = new NpgsqlConnection(PostgresConnectionString))
             {
                 await connection.OpenAsync();
@@ -108,6 +121,14 @@ namespace Fluxy.IntegrationTests.Infrastructure
             await using var scope = Factory.Services.CreateAsyncScope();
             await TestDataSeeder.EnsureBaseGroupsAsync(scope.ServiceProvider);
             await TestDataSeeder.EnsureMainServerAsync(scope.ServiceProvider);
+
+            // The settings rows are not re-seeded - the snapshot provider answers the defaults
+            // when they are absent, which is the contract - but the cached reading survives the
+            // truncation, so it is reloaded here. Without this, a test that switched trials off
+            // would leave every later test in the run reading the old snapshot for one window.
+            await scope.ServiceProvider
+                .GetRequiredService<Fluxy.Core.Settings.Interfaces.ISettingsSnapshotProvider>()
+                .ReloadAsync();
         }
 
         public HttpClient CreateClient()

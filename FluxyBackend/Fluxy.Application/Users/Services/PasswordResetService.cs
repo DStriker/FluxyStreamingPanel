@@ -5,6 +5,7 @@ using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
+using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Interfaces;
@@ -45,6 +46,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IEmailSender _emailSender;
         private readonly IUserLogService _userLogs;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
+        private readonly ISettingsSnapshotProvider _settings;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<PasswordResetService> _logger;
 
@@ -59,6 +61,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="userLogs">The audit log every outcome is recorded in.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
+        /// <param name="settings">Stored settings the email subject's service name is read from.</param>
         /// <param name="timeProvider">
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
         /// without waiting for it.
@@ -73,6 +76,7 @@ namespace Fluxy.Application.Users.Services
             IEmailSender emailSender,
             IUserLogService userLogs,
             IOptionsMonitor<RegistrationOptions> options,
+            ISettingsSnapshotProvider settings,
             TimeProvider timeProvider,
             ILogger<PasswordResetService> logger)
         {
@@ -84,6 +88,7 @@ namespace Fluxy.Application.Users.Services
             _emailSender = emailSender;
             _userLogs = userLogs;
             _options = options;
+            _settings = settings;
             _timeProvider = timeProvider;
             _logger = logger;
         }
@@ -214,7 +219,7 @@ namespace Fluxy.Application.Users.Services
                 new EmailMessage
                 {
                     To = user.Email,
-                    Subject = "Your Fluxy password reset code",
+                    Subject = $"Your {_settings.ApplicationSnapshot.ServiceName} password reset code",
                     Body = BuildCodeBody(user.Username, code, options.CodeLifetime)
                 },
                 cancellationToken);

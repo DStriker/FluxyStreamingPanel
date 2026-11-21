@@ -103,17 +103,23 @@ export const getSubscription = (id: string, signal?: AbortSignal): Promise<Subsc
  *
  * A playlist id or MAC another subscription holds is `409 subscription_already_exists` with the
  * field named in `errors`, so the form shows it under the input rather than as a toast.
+ *
+ * `trialsEnabled` is the installation's own setting, read by the form from `GET /admin/settings`
+ * and passed through to the body mapping: with trials off the create pins `isTrial: false`
+ * rather than sending a flag the server would refuse.
  */
 export const createSubscription = ({
   values,
+  trialsEnabled,
   csrfToken,
 }: {
   values: SubscriptionValues
+  trialsEnabled?: boolean
   csrfToken: string | null
 }): Promise<MessageResponse> =>
   apiFetch('/admin/subscriptions', {
     method: 'POST',
-    body: toCreateBody(values),
+    body: toCreateBody(values, { trialsEnabled }),
     csrfToken,
   })
 

@@ -5,6 +5,7 @@ using Fluxy.Core.Email.Enums;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
+using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Users.Commands;
 using Fluxy.Core.Users.Enums;
 using Fluxy.Core.Users.Exceptions;
@@ -45,6 +46,7 @@ namespace Fluxy.Application.Users.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IEmailSender _emailSender;
         private readonly IOptionsMonitor<RegistrationOptions> _options;
+        private readonly ISettingsSnapshotProvider _settings;
         private readonly TimeProvider _timeProvider;
         private readonly IUserLogService _userLogs;
         private readonly ILogger<RegistrationService> _logger;
@@ -56,6 +58,7 @@ namespace Fluxy.Application.Users.Services
         /// <param name="unitOfWork">Commits one registration step as one save.</param>
         /// <param name="emailSender">Sender that delivers the code.</param>
         /// <param name="options">Live settings, so a configuration reload applies without a restart.</param>
+        /// <param name="settings">Stored settings the email subject's service name is read from.</param>
         /// <param name="timeProvider">
         /// Clock the code lifetime is measured with. Injected so the window can be exercised
         /// without waiting for it.
@@ -67,6 +70,7 @@ namespace Fluxy.Application.Users.Services
             IUnitOfWork unitOfWork,
             IEmailSender emailSender,
             IOptionsMonitor<RegistrationOptions> options,
+            ISettingsSnapshotProvider settings,
             TimeProvider timeProvider,
             IUserLogService userLogs,
             ILogger<RegistrationService> logger)
@@ -75,6 +79,7 @@ namespace Fluxy.Application.Users.Services
             _unitOfWork = unitOfWork;
             _emailSender = emailSender;
             _options = options;
+            _settings = settings;
             _timeProvider = timeProvider;
             _userLogs = userLogs;
             _logger = logger;
@@ -400,7 +405,7 @@ namespace Fluxy.Application.Users.Services
                 new EmailMessage
                 {
                     To = email,
-                    Subject = "Your Fluxy registration code",
+                    Subject = $"Your {_settings.ApplicationSnapshot.ServiceName} registration code",
                     Body = BuildCodeBody(username, code, _options.CurrentValue.CodeLifetime)
                 },
                 cancellationToken);
