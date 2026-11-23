@@ -17,7 +17,7 @@ docker_run.bat                                                # generates .env i
 powershell -ExecutionPolicy Bypass -File scripts\init-secrets.ps1   # (re)generate secrets in .env; -Force regenerates all
 ```
 
-- .NET 10 SDK required (installed: 10.0.401; `global.json` pins the 10.0.4xx feature band with `latestPatch`). Solution uses the XML `.slnx` format.
+- .NET 10 SDK required; `global.json` pins `10.0.401` with `rollForward: latestMajor`, so a newer major satisfies the pin — this machine has 11.0.100 installed and builds with it. CI still installs `10.0.401` because `actions/setup-dotnet` reads `sdk.version` from this file, so the local and CI toolchains can differ by major, which is intended and supported. Solution uses the XML `.slnx` format.
 - Unit tests need only the SDK. Integration tests need Docker Desktop — Testcontainers starts `postgres:18.6` and `redis:8.6`. They drive the real composition root, migrations and HTTP pipeline, reset the database and Redis before each test, and run sequentially in one xUnit collection; the host runs in `Testing`, so the production error envelope is what is asserted.
 - **No `.editorconfig`, no lint/format config, no `Directory.Build.props`/`Directory.Packages.props` (no central package management).** Verification is `dotnet build`, `dotnet test`, and hitting the endpoint. `dotnet format` is deliberately not a gate yet.
 - `dotnet-ef` is pinned in `.config/dotnet-tools.json`; run `dotnet tool restore` once after cloning.
