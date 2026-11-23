@@ -37,6 +37,7 @@ describe('menuItemPath', () => {
 describe('groupKeyForPath', () => {
   it('names the category of each menu page', () => {
     expect(groupKeyForPath('Admin', '/admin/dashboard')).toBe('overview')
+    expect(groupKeyForPath('Admin', '/admin/backups')).toBe('overview')
     expect(groupKeyForPath('Admin', '/admin/users')).toBe('users')
     expect(groupKeyForPath('Admin', '/admin/subscriptions')).toBe('subscriptions')
     // The MAG event log is a menu item of the subscriptions group, so the group stays open on

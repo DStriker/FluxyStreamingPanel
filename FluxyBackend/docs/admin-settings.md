@@ -182,12 +182,17 @@ Errors are collected in the service keyed by the C# property name and normalised
 - `enigma2BouquetName`, the four fallback URLs - no playlist/MAG portal producer exists;
 - `publicApiFloodLimit`, `publicApiFloodWhitelist`, `requireUserAgent` - there is no public
   streaming API to throttle or inspect;
-- all six retention values, `backupEnabled`/`backupPeriod`/`backupRotationCount` - there is no
-  `IHostedService`/`BackgroundService` anywhere in the solution and no `pg_dump` at runtime;
-  backup execution is out of scope entirely;
+- all six retention values - nothing prunes those tables yet;
 - `defaultTimeZone` - no screen formats an installation-wide date with it yet;
 - **all eleven MAG settings** - the MAG flags overlap `TariffPlan.StrictStbDeviceId` and
   `Subscription.IsStbLock`, and there is no MAG portal to read them.
+
+**The three backup settings are enforced now.** `backupEnabled`, `backupPeriod` and
+`backupRotationCount` drive `BackupScheduler` and the rotation of `Fluxy.API/backups/` - see
+[admin-backups.md](admin-backups.md). **Editing stays on this page and nowhere else**: `PATCH
+/admin/settings` is a full write of the whole row, so a second editing surface (a
+`PATCH /admin/backups/settings`) would send seventeen values it never showed and clobber them.
+`/admin/backups` therefore echoes the three values read-only, with a link back here.
 
 ### Seeding: the migration, the seeder and the bootstrap copy
 

@@ -2,6 +2,8 @@ using Fluxy.API.Controllers.Support;
 using Fluxy.API.Extensions;
 using Fluxy.API.Options;
 using Fluxy.Application;
+using Fluxy.Application.Backups.Services;
+using Fluxy.Core.Backups.Options;
 using Fluxy.DataAccess;
 using Microsoft.AspNetCore.HttpLogging;
 
@@ -44,6 +46,23 @@ namespace Fluxy.API
             builder.Services.AddFluxyAuthentication(builder.Configuration);
 
             builder.Services.AddFluxyRateLimits(builder.Configuration);
+
+            // The backup feature's own configuration. The directory is resolved against the content
+            // root here, rather than left relative, so no service has to know where the host was
+            // started from: `backups` means `Fluxy.API/backups/` whatever the working directory.
+            var backups = builder.Configuration
+                .GetSection(BackupsOptions.SectionName)
+                .Get<BackupsOptions>() ?? new BackupsOptions();
+
+            backups.Directory = Path.GetFullPath(
+                Path.Combine(builder.Environment.ContentRootPath, backups.Directory));
+
+            builder.Services.AddSingleton(backups);
+
+            // The scheduler is registered beside the services it uses. `AddApplicationServices`
+            // deliberately does not register it, because a hosted service belongs to the host's
+            // lifetime rather than to the application layer's DI surface.
+            builder.Services.AddHostedService<BackupScheduler>();
 
             builder.Services.AddControllers();
             builder.Services.AddFluxyApiBehavior();

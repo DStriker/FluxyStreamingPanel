@@ -164,6 +164,10 @@ const en = {
       // names the screen.
       settings: 'Settings',
       magSettings: 'MAG settings',
+      // The database archives: a list and a delete, plus the one act that replaces the database.
+      // Named for what it holds rather than for the verb, because "Backups" answers "which page
+      // is this" and the card below it repeats the word as its own heading.
+      backups: 'Backups',
       orders: 'Orders',
       clients: 'Clients',
       // The servers section's two entries, the same add/manage pair every section carries: a
@@ -1733,6 +1737,42 @@ const en = {
     save: 'Save',
     cancel: 'Cancel',
     noPermission: 'Your group does not allow this.',
+  },
+  // The database archives: the list of dumps on the API host, the create, the restore and the
+  // delete. The three backup settings are echoed read-only here and edited on
+  // `/admin/settings`, whose PATCH is a whole-row write - a second editing surface would send
+  // seventeen values it never showed and clobber them.
+  backups: {
+    listTitle: 'Database backups',
+    create: 'Create backup now',
+    restore: 'Restore the database from this backup',
+    delete: 'Delete this backup',
+    writeInProgress: 'Another operation is running. Wait for it to finish.',
+    restoreNotice:
+      'The database was replaced with the backup. Everyone who signed in after it was taken is now signed out, including you if your session is newer than the file.',
+    column: {
+      fileName: 'File',
+      size: 'Size',
+      createdAt: 'Created',
+      actions: 'Actions',
+    },
+    settings: {
+      enabled: 'Scheduled backups',
+      enabledOn: 'On',
+      enabledOff: 'Off',
+      period: 'Period',
+      rotation: 'Keep',
+      editLink: 'Edit on the settings page',
+    },
+    confirm: {
+      restoreTitle: 'Restore the database from this backup?',
+      restoreText:
+        'The current database is replaced with the state stored in this backup. Everyone who signed in after the backup was taken will be signed out. Log and journal rows written after it are lost. The service is briefly interrupted while the restore runs.',
+      restoreOk: 'Restore',
+      deleteTitle: 'Delete this backup?',
+      deleteText: 'The file "{{name}}" is removed permanently and cannot be restored afterwards.',
+      deleteOk: 'Delete',
+    },
   },
   // The MAG portal's own settings, the second one-row resource. Its two vocabularies - the
   // containers and the themes - are drawn from the owner's wire words rather than from enum
@@ -3656,6 +3696,17 @@ const en = {
       server_not_found: 'There is no server with that identifier.',
       server_already_exists: 'Another server already has that name.',
       server_immutable: 'The main server cannot be deleted.',
+      // The backup surface: three successes and the four refusals its endpoints can produce.
+      // `backup_busy` is the single-flight gate answering "try again in a moment", and the two
+      // 500s name where the fault is - the tool is missing, or the tool ran and failed.
+      backup_created: 'The backup has been created.',
+      backup_restored: 'The database has been restored from the backup.',
+      backup_deleted: 'The backup has been deleted.',
+      backup_not_found: 'There is no backup file with that name.',
+      backup_busy: 'Another backup operation is running. Try again in a moment.',
+      backup_tool_unavailable:
+        'The backup tool is not available on this server. Docker or the PostgreSQL container could not be reached.',
+      backup_failed: 'The backup operation failed. The server log names the reason.',
       // The connection log's one write. It names the table rather than a row: the command wipes
       // everything, and the sentence says so.
       connection_logs_cleared: 'Every connection log entry has been deleted.',

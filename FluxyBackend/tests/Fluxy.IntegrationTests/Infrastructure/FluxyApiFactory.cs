@@ -2,6 +2,7 @@ using Fluxy.API;
 using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.GeoIp.Interfaces;
+using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Servers.Interfaces;
 using Fluxy.Core.Users.Enums;
@@ -31,6 +32,8 @@ namespace Fluxy.IntegrationTests.Infrastructure
         private readonly FakeRecaptchaValidator _recaptcha;
         private readonly FakeGeoIpResolver _geoIp;
         private readonly FakeTimeProvider _clock;
+        private readonly FakeDatabaseBackupTool _backupTool;
+        private readonly string _backupDirectory;
         private readonly IReadOnlyDictionary<string, string?> _extraSettings;
         private readonly Dictionary<string, string?> _previousEnvironment = new(StringComparer.Ordinal);
         private bool _environmentRestored;
@@ -42,7 +45,9 @@ namespace Fluxy.IntegrationTests.Infrastructure
             FakeRecaptchaValidator recaptcha,
             FakeGeoIpResolver geoIp,
             FakeTimeProvider clock,
-            IReadOnlyDictionary<string, string?>? extraSettings = null)
+            IReadOnlyDictionary<string, string?>? extraSettings = null,
+            FakeDatabaseBackupTool? backupTool = null,
+            string? backupDirectory = null)
         {
             _postgresConnectionString = postgresConnectionString;
             _redisConnectionString = redisConnectionString;
@@ -50,6 +55,8 @@ namespace Fluxy.IntegrationTests.Infrastructure
             _recaptcha = recaptcha;
             _geoIp = geoIp;
             _clock = clock;
+            _backupTool = backupTool ?? new FakeDatabaseBackupTool();
+            _backupDirectory = backupDirectory ?? NewBackupDirectory();
             _extraSettings = extraSettings ?? new Dictionary<string, string?>();
 
             // Minimal hosting reads its configuration while Program.Main is still running, before
@@ -98,6 +105,12 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(_clock);
+
+                // The dump/restore tool is replaced rather than pointed at Docker: the suite's
+                // PostgreSQL lives in a Testcontainers container whose name the host does not
+                // know, and a real restore would replace the shared schema mid-run.
+                services.RemoveAll<IDatabaseBackupTool>();
+                services.AddSingleton<IDatabaseBackupTool>(_backupTool);
 
                 services.RemoveAll<IUserSeeder>();
                 services.AddScoped<IUserSeeder, TestUserSeeder>();
@@ -183,6 +196,9 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 ["RateLimit:RefreshWindow"] = "00:15:00",
                 ["RateLimit:PreferenceLimit"] = "1000",
                 ["RateLimit:PreferenceWindow"] = "00:15:00",
+                ["Backups:ContainerName"] = "postgres",
+                ["Backups:Directory"] = _backupDirectory,
+                ["Backups:TickSeconds"] = "60",
                 ["Logging:LogLevel:Default"] = "Warning",
                 ["Logging:LogLevel:Microsoft.AspNetCore"] = "Warning"
             };
@@ -197,5 +213,17 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
         // Kept for readability at call sites that are about a role rather than a group.
         public static Guid BaseGroup(UserRole role) => Core.Users.Utils.BaseUserGroups.ForRole(role);
+
+        /// <summary>A fresh directory under the temp path for a factory that was not given one.</summary>
+        private static string NewBackupDirectory()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "fluxy-backups-tests-" + Guid.NewGuid().ToString("N"));
+
+            Directory.CreateDirectory(path);
+
+            return path;
+        }
     }
 }

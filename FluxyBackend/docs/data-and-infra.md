@@ -108,6 +108,14 @@ Two traps that produce false failures:
 
 ### Still true from before
 
+- **Database backups ride the container's own client binaries.** Archives live in
+  `Fluxy.API/backups/` (gitignored, with a committed `.gitkeep` so the folder exists) and are
+  produced by `docker exec <container> pg_dump … -Fc`, which is why `docker.exe` and a running
+  `postgres` container are the backup feature's only host requirement. In-container auth rides the
+  unix socket's `trust` line, so no password is passed or logged. **The PG server major must be no
+  newer than the client major** - 18.6 today - because `pg_dump` refuses a newer server and
+  `pg_restore` refuses an archive written by a newer client. The full surface, the restore
+  sequence and its accepted outage are in [admin-backups.md](admin-backups.md).
 - **Postgres and redis are both connected from the app** (see the sections above). Redis holds the rate-limit counters and the identifiers of revoked sessions; the counters fall back to process memory and the denylist fails open when it is unreachable. There is no cache, no session store, and no distributed lock. pgadmin is manual tooling.
 - compose bind-mounts `../2. Init Database` into `/docker-entrypoint-initdb.d`, but **that folder does not exist** in the repo, so Docker silently creates an empty directory in the parent and Postgres gets no bootstrap SQL.
 - `UserSecretsId` is set — use `dotnet user-secrets --project Fluxy.API set "..."` rather than committing connection strings to appsettings. The app prefers it over the `.env`-derived value.

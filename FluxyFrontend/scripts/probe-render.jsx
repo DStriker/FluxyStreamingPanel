@@ -33,6 +33,7 @@ import ServersPage from '../src/pages/admin/ServersPage'
 import ServersFormPage from '../src/pages/admin/ServersFormPage'
 import SettingsPage from '../src/pages/admin/SettingsPage'
 import MagSettingsPage from '../src/pages/admin/MagSettingsPage'
+import BackupsPage from '../src/pages/admin/BackupsPage'
 import AdminSessionsPage from '../src/pages/admin/AdminSessionsPage'
 import ContentCategoriesPage from '../src/pages/admin/ContentCategoriesPage'
 import VideoStreamsPage from '../src/pages/admin/VideoStreamsPage'
@@ -119,6 +120,7 @@ import {
 } from '../src/features/mag-events/layout'
 import { MAG_EVENT_TYPES } from '../src/features/mag-events/events'
 import { actionsColumnWidth } from '../src/utils/tableWidths'
+import { formatSizeBytes } from '../src/features/backups/size'
 import SubscriptionExpiryField from '../src/features/subscriptions/components/SubscriptionExpiryField'
 import SubscriptionSubrows from '../src/features/subscriptions/components/SubscriptionSubrows'
 import BouquetsPage from '../src/pages/admin/BouquetsPage'
@@ -1716,21 +1718,25 @@ async function main() {
   const adminOverviewItems = (NAVIGATION.Admin.find((group) => group.key === 'overview')?.items ?? []).map(
     (item) => item.key,
   )
-  const [settingsModule, magSettingsModule] = await Promise.all([
+  const [settingsModule, magSettingsModule, backupsModule] = await Promise.all([
     flatItems('Admin').find((item) => item.key === 'settings')?.page?.(),
     flatItems('Admin').find((item) => item.key === 'magSettings')?.page?.(),
+    flatItems('Admin').find((item) => item.key === 'backups')?.page?.(),
   ])
   check(
-    'the overview group reads dashboard, settings, magSettings, each opening its own page at its own address',
-    adminOverviewItems.join(',') === 'dashboard,settings,magSettings' &&
+    'the overview group reads dashboard, settings, magSettings, backups, each opening its own page at its own address',
+    adminOverviewItems.join(',') === 'dashboard,settings,magSettings,backups' &&
       menuPath('Admin', 'settings') === '/admin/settings' &&
       menuPath('Admin', 'mag-settings') === '/admin/mag-settings' &&
+      menuPath('Admin', 'backups') === '/admin/backups' &&
       settingsModule?.default === SettingsPage &&
       magSettingsModule?.default === MagSettingsPage &&
+      backupsModule?.default === BackupsPage &&
       ['en', 'ru'].every(
         (lng) =>
           Boolean(i18n.getResource(lng, 'translation', 'nav.items.settings')) &&
           Boolean(i18n.getResource(lng, 'translation', 'nav.items.magSettings')) &&
+          Boolean(i18n.getResource(lng, 'translation', 'nav.items.backups')) &&
           Boolean(i18n.getResource(lng, 'translation', 'permissions.viewSettings')) &&
           Boolean(i18n.getResource(lng, 'translation', 'permissions.editSettings')) &&
           Boolean(i18n.getResource(lng, 'translation', 'messages.api.settings_updated')) &&
@@ -1740,7 +1746,9 @@ async function main() {
       i18n.getResource('ru', 'translation', 'nav.items.magSettings') === 'Настройки MAG',
     `overview: ${adminOverviewItems.join(', ')}; settings opens ${
       settingsModule?.default?.name ?? 'nothing'
-    }, magSettings opens ${magSettingsModule?.default?.name ?? 'nothing'}`,
+    }, magSettings opens ${magSettingsModule?.default?.name ?? 'nothing'}, backups opens ${
+      backupsModule?.default?.name ?? 'nothing'
+    }`,
   )
 
   // The permission pair is the catalog's last two entries, in the server's order, and both are
@@ -1754,6 +1762,130 @@ async function main() {
       permissionsForRole('Client').length === 0 &&
       permissionsForRole('Reseller').length === 0,
     `${ALL_PERMISSIONS.length} permissions, last two ${ALL_PERMISSIONS.slice(-2).join(', ')}`,
+  )
+
+  // --- The database backups screen ----------------------------------------------
+  //
+  // A list and one action per row, behind the reused settings grants. The renders land before
+  // the first answer, which is where the page's own shape is visible: the card title (the rule
+  // is that the address names the screen even when its data has not arrived), the create button
+  // in the toolbar, the read-only settings echo with dashes rather than an error, and the table
+  // with no rows. The seeded render is what shows the echo's real values and the row actions,
+  // because no effect runs under `renderToStaticMarkup`.
+  const backupsProbeResponse = {
+    items: [
+      {
+        fileName: 'fluxy-20261123T101500Z.dump',
+        sizeBytes: 126881,
+        createdAtUtc: '2026-11-23T10:15:00Z',
+      },
+    ],
+  }
+
+  const backupsHtml = renderToStaticMarkup(
+    withRouter('/admin/backups', withQuery(
+      <AntApp>
+        <BackupsPage sectionKey="nav.items.backups" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the backups page draws its card title, the toolbar and the read-only settings echo before any answer arrives',
+    backupsHtml.includes('>Database backups<') &&
+      backupsHtml.includes('Create backup now') &&
+      backupsHtml.includes('Scheduled backups') &&
+      backupsHtml.includes('Edit on the settings page') &&
+      backupsHtml.includes('ant-table') &&
+      !backupsHtml.includes('nav.items.backups') &&
+      !/\bbackups\.[a-zA-Z]/.test(backupsHtml),
+    `rendered ${backupsHtml.length} bytes with the directory still being read`,
+  )
+
+  const backupsSeededHtml = renderToStaticMarkup(
+    withRouter('/admin/backups', (() => {
+      const client = createQueryClient()
+
+      client.setQueryData(['profile'], probeProfile([...ALL_PERMISSIONS]))
+      client.setQueryData(['settings'], settingsProbeResponse)
+      // The hook answers the endpoint's body already unwrapped, so the cache holds the array.
+      client.setQueryData(['backups'], backupsProbeResponse.items)
+
+      return (
+        <QueryClientProvider client={client}>
+          <AntApp>
+            <BackupsPage sectionKey="nav.items.backups" />
+          </AntApp>
+        </QueryClientProvider>
+      )
+    })()),
+  )
+  const backupsSeededFacts = {
+    file: backupsSeededHtml.includes('fluxy-20261123T101500Z.dump'),
+    period: backupsSeededHtml.includes('Daily'),
+    rotation: backupsSeededHtml.includes('Keep'),
+    restoreLabel: backupsSeededHtml.includes('Restore the database from this backup'),
+    deleteLabel: backupsSeededHtml.includes('Delete this backup'),
+    size: backupsSeededHtml.includes(formatSizeBytes(126881)),
+    undoIcon: backupsSeededHtml.includes('anticon-undo'),
+    deleteIcon: backupsSeededHtml.includes('anticon-delete'),
+  }
+  check(
+    'the backups table draws the echoed settings, the file and both row actions',
+    backupsSeededFacts.file &&
+      backupsSeededFacts.period &&
+      backupsSeededFacts.rotation &&
+      // The two row actions are icon-only, and a Tooltip contributes no text to static markup:
+      // the glyphs are what this render can see, and the labels are asserted in both bundles
+      // by the check below.
+      backupsSeededFacts.undoIcon &&
+      backupsSeededFacts.deleteIcon &&
+      // The size column is a function of the byte count, and the probe is the only renderer
+      // that can see the value it produced.
+      backupsSeededFacts.size &&
+      !/\bbackups\.[a-zA-Z]/.test(backupsSeededHtml),
+    `rendered ${backupsSeededHtml.length} bytes: ${JSON.stringify(backupsSeededFacts)}`,
+  )
+
+  check(
+    'the backup codes, both confirmations and the restore notice are translated in both bundles',
+    ['en', 'ru'].every(
+      (lng) =>
+        [
+          'backup_created',
+          'backup_restored',
+          'backup_deleted',
+          'backup_not_found',
+          'backup_busy',
+          'backup_tool_unavailable',
+          'backup_failed',
+        ].every((code) =>
+          Boolean(i18n.getResource(lng, 'translation', `messages.api.${code}`)),
+        ) &&
+        [
+          'backups.listTitle',
+          'backups.create',
+          'backups.restore',
+          'backups.delete',
+          'backups.writeInProgress',
+          'backups.restoreNotice',
+          'backups.confirm.restoreTitle',
+          'backups.confirm.restoreText',
+          'backups.confirm.restoreOk',
+          'backups.confirm.deleteTitle',
+          'backups.confirm.deleteText',
+          'backups.confirm.deleteOk',
+          'backups.settings.enabled',
+          'backups.settings.period',
+          'backups.settings.rotation',
+          'backups.settings.editLink',
+          'backups.column.fileName',
+          'backups.column.size',
+          'backups.column.createdAt',
+        ].every((key) => Boolean(i18n.getResource(lng, 'translation', key))),
+    ) &&
+      i18n.getResource('ru', 'translation', 'backups.confirm.restoreTitle') ===
+        'Восстановить базу из копии?',
+    'every code and every backup key resolves in en and ru',
   )
 
   // --- The content categories page --------------------------------------------

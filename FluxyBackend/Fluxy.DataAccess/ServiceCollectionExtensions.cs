@@ -1,5 +1,6 @@
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Repositories;
+using Fluxy.Core.Backups.Options;
 using Fluxy.Core.Blacklists.Repositories;
 using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Epg.Repositories;
@@ -18,6 +19,7 @@ using Fluxy.Core.Users.Repositories;
 using Fluxy.Core.Vod.Repositories;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Infrastructure;
+using Fluxy.DataAccess.Infrastructure.Backups;
 using Fluxy.DataAccess.Infrastructure.GeoIp;
 using Fluxy.DataAccess.Infrastructure.Redis;
 using Fluxy.DataAccess.Repositories;
@@ -130,6 +132,16 @@ namespace Fluxy.DataAccess
             services.AddScoped<ISourceReplacementRepository, SourceReplacementRepository>();
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
+
+            // The one thing in this layer that reaches outside the database: the dump and restore
+            // tools, run inside the PostgreSQL container. Registered as a singleton because it
+            // holds no state but a parsed user and database name, and because the service that
+            // calls it is a singleton too. The options instance is registered by the composition
+            // root, which is what resolves the directory against the content root.
+            services.AddSingleton<IDatabaseBackupTool>(provider => new PostgresBackupTool(
+                connectionString,
+                provider.GetRequiredService<BackupsOptions>(),
+                provider.GetRequiredService<ILogger<PostgresBackupTool>>()));
 
             return services;
         }

@@ -371,3 +371,23 @@ opencode.json
 /ARCHITECTURE.md
 /docs/ai
 /.tmp-runtime
+/FluxyFrontend/run.bat
+# The database archives the API writes, and the source folders that share the word "Backups".
+#
+# The `Backup*/` rule further up is the standard Visual Studio one (generated project-file
+# backups) and it is not anchored, so it matches this feature's own `Backups/` source folders on
+# every platform - `Backup*` matches `Backups`. The directories are therefore re-included
+# explicitly; git only descends into a directory it can see, which is why the directory itself
+# has to be named before anything inside it can be. The API's archive directory is the one case
+# where the folder is committed and its contents are not.
+!FluxyBackend/Fluxy.Core/Backups/
+!FluxyBackend/Fluxy.API/Contracts/Backups/
+!FluxyBackend/Fluxy.Application/Backups/
+!FluxyBackend/Fluxy.DataAccess/Infrastructure/Backups/
+!FluxyBackend/tests/Fluxy.UnitTests/Backups/
+!FluxyBackend/tests/Fluxy.IntegrationTests/Backups/
+!FluxyFrontend/src/features/backups/
+!FluxyFrontend/tests/features/backups/
+!FluxyBackend/Fluxy.API/backups/
+/FluxyBackend/Fluxy.API/backups/*
+!/FluxyBackend/Fluxy.API/backups/.gitkeep

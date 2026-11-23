@@ -29,6 +29,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
         private Respawner _respawner = null!;
         private IConnectionMultiplexer _redisConnection = null!;
+        private string _backupDirectory = null!;
 
         public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
@@ -37,6 +38,12 @@ namespace Fluxy.IntegrationTests.Infrastructure
         public FakeRecaptchaValidator Recaptcha { get; } = new();
 
         public FakeGeoIpResolver GeoIp { get; } = new();
+
+        /// <summary>The tool the backup endpoint calls - a fake, never Docker.</summary>
+        public FakeDatabaseBackupTool BackupTool { get; } = new();
+
+        /// <summary>The directory the backup endpoint writes into, fresh for the run.</summary>
+        public string BackupDirectory => _backupDirectory;
 
         public FluxyApiFactory Factory { get; private set; } = null!;
 
@@ -48,13 +55,21 @@ namespace Fluxy.IntegrationTests.Infrastructure
         {
             await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
+            _backupDirectory = Path.Combine(
+                Path.GetTempPath(),
+                "fluxy-backups-tests-" + Guid.NewGuid().ToString("N"));
+
+            Directory.CreateDirectory(_backupDirectory);
+
             Factory = new FluxyApiFactory(
                 PostgresConnectionString,
                 RedisConnectionString,
                 Email,
                 Recaptcha,
                 GeoIp,
-                Clock);
+                Clock,
+                backupTool: BackupTool,
+                backupDirectory: BackupDirectory);
 
             // Creating a client is what starts the host. The program's own seeder may or may not
             // have run by the time the factory returns, so the schema is checked explicitly below.
@@ -129,6 +144,24 @@ namespace Fluxy.IntegrationTests.Infrastructure
             await scope.ServiceProvider
                 .GetRequiredService<Fluxy.Core.Settings.Interfaces.ISettingsSnapshotProvider>()
                 .ReloadAsync();
+
+            // The archives are files, not rows: the truncation above does not touch them, so the
+            // directory is emptied here for the same reason. The tool's counters are reset with it.
+            ResetBackups();
+        }
+
+        /// <summary>Empties the backup directory and the fake tool's state.</summary>
+        private void ResetBackups()
+        {
+            BackupTool.Reset();
+
+            if (Directory.Exists(_backupDirectory))
+            {
+                foreach (var path in Directory.EnumerateFiles(_backupDirectory))
+                {
+                    File.Delete(path);
+                }
+            }
         }
 
         public HttpClient CreateClient()
@@ -169,6 +202,11 @@ namespace Fluxy.IntegrationTests.Infrastructure
             await Factory.DisposeAsync();
             await _redis.DisposeAsync();
             await _postgres.DisposeAsync();
+
+            if (!string.IsNullOrEmpty(_backupDirectory) && Directory.Exists(_backupDirectory))
+            {
+                Directory.Delete(_backupDirectory, recursive: true);
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using Fluxy.Application.Authentication.Services;
 using Fluxy.Application.Authentication.Utils;
+using Fluxy.Application.Backups.Services;
 using Fluxy.Application.Blacklists.Services;
 using Fluxy.Application.Content.Services;
 using Fluxy.Application.Email.Options;
@@ -20,6 +21,7 @@ using Fluxy.Application.Users.Services;
 using Fluxy.Application.Vod.Services;
 using Fluxy.Core.Authentication.Interfaces;
 using Fluxy.Core.Authentication.Options;
+using Fluxy.Core.Backups.Interfaces;
 using Fluxy.Core.Blacklists.Interfaces;
 using Fluxy.Core.Content.Interfaces;
 using Fluxy.Core.Email.Interfaces;
@@ -285,6 +287,12 @@ namespace Fluxy.Application
             // Scoped like the server seeder, because it writes through the request-scoped
             // repositories and unit of work.
             services.AddScoped<ISettingsSeeder, SettingsSeeder>();
+
+            // The archives on the API host: one singleton, because the single-flight gate and the
+            // directory it writes must be the same instance for every request and every scheduler
+            // tick. It holds no DbContext; the migration and the settings read happen in scopes of
+            // their own.
+            services.AddSingleton<IBackupService, BackupService>();
 
             // The machinery of a change that waits for a code, shared by the profile change and
             // the password reset. Scoped, because it holds the unit of work of the request.

@@ -8,6 +8,7 @@ import {
   CreditCardOutlined,
   CustomerServiceOutlined,
   DashboardOutlined,
+  DatabaseOutlined,
   DesktopOutlined,
   GlobalOutlined,
   HistoryOutlined,
@@ -483,6 +484,17 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           labelKey: 'nav.items.magSettings',
           icon: MobileOutlined,
           page: () => import('../pages/admin/MagSettingsPage'),
+        },
+        {
+          // The database archives, after the two settings screens and next to the ones that own
+          // its configuration: the three backup values are edited on `/admin/settings` and this
+          // screen only echoes them, so the two sit together. The page is self-gated on
+          // `viewSettings`/`editSettings` for the same reason the settings pair is.
+          key: 'backups',
+          path: 'backups',
+          labelKey: 'nav.items.backups',
+          icon: DatabaseOutlined,
+          page: () => import('../pages/admin/BackupsPage'),
         },
       ],
     },
