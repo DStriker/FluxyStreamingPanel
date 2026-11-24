@@ -80,7 +80,7 @@ Fluxy.Core/
   Requests/          Models 1 · ReadModels 2 · Commands 1 · Enums 3 · Utils 4 · Interfaces 2 · Repositories 1
   Tickets/           Models 2 · ReadModels 6 · Commands 2 · Outcomes 3 · Enums 4 · Utils 5 · Interfaces 1 · Repositories 1
   Transcoding/       Models 1 · ReadModels 3 · Commands 3 · Outcomes 1 · Enums 7 · Utils 3 · Interfaces 1 · Repositories 1
-  Servers/           Models 2 · ReadModels 2 · Commands 3 · Outcomes 1 · Enums 4 · Utils 3 · Interfaces 3 · Repositories 1
+  Servers/           Models 2 · ReadModels 4 · Commands 3 · Outcomes 1 · Enums 4 · Utils 3 · Interfaces 3 · Repositories 1
   Backups/           Options 1 · ReadModels 1 · Enums 1 · Outcomes 1 · Interfaces 1 · Utils 3
 ```
 

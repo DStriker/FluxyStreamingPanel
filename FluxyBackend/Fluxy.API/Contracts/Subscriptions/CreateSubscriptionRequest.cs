@@ -36,6 +36,12 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>The tariff plan it is sold under, as a uuid, or null.</summary>
         public string? TariffPlanId { get; init; }
 
+        /// <summary>
+        /// The preferred server it is pinned to, as a uuid, or null for "any server, chosen later
+        /// by the main server".
+        /// </summary>
+        public string? PreferredServerId { get; init; }
+
         /// <summary>Connection ceiling, or null for unlimited.</summary>
         public int? MaxConnections { get; init; }
 

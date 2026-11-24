@@ -229,6 +229,51 @@ namespace Fluxy.UnitTests.Servers
         }
 
         [Fact]
+        public async Task DeleteOfAReferencedRowIsRefusedAndTheRowSurvives()
+        {
+            var existing = Stored(Guid.NewGuid());
+            var repository = new FakeServers { Existing = existing, References = 3 };
+            var unitOfWork = new FakeUnitOfWork();
+            var service = new ServerService(repository, unitOfWork);
+
+            var outcome = await service.DeleteAsync(
+                existing.Id,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(ServerAction.InUse, outcome.Action);
+            Assert.Equal(3, outcome.ReferenceCount);
+            Assert.False(repository.Removed);
+            Assert.Equal(0, unitOfWork.Saves);
+        }
+
+        [Fact]
+        public async Task DeleteRefusalsRunInThePinnedOrder()
+        {
+            // A missing row is missing before it can be the main one or be in use.
+            var missing = new ServerService(new FakeServers(), new FakeUnitOfWork());
+            Assert.Equal(
+                ServerAction.NotFound,
+                (await missing.DeleteAsync(MainServer.Id, TestContext.Current.CancellationToken)).Action);
+
+            // The main row is the main row before it can be "in use": its flag dominates the count.
+            var main = new ServerService(
+                new FakeServers { Existing = Stored(MainServer.Id), References = 7 },
+                new FakeUnitOfWork());
+            Assert.Equal(
+                ServerAction.ImmutableMain,
+                (await main.DeleteAsync(MainServer.Id, TestContext.Current.CancellationToken)).Action);
+
+            // Only a row that may otherwise go is refused for being named.
+            var existing = Stored(Guid.NewGuid());
+            var referenced = new ServerService(
+                new FakeServers { Existing = existing, References = 1 },
+                new FakeUnitOfWork());
+            Assert.Equal(
+                ServerAction.InUse,
+                (await referenced.DeleteAsync(existing.Id, TestContext.Current.CancellationToken)).Action);
+        }
+
+        [Fact]
         public async Task DeleteOfAnOrdinaryRowRemovesItAndCommitsOnce()
         {
             var existing = Stored(Guid.NewGuid());
@@ -270,6 +315,22 @@ namespace Fluxy.UnitTests.Servers
             Assert.Null(await service.GetAsync(
                 Guid.NewGuid(),
                 TestContext.Current.CancellationToken));
+        }
+
+        [Fact]
+        public async Task OptionsAreDelegatedToTheRepository()
+        {
+            var existing = Stored(Guid.NewGuid());
+            var service = new ServerService(
+                new FakeServers { Existing = existing },
+                new FakeUnitOfWork());
+
+            var options = await service.GetOptionsAsync(TestContext.Current.CancellationToken);
+
+            var option = Assert.Single(options);
+            Assert.Equal(existing.Id, option.Id);
+            Assert.Equal(existing.Name, option.Name);
+            Assert.Equal(existing.TimeshiftOnly, option.TimeshiftOnly);
         }
 
         /// <summary>A stored ordinary row every patch fact starts from.</summary>
@@ -342,6 +403,41 @@ namespace Fluxy.UnitTests.Servers
             public Guid WrittenId { get; private set; }
 
             public bool Removed { get; private set; }
+
+            /// <summary>How many rows point at the server, for the delete guard.</summary>
+            public int References { get; init; }
+
+            public Task<ServerReference?> GetReferenceAsync(
+                Guid id,
+                CancellationToken cancellationToken = default)
+                => Task.FromResult(
+                    Existing is not null && Existing.Id == id
+                        ? new ServerReference
+                        {
+                            Id = Existing.Id,
+                            Name = Existing.Name,
+                            TimeshiftOnly = Existing.TimeshiftOnly
+                        }
+                        : null);
+
+            public Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+                CancellationToken cancellationToken = default)
+                => Task.FromResult<IReadOnlyList<ServerOption>>(
+                    Existing is null
+                        ? []
+                        : [
+                            new ServerOption
+                            {
+                                Id = Existing.Id,
+                                Name = Existing.Name,
+                                TimeshiftOnly = Existing.TimeshiftOnly
+                            }
+                        ]);
+
+            public Task<int> CountReferencesAsync(
+                Guid id,
+                CancellationToken cancellationToken = default)
+                => Task.FromResult(References);
 
             public Task<ServerPage> GetPageAsync(
                 int page,

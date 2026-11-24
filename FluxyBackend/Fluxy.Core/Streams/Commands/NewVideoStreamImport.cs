@@ -39,6 +39,12 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>How many days of archive every imported stream keeps; permanent only.</summary>
         public int ArchiveDays { get; init; }
 
+        /// <summary>Server that transcodes every stream this import creates, or null for none.</summary>
+        public Guid? TranscodingServerId { get; init; }
+
+        /// <summary>Server that keeps the archive of every created stream, or null for none.</summary>
+        public Guid? ArchiveServerId { get; init; }
+
         /// <summary>User agent every imported relay carries, or null to send none.</summary>
         public string? RestreamUserAgent { get; init; }
 

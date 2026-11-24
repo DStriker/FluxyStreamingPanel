@@ -18,6 +18,8 @@ import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import {
   CalendarOutlined,
+  ClearOutlined,
+  CloudServerOutlined,
   DeleteOutlined,
   DesktopOutlined,
   EditOutlined,
@@ -55,6 +57,7 @@ import {
 } from '../../features/subscriptions/hooks/mutations'
 import { useSubscriptions } from '../../features/subscriptions/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import { useVideoStreams } from '../../features/video-streams/hooks/queries'
 import SendEventModal from '../../features/mag-events/components/SendEventModal'
 import { hinted } from '../../utils/hinted'
@@ -179,8 +182,8 @@ interface SendEventTarget {
   title: string
 }
 
-/** The two dialogs a bulk run needs a value for. */
-type BulkDialog = 'tariff' | 'creator'
+/** The three dialogs a bulk run needs a value for. */
+type BulkDialog = 'tariff' | 'creator' | 'server'
 
 interface SubscriptionsPageProps {
   /** The menu key this route carries, accepted and deliberately unread. */
@@ -256,6 +259,15 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const plans = plansQuery.data?.items ?? []
 
   /**
+   * The servers the bulk "set preferred server" dialog offers.
+   *
+   * The same read the form makes, and for the same reason: it is gated by the subscription view
+   * grant, so a page an operator may open can always fill the picker. A failure leaves the dialog
+   * with an empty list rather than failing the table.
+   */
+  const serversQuery = useAllServers()
+
+  /**
    * The streams a `playChannel` event may open, read at the page level - the connection log's
    * and the stream problem log's precedent, and the reason the dialog takes its options rather
    * than fetching them: a feature imports neither another feature nor a page. The read is
@@ -314,6 +326,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   const [bulkDialog, setBulkDialog] = useState<BulkDialog | null>(null)
   const [bulkTariffId, setBulkTariffId] = useState<string | null>(null)
   const [bulkCreatorId, setBulkCreatorId] = useState<string | null>(null)
+  const [bulkServerId, setBulkServerId] = useState<string | null>(null)
 
   /**
    * The send-event dialog, and the one row it is about.
@@ -335,6 +348,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
     setBulkDialog(null)
     setBulkTariffId(null)
     setBulkCreatorId(null)
+    setBulkServerId(null)
   }
 
   /**
@@ -616,6 +630,23 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
   }
 
   /**
+   * Asks before clearing the preferred server of a selection, the confirm-only half of the pair.
+   *
+   * It is a question rather than a menu entry that fires, because it is the one bulk operation
+   * whose whole content is a removal: an operator who clicked the wrong line would otherwise
+   * unpin a page of subscriptions with nothing to undo.
+   */
+  const confirmBulkClearServer = () => {
+    modal.confirm({
+      title: t('subscriptions.bulk.clearServerTitle', { count: selectedIds.length }),
+      content: t('subscriptions.bulk.clearServerBody'),
+      okText: t('subscriptions.bulk.clearServerOk'),
+      cancelText: t('actions.cancel'),
+      onOk: () => runBulk({ action: 'clear-server' }),
+    })
+  }
+
+  /**
    * Asks before prolonging one row, naming the date it will move to.
    *
    * A prolongation moves a date that may already have been extended on purpose, and clicking again
@@ -689,6 +720,12 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
       case 'change-creator':
         setBulkDialog('creator')
         break
+      case 'change-server':
+        setBulkDialog('server')
+        break
+      case 'clear-server':
+        confirmBulkClearServer()
+        break
       case 'delete':
         confirmBulkDelete()
         break
@@ -710,7 +747,7 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
     }
   }
 
-  /** The seven entries, in the order the menu draws them. */
+  /** The ten entries, in the order the menu draws them. */
   const bulkItems = useMemo<MenuProps['items']>(
     () => [
       { key: 'change-tariff', icon: <TagOutlined />, label: t('subscriptions.bulk.changeTariff') },
@@ -720,6 +757,16 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
         label: t('subscriptions.bulk.changeCreator'),
       },
       { key: 'prolong', icon: <CalendarOutlined />, label: t('subscriptions.bulk.extend') },
+      {
+        key: 'change-server',
+        icon: <CloudServerOutlined />,
+        label: t('subscriptions.bulk.changeServer'),
+      },
+      {
+        key: 'clear-server',
+        icon: <ClearOutlined />,
+        label: t('subscriptions.bulk.clearServer'),
+      },
       { type: 'divider' },
       {
         key: 'delete-playlist',
@@ -1016,6 +1063,11 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
     [plans],
   )
 
+  const serverOptions = useMemo(
+    () => (serversQuery.data ?? []).map((server) => ({ value: server.id, label: server.name })),
+    [serversQuery.data],
+  )
+
   const statusOptions = useMemo(
     () =>
       SUBSCRIPTION_STATUSES.map((status) => ({
@@ -1285,6 +1337,35 @@ export default function SubscriptionsPage(_props: SubscriptionsPageProps) {
             optionFilterProp="label"
             onChange={(value) => setBulkCreatorId(value ?? null)}
           />
+        </Modal>
+
+        {/* The bulk server pin: one picker over the same list the subscription form offers, and
+            the `change-server` action carrying the chosen identifier. The sentence below says
+            what the run does to a row that is already pinned, which is the one fact the picker
+            cannot show. */}
+        <Modal
+          title={t('subscriptions.bulk.changeServerTitle')}
+          open={bulkDialog === 'server'}
+          okText={t('subscriptions.bulk.apply')}
+          okButtonProps={{ disabled: !bulkServerId, loading: bulkBusy }}
+          cancelText={t('actions.cancel')}
+          onOk={() =>
+            runBulk({ action: 'change-server', serverId: bulkServerId ?? undefined }, closeBulkDialog)
+          }
+          onCancel={closeBulkDialog}
+        >
+          <Select
+            allowClear
+            showSearch
+            aria-label={t('subscriptions.bulk.changeServerPlaceholder')}
+            style={{ width: '100%' }}
+            value={bulkServerId ?? undefined}
+            options={serverOptions}
+            placeholder={t('subscriptions.bulk.changeServerPlaceholder')}
+            optionFilterProp="label"
+            onChange={(value) => setBulkServerId(value ?? null)}
+          />
+          <p style={{ margin: '12px 0 0' }}>{t('subscriptions.bulk.changeServerHint')}</p>
         </Modal>
       </Card>
     </SubscriptionsListContext.Provider>

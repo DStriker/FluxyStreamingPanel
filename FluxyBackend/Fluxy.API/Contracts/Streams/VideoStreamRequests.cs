@@ -76,6 +76,12 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Transcoding profile the relay converts the stream with, or none. As text.</summary>
         public string? TranscodingProfileId { get; init; }
 
+        /// <summary>Server that transcodes the stream, or none. As text.</summary>
+        public string? TranscodingServerId { get; init; }
+
+        /// <summary>Server that keeps the stream's archive, or none. As text.</summary>
+        public string? ArchiveServerId { get; init; }
+
         /// <summary>Key the channel is filed under inside that guide, or none.</summary>
         public string? EpgChannelKey { get; init; }
 
@@ -175,6 +181,12 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>New transcoding profile reference; null keeps, empty clears.</summary>
         public string? TranscodingProfileId { get; init; }
+
+        /// <summary>New transcoding server reference; null keeps, empty clears.</summary>
+        public string? TranscodingServerId { get; init; }
+
+        /// <summary>New archive server reference; null keeps, empty clears.</summary>
+        public string? ArchiveServerId { get; init; }
 
         /// <summary>New channel key; null keeps, empty clears.</summary>
         public string? EpgChannelKey { get; init; }

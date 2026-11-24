@@ -36,7 +36,11 @@ import {
   acceptsArchive,
   acceptsDelay,
   acceptsRestream,
+  allowsTimeshiftTranscoder,
+  offersArchiveServer,
+  requiresTranscodingServer,
 } from '../../features/video-streams/capabilities'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import { useImportVideoStreams } from '../../features/video-streams/hooks/mutations'
 import type {
   VideoStreamImportProblem,
@@ -45,6 +49,7 @@ import type {
 } from '../../features/video-streams/types'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import { ApiError, fieldErrors, messageForError, successTextFor } from '../../utils/http'
+import { hinted } from '../../utils/hinted'
 import { areaForRole } from '../../utils/session'
 import { useSession } from '../../utils/sessionContext'
 
@@ -64,6 +69,9 @@ const IMPORT_TYPES: VideoStreamImportType[] = ['Permanent', 'OnDemand', 'Redirec
  * at once, and starting them all because a form happened to open on the active state would
  * be a batch job the operator never asked for. The server's own default for a missing status
  * is `Stopped` as well, so the form and the endpoint agree before anything is sent.
+ *
+ * The two server references start blank: neither is a fact the form can invent, and an empty
+ * part is the endpoint's own "none".
  */
 const IMPORT_VALUES: VideoStreamImportValues = {
   type: 'Permanent',
@@ -72,6 +80,8 @@ const IMPORT_VALUES: VideoStreamImportValues = {
   bouquetIds: [],
   delayMinutes: 0,
   archiveDays: 0,
+  transcodingServerId: '',
+  archiveServerId: '',
   restreamUserAgent: '',
   restreamProxy: '',
   restreamCookies: '',
@@ -93,6 +103,8 @@ const FIELD_NAMES: readonly (keyof VideoStreamImportValues)[] = [
   'bouquetIds',
   'delayMinutes',
   'archiveDays',
+  'transcodingServerId',
+  'archiveServerId',
   'restreamUserAgent',
   'restreamProxy',
   'restreamCookies',
@@ -120,6 +132,12 @@ const toBody = (values: VideoStreamImportValues): VideoStreamImportValues => {
   bouquetIds: values.bouquetIds ?? [],
     delayMinutes: acceptsDelay(type) ? (values.delayMinutes ?? 0) : 0,
     archiveDays: acceptsArchive(type) ? (values.archiveDays ?? 0) : 0,
+    // Both references travel whatever the kind says, for the reason the create form gives
+    // (owner decision O4): a change of kind or of archive length never clears a binding, and a
+    // blank is the "none" a create means. They are batch settings - written on the rows this
+    // import creates and on no others.
+    transcodingServerId: values.transcodingServerId ?? '',
+    archiveServerId: values.archiveServerId ?? '',
     restreamUserAgent: restream ? (values.restreamUserAgent ?? '') : '',
     restreamProxy: restream ? (values.restreamProxy ?? '') : '',
     restreamCookies: restream ? (values.restreamCookies ?? '') : '',
@@ -181,6 +199,19 @@ export default function VideoStreamImportPage(_props: VideoStreamImportPageProps
   const categories = categoriesQuery.data?.items ?? []
   const categoriesError = categoriesQuery.isError ? messageForError(categoriesQuery.error) : null
 
+  /**
+   * The servers both pickers offer.
+   *
+   * A read behind its own grant: the options endpoint is opened by the subscription or stream
+   * view grants, while this page needs only `editStreams`, so a group can be allowed to import
+   * and still be refused this list. The controls are therefore disabled with the server's own
+   * sentence rather than left empty and silent - an operator must not read "no servers" into a
+   * lookup that did not answer.
+   */
+  const serversQuery = useAllServers()
+  const servers = useMemo(() => serversQuery.data ?? [], [serversQuery.data])
+  const serversError = serversQuery.isError ? messageForError(serversQuery.error) : null
+
   const area = session ? areaForRole(session.role) : ''
   const listPath = `${area}/video-streams`
 
@@ -233,6 +264,68 @@ export default function VideoStreamImportPage(_props: VideoStreamImportPageProps
     () => STATUSES.map((status) => ({ value: status, label: t(`videoStreams.statuses.${status}`) })),
     [t],
   )
+
+  /**
+   * The archive length as it stands, watched rather than read at submit time because the
+   * archive-server picker exists only in relation to it. A form with nothing in it yet falls
+   * back to the import default, the same way `chosenType` does.
+   */
+  const chosenArchiveDays: number =
+    Form.useWatch('archiveDays', form) ?? IMPORT_VALUES.archiveDays
+
+  /** Whether the archive-server picker is offered: a permanent batch that keeps an archive. */
+  const archiveServerOffered = offersArchiveServer(chosenType, chosenArchiveDays)
+
+  /**
+   * Whether only a full server may transcode: true for `Permanent`, whose rows the endpoint
+   * refuses over a timeshift-only transcoder. Read from `capabilities.ts` so the option filter
+   * and the field's own required/timeshift rule cannot disagree about which kind they mean.
+   */
+  const fullTranscoderOnly = !allowsTimeshiftTranscoder(chosenType)
+
+  /** The transcoding server as the form holds it, or nothing. */
+  const chosenTranscodingServerId: string | undefined = Form.useWatch(
+    'transcodingServerId',
+    form,
+  )
+
+  /**
+   * The transcoding picker's options: every server for a non-permanent batch, only the full
+   * ones while the batch is permanent.
+   *
+   * **A binding the filter now hides is still drawn.** Owner decision O4 keeps the value
+   * through a change of kind, so an import moved to permanent may still name a timeshift-only
+   * server - dropping it from the options would leave a raw uuid in the control. It is kept,
+   * and the field's own rule says why that pairing cannot be submitted.
+   */
+  const transcodingServerOptions = useMemo(() => {
+    const usable = fullTranscoderOnly
+      ? servers.filter((server) => !server.timeshiftOnly)
+      : servers
+
+    const held = servers.find((server) => server.id === chosenTranscodingServerId)
+
+    return (held && !usable.some((server) => server.id === held.id)
+      ? [held, ...usable]
+      : usable
+    ).map((server) => ({ value: server.id, label: server.name }))
+  }, [chosenTranscodingServerId, fullTranscoderOnly, servers])
+
+  /** The archive picker's options: any server, because the endpoint allows any of them there. */
+  const archiveServerOptions = useMemo(
+    () => servers.map((server) => ({ value: server.id, label: server.name })),
+    [servers],
+  )
+
+  /**
+   * Whether the form itself refuses to submit because a permanent batch names no transcoder.
+   *
+   * A form rule rather than a server one (owner decision I2): every existing import client and
+   * the integration tests import permanent streams with no server, so the endpoint accepts it
+   * and only this screen demands the answer.
+   */
+  const transcoderMissing =
+    requiresTranscodingServer(chosenType) && !chosenTranscodingServerId
 
   const problemColumns: TableColumnsType<VideoStreamImportProblem> = useMemo(
     () => [
@@ -488,6 +581,100 @@ export default function VideoStreamImportPage(_props: VideoStreamImportPageProps
           <Select options={typeOptions} />
         </Form.Item>
 
+        {/* The two server references, after the kind and before the existing-streams divider -
+            the same place the single form puts them, and for the same reason: they describe the
+            rows rather than their payload, and both travel whatever the kind is.
+
+            A batch setting, unlike everything below this pair: it is written on the rows this
+            import **creates**, never on a stream it skips or overwrites (owner decision I3), and
+            the sentence above the pair says so.
+
+            `transcodingServerId` is required by this form while the kind is permanent and only a
+            full server is offered then, mirroring the endpoint's own rule. For every other kind
+            it is optional and unfiltered. A binding is never cleared by a change of kind (owner
+            decision O4), which is why `toBody` sends what the form holds. */}
+
+        {/* One sentence above the pair rather than the same one under both fields - the restream
+            group's shape: it is the one fact an operator cannot infer, namely which rows these
+            two picks reach, and I3 makes it explicit that the overwrite checkbox below does not
+            write them. */}
+        <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+          {t('videoStreamsImport.serverBatchHint')}
+        </Typography.Text>
+
+        <Form.Item
+          name="transcodingServerId"
+          label={t('videoStreamsForm.transcodingServerLabel')}
+          dependencies={['type']}
+          rules={[
+            {
+              validator: (_: unknown, value: string | null | undefined) => {
+                const text = value ?? ''
+
+                if (!requiresTranscodingServer(chosenType)) return Promise.resolve()
+
+                if (text === '') {
+                  return Promise.reject(
+                    new Error(t('videoStreamsForm.transcodingServerRequired')),
+                  )
+                }
+
+                const chosen = servers.find((server) => server.id === text)
+
+                return chosen?.timeshiftOnly
+                  ? Promise.reject(
+                      new Error(t('videoStreamsForm.transcodingServerTimeshiftOnly')),
+                    )
+                  : Promise.resolve()
+              },
+            },
+          ]}
+          extra={
+            serversError ??
+            (requiresTranscodingServer(chosenType)
+              ? t('videoStreamsForm.transcodingServerHint')
+              : undefined)
+          }
+          validateStatus={serversError ? 'warning' : undefined}
+        >
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={transcodingServerOptions}
+            placeholder={t('videoStreamsForm.transcodingServerNone')}
+            disabled={serversError !== null}
+          />
+        </Form.Item>
+
+        <Form.Item
+          name="archiveServerId"
+          label={t('videoStreamsForm.archiveServerLabel')}
+          extra={
+            serversError ??
+            (archiveServerOffered
+              ? undefined
+              : t('videoStreamsForm.archiveServerNeedsArchive'))
+          }
+          validateStatus={serversError ? 'warning' : undefined}
+        >
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={archiveServerOptions}
+            placeholder={t('videoStreamsForm.archiveServerNone')}
+            // Drawn disabled rather than removed while it does not apply, for the reason the
+            // single form gives: a field that vanishes teaches nothing, and the sentence beside
+            // it says which two facts bring it back.
+            disabled={serversError !== null || !archiveServerOffered}
+          />
+        </Form.Item>
+
+        {serversError && (
+          <Alert type="error" showIcon style={{ marginBottom: 16 }} message={serversError} />
+        )}
+
         <Divider titlePlacement="start">{t('videoStreamsImport.existingDivider')}</Divider>
 
         <Form.Item
@@ -612,9 +799,18 @@ export default function VideoStreamImportPage(_props: VideoStreamImportPageProps
 
         <Form.Item style={{ marginTop: 24 }}>
           <Space>
-            <Button type="primary" htmlType="submit" loading={importStreams.isPending}>
-              {t('videoStreamsImport.submit')}
-            </Button>
+            {transcoderMissing ? (
+              hinted(
+                t('videoStreamsForm.transcodingServerRequired'),
+                <Button type="primary" htmlType="submit" disabled>
+                  {t('videoStreamsImport.submit')}
+                </Button>,
+              )
+            ) : (
+              <Button type="primary" htmlType="submit" loading={importStreams.isPending}>
+                {t('videoStreamsImport.submit')}
+              </Button>
+            )}
             <Button disabled={importStreams.isPending} onClick={() => navigate(listPath)}>
               {t('videoStreams.backToList')}
             </Button>

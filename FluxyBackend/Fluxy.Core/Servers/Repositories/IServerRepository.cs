@@ -43,6 +43,39 @@ namespace Fluxy.Core.Servers.Repositories
         /// <returns>The server, or null when no row carries the identifier.</returns>
         Task<Server?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Reads the one fact another aggregate needs about a server it is about to point at.
+        /// </summary>
+        /// <param name="id">Identifier of the server.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>The reference, or null when no row carries the identifier.</returns>
+        /// <remarks>
+        /// Asked by the subscription and stream writes twice: once to prove the identifier names
+        /// a row, and - for a stream - once more to read the <c>timeshiftOnly</c> flag the merged
+        /// permanence rule turns on.
+        /// </remarks>
+        Task<ServerReference?> GetReferenceAsync(
+            Guid id,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>Reads every server as a picker entry, ordered by name.</summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// How many rows point at the server: subscriptions through their preferred server, and
+        /// video streams through their transcoding or archive server.
+        /// </summary>
+        /// <param name="id">Identifier of the server.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// The probe behind the delete refusal: the three foreign keys are <c>RESTRICT</c>, so the
+        /// database would refuse the removal anyway, and asking first answers with a code instead
+        /// of a provider error.
+        /// </remarks>
+        Task<int> CountReferencesAsync(Guid id, CancellationToken cancellationToken = default);
+
         /// <summary>Whether the main server row exists.</summary>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <remarks>

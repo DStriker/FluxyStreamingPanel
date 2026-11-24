@@ -76,6 +76,18 @@ namespace Fluxy.DataAccess.Entities
         public Guid? TranscodingProfileId { get; set; }
 
         /// <summary>
+        /// Server that transcodes this stream, or null when none is chosen. A real foreign key
+        /// with <c>Restrict</c>: the server service counts the references before a delete.
+        /// </summary>
+        public Guid? TranscodingServerId { get; set; }
+
+        /// <summary>
+        /// Server that keeps this stream's archive, or null when none is chosen. The same shape
+        /// and the same <c>Restrict</c> as the transcoding server above.
+        /// </summary>
+        public Guid? ArchiveServerId { get; set; }
+
+        /// <summary>
         /// On-demand items this stream plays, in order, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else.
         /// </summary>
@@ -131,23 +143,29 @@ namespace Fluxy.DataAccess.Entities
         /// <param name="vodItems">
         /// Rows of <c>video_stream_vod_items</c>, already in position order.
         /// </param>
+        /// <param name="categoryName">
+        /// Name of the category, when the read resolved it without loading the navigation.
+        /// </param>
         public VideoStream ToModel(
             IReadOnlyList<string> sources,
             IReadOnlyList<string> files,
-            IReadOnlyList<Guid> vodItems) => new()
+            IReadOnlyList<Guid> vodItems,
+            string? categoryName = null) => new()
         {
             Id = Id,
             Name = Name,
             Status = Status,
             Type = Type,
             CategoryId = CategoryId,
-            CategoryName = Category?.Name ?? string.Empty,
+            CategoryName = categoryName ?? Category?.Name ?? string.Empty,
             LogoUrl = LogoUrl,
             ActiveSource = ActiveSource,
             Enigma2Sid = Enigma2Sid,
             DelayMinutes = DelayMinutes,
             SeriesId = SeriesId,
             TranscodingProfileId = TranscodingProfileId,
+            TranscodingServerId = TranscodingServerId,
+            ArchiveServerId = ArchiveServerId,
             VodItems = vodItems,
             EpgSourceId = EpgSourceId,
             EpgChannelKey = EpgChannelKey,

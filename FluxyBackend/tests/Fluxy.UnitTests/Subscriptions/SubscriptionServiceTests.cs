@@ -1,6 +1,11 @@
 using Fluxy.Application.Subscriptions.Services;
 using Fluxy.Application.Subscriptions.Utils;
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Servers.Commands;
+using Fluxy.Core.Servers.Enums;
+using Fluxy.Core.Servers.Models;
+using Fluxy.Core.Servers.ReadModels;
+using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Subscriptions.Commands;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.Models;
@@ -337,7 +342,12 @@ namespace Fluxy.UnitTests.Subscriptions
                 SubscriptionRules.PlaylistIdIndexName,
                 null);
             var repository = new FakeSubscriptions();
-            var service = new SubscriptionService(repository, new FakeUnitOfWork(violation), new FakeSettingsSnapshotProvider(), TimeProvider.System);
+            var service = new SubscriptionService(
+                repository,
+                new FakeServers(),
+                new FakeUnitOfWork(violation),
+                new FakeSettingsSnapshotProvider(),
+                TimeProvider.System);
 
             var outcome = await service.CreateAsync(
                 New(playlistId: Playlist()),
@@ -353,8 +363,10 @@ namespace Fluxy.UnitTests.Subscriptions
             var violation = new Core.Persistence.Exceptions.UniqueViolationException(
                 "IX_something_else",
                 null);
+            var repository = new FakeSubscriptions();
             var service = new SubscriptionService(
-                new FakeSubscriptions(),
+                repository,
+                new FakeServers(),
                 new FakeUnitOfWork(violation),
                 new FakeSettingsSnapshotProvider(),
                 TimeProvider.System);
@@ -662,6 +674,108 @@ namespace Fluxy.UnitTests.Subscriptions
         }
 
         [Fact]
+        public async Task ACreateStoresThePreferredServerItNames()
+        {
+            var server = Guid.NewGuid();
+            var repository = new FakeSubscriptions();
+            var service = NewService(repository, new FakeServers { Known = [server] });
+
+            var outcome = await service.CreateAsync(
+                New(playlistId: Playlist()) with { PreferredServerId = server },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Created, outcome.Action);
+            Assert.Equal(server, repository.Added!.PreferredServerId);
+        }
+
+        [Fact]
+        public async Task ACreateRefusesAPreferredServerUnderItsOwnKey()
+        {
+            var repository = new FakeSubscriptions();
+            var service = NewService(repository);
+
+            var outcome = await service.CreateAsync(
+                New(playlistId: Playlist()) with { PreferredServerId = Guid.NewGuid() },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, outcome.Action);
+            Assert.True(outcome.Errors!.ContainsKey(nameof(NewSubscription.PreferredServerId)));
+            Assert.Null(repository.Added);
+        }
+
+        [Fact]
+        public async Task UpdateKeepsSetsAndClearsThePreferredServer()
+        {
+            var id = Guid.NewGuid();
+            var first = Guid.NewGuid();
+            var second = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id) with { PreferredServerId = first }
+            };
+            var servers = new FakeServers { Known = [first, second] };
+            var service = NewService(repository, servers);
+
+            // Absent keeps what the row holds.
+            await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { MaxConnections = 3 },
+                TestContext.Current.CancellationToken);
+            Assert.Equal(first, repository.Updated!.PreferredServerId);
+
+            // An identifier replaces it.
+            await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { PreferredServerId = second },
+                TestContext.Current.CancellationToken);
+            Assert.Equal(second, repository.Updated!.PreferredServerId);
+
+            // The flag clears it again.
+            await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { ClearPreferredServer = true },
+                TestContext.Current.CancellationToken);
+            Assert.Null(repository.Updated!.PreferredServerId);
+        }
+
+        [Fact]
+        public async Task UpdateLetsANamedServerWinOverTheClearFlag()
+        {
+            var id = Guid.NewGuid();
+            var server = Guid.NewGuid();
+            var repository = new FakeSubscriptions
+            {
+                Existing = Stored(id) with { PreferredServerId = Guid.NewGuid() }
+            };
+            var service = NewService(repository, new FakeServers { Known = [server] });
+
+            var outcome = await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { PreferredServerId = server, ClearPreferredServer = true },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Action);
+            Assert.Equal(server, repository.Updated!.PreferredServerId);
+        }
+
+        [Fact]
+        public async Task UpdateRefusesAnUnknownPreferredServerUnderItsOwnKey()
+        {
+            var id = Guid.NewGuid();
+            var repository = new FakeSubscriptions { Existing = Stored(id) };
+            var service = NewService(repository);
+
+            var outcome = await service.UpdateAsync(
+                id,
+                new SubscriptionPatch { PreferredServerId = Guid.NewGuid() },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Invalid, outcome.Action);
+            Assert.True(outcome.Errors!.ContainsKey(nameof(SubscriptionPatch.PreferredServerId)));
+            Assert.Null(repository.Updated);
+        }
+
+        [Fact]
         public async Task DeleteAnswersAnUnknownIdentifierAsNotFound()
         {
             var service = NewService(new FakeSubscriptions { Removable = false });
@@ -696,8 +810,15 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.True(repository.Probes > 1);
         }
 
-        private static SubscriptionService NewService(FakeSubscriptions repository)
-            => new(repository, new FakeUnitOfWork(null), new FakeSettingsSnapshotProvider(), TimeProvider.System);
+        private static SubscriptionService NewService(
+            FakeSubscriptions repository,
+            FakeServers? servers = null)
+            => new(
+                repository,
+                servers ?? new FakeServers(),
+                new FakeUnitOfWork(null),
+                new FakeSettingsSnapshotProvider(),
+                TimeProvider.System);
 
         private static string Playlist() => "0123456789abcdef0123456789abcdef";
 
@@ -964,6 +1085,67 @@ namespace Fluxy.UnitTests.Subscriptions
                     Role = UserRole.Admin,
                     Blocked = false
                 };
+        }
+
+        /// <summary>The server repository, answering only the reference probe the service asks.</summary>
+        private sealed class FakeServers : IServerRepository
+        {
+            /// <summary>Identifiers the fake is pretended to answer with a reference for.</summary>
+            public HashSet<Guid> Known { get; init; } = [];
+
+            public Task<ServerReference?> GetReferenceAsync(
+                Guid id,
+                CancellationToken cancellationToken = default)
+                => Task.FromResult(Known.Contains(id)
+                    ? new ServerReference
+                    {
+                        Id = id,
+                        Name = $"Server {id:N}",
+                        TimeshiftOnly = false
+                    }
+                    : null);
+
+            public Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+                CancellationToken cancellationToken = default)
+                => Task.FromResult<IReadOnlyList<ServerOption>>([]);
+
+            public Task<int> CountReferencesAsync(
+                Guid id,
+                CancellationToken cancellationToken = default)
+                => Task.FromResult(0);
+
+            public Task<ServerPage> GetPageAsync(
+                int page,
+                int pageSize,
+                string? search,
+                ServerSortField sortBy,
+                ServerSortOrder sortOrder,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<Server?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> ExistsMainAsync(CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> IsNameTakenAsync(
+                string name,
+                Guid? exceptServer,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<Guid> AddAsync(ServerWrite server, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> UpdateAsync(
+                Guid id,
+                ServerWrite server,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<bool> RemoveAsync(Guid id, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
         }
 
         /// <summary>The unit of work as the service sees it, with one failure to report.</summary>

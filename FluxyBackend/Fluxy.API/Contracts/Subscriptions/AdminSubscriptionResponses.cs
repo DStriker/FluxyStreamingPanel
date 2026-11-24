@@ -177,6 +177,12 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Name of the tariff plan, or null.</summary>
         public string? TariffPlanName { get; init; }
 
+        /// <summary>Identifier of the preferred server, as text, or null.</summary>
+        public string? PreferredServerId { get; init; }
+
+        /// <summary>Name of the preferred server, or null.</summary>
+        public string? PreferredServerName { get; init; }
+
         /// <summary>The computed state, as the name of the enum member.</summary>
         public required string Status { get; init; }
 

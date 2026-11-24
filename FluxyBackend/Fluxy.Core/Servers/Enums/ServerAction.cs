@@ -35,6 +35,12 @@ namespace Fluxy.Core.Servers.Enums
         /// remove. Refused here rather than by a hidden control, so that an endpoint cannot be
         /// asked twice in two shapes.
         /// </summary>
-        ImmutableMain
+        ImmutableMain,
+
+        /// <summary>
+        /// The server is referenced by a subscription or a stream, so removing it would leave a
+        /// row pointing at nothing - refused before the foreign key has to say so.
+        /// </summary>
+        InUse
     }
 }

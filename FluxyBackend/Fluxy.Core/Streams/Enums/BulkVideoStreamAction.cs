@@ -36,6 +36,12 @@ namespace Fluxy.Core.Streams.Enums
         ChangeArchive,
 
         /// <summary>Replace all four restream settings of every named permanent or on-demand stream.</summary>
-        ChangeRestream
+        ChangeRestream,
+
+        /// <summary>
+        /// Replace the transcoding and archive servers of every named stream. A blank value
+        /// clears its field, the way the whole-value replacement of the restream settings works.
+        /// </summary>
+        ChangeServers
     }
 }

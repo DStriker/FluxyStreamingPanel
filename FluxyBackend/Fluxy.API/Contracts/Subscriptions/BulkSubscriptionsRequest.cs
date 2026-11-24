@@ -30,5 +30,8 @@ namespace Fluxy.API.Contracts.Subscriptions
 
         /// <summary>Destination issuer of a <c>change-creator</c>, as the uuid of an account.</summary>
         public string? ResellerId { get; init; }
+
+        /// <summary>Destination server of a <c>change-server</c>, as the uuid of a server.</summary>
+        public string? ServerId { get; init; }
     }
 }

@@ -247,6 +247,10 @@ namespace Fluxy.API.Controllers.Subscriptions
             }
 
             var plan = ParseIdentifier(request.TariffPlanId, nameof(request.TariffPlanId), errors);
+            var preferredServerId = ParseIdentifier(
+                request.PreferredServerId,
+                nameof(request.PreferredServerId),
+                errors);
             var expireAt = ParseExpireAt(request.ExpireAt, nameof(request.ExpireAt), errors);
             var formats = ParseOutputFormats(
                 request.OutputFormats,
@@ -270,6 +274,7 @@ namespace Fluxy.API.Controllers.Subscriptions
                     PlaylistId = request.PlaylistId,
                     ExpireAt = expireAt,
                     TariffPlanId = plan,
+                    PreferredServerId = preferredServerId,
                     MaxConnections = request.MaxConnections,
                     IsRestreamer = request.IsRestreamer,
                     IpWhitelist = request.IpWhitelist ?? [],
@@ -332,6 +337,15 @@ namespace Fluxy.API.Controllers.Subscriptions
                 ? null
                 : ParseIdentifier(request.TariffPlanId, nameof(request.TariffPlanId), errors);
 
+            // The preferred server follows the plan's shape: a blank id is "not named" and keeps
+            // the row's own, and clearing is its own flag rather than being inferred from a null.
+            var preferredServerId = string.IsNullOrWhiteSpace(request.PreferredServerId)
+                ? null
+                : ParseIdentifier(
+                    request.PreferredServerId,
+                    nameof(request.PreferredServerId),
+                    errors);
+
             var expireAt = request.ExpireAt is null
                 ? null
                 : ValidateExpireAt(request.ExpireAt, nameof(request.ExpireAt), errors);
@@ -361,6 +375,8 @@ namespace Fluxy.API.Controllers.Subscriptions
                     // identifier rather than being inferred from a null.
                     TariffPlanId = plan,
                     ClearTariffPlan = request.ClearTariffPlan,
+                    PreferredServerId = preferredServerId,
+                    ClearPreferredServer = request.ClearPreferredServer,
                     MaxConnections = request.MaxConnections,
                     ClearMaxConnections = request.ClearMaxConnections,
                     IsRestreamer = request.IsRestreamer,
@@ -686,6 +702,8 @@ namespace Fluxy.API.Controllers.Subscriptions
             ExpireAt = detail.ExpireAt,
             TariffPlanId = detail.TariffPlanId?.ToString(),
             TariffPlanName = detail.TariffPlanName,
+            PreferredServerId = detail.PreferredServerId?.ToString(),
+            PreferredServerName = detail.PreferredServerName,
             Status = SubscriptionTextParser.NameOf(detail.Status),
             MaxConnections = detail.MaxConnections,
             IsRestreamer = detail.IsRestreamer,

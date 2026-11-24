@@ -5,9 +5,9 @@ namespace Fluxy.Core.Subscriptions.Enums
     /// </summary>
     /// <remarks>
     /// The first three are the ones a selection is collectivised for - move it to another
-    /// plan, hand it to another issuer, remove it - and the four after them are the per-field
-    /// clears a table row would otherwise have to be opened for. Every one of them is the
-    /// single-row operation applied in a loop, so the codes a row answers with are the same
+    /// plan, hand it to another issuer, remove it - and the five after them are the per-field
+    /// writes and clears a table row would otherwise have to be opened for. Every one of them is
+    /// the single-row operation applied in a loop, so the codes a row answers with are the same
     /// codes the addressed endpoint gives.
     /// </remarks>
     public enum BulkSubscriptionAction
@@ -37,6 +37,12 @@ namespace Fluxy.Core.Subscriptions.Enums
         Prolong,
 
         /// <summary>Block the owner of every selected row through the account block.</summary>
-        BlockOwner
+        BlockOwner,
+
+        /// <summary>Attach one preferred server to every selected row, replacing what it held.</summary>
+        ChangeServer,
+
+        /// <summary>Clear the preferred server of every selected row. Already empty succeeds.</summary>
+        ClearServer
     }
 }

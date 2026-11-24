@@ -62,6 +62,12 @@ namespace Fluxy.Core.Streams.Commands
         /// </summary>
         public Guid? TranscodingProfileId { get; init; }
 
+        /// <summary>Server that transcodes the stream, or null for none.</summary>
+        public Guid? TranscodingServerId { get; init; }
+
+        /// <summary>Server that keeps the stream's archive, or null for none.</summary>
+        public Guid? ArchiveServerId { get; init; }
+
         /// <summary>
         /// On-demand items this stream plays, in the order it plays them, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other

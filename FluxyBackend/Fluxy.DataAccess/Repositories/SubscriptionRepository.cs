@@ -329,6 +329,12 @@ namespace Fluxy.DataAccess.Repositories
                         : _context.TariffPlans
                             .Where(plan => plan.Id == subscription.TariffPlanId)
                             .Select(plan => plan.Name)
+                            .FirstOrDefault(),
+                    PreferredServerName = subscription.PreferredServerId == null
+                        ? null
+                        : _context.Servers
+                            .Where(server => server.Id == subscription.PreferredServerId)
+                            .Select(server => server.Name)
                             .FirstOrDefault()
                 })
                 .FirstOrDefaultAsync(cancellationToken);
@@ -393,6 +399,8 @@ namespace Fluxy.DataAccess.Repositories
                 ExpireAt = subscription.ExpireAt,
                 TariffPlanId = subscription.TariffPlanId,
                 TariffPlanName = row.TariffPlanName,
+                PreferredServerId = subscription.PreferredServerId,
+                PreferredServerName = row.PreferredServerName,
                 Status = SubscriptionStatusComposition.Compose(
                     subscription.ExpireAt,
                     row.OwnerBlocked,
@@ -606,6 +614,7 @@ namespace Fluxy.DataAccess.Repositories
                 PlaylistId = subscription.PlaylistId,
                 ExpireAt = subscription.ExpireAt,
                 TariffPlanId = subscription.TariffPlanId,
+                PreferredServerId = subscription.PreferredServerId,
                 MaxConnections = subscription.MaxConnections,
                 IsRestreamer = subscription.IsRestreamer,
                 IpWhitelist = subscription.IpWhitelist.ToArray(),

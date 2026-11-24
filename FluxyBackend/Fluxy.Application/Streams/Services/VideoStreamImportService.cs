@@ -4,6 +4,8 @@ using Fluxy.Core.Content.Enums;
 using Fluxy.Core.Content.Repositories;
 using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Persistence.Utils;
+using Fluxy.Core.Servers.ReadModels;
+using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Streams.Commands;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.Interfaces;
@@ -24,8 +26,9 @@ namespace Fluxy.Application.Streams.Services
     /// of those is a reason to discard the other four thousand entries. Every unusable line is
     /// reported with the line it came from, and the usable ones are written in one transaction.
     /// The only all-or-nothing failures are the ones that make the request itself unusable -
-    /// the settings shared by the batch, the category, a file that is not a stream list, and a
-    /// name another request took between the check and the write.
+    /// the settings shared by the batch, the category, a file that is not a stream list, a
+    /// stored transcoder an overwrite would leave under a permanent row, and a name another
+    /// request took between the check and the write.
     /// </para>
     /// <para>
     /// The rules a row must satisfy are not restated here. The common half is
@@ -38,6 +41,7 @@ namespace Fluxy.Application.Streams.Services
     {
         private readonly IVideoStreamRepository _streams;
         private readonly IBouquetRepository _bouquets;
+        private readonly IServerRepository _servers;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
@@ -48,14 +52,21 @@ namespace Fluxy.Application.Streams.Services
         /// Repository staging the membership rows that put the imported streams in the
         /// bouquets the request named.
         /// </param>
+        /// <param name="servers">
+        /// Repository that answers whether the servers the batch names exist, reads the one
+        /// flag the permanence rule turns on, and reads the same flag for a stored binding an
+        /// overwrite would keep.
+        /// </param>
         /// <param name="unitOfWork">Commits the batch one operation stages.</param>
         public VideoStreamImportService(
             IVideoStreamRepository streams,
             IBouquetRepository bouquets,
+            IServerRepository servers,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
             _bouquets = bouquets;
+            _servers = servers;
             _unitOfWork = unitOfWork;
         }
 
@@ -93,6 +104,45 @@ namespace Fluxy.Application.Streams.Services
                 {
                     [nameof(NewVideoStream.CategoryId)] = VideoStreamRules.CategoryRule
                 });
+            }
+
+            // Both server references are batch settings: one probe each, before the file is
+            // parsed, because an identifier that names no row is a fact about the request rather
+            // than about any line of the playlist. The transcoding one is read rather than
+            // probed because the permanence rule below turns on its `timeshiftOnly` flag.
+            ServerReference? transcodingServer = null;
+
+            if (input.TranscodingServerId is { } transcodingServerId)
+            {
+                transcodingServer = await _servers.GetReferenceAsync(
+                    transcodingServerId,
+                    cancellationToken);
+
+                if (transcodingServer is null)
+                {
+                    return Invalid(Field(
+                        nameof(NewVideoStreamImport.TranscodingServerId),
+                        VideoStreamRules.UnknownServerRule));
+                }
+            }
+
+            if (input.ArchiveServerId is { } archiveServerId
+                && await _servers.GetReferenceAsync(archiveServerId, cancellationToken) is null)
+            {
+                return Invalid(Field(
+                    nameof(NewVideoStreamImport.ArchiveServerId),
+                    VideoStreamRules.UnknownServerRule));
+            }
+
+            // One `type` applies to every imported row, so this is one batch-level check rather
+            // than a per-line loop. A timeshift-only server remains a valid archive server on
+            // any kind, and a valid transcoder for the two non-permanent kinds.
+            if (input.Type is VideoStreamType.Permanent
+                && transcodingServer is { TimeshiftOnly: true })
+            {
+                return Invalid(Field(
+                    nameof(NewVideoStreamImport.TranscodingServerId),
+                    VideoStreamRules.TimeshiftOnlyTranscoderRule));
             }
 
             var playlist = M3uPlaylistParser.Parse(input.Playlist);
@@ -170,6 +220,34 @@ namespace Fluxy.Application.Streams.Services
                     input.CategoryId,
                     candidates.Select(entry => entry.Name).ToArray(),
                     cancellationToken);
+
+            // An overwrite can make an existing row permanent without writing its server
+            // references - they stay the row's own - so the stored binding has to satisfy the
+            // permanence rule the single-row writes and the bulk change-type enforce. Under the
+            // overwrite flag every matched row is updated, so a matched row is a row the batch
+            // would leave as a permanent stream on that transcoder: the whole import is refused
+            // rather than narrowed, unbound or reported per line. A stored id whose server no
+            // longer answers is ignored: the foreign key is ON DELETE RESTRICT, so that is a
+            // race rather than a state the row can hold.
+            if (input.Type is VideoStreamType.Permanent && input.OverwriteExistingSettings)
+            {
+                var storedTranscoders = existing
+                    .Select(row => row.TranscodingServerId)
+                    .OfType<Guid>()
+                    .Distinct()
+                    .ToArray();
+
+                foreach (var storedTranscoderId in storedTranscoders)
+                {
+                    if (await _servers.GetReferenceAsync(storedTranscoderId, cancellationToken)
+                        is { TimeshiftOnly: true })
+                    {
+                        return Invalid(Field(
+                            nameof(NewVideoStreamImport.TranscodingServerId),
+                            VideoStreamRules.TimeshiftOnlyTranscoderRule));
+                    }
+                }
+            }
 
             var existingByName = existing
                 .ToDictionary(row => row.Name, StringComparer.Ordinal);
@@ -347,6 +425,8 @@ namespace Fluxy.Application.Streams.Services
                 LogoUrl = LogoFor(entry),
                 DelayMinutes = input.DelayMinutes,
                 ArchiveDays = input.ArchiveDays,
+                TranscodingServerId = input.TranscodingServerId,
+                ArchiveServerId = input.ArchiveServerId,
                 RestreamUserAgent = VideoStreamRules.NullIfBlank(input.RestreamUserAgent),
                 RestreamProxy = VideoStreamRules.NullIfBlank(input.RestreamProxy),
                 RestreamCookies = VideoStreamRules.NullIfBlank(input.RestreamCookies),
@@ -404,6 +484,10 @@ namespace Fluxy.Application.Streams.Services
                 Status = VideoStreamImportStatus.Invalid,
                 Errors = errors
             };
+
+        /// <summary>Builds the one-field refusal map a batch setting produces.</summary>
+        private static Dictionary<string, string[]> Field(string field, string[] sentences)
+            => new(StringComparer.Ordinal) { [field] = sentences };
 
         private static VideoStreamImportOutcome Playlist(M3uPlaylistStatus status) => new()
         {

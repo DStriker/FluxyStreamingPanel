@@ -269,6 +269,57 @@ namespace Fluxy.UnitTests.Streams
             Assert.All(streams.Updates, update => Assert.Equal(category, update.Patch.CategoryId));
         }
 
+        [Fact]
+        public async Task ChangeServersWritesBothFieldsAsAWholeValueReplacement()
+        {
+            var id = Guid.NewGuid();
+            var transcoder = Guid.NewGuid();
+            var archive = Guid.NewGuid();
+            var streams = new FakeStreams();
+            streams.Rows[id] = Row(id);
+            var service = new VideoStreamBulkService(streams);
+
+            var outcome = await service.BulkAsync(new BulkVideoStreamOperation
+            {
+                Action = BulkVideoStreamAction.ChangeServers,
+                StreamIds = [id],
+                TranscodingServerId = transcoder.ToString(),
+                ArchiveServerId = archive.ToString()
+            }, TestContext.Current.CancellationToken);
+
+            Assert.Equal(VideoStreamAction.Updated, outcome.Items[0].Action);
+            var patch = Assert.Single(streams.Updates).Patch;
+            Assert.Equal(transcoder.ToString(), patch.TranscodingServerId);
+            Assert.Equal(archive.ToString(), patch.ArchiveServerId);
+        }
+
+        [Fact]
+        public async Task ChangeServersClearsABlankFieldAndRefusesAPerRowRefusal()
+        {
+            var accepted = Guid.NewGuid();
+            var refused = Guid.NewGuid();
+            var streams = new FakeStreams();
+            streams.Rows[accepted] = Row(accepted);
+            streams.Rows[refused] = Row(refused);
+            streams.RefusedRows.Add(refused);
+            var service = new VideoStreamBulkService(streams);
+
+            var outcome = await service.BulkAsync(new BulkVideoStreamOperation
+            {
+                Action = BulkVideoStreamAction.ChangeServers,
+                StreamIds = [accepted, refused],
+                TranscodingServerId = string.Empty,
+                ArchiveServerId = Guid.NewGuid().ToString()
+            }, TestContext.Current.CancellationToken);
+
+            Assert.Equal(VideoStreamAction.Updated, outcome.Items[0].Action);
+            Assert.Equal(VideoStreamAction.Invalid, outcome.Items[1].Action);
+            Assert.True(outcome.Items[1].Errors!.ContainsKey("TranscodingServerId"));
+
+            var first = streams.Updates[0].Patch;
+            Assert.Equal(string.Empty, first.TranscodingServerId);
+        }
+
         private static BulkVideoStreamOperation Operation(
             BulkVideoStreamAction action,
             Guid first,
@@ -312,6 +363,9 @@ namespace Fluxy.UnitTests.Streams
             public Dictionary<Guid, VideoStream> Rows { get; } = [];
 
             public HashSet<Guid> NameCollisions { get; } = [];
+
+            /// <summary>Streams whose update the fake refuses, the way the rule would.</summary>
+            public HashSet<Guid> RefusedRows { get; } = [];
 
             public List<Guid> Reads { get; } = [];
 
@@ -361,6 +415,19 @@ namespace Fluxy.UnitTests.Streams
                         Action = VideoStreamAction.Invalid,
                         StreamId = id,
                         Errors = new Dictionary<string, string[]> { ["Type"] = ["refused"] }
+                    });
+                }
+
+                if (RefusedRows.Contains(id))
+                {
+                    return Task.FromResult(new VideoStreamOutcome
+                    {
+                        Action = VideoStreamAction.Invalid,
+                        StreamId = id,
+                        Errors = new Dictionary<string, string[]>
+                        {
+                            ["TranscodingServerId"] = ["No such server."]
+                        }
                     });
                 }
 

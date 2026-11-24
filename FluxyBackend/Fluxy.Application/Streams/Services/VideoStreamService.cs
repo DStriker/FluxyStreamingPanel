@@ -11,6 +11,8 @@ using Fluxy.Core.Streams.Models;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
 using Fluxy.Core.Streams.Utils;
+using Fluxy.Core.Servers.ReadModels;
+using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Transcoding.Repositories;
 using Fluxy.Core.Transcoding.Utils;
 using Fluxy.Core.Vod.Repositories;
@@ -108,6 +110,7 @@ namespace Fluxy.Application.Streams.Services
         private readonly IVodRepository _videos;
         private readonly IBouquetRepository _bouquets;
         private readonly ITranscodingProfileRepository _transcodingProfiles;
+        private readonly IServerRepository _servers;
         private readonly IUnitOfWork _unitOfWork;
 
         /// <summary>
@@ -127,6 +130,10 @@ namespace Fluxy.Application.Streams.Services
         /// <param name="transcodingProfiles">
         /// Repository that answers whether the transcoding profile a stream names exists.
         /// </param>
+        /// <param name="servers">
+        /// Repository that answers whether the servers a stream names exist, and reads the one
+        /// flag the permanence rule turns on.
+        /// </param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         public VideoStreamService(
             IVideoStreamRepository streams,
@@ -134,6 +141,7 @@ namespace Fluxy.Application.Streams.Services
             IVodRepository videos,
             IBouquetRepository bouquets,
             ITranscodingProfileRepository transcodingProfiles,
+            IServerRepository servers,
             IUnitOfWork unitOfWork)
         {
             _streams = streams;
@@ -141,6 +149,7 @@ namespace Fluxy.Application.Streams.Services
             _videos = videos;
             _bouquets = bouquets;
             _transcodingProfiles = transcodingProfiles;
+            _servers = servers;
             _unitOfWork = unitOfWork;
         }
 
@@ -215,6 +224,41 @@ namespace Fluxy.Application.Streams.Services
                 return Invalid(Field(nameof(NewVideoStream.TranscodingProfileId), TranscodingProfileRule));
             }
 
+            // Both servers are rows of this database as well. The existence check names the field
+            // it came in under, and the transcoding one is read rather than probed because the
+            // permanence rule below turns on its `timeshiftOnly` flag.
+            ServerReference? createTranscodingServer = null;
+
+            if (input.TranscodingServerId is { } createTranscodingServerId)
+            {
+                createTranscodingServer = await _servers.GetReferenceAsync(
+                    createTranscodingServerId,
+                    cancellationToken);
+
+                if (createTranscodingServer is null)
+                {
+                    return Invalid(
+                        Field(nameof(NewVideoStream.TranscodingServerId), VideoStreamRules.UnknownServerRule));
+                }
+            }
+
+            if (input.ArchiveServerId is { } createArchiveServerId
+                && await _servers.GetReferenceAsync(createArchiveServerId, cancellationToken) is null)
+            {
+                return Invalid(Field(nameof(NewVideoStream.ArchiveServerId), VideoStreamRules.UnknownServerRule));
+            }
+
+            // The merged-state rule: a permanent stream's transcoder has to serve live content.
+            // The stream is judged as the row it will become, which on a create is the request.
+            if (input.Type is VideoStreamType.Permanent
+                && createTranscodingServer is { TimeshiftOnly: true })
+            {
+                return Invalid(
+                    Field(
+                        nameof(NewVideoStream.TranscodingServerId),
+                        VideoStreamRules.TimeshiftOnlyTranscoderRule));
+            }
+
             // Every video a playlist names has to exist, for the reason the guide source above
             // does: the membership rows carry a real foreign key, so a missing one would be
             // refused at the write - and a refusal naming the field is worth more to the
@@ -271,7 +315,9 @@ namespace Fluxy.Application.Streams.Services
                 input.RestreamHeaders,
                 input.Sources,
                 input.Files,
-                input.TranscodingProfileId);
+                input.TranscodingProfileId,
+                input.TranscodingServerId,
+                input.ArchiveServerId);
 
             var streamId = await _streams.AddAsync(stream, cancellationToken);
 
@@ -361,6 +407,33 @@ namespace Fluxy.Application.Streams.Services
                     id);
             }
 
+            // The two servers follow the same three-state convention the profile above does.
+            if (!TryMergeIdentifier(
+                patch.TranscodingServerId,
+                stream.TranscodingServerId,
+                out var transcodingServerId,
+                out var transcodingServerError))
+            {
+                return Invalid(
+                    Field(
+                        nameof(VideoStreamPatch.TranscodingServerId),
+                        transcodingServerError ?? IdentifierRule),
+                    id);
+            }
+
+            if (!TryMergeIdentifier(
+                patch.ArchiveServerId,
+                stream.ArchiveServerId,
+                out var archiveServerId,
+                out var archiveServerError))
+            {
+                return Invalid(
+                    Field(
+                        nameof(VideoStreamPatch.ArchiveServerId),
+                        archiveServerError ?? IdentifierRule),
+                    id);
+            }
+
             // The lists take the shape the caller sent: absent keeps, empty clears, anything
             // else replaces wholesale. Replacing is what makes the order on the operator's
             // screen the order the relay plays in.
@@ -411,6 +484,46 @@ namespace Fluxy.Application.Streams.Services
                     id);
             }
 
+            // Both server references are checked against the server table, and the transcoding one
+            // is read because the permanence rule below turns on its flag. The check runs on the
+            // merged value, not on the patch: a stream whose stored binding is now invalid must be
+            // refused when a save would re-validate it.
+            ServerReference? transcodingServer = null;
+
+            if (transcodingServerId is { } updateTranscodingServerId)
+            {
+                transcodingServer = await _servers.GetReferenceAsync(
+                    updateTranscodingServerId,
+                    cancellationToken);
+
+                if (transcodingServer is null)
+                {
+                    return Invalid(
+                        Field(nameof(VideoStreamPatch.TranscodingServerId), VideoStreamRules.UnknownServerRule),
+                        id);
+                }
+            }
+
+            if (archiveServerId is { } updateArchiveServerId
+                && await _servers.GetReferenceAsync(updateArchiveServerId, cancellationToken) is null)
+            {
+                return Invalid(
+                    Field(nameof(VideoStreamPatch.ArchiveServerId), VideoStreamRules.UnknownServerRule),
+                    id);
+            }
+
+            // The merged-state rule: a row that ends up permanent may not keep a timeshift-only
+            // transcoder. It is judged after the merge, so a type change to permanent over an
+            // existing binding is refused here exactly as a patch that names the server is. A
+            // transition away from permanent keeps both bindings (owner decision O4) and is not
+            // re-validated.
+            if (type is VideoStreamType.Permanent && transcodingServer is { TimeshiftOnly: true })
+            {
+                return Invalid(
+                    Field(nameof(VideoStreamPatch.TranscodingServerId), VideoStreamRules.TimeshiftOnlyTranscoderRule),
+                    id);
+            }
+
             // The playlist's videos are checked for the reason the guide source above is, and
             // against the merged list rather than the patch: a stream whose kind is the
             // playlist and whose stored list is empty is refused here as well, which is what
@@ -458,7 +571,9 @@ namespace Fluxy.Application.Streams.Services
                 restreamHeaders,
                 sources,
                 files,
-                transcodingProfileId);
+                transcodingProfileId,
+                transcodingServerId,
+                archiveServerId);
 
             await _streams.UpdateAsync(id, write, cancellationToken);
 
@@ -678,7 +793,9 @@ namespace Fluxy.Application.Streams.Services
             string? restreamHeaders,
             IReadOnlyList<string> sources,
             IReadOnlyList<string> files,
-            Guid? transcodingProfileId)
+            Guid? transcodingProfileId,
+            Guid? transcodingServerId,
+            Guid? archiveServerId)
         {
             var hasEpg = epgSourceId is not null
                 && !string.IsNullOrWhiteSpace(epgChannelKey);
@@ -707,7 +824,9 @@ namespace Fluxy.Application.Streams.Services
                 Files = type is VideoStreamType.FilePlaylist
                     ? CleanList(files)
                     : Array.Empty<string>(),
-                TranscodingProfileId = transcodingProfileId
+                TranscodingProfileId = transcodingProfileId,
+                TranscodingServerId = transcodingServerId,
+                ArchiveServerId = archiveServerId
             };
         }
 

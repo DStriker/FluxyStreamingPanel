@@ -58,6 +58,13 @@ namespace Fluxy.DataAccess.Entities
         /// <summary>That plan.</summary>
         public TariffPlanEntity? TariffPlan { get; set; }
 
+        /// <summary>
+        /// Preferred server the subscription is pinned to, or null for "any server, chosen later
+        /// by the main server". The foreign key is <c>RESTRICT</c>: a server a subscription names
+        /// may not be deleted out from under it.
+        /// </summary>
+        public Guid? PreferredServerId { get; set; }
+
         /// <summary>Connection ceiling, or null for unlimited.</summary>
         public int? MaxConnections { get; set; }
 
@@ -118,6 +125,7 @@ namespace Fluxy.DataAccess.Entities
             PlaylistId = PlaylistId,
             ExpireAt = ExpireAt,
             TariffPlanId = TariffPlanId,
+            PreferredServerId = PreferredServerId,
             MaxConnections = MaxConnections,
             IsRestreamer = IsRestreamer,
             IpWhitelist = IpWhitelist,
@@ -149,6 +157,7 @@ namespace Fluxy.DataAccess.Entities
             PlaylistId = model.PlaylistId;
             ExpireAt = model.ExpireAt;
             TariffPlanId = model.TariffPlanId;
+            PreferredServerId = model.PreferredServerId;
             MaxConnections = model.MaxConnections;
             IsRestreamer = model.IsRestreamer;
             IpWhitelist = model.IpWhitelist.ToArray();

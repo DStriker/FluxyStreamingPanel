@@ -36,9 +36,9 @@ The second medium's streams, built as a **separate resource** rather than a thir
 - **There is no `sort_order` column.** A stream has no position of its own — the order a stream is shown in belongs to the list that shows it, and a playlist's order is the order the relay plays in, not a display order.
 - **No captcha and no attempt window** — the recorded admin-area departure: every write is behind an admin session, the `EditAudioStreams` permission and a fresh antiforgery pair, and `RejectsCsrfAsync()` runs before any body is read.
 
-### The bulk menu: seven operations, not nine
+### The bulk menu: seven operations, not ten
 
-`BulkAudioStreamAction` is `Start`, `Stop`, `Restart`, `Delete`, `MoveCategory`, `ChangeType` and `ChangeRestream`. The video endpoint's five extra operations (`change-delay`, `change-archive`, and the file-list and series/vod edits) have no audio counterpart, because an audio stream has no such field to write. The restream operation replaces all four settings as a group — a blank value clears its setting — the same whole-list rule the single-row form follows, in the same request shape.
+`BulkAudioStreamAction` is `Start`, `Stop`, `Restart`, `Delete`, `MoveCategory`, `ChangeType` and `ChangeRestream`. The video endpoint's three extra operations (`change-delay`, `change-archive` and `change-servers`) have no audio counterpart, because an audio stream has no such field to write. The restream operation replaces all four settings as a group — a blank value clears its setting — the same whole-list rule the single-row form follows, in the same request shape.
 
 The body is validated **before any row is read**: the action is matched case-insensitively and with hyphens, the identifiers must be 1..1000 uuids and duplicates collapse, and the value an action needs must be present and usable. A body that breaks any of those answers `400 validation_failed` naming every broken field at once. `RejectsCsrfAsync()` runs **before** the body is parsed, so a stale pair is `csrf_invalid` rather than a validation answer.
 

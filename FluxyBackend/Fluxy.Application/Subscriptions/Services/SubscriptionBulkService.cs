@@ -40,6 +40,12 @@ namespace Fluxy.Application.Subscriptions.Services
             "A bulk creator change needs the account to assign."
         ];
 
+        /// <summary>The sentence a server change without a server gets.</summary>
+        private static readonly string[] ServerRule =
+        [
+            "A bulk server change needs the server to attach."
+        ];
+
         private readonly ISubscriptionService _subscriptions;
         private readonly IUserAdminService _users;
 
@@ -129,6 +135,25 @@ namespace Fluxy.Application.Subscriptions.Services
                             actingUserId,
                             granted,
                             cancellationToken),
+
+                    // The single-row path in a loop, the change-tariff shape: the server is
+                    // proven to exist by the same service that writes it, so a row naming one
+                    // that does not exist answers exactly as the addressed endpoint would.
+                    BulkSubscriptionAction.ChangeServer =>
+                        await RunAsync(
+                            subscriptionId,
+                            () => _subscriptions.UpdateAsync(
+                                subscriptionId,
+                                new SubscriptionPatch { PreferredServerId = operation.ServerId },
+                                cancellationToken)),
+
+                    BulkSubscriptionAction.ClearServer =>
+                        await RunAsync(
+                            subscriptionId,
+                            () => _subscriptions.UpdateAsync(
+                                subscriptionId,
+                                new SubscriptionPatch { ClearPreferredServer = true },
+                                cancellationToken)),
 
                     // Unreachable: the enum holds no other member and the transport refuses a name
                     // that maps to none. Thrown rather than skipped, because an entry missing from
@@ -336,6 +361,9 @@ namespace Fluxy.Application.Subscriptions.Services
 
                 BulkSubscriptionAction.ChangeCreator when operation.ResellerId is null =>
                     (nameof(BulkSubscriptionOperation.ResellerId), CreatorRule),
+
+                BulkSubscriptionAction.ChangeServer when operation.ServerId is null =>
+                    (nameof(BulkSubscriptionOperation.ServerId), ServerRule),
 
                 _ => ((string Field, string[] Sentences)?)null
             };

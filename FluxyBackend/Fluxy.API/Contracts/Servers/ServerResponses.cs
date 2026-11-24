@@ -35,6 +35,9 @@ namespace Fluxy.API.Contracts.Servers
         /// <summary>Code reported when the deletion addressed the main server.</summary>
         public const string ImmutableMainCode = "server_immutable";
 
+        /// <summary>Code reported when a subscription or a stream still names the server.</summary>
+        public const string InUseCode = "server_in_use";
+
         /// <summary>Answer describing <paramref name="outcome"/>.</summary>
         /// <param name="outcome">What the service reported.</param>
         /// <returns>The status and the body, with the rejected fields when the input was the problem.</returns>
@@ -65,6 +68,11 @@ namespace Fluxy.API.Contracts.Servers
                     (StatusCodes.Status409Conflict,
                         ImmutableMainCode,
                         "The main server cannot be deleted."),
+
+                ServerAction.InUse =>
+                    (StatusCodes.Status409Conflict,
+                        InUseCode,
+                        "The server is still used by a subscription or a stream."),
 
                 ServerAction.Invalid =>
                     (StatusCodes.Status400BadRequest,

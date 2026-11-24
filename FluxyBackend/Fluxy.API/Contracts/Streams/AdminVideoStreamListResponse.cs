@@ -139,6 +139,18 @@ namespace Fluxy.API.Contracts.Streams
         /// <summary>Transcoding profile the relay converts the stream with, as text, or null.</summary>
         public string? TranscodingProfileId { get; init; }
 
+        /// <summary>Server that transcodes the stream, as text, or null.</summary>
+        public string? TranscodingServerId { get; init; }
+
+        /// <summary>Name of that server, or null.</summary>
+        public string? TranscodingServerName { get; init; }
+
+        /// <summary>Server that keeps the stream's archive, as text, or null.</summary>
+        public string? ArchiveServerId { get; init; }
+
+        /// <summary>Name of the archive server, or null.</summary>
+        public string? ArchiveServerName { get; init; }
+
         /// <summary>Key the channel is filed under inside that guide, or null.</summary>
         public string? EpgChannelKey { get; init; }
 

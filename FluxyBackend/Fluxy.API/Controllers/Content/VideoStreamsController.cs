@@ -318,6 +318,14 @@ namespace Fluxy.API.Controllers.Content
                 request.TranscodingProfileId,
                 nameof(CreateVideoStreamRequest.TranscodingProfileId),
                 errors);
+            var transcodingServerId = ParseIdentifierOrNull(
+                request.TranscodingServerId,
+                nameof(CreateVideoStreamRequest.TranscodingServerId),
+                errors);
+            var archiveServerId = ParseIdentifierOrNull(
+                request.ArchiveServerId,
+                nameof(CreateVideoStreamRequest.ArchiveServerId),
+                errors);
 
             // A set rather than an order: the service appends the stream to the end of every
             // bouquet it joins, and the position inside one belongs to the bouquet's own screen.
@@ -344,6 +352,8 @@ namespace Fluxy.API.Controllers.Content
                     EpgSourceId = epgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
                     TranscodingProfileId = transcodingProfileId,
+                    TranscodingServerId = transcodingServerId,
+                    ArchiveServerId = archiveServerId,
                     ArchiveDays = request.ArchiveDays ?? 0,
                     RestreamUserAgent = request.RestreamUserAgent,
                     RestreamProxy = request.RestreamProxy,
@@ -469,6 +479,8 @@ namespace Fluxy.API.Controllers.Content
                     EpgSourceId = request.EpgSourceId,
                     EpgChannelKey = request.EpgChannelKey,
                     TranscodingProfileId = request.TranscodingProfileId,
+                    TranscodingServerId = request.TranscodingServerId,
+                    ArchiveServerId = request.ArchiveServerId,
                     ArchiveDays = request.ArchiveDays,
                     RestreamUserAgent = request.RestreamUserAgent,
                     RestreamProxy = request.RestreamProxy,
@@ -806,7 +818,11 @@ namespace Fluxy.API.Controllers.Content
             Enigma2Sid = stream.Enigma2Sid,
             DelayMinutes = stream.DelayMinutes,
             SeriesId = stream.SeriesId?.ToString(),
-        TranscodingProfileId = stream.TranscodingProfileId?.ToString(),
+            TranscodingProfileId = stream.TranscodingProfileId?.ToString(),
+            TranscodingServerId = stream.TranscodingServerId?.ToString(),
+            TranscodingServerName = stream.TranscodingServerName,
+            ArchiveServerId = stream.ArchiveServerId?.ToString(),
+            ArchiveServerName = stream.ArchiveServerName,
             VodItems = stream.VodItems.Select(id => id.ToString()).ToList(),
             EpgSourceId = stream.EpgSourceId?.ToString(),
             EpgChannelKey = stream.EpgChannelKey,

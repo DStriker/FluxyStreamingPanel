@@ -21,6 +21,7 @@ const values = (overrides: Partial<SubscriptionValues> = {}): SubscriptionValues
   playlistId: '0123456789abcdef0123456789abcdef',
   expireAt: '2027-01-31',
   tariffPlanId: 'plan-1',
+  preferredServerId: 'server-1',
   maxConnections: 3,
   isRestreamer: true,
   ipWhitelist: ['192.168.1.0/24'],
@@ -57,7 +58,13 @@ describe('toCreateBody', () => {
     const body = toCreateBody(values({ tariffPlanId: null, maxConnections: null }))
 
     expect(body).not.toHaveProperty('clearTariffPlan')
+    expect(body).not.toHaveProperty('clearPreferredServer')
     expect(body).not.toHaveProperty('clearMaxConnections')
+  })
+
+  it('sends the preferred server, or an explicit null for any server', () => {
+    expect(toCreateBody(values()).preferredServerId).toBe('server-1')
+    expect(toCreateBody(values({ preferredServerId: null })).preferredServerId).toBeNull()
   })
 
   it('pins isTrial to false when the installation has trials switched off', () => {
@@ -113,6 +120,31 @@ describe('toUpdateBody', () => {
 
     expect(body.tariffPlanId).toBe('plan-1')
     expect(body.clearTariffPlan).toBe(false)
+  })
+
+  it('derives clearPreferredServer from an empty server select', () => {
+    // The tariff-plan convention restated for the second reference: a null id alone would be read
+    // as "keep", so clearing the select must send the id and the companion flag together.
+    const cleared = toUpdateBody(values({ preferredServerId: null }))
+
+    expect(cleared.preferredServerId).toBeNull()
+    expect(cleared.clearPreferredServer).toBe(true)
+  })
+
+  it('treats an undefined server id as a cleared one, which is what antd actually stores', () => {
+    // The same runtime state the plan's own test pins: a cleared `Select` hands over `undefined`,
+    // so `=== null` would answer false and the body would keep the old server.
+    const body = toUpdateBody(values({ preferredServerId: undefined as unknown as null }))
+
+    expect(body.preferredServerId).toBeNull()
+    expect(body.clearPreferredServer).toBe(true)
+  })
+
+  it('sets the preferred server without the clear flag when one is chosen', () => {
+    const body = toUpdateBody(values({ preferredServerId: 'server-2' }))
+
+    expect(body.preferredServerId).toBe('server-2')
+    expect(body.clearPreferredServer).toBe(false)
   })
 
   it('derives clearMaxConnections from an empty ceiling', () => {

@@ -28,6 +28,10 @@ export interface SubscriptionDetail {
   tariffPlanId: string | null
   /** Name of the tariff plan, or null. */
   tariffPlanName: string | null
+  /** Identifier of the preferred server, as text, or null. */
+  preferredServerId: string | null
+  /** Name of the preferred server, or null. */
+  preferredServerName: string | null
   /** The computed state. */
   status: SubscriptionStatus
   /** Stored connection ceiling, or null for unlimited. */

@@ -41,6 +41,15 @@ namespace Fluxy.Core.Subscriptions.Commands
         /// </summary>
         public bool ClearTariffPlan { get; init; }
 
+        /// <summary>The preferred server to attach, or null to leave the reference alone.</summary>
+        public Guid? PreferredServerId { get; init; }
+
+        /// <summary>
+        /// True to null the preferred-server reference. Ignored when
+        /// <see cref="PreferredServerId"/> names a server.
+        /// </summary>
+        public bool ClearPreferredServer { get; init; }
+
         /// <summary>New connection ceiling, or null to keep the current one.</summary>
         public int? MaxConnections { get; init; }
 

@@ -58,6 +58,10 @@ namespace Fluxy.API.Controllers.Content
         private const string CategoryHint =
             "The category must be the identifier of a category, as a uuid.";
 
+        /// <summary>Sentence a server reference that is not an identifier gets.</summary>
+        private const string IdentifierHint =
+            "That value must be the uuid of the row it names.";
+
         /// <summary>Sentence a missing or unreadable file gets.</summary>
         private const string PlaylistHint =
             "Choose an M3U playlist file to import.";
@@ -173,6 +177,15 @@ namespace Fluxy.API.Controllers.Content
             var delayMinutes = ReadNumber(form, "delayMinutes", errors);
             var archiveDays = ReadNumber(form, "archiveDays", errors);
 
+            // Both references are optional batch settings: a create has nothing to keep, so a
+            // blank part and an absent one are the same answer - "none". A part that is present
+            // but not a uuid is refused with its own field named, exactly as a JSON create does.
+            var transcodingServerId = ReadIdentifier(
+                form,
+                "transcodingServerId",
+                errors);
+            var archiveServerId = ReadIdentifier(form, "archiveServerId", errors);
+
             var appendSourceToExisting = ReadBoolean(form, AppendSourceField, errors);
 
             // Parsed before the error check below, so a broken identifier is refused with the
@@ -228,6 +241,8 @@ namespace Fluxy.API.Controllers.Content
                     Playlist = playlist,
                     DelayMinutes = delayMinutes,
                     ArchiveDays = archiveDays,
+                    TranscodingServerId = transcodingServerId,
+                    ArchiveServerId = archiveServerId,
                     RestreamUserAgent = form["restreamUserAgent"].ToString(),
                     RestreamProxy = form["restreamProxy"].ToString(),
                     RestreamCookies = form["restreamCookies"].ToString(),
@@ -267,6 +282,31 @@ namespace Fluxy.API.Controllers.Content
 
             errors[field] = [NumberHint];
             return 0;
+        }
+
+        /// <summary>
+        /// Reads one optional server identifier. Blank or missing means "none"; anything else
+        /// must be a uuid, reported on the field it arrived under.
+        /// </summary>
+        private static Guid? ReadIdentifier(
+            IFormCollection form,
+            string field,
+            Dictionary<string, string[]> errors)
+        {
+            var text = form[field].ToString();
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            if (Guid.TryParse(text.Trim(), out var value))
+            {
+                return value;
+            }
+
+            errors[field] = [IdentifierHint];
+            return null;
         }
 
         /// <summary>

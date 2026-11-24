@@ -25,11 +25,12 @@ export type SubscriptionSortOrder = 'asc' | 'desc'
 export const SUBSCRIPTIONS_PAGE_SIZE = 20
 
 /**
- * The seven collective operations the bulk endpoint accepts.
+ * The ten collective operations the bulk endpoint accepts.
  *
  * The first three are the ones a selection is collectivised for - move it to another plan, hand it
  * to another issuer, remove it - and the four after them are the per-field clears a row would
- * otherwise have to be opened for.
+ * otherwise have to be opened for. The last two pin the selection to one server, or clear that
+ * pin.
  */
 export type BulkSubscriptionAction =
   | 'change-tariff'
@@ -40,6 +41,8 @@ export type BulkSubscriptionAction =
   | 'delete-enigma2'
   | 'prolong'
   | 'block-owner'
+  | 'change-server'
+  | 'clear-server'
 
 /** The body a bulk run sends: the action, the ids and the one value it writes. */
 export interface BulkSubscriptionsPayload {
@@ -47,6 +50,8 @@ export interface BulkSubscriptionsPayload {
   ids: string[]
   tariffPlanId?: string
   resellerId?: string
+  /** Destination server of a `change-server`, as the uuid of a server. */
+  serverId?: string
 }
 
 /**

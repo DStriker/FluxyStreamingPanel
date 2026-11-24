@@ -23,6 +23,13 @@ export interface SubscriptionValues {
   expireAt: string | null
   /** The tariff plan it is sold under, or null. */
   tariffPlanId: string | null
+  /**
+   * The server it is pinned to, or null for "any server, chosen later by the main server".
+   *
+   * Null is a real answer rather than "not stated": the form's select opens empty for a row
+   * that names no server, and the update body derives `clearPreferredServer` from it.
+   */
+  preferredServerId: string | null
   /** Connection ceiling, or null for unlimited. */
   maxConnections: number | null
   /** Whether the subscriber may restream. */
@@ -75,6 +82,7 @@ export const toCreateBody = (
   // A create has no stored expiry to keep, so the empty-string clear collapses into "none" here.
   expireAt: values.expireAt || null,
   tariffPlanId: values.tariffPlanId ?? null,
+  preferredServerId: values.preferredServerId ?? null,
   maxConnections: values.maxConnections ?? null,
   isRestreamer: values.isRestreamer,
   ipWhitelist: values.ipWhitelist,
@@ -96,13 +104,14 @@ export const toCreateBody = (
  * holds one subscription, so what the operator sees and what the row becomes are the same
  * statement.
  *
- * **The two clear flags are derived from the values, never stored on the form.** A nullable field
- * on this API distinguishes "leave it alone" from "set it to nothing" by a companion flag
- * (`clearTariffPlan`, `clearMaxConnections`), and the transport reads an absent identifier as
- * "keep". So an empty plan select has to say *both* things at once: the identifier null **and** the
- * flag true. Reading the flag off the form would need a second piece of state kept in step with the
- * first, and the day they disagreed an operator would clear the plan, save successfully, and find
- * it still attached - which is exactly what this derivation exists to prevent.
+ * **The three clear flags are derived from the values, never stored on the form.** A nullable
+ * field on this API distinguishes "leave it alone" from "set it to nothing" by a companion flag
+ * (`clearTariffPlan`, `clearPreferredServer`, `clearMaxConnections`), and the transport reads an
+ * absent identifier as "keep". So an empty select has to say *both* things at once: the
+ * identifier null **and** the flag true. Reading the flag off the form would need a second piece
+ * of state kept in step with the first, and the day they disagreed an operator would clear the
+ * plan, save successfully, and find it still attached - which is exactly what this derivation
+ * exists to prevent.
  *
  * The comparison is `== null` rather than `=== null`, and the identifier is written out as
  * `?? null`, because **the form store can hold `undefined` here**: a cleared antd `Select` calls
@@ -119,6 +128,8 @@ export const toUpdateBody = (values: SubscriptionValues) => ({
   expireAt: values.expireAt,
   tariffPlanId: values.tariffPlanId ?? null,
   clearTariffPlan: values.tariffPlanId == null,
+  preferredServerId: values.preferredServerId ?? null,
+  clearPreferredServer: values.preferredServerId == null,
   maxConnections: values.maxConnections ?? null,
   // The ceiling is plan-owned: a null while a plan is attached is the form *not sending* the
   // field, not the operator asking for "unlimited". Only a plan-less save can clear it.

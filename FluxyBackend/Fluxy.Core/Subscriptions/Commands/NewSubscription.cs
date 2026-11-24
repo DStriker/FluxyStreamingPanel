@@ -37,6 +37,12 @@ namespace Fluxy.Core.Subscriptions.Commands
         /// <summary>The tariff plan it is sold under, or null to carry its own parameters.</summary>
         public Guid? TariffPlanId { get; init; }
 
+        /// <summary>
+        /// The preferred server it is pinned to, or null for "any server, chosen later by the
+        /// main server".
+        /// </summary>
+        public Guid? PreferredServerId { get; init; }
+
         /// <summary>Connection ceiling, or null for unlimited.</summary>
         public int? MaxConnections { get; init; }
 

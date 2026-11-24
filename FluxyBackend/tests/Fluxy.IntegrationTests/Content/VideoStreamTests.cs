@@ -891,6 +891,56 @@ namespace Fluxy.IntegrationTests.Content
         }
 
         [Fact]
+        public async Task AnImportOverwritingStreamsRefusesAStoredTimeshiftOnlyTranscoder()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Overwrite timeshift", "VideoStream");
+            var timeshift = await CreateServerAsync("Stored timeshift", timeshiftOnly: true);
+
+            // A non-permanent row may carry the binding; nothing on the single-row surface can
+            // create a permanent row on it, which is exactly the state the overwrite would make.
+            using var seeded = await PostStreamAsync(new
+            {
+                name = "Bound on demand",
+                type = "ondemand",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingServerId = timeshift
+            });
+            await AssertCodeAsync(seeded, HttpStatusCode.Created, "video_stream_created");
+            var streamId = IdFromLocation(seeded);
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,Bound on demand\n"
+                + "https://example.test/new-source\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                type: "permanent",
+                status: "running",
+                delayMinutes: "10",
+                overwriteExistingSettings: true);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal("validation_failed", CodeOf(body));
+            Assert.True(
+                body.RootElement.GetProperty("errors").TryGetProperty("transcodingServerId", out _));
+
+            // Nothing was written: the category still holds the one seeded row, and that row
+            // still reads as it did - type, status, delay and the stored binding.
+            Assert.Equal(1, await CountStreamsAsync(categoryId));
+
+            var detail = await DetailOfAsync(streamId);
+            Assert.Equal("OnDemand", detail.GetProperty("type").GetString());
+            Assert.Equal("Stopped", detail.GetProperty("status").GetString());
+            Assert.Equal(0, detail.GetProperty("delayMinutes").GetInt32());
+            Assert.Equal(timeshift, detail.GetProperty("transcodingServerId").GetString());
+        }
+
+        [Fact]
         public async Task AnImportStoresTvgLogoOnNewStreams()
         {
             await CreateAdminAndSignInAsync();
@@ -1040,6 +1090,201 @@ namespace Fluxy.IntegrationTests.Content
             await AssertCodeAsync(response, HttpStatusCode.BadRequest, "csrf_invalid");
         }
 
+        [Fact]
+        public async Task AnImportAppliesBothServerReferencesToEveryCreatedStream()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import servers", "VideoStream");
+            var transcoder = await CreateServerAsync("Import transcoder", timeshiftOnly: false);
+            var archiver = await CreateServerAsync("Import archiver", timeshiftOnly: true);
+
+            const string playlist =
+                "#EXTM3U\n"
+                + "#EXTINF:-1,First\n"
+                + "https://example.test/first\n"
+                + "#EXTINF:-1,Second\n"
+                + "https://example.test/second\n";
+
+            using var response = await ImportAsync(
+                playlist,
+                categoryId,
+                archiveDays: "7",
+                transcodingServerId: transcoder,
+                archiveServerId: archiver);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal("video_streams_import_completed", CodeOf(body));
+            Assert.Equal(2, body.RootElement.GetProperty("imported").GetInt32());
+
+            using var page = await Client.GetAsync(
+                $"/admin/video-streams?categoryId={categoryId}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            using var pageBody = await ReadJsonAsync(page);
+            var items = pageBody.RootElement.GetProperty("items").EnumerateArray().ToArray();
+            Assert.Equal(2, items.Length);
+
+            foreach (var item in items)
+            {
+                var detail = await DetailOfAsync(item.GetProperty("id").GetString()!);
+                Assert.Equal(transcoder, detail.GetProperty("transcodingServerId").GetString());
+                Assert.StartsWith(
+                    "Import transcoder",
+                    detail.GetProperty("transcodingServerName").GetString());
+                Assert.Equal(archiver, detail.GetProperty("archiveServerId").GetString());
+                Assert.StartsWith(
+                    "Import archiver",
+                    detail.GetProperty("archiveServerName").GetString());
+            }
+        }
+
+        [Fact]
+        public async Task AnImportWithoutServerPartsStoresNeitherReference()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import no servers", "VideoStream");
+
+            using var response = await ImportAsync(
+                "#EXTINF:-1,Plain\nhttps://example.test/plain\n",
+                categoryId);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var id = await ImportedIdAsync(categoryId, "Plain");
+
+            // Asserted on the row the import created, and on a blank part rather than an absent
+            // one: both are the same answer for a create.
+            var detail = await DetailOfAsync(id);
+            Assert.Equal(JsonValueKind.Null, detail.GetProperty("transcodingServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, detail.GetProperty("archiveServerId").ValueKind);
+
+            using var blank = await ImportAsync(
+                "#EXTINF:-1,Blank\nhttps://example.test/blank\n",
+                categoryId,
+                transcodingServerId: string.Empty,
+                archiveServerId: string.Empty);
+            Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+
+            var blankId = await ImportedIdAsync(categoryId, "Blank");
+            var blankDetail = await DetailOfAsync(blankId);
+            Assert.Equal(
+                JsonValueKind.Null,
+                blankDetail.GetProperty("transcodingServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, blankDetail.GetProperty("archiveServerId").ValueKind);
+        }
+
+        [Fact]
+        public async Task AnImportRefusesAnUnknownServerAndWritesNothing()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import unknown", "VideoStream");
+
+            const string playlist =
+                "#EXTM3U\n" + "#EXTINF:-1,Refused\nhttps://example.test/refused\n";
+
+            using var transcoder = await ImportAsync(
+                playlist,
+                categoryId,
+                transcodingServerId: Guid.NewGuid().ToString());
+            Assert.Equal(HttpStatusCode.BadRequest, transcoder.StatusCode);
+            using var transcoderBody = await ReadJsonAsync(transcoder);
+            Assert.Equal("validation_failed", CodeOf(transcoderBody));
+            Assert.True(
+                transcoderBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+
+            using var archiver = await ImportAsync(
+                playlist,
+                categoryId,
+                archiveServerId: Guid.NewGuid().ToString());
+            Assert.Equal(HttpStatusCode.BadRequest, archiver.StatusCode);
+            using var archiverBody = await ReadJsonAsync(archiver);
+            Assert.Equal("validation_failed", CodeOf(archiverBody));
+            Assert.True(
+                archiverBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("archiveServerId", out _));
+
+            // A whole-import refusal is not a per-row problem entry, and nothing landed.
+            Assert.Equal(0, await CountStreamsAsync(categoryId));
+
+            // A malformed part is refused on the field it arrived under, before the service.
+            using var malformed = await ImportAsync(
+                playlist,
+                categoryId,
+                transcodingServerId: "not-a-uuid");
+            Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+            using var malformedBody = await ReadJsonAsync(malformed);
+            Assert.Equal("validation_failed", CodeOf(malformedBody));
+            Assert.True(
+                malformedBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+
+            using var malformedArchive = await ImportAsync(
+                playlist,
+                categoryId,
+                archiveServerId: "not-a-uuid");
+            Assert.Equal(HttpStatusCode.BadRequest, malformedArchive.StatusCode);
+            using var malformedArchiveBody = await ReadJsonAsync(malformedArchive);
+            Assert.Equal("validation_failed", CodeOf(malformedArchiveBody));
+            Assert.True(
+                malformedArchiveBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("archiveServerId", out _));
+            Assert.Equal(0, await CountStreamsAsync(categoryId));
+        }
+
+        [Fact]
+        public async Task AnImportRefusesATimeshiftOnlyTranscoderOnPermanentButAcceptsItElsewhere()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Import timeshift", "VideoStream");
+            var timeshift = await CreateServerAsync("Import timeshift server", timeshiftOnly: true);
+
+            const string playlist =
+                "#EXTM3U\n" + "#EXTINF:-1,Per kind\nhttps://example.test/per-kind\n";
+
+            using var permanent = await ImportAsync(
+                playlist,
+                categoryId,
+                transcodingServerId: timeshift);
+            Assert.Equal(HttpStatusCode.BadRequest, permanent.StatusCode);
+            using var permanentBody = await ReadJsonAsync(permanent);
+            Assert.Equal("validation_failed", CodeOf(permanentBody));
+            Assert.True(
+                permanentBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+            Assert.Equal(0, await CountStreamsAsync(categoryId));
+
+            // A non-permanent kind may name the same server as its transcoder.
+            using var onDemand = await ImportAsync(
+                playlist,
+                categoryId,
+                type: "ondemand",
+                transcodingServerId: timeshift);
+            Assert.Equal(HttpStatusCode.OK, onDemand.StatusCode);
+            using var onDemandBody = await ReadJsonAsync(onDemand);
+            Assert.Equal(1, onDemandBody.RootElement.GetProperty("imported").GetInt32());
+
+            var onDemandId = await ImportedIdAsync(categoryId, "Per kind");
+            Assert.Equal(
+                timeshift,
+                (await DetailOfAsync(onDemandId)).GetProperty("transcodingServerId").GetString());
+
+            // And a permanent import may name it as the archive server.
+            using var archived = await ImportAsync(
+                "#EXTINF:-1,Archived\nhttps://example.test/archived\n",
+                categoryId,
+                archiveDays: "7",
+                archiveServerId: timeshift,
+                transcodingServerId: await CreateServerAsync("Import full", timeshiftOnly: false));
+            Assert.Equal(HttpStatusCode.OK, archived.StatusCode);
+            using var archivedBody = await ReadJsonAsync(archived);
+            Assert.Equal(1, archivedBody.RootElement.GetProperty("imported").GetInt32());
+
+            var archivedId = await ImportedIdAsync(categoryId, "Archived");
+            Assert.Equal(
+                timeshift,
+                (await DetailOfAsync(archivedId)).GetProperty("archiveServerId").GetString());
+        }
+
         private async Task AssertBulkRefusalAsync(object body, string field)
         {
             var csrf = await GetCsrfTokenAsync();
@@ -1121,6 +1366,333 @@ namespace Fluxy.IntegrationTests.Content
                 (await DetailOfAsync(streamId)).GetProperty("transcodingProfileId").ValueKind);
         }
 
+        [Fact]
+        public async Task BothServerReferencesRoundTripThroughTheThreeStates()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Server references", "VideoStream");
+
+            var transcoder = await CreateServerAsync("Transcoder", timeshiftOnly: false);
+            var archive = await CreateServerAsync("Archiver", timeshiftOnly: true);
+            var replacement = await CreateServerAsync("Replacement", timeshiftOnly: false);
+
+            using var created = await PostStreamAsync(new
+            {
+                name = "Bound stream",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/bound" },
+                transcodingServerId = transcoder,
+                archiveServerId = archive
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "video_stream_created");
+            var streamId = IdFromLocation(created);
+
+            var detail = await DetailOfAsync(streamId);
+            Assert.Equal(transcoder, detail.GetProperty("transcodingServerId").GetString());
+            Assert.StartsWith("Transcoder", detail.GetProperty("transcodingServerName").GetString());
+            Assert.Equal(archive, detail.GetProperty("archiveServerId").GetString());
+            Assert.StartsWith("Archiver", detail.GetProperty("archiveServerName").GetString());
+
+            // Null keeps both.
+            var csrf = await GetCsrfTokenAsync();
+            using var kept = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { name = "Bound stream renamed" },
+                csrf);
+            await AssertCodeAsync(kept, HttpStatusCode.OK, "video_stream_updated");
+
+            var afterKeep = await DetailOfAsync(streamId);
+            Assert.Equal(transcoder, afterKeep.GetProperty("transcodingServerId").GetString());
+            Assert.Equal(archive, afterKeep.GetProperty("archiveServerId").GetString());
+
+            // A uuid replaces both.
+            csrf = await GetCsrfTokenAsync();
+            using var replaced = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new
+                {
+                    transcodingServerId = replacement,
+                    archiveServerId = replacement
+                },
+                csrf);
+            await AssertCodeAsync(replaced, HttpStatusCode.OK, "video_stream_updated");
+
+            var afterReplace = await DetailOfAsync(streamId);
+            Assert.Equal(replacement, afterReplace.GetProperty("transcodingServerId").GetString());
+            Assert.StartsWith("Replacement", afterReplace.GetProperty("transcodingServerName").GetString());
+            Assert.Equal(replacement, afterReplace.GetProperty("archiveServerId").GetString());
+
+            // An empty string clears both.
+            csrf = await GetCsrfTokenAsync();
+            using var cleared = await PatchJsonAsync(
+                $"/admin/video-streams/{streamId}",
+                new { transcodingServerId = "", archiveServerId = "" },
+                csrf);
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "video_stream_updated");
+
+            var afterClear = await DetailOfAsync(streamId);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("transcodingServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("transcodingServerName").ValueKind);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("archiveServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("archiveServerName").ValueKind);
+        }
+
+        [Fact]
+        public async Task AnUnknownServerIsRefusedUnderItsOwnField()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Unknown servers", "VideoStream");
+
+            using var badTranscoder = await PostStreamAsync(new
+            {
+                name = "Bad transcoder",
+                type = "ondemand",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingServerId = Guid.NewGuid().ToString()
+            });
+            await AssertCodeAsync(badTranscoder, HttpStatusCode.BadRequest, "validation_failed");
+            using var transcoderBody = await ReadJsonAsync(badTranscoder);
+            Assert.True(
+                transcoderBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+
+            using var badArchive = await PostStreamAsync(new
+            {
+                name = "Bad archive",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                archiveServerId = Guid.NewGuid().ToString()
+            });
+            await AssertCodeAsync(badArchive, HttpStatusCode.BadRequest, "validation_failed");
+            using var archiveBody = await ReadJsonAsync(badArchive);
+            Assert.True(
+                archiveBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("archiveServerId", out _));
+        }
+
+        [Fact]
+        public async Task APermanentStreamRefusesATimeshiftOnlyTranscoderEverywhereItCouldBeSet()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Timeshift", "VideoStream");
+            var timeshift = await CreateServerAsync("Timeshift only", timeshiftOnly: true);
+
+            // On create.
+            using var created = await PostStreamAsync(new
+            {
+                name = "Refused create",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingServerId = timeshift
+            });
+            await AssertCodeAsync(created, HttpStatusCode.BadRequest, "validation_failed");
+            using var createBody = await ReadJsonAsync(created);
+            Assert.True(
+                createBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+
+            // A non-permanent row is allowed to carry it, and so is a permanent row's archiver.
+            using var onDemand = await PostStreamAsync(new
+            {
+                name = "Allowed on demand",
+                type = "ondemand",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingServerId = timeshift
+            });
+            await AssertCodeAsync(onDemand, HttpStatusCode.Created, "video_stream_created");
+
+            using var archived = await PostStreamAsync(new
+            {
+                name = "Allowed archive",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                archiveDays = 7,
+                archiveServerId = timeshift
+            });
+            await AssertCodeAsync(archived, HttpStatusCode.Created, "video_stream_created");
+
+            // On a patch that moves the row to permanent over the binding.
+            var bound = await CreateStreamAsync(categoryId, "Moves to permanent");
+            var csrf = await GetCsrfTokenAsync();
+            using var boundServer = await PatchJsonAsync(
+                $"/admin/video-streams/{bound}",
+                new { type = "ondemand", transcodingServerId = timeshift },
+                csrf);
+            await AssertCodeAsync(boundServer, HttpStatusCode.OK, "video_stream_updated");
+
+            csrf = await GetCsrfTokenAsync();
+            using var refusedPatch = await PatchJsonAsync(
+                $"/admin/video-streams/{bound}",
+                new { type = "permanent" },
+                csrf);
+            await AssertCodeAsync(refusedPatch, HttpStatusCode.BadRequest, "validation_failed");
+            using var patchBody = await ReadJsonAsync(refusedPatch);
+            Assert.True(
+                patchBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("transcodingServerId", out _));
+
+            // And through bulk change-type, per row.
+            csrf = await GetCsrfTokenAsync();
+            using var bulk = await PostJsonAsync(
+                "/admin/video-streams/bulk",
+                new { action = "change-type", ids = new[] { bound }, type = "permanent" },
+                csrf);
+            Assert.Equal(HttpStatusCode.OK, bulk.StatusCode);
+            using var bulkBody = await ReadJsonAsync(bulk);
+            var item = bulkBody.RootElement.GetProperty("items")[0];
+            Assert.False(item.GetProperty("ok").GetBoolean());
+            Assert.Equal("validation_failed", item.GetProperty("code").GetString());
+            Assert.True(
+                item.GetProperty("errors").TryGetProperty("transcodingServerId", out _));
+        }
+
+        [Fact]
+        public async Task BulkChangeServersReplacesBothFieldsAndBlankClears()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Bulk servers", "VideoStream");
+
+            var first = await CreateStreamAsync(categoryId, "First");
+            var second = await CreateStreamAsync(categoryId, "Second");
+            var archive = await CreateServerAsync("Bulk archive", timeshiftOnly: true);
+
+            var csrf = await GetCsrfTokenAsync();
+            using var response = await PostJsonAsync(
+                "/admin/video-streams/bulk",
+                new
+                {
+                    action = "change-servers",
+                    ids = new[] { first, second },
+                    transcodingServerId = string.Empty,
+                    archiveServerId = archive
+                },
+                csrf);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            Assert.Equal(2, body.RootElement.GetProperty("succeeded").GetInt32());
+
+            var firstDetail = await DetailOfAsync(first);
+            Assert.Equal(JsonValueKind.Null, firstDetail.GetProperty("transcodingServerId").ValueKind);
+            Assert.Equal(archive, firstDetail.GetProperty("archiveServerId").GetString());
+            Assert.StartsWith("Bulk archive", firstDetail.GetProperty("archiveServerName").GetString());
+        }
+
+        [Fact]
+        public async Task BulkChangeServersRefusesAnUnknownServerPerRow()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Bulk unknown", "VideoStream");
+
+            var accepted = await CreateStreamAsync(categoryId, "Accepted");
+            var archive = await CreateServerAsync("Bulk known", timeshiftOnly: false);
+
+            var csrf = await GetCsrfTokenAsync();
+            using var response = await PostJsonAsync(
+                "/admin/video-streams/bulk",
+                new
+                {
+                    action = "change-servers",
+                    ids = new[] { accepted },
+                    transcodingServerId = Guid.NewGuid().ToString(),
+                    archiveServerId = archive
+                },
+                csrf);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            var item = body.RootElement.GetProperty("items")[0];
+            Assert.False(item.GetProperty("ok").GetBoolean());
+            Assert.True(item.GetProperty("errors").TryGetProperty("transcodingServerId", out _));
+
+            // A refused row was not written: the archive server it named did not land either.
+            var detail = await DetailOfAsync(accepted);
+            Assert.Equal(JsonValueKind.Null, detail.GetProperty("archiveServerId").ValueKind);
+        }
+
+        [Fact]
+        public async Task BulkChangeServersHonoursThePermanenceRulePerRow()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Bulk timeshift", "VideoStream");
+
+            var permanent = await CreateStreamAsync(categoryId, "Permanent row");
+            var timeshift = await CreateServerAsync("Bulk timeshift server", timeshiftOnly: true);
+
+            var csrf = await GetCsrfTokenAsync();
+            using var response = await PostJsonAsync(
+                "/admin/video-streams/bulk",
+                new
+                {
+                    action = "change-servers",
+                    ids = new[] { permanent },
+                    transcodingServerId = timeshift,
+                    archiveServerId = timeshift
+                },
+                csrf);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = await ReadJsonAsync(response);
+            var item = body.RootElement.GetProperty("items")[0];
+            Assert.False(item.GetProperty("ok").GetBoolean());
+            Assert.Equal("validation_failed", item.GetProperty("code").GetString());
+            Assert.True(item.GetProperty("errors").TryGetProperty("transcodingServerId", out _));
+
+            // The refused row keeps what it had: neither field moved.
+            var detail = await DetailOfAsync(permanent);
+            Assert.Equal(JsonValueKind.Null, detail.GetProperty("transcodingServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, detail.GetProperty("archiveServerId").ValueKind);
+        }
+
+        [Fact]
+        public async Task DeletingAServerAStreamNamesIsRefused()
+        {
+            await CreateAdminAndSignInAsync();
+            var categoryId = await CreateCategoryAsync("Deletes", "VideoStream");
+            var server = await CreateServerAsync("Named by a stream", timeshiftOnly: false);
+
+            using var created = await PostStreamAsync(new
+            {
+                name = "Bound",
+                type = "permanent",
+                categoryId,
+                sources = new[] { "https://example.test/source" },
+                transcodingServerId = server
+            });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "video_stream_created");
+
+            using var refused = await DeleteAsync(
+                $"/admin/servers/{server}",
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(refused, HttpStatusCode.Conflict, "server_in_use");
+        }
+
+        /// <summary>Creates a server through its own surface and answers its identifier.</summary>
+        private async Task<string> CreateServerAsync(string name, bool timeshiftOnly)
+        {
+            using var response = await PostJsonAsync(
+                "/admin/servers",
+                new
+                {
+                    name = name + " " + Guid.NewGuid().ToString("N")[..8],
+                    ip = "203.0.113.7",
+                    port = 6200,
+                    osName = "Debian 12",
+                    networkInterface = "eth0",
+                    timeshiftOnly
+                },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "server_created");
+
+            return IdFromLocation(response);
+        }
+
         private async Task<JsonElement> DetailOfAsync(string id)
         {
             using var response = await Client.GetAsync(
@@ -1130,6 +1702,32 @@ namespace Fluxy.IntegrationTests.Content
             using var body = await ReadJsonAsync(response);
 
             return body.RootElement.Clone();
+        }
+
+        /// <summary>Reads the identifier of the one stream a category holds under a name.</summary>
+        private async Task<string> ImportedIdAsync(string categoryId, string name)
+        {
+            using var page = await Client.GetAsync(
+                $"/admin/video-streams?categoryId={categoryId}&search={Uri.EscapeDataString(name)}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            using var body = await ReadJsonAsync(page);
+
+            return body.RootElement.GetProperty("items").EnumerateArray()
+                .Single(item => item.GetProperty("name").GetString() == name)
+                .GetProperty("id").GetString()!;
+        }
+
+        /// <summary>How many streams the category holds, which is what "nothing was written" means.</summary>
+        private async Task<int> CountStreamsAsync(string categoryId)
+        {
+            using var page = await Client.GetAsync(
+                $"/admin/video-streams?categoryId={categoryId}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            using var body = await ReadJsonAsync(page);
+
+            return body.RootElement.GetProperty("total").GetInt32();
         }
 
         private async Task<string?> StatusOfAsync(string id)
@@ -1171,7 +1769,9 @@ namespace Fluxy.IntegrationTests.Content
             bool appendSourceToExisting = false,
             bool overwriteExistingSettings = false,
             bool includeFile = true,
-            bool withCsrf = true)
+            bool withCsrf = true,
+            string? transcodingServerId = null,
+            string? archiveServerId = null)
         {
             using var form = new MultipartFormDataContent();
             form.Add(new StringContent(type), "type");
@@ -1190,6 +1790,18 @@ namespace Fluxy.IntegrationTests.Content
             if (archiveDays is not null)
             {
                 form.Add(new StringContent(archiveDays), "archiveDays");
+            }
+
+            // Sent even when blank: a blank part is the form's own "none", which the endpoint
+            // has to read as null rather than as a malformed identifier.
+            if (transcodingServerId is not null)
+            {
+                form.Add(new StringContent(transcodingServerId), "transcodingServerId");
+            }
+
+            if (archiveServerId is not null)
+            {
+                form.Add(new StringContent(archiveServerId), "archiveServerId");
             }
 
             if (appendSourceToExisting)

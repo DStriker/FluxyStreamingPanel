@@ -60,5 +60,17 @@ namespace Fluxy.Core.Streams.Commands
 
         /// <summary>Extra headers a restream change writes, or null to clear them.</summary>
         public string? RestreamHeaders { get; init; }
+
+        /// <summary>
+        /// Transcoding server a <c>change-servers</c> writes, as text: null or blank clears the
+        /// field, anything else replaces it.
+        /// </summary>
+        public string? TranscodingServerId { get; init; }
+
+        /// <summary>
+        /// Archive server a <c>change-servers</c> writes, as text: null or blank clears the field,
+        /// anything else replaces it.
+        /// </summary>
+        public string? ArchiveServerId { get; init; }
     }
 }

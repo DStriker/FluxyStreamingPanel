@@ -119,6 +119,12 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(stream => stream.TranscodingProfileId)
                 .HasColumnName("transcoding_profile_id");
 
+            builder.Property(stream => stream.TranscodingServerId)
+                .HasColumnName("transcoding_server_id");
+
+            builder.Property(stream => stream.ArchiveServerId)
+                .HasColumnName("archive_server_id");
+
             builder.Property(stream => stream.EpgChannelKey)
                 .HasColumnName("epg_channel_key")
                 .HasMaxLength(EpgChannelKeyMaxLength);
@@ -191,6 +197,21 @@ namespace Fluxy.DataAccess.Configurations
                 .HasForeignKey(stream => stream.TranscodingProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // The two servers a stream may name are the same shape of fact as the profile above:
+            // rows of this installation, references that may be cleared, and a row still
+            // referenced may not be deleted. Restrict answers that in the database, and the
+            // server service counts the references first so the operator reads a code instead of
+            // a database failure.
+            builder.HasOne<ServerEntity>()
+                .WithMany()
+                .HasForeignKey(stream => stream.TranscodingServerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne<ServerEntity>()
+                .WithMany()
+                .HasForeignKey(stream => stream.ArchiveServerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // One name per category, compared case sensitively for the same reason username
             // and email are: PostgreSQL decides what "equal" means for a varchar from the
             // collation of the column, and the default one compares the bytes.
@@ -205,6 +226,11 @@ namespace Fluxy.DataAccess.Configurations
             // The two filters the table offers, each narrow on its own.
             builder.HasIndex(stream => stream.Status);
             builder.HasIndex(stream => stream.Type);
+
+            // Both server references are probed by the server delete guard, so each needs an
+            // index of its own the way the profile reference has.
+            builder.HasIndex(stream => stream.TranscodingServerId);
+            builder.HasIndex(stream => stream.ArchiveServerId);
         }
     }
 }

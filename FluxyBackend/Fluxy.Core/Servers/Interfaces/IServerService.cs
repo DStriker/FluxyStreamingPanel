@@ -40,6 +40,14 @@ namespace Fluxy.Core.Servers.Interfaces
         /// <returns>The server, or null when there is no such one.</returns>
         Task<ServerView?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Reads every server as a picker entry, ordered by name - what the subscription and
+        /// stream forms draw.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+            CancellationToken cancellationToken = default);
+
         /// <summary>Creates a server.</summary>
         /// <param name="input">What the operator supplied.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
@@ -62,7 +70,8 @@ namespace Fluxy.Core.Servers.Interfaces
 
         /// <summary>
         /// Deletes a server. The main server is refused with
-        /// <see cref="ServerAction.ImmutableMain"/> and the row survives.
+        /// <see cref="ServerAction.ImmutableMain"/> and a referenced row with
+        /// <see cref="ServerAction.InUse"/>; either way the row survives the refusal.
         /// </summary>
         /// <param name="id">Identifier of the server to delete.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>

@@ -131,6 +131,31 @@ namespace Fluxy.API.Controllers.Admin
             });
         }
 
+        /// <summary>Reports every server as a picker entry - what the subscription and stream forms
+        /// draw.</summary>
+        /// <remarks>
+        /// A read of the same rows behind a different grant: choosing a server while editing a
+        /// subscription or a stream is part of editing it, so either of those read grants admits
+        /// it and the server pair is not required. The answer is a bare array rather than a page,
+        /// because the picker needs every server and there are tens of them, not thousands.
+        /// </remarks>
+        [HttpGet("options")]
+        [Authorize(Policy = AuthenticationExtensions.ViewServerOptionsPolicy)]
+        [ProducesResponseType<IReadOnlyList<ServerOptionResponse>>(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetOptions(CancellationToken cancellationToken)
+        {
+            NoStore();
+
+            var options = await _servers.GetOptionsAsync(cancellationToken);
+
+            return Ok(options.Select(option => new ServerOptionResponse
+            {
+                Id = option.Id.ToString(),
+                Name = option.Name,
+                TimeshiftOnly = option.TimeshiftOnly
+            }).ToList());
+        }
+
         /// <summary>Reports one server, for the edit form.</summary>
         [HttpGet("{id:guid}")]
         [Authorize(Policy = AuthenticationExtensions.ViewServersPolicy)]

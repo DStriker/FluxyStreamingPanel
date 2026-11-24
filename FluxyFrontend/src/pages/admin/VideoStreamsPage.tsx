@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import {
   CaretRightOutlined,
   ClockCircleOutlined,
+  CloudServerOutlined,
   CloudSyncOutlined,
   DatabaseOutlined,
   DeleteOutlined,
@@ -48,6 +49,7 @@ import {
   useStopVideoStream,
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreams } from '../../features/video-streams/hooks/queries'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import { useBulkAction, useColumnWidths, useRowAction, useServerTable } from '../../hooks/table'
 
 /** How often the table re-reads itself while the toggle below is on, in milliseconds. */
@@ -126,8 +128,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<StreamsColumnKey, number> = {
 /** Where this table remembers the widths the visitor gave its columns. */
 const COLUMN_WIDTHS_KEY = 'fluxy.videoStreams.columnWidths'
 
-/** The five bulk edits that ask for a value; the transitions and deletion run from the menu. */
-type BulkDialog = 'move' | 'type' | 'delay' | 'archive' | 'restream'
+/** The six bulk edits that ask for a value; the transitions and deletion run from the menu. */
+type BulkDialog = 'move' | 'type' | 'delay' | 'archive' | 'restream' | 'servers'
 
 /** The four restream settings as the bulk dialog collects them; a blank string clears one. */
 interface BulkRestreamValues {
@@ -207,9 +209,9 @@ interface VideoStreamsPageProps {
  *
  * **A selection makes the same operations available over many rows**, behind the
  * `editStreams` grant the list itself does not need: the toolbar's menu carries the three
- * transitions, deletion, and the four edits whose value fits one dialog (category, type,
- * delay, archive, restream). The per-row half stays exactly as it was - a bulk toolbar is a
- * second way to reach the same writes, not a replacement for the buttons somebody already
+ * transitions, deletion, and the five edits whose value fits one dialog (category, type,
+ * delay, archive, restream, servers). The per-row half stays exactly as it was - a bulk toolbar
+ * is a second way to reach the same writes, not a replacement for the buttons somebody already
  * knows.
  */
 export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
@@ -318,8 +320,21 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   })
 
   /**
-   * Which edit dialog is open, and the values the five of them collect. One discriminator
-   * rather than five booleans: only one dialog can be open, and five flags would be five
+   * The servers the two bulk selects offer.
+   *
+   * A read of another feature from a page, gated by the streams' own view grant, so this screen
+   * can always fill its dialog. A failed read leaves the selects empty rather than failing the
+   * table; the run itself is judged per row by the server.
+   */
+  const serversQuery = useAllServers()
+  const serverOptions = (serversQuery.data ?? []).map((server) => ({
+    value: server.id,
+    label: server.name,
+  }))
+
+  /**
+   * Which edit dialog is open, and the values the six of them collect. One discriminator
+   * rather than six booleans: only one dialog can be open, and six flags would be six
    * places to forget a reset. The values are cleared by `closeBulkDialog`, so opening a
    * second dialog after closing the first never inherits what the first one held.
    */
@@ -329,6 +344,8 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
   const [bulkDelay, setBulkDelay] = useState(0)
   const [bulkArchive, setBulkArchive] = useState(0)
   const [bulkRestream, setBulkRestream] = useState<BulkRestreamValues>(EMPTY_RESTREAM)
+  const [bulkTranscodingServerId, setBulkTranscodingServerId] = useState<string | null>(null)
+  const [bulkArchiveServerId, setBulkArchiveServerId] = useState<string | null>(null)
 
   const closeBulkDialog = () => {
     setBulkDialog(null)
@@ -337,6 +354,8 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
     setBulkDelay(0)
     setBulkArchive(0)
     setBulkRestream(EMPTY_RESTREAM)
+    setBulkTranscodingServerId(null)
+    setBulkArchiveServerId(null)
   }
 
   /**
@@ -473,7 +492,7 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
 
   /**
    * What the toolbar's menu offers. The transitions and deletion run straight from the menu;
-   * the five edits open the dialog that collects their one value. The labels are the row
+   * the six edits open the dialog that collects their one value. The labels are the row
    * actions' own where the operation is the same one, because a second name for one thing is
    * a second name.
    */
@@ -502,10 +521,13 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
       case 'change-restream':
         setBulkDialog('restream')
         break
+      case 'change-servers':
+        setBulkDialog('servers')
+        break
     }
   }
 
-  /** The nine entries, in the order the menu draws them. */
+  /** The ten entries, in the order the menu draws them. */
   const bulkItems = useMemo<MenuProps['items']>(
     () => [
       { key: 'start', icon: <CaretRightOutlined />, label: t('videoStreams.bulk.start') },
@@ -520,6 +542,11 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
         key: 'change-restream',
         icon: <CloudSyncOutlined />,
         label: t('videoStreams.bulk.restream'),
+      },
+      {
+        key: 'change-servers',
+        icon: <CloudServerOutlined />,
+        label: t('videoStreams.bulk.servers'),
       },
       { type: 'divider' },
       {
@@ -1077,6 +1104,60 @@ export default function VideoStreamsPage(_props: VideoStreamsPageProps) {
             onChange={(event) =>
               setBulkRestream((current) => ({ ...current, headers: event.target.value }))
             }
+          />
+        </label>
+      </Modal>
+
+      {/* One dialog for both references, and one `change-servers` request: the two are one
+          decision about the selection, and an empty field is the statement "nothing on this
+          stream", not "leave it alone" - the server writes both as a whole-value replacement. */}
+      <Modal
+        title={t('videoStreams.bulk.serversTitle')}
+        open={bulkDialog === 'servers'}
+        okText={t('videoStreams.bulk.apply')}
+        okButtonProps={{ loading: bulkBusy }}
+        cancelText={t('actions.cancel')}
+        onOk={() =>
+          runBulk(
+            {
+              action: 'change-servers',
+              transcodingServerId: bulkTranscodingServerId ?? '',
+              archiveServerId: bulkArchiveServerId ?? '',
+            },
+            closeBulkDialog,
+          )
+        }
+        onCancel={closeBulkDialog}
+      >
+        <p style={{ margin: '0 0 12px' }}>{t('videoStreams.bulk.serversHint')}</p>
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreamsForm.transcodingServerLabel')}
+          </span>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            value={bulkTranscodingServerId ?? undefined}
+            options={serverOptions}
+            placeholder={t('videoStreamsForm.transcodingServerNone')}
+            onChange={(value) => setBulkTranscodingServerId(value ?? null)}
+          />
+        </label>
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', marginBottom: 4 }}>
+            {t('videoStreamsForm.archiveServerLabel')}
+          </span>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ width: '100%' }}
+            value={bulkArchiveServerId ?? undefined}
+            options={serverOptions}
+            placeholder={t('videoStreamsForm.archiveServerNone')}
+            onChange={(value) => setBulkArchiveServerId(value ?? null)}
           />
         </label>
       </Modal>

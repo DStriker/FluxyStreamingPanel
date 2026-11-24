@@ -361,6 +361,147 @@ namespace Fluxy.IntegrationTests.Subscriptions
             await AssertCodeAsync(noCsrf, HttpStatusCode.BadRequest, "csrf_invalid");
         }
 
+        [Fact]
+        public async Task ABulkServerChangeSetsWithPartialSuccessAndReplacesTheStoredServer()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var server = await CreateServerAsync("Bulk preferred");
+
+            var first = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("a"),
+                bouquetIds: [bouquet]));
+            var second = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("b"),
+                bouquetIds: [bouquet]));
+            var missing = Guid.NewGuid().ToString();
+
+            using var body = await ReadJsonAsync(await BulkAsync(new
+            {
+                action = "change-server",
+                ids = new[] { first, second, missing },
+                serverId = server
+            }));
+
+            var items = body.RootElement.GetProperty("items").EnumerateArray().ToList();
+            Assert.Equal(3, items.Count);
+            Assert.Equal("subscription_updated", items[0].GetProperty("code").GetString());
+            Assert.True(items[0].GetProperty("ok").GetBoolean());
+            Assert.Equal("subscription_updated", items[1].GetProperty("code").GetString());
+            Assert.Equal("subscription_not_found", items[2].GetProperty("code").GetString());
+            Assert.False(items[2].GetProperty("ok").GetBoolean());
+
+            // Both surviving rows carry the server, and the missing one never existed.
+            using var firstDetail = await Client.GetAsync(
+                $"/admin/subscriptions/{first}",
+                TestContext.Current.CancellationToken);
+            using var firstBody = await ReadJsonAsync(firstDetail);
+            Assert.Equal(server, firstBody.RootElement.GetProperty("preferredServerId").GetString());
+
+            using var secondDetail = await Client.GetAsync(
+                $"/admin/subscriptions/{second}",
+                TestContext.Current.CancellationToken);
+            using var secondBody = await ReadJsonAsync(secondDetail);
+            Assert.Equal(server, secondBody.RootElement.GetProperty("preferredServerId").GetString());
+        }
+
+        [Fact]
+        public async Task ABulkServerClearIsIdempotentAndLeavesTheOtherRowsAlone()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var server = await CreateServerAsync("Bulk clear");
+
+            var withServer = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("c"),
+                bouquetIds: [bouquet],
+                preferredServerId: server));
+            var alreadyEmpty = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("d"),
+                bouquetIds: [bouquet]));
+
+            using var body = await ReadJsonAsync(await BulkAsync(new
+            {
+                action = "clear-server",
+                ids = new[] { withServer, alreadyEmpty }
+            }));
+
+            var items = body.RootElement.GetProperty("items").EnumerateArray().ToList();
+            Assert.All(
+                items,
+                item => Assert.Equal("subscription_updated", item.GetProperty("code").GetString()));
+
+            using var detail = await Client.GetAsync(
+                $"/admin/subscriptions/{withServer}",
+                TestContext.Current.CancellationToken);
+            using var detailBody = await ReadJsonAsync(detail);
+            Assert.Equal(
+                JsonValueKind.Null,
+                detailBody.RootElement.GetProperty("preferredServerId").ValueKind);
+
+            // The other row's own fields did not move while the first was cleared.
+            using var other = await Client.GetAsync(
+                $"/admin/subscriptions/{alreadyEmpty}",
+                TestContext.Current.CancellationToken);
+            using var otherBody = await ReadJsonAsync(other);
+            Assert.Equal(
+                Playlist("d"),
+                otherBody.RootElement.GetProperty("playlistId").GetString());
+        }
+
+        [Fact]
+        public async Task ABulkServerChangeRefusesAnUnknownServerPerRow()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+
+            var id = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist("e"),
+                bouquetIds: [bouquet]));
+
+            using var body = await ReadJsonAsync(await BulkAsync(new
+            {
+                action = "change-server",
+                ids = new[] { id },
+                serverId = Guid.NewGuid().ToString()
+            }));
+
+            var item = body.RootElement.GetProperty("items")[0];
+            Assert.False(item.GetProperty("ok").GetBoolean());
+            Assert.Equal("validation_failed", item.GetProperty("code").GetString());
+            Assert.True(item.GetProperty("errors").TryGetProperty("preferredServerId", out _));
+        }
+
+        /// <summary>Creates a server through its own surface and answers its identifier.</summary>
+        private async Task<string> CreateServerAsync(string name)
+        {
+            using var response = await PostJsonAsync(
+                "/admin/servers",
+                new
+                {
+                    name = name + " " + Guid.NewGuid().ToString("N")[..8],
+                    ip = "203.0.113.7",
+                    port = 6200,
+                    osName = "Debian 12",
+                    networkInterface = "eth0"
+                },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "server_created");
+
+            return IdFromLocation(response);
+        }
+
         /// <summary>Runs one bulk operation and answers the decoded body.</summary>
         private async Task<HttpResponseMessage> BulkAsync(object body)
         {
@@ -462,7 +603,8 @@ namespace Fluxy.IntegrationTests.Subscriptions
             string? magMac = null,
             string? enigma2Mac = null,
             IReadOnlyList<string>? bouquetIds = null,
-            string? planId = null)
+            string? planId = null,
+            string? preferredServerId = null)
             => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["userId"] = owner.ToString(),
@@ -470,6 +612,7 @@ namespace Fluxy.IntegrationTests.Subscriptions
                 ["magMac"] = magMac,
                 ["enigma2Mac"] = enigma2Mac,
                 ["tariffPlanId"] = planId,
+                ["preferredServerId"] = preferredServerId,
                 ["maxConnections"] = 3,
                 ["isRestreamer"] = true,
                 ["ipWhitelist"] = Array.Empty<string>(),

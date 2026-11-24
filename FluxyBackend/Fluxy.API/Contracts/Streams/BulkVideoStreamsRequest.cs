@@ -59,5 +59,15 @@ namespace Fluxy.API.Contracts.Streams
 
         /// <summary>Extra headers a <c>change-restream</c> writes; blank clears them.</summary>
         public string? RestreamHeaders { get; init; }
+
+        /// <summary>
+        /// Transcoding server a <c>change-servers</c> writes, as text; null or blank clears it.
+        /// </summary>
+        public string? TranscodingServerId { get; init; }
+
+        /// <summary>
+        /// Archive server a <c>change-servers</c> writes, as text; null or blank clears it.
+        /// </summary>
+        public string? ArchiveServerId { get; init; }
     }
 }

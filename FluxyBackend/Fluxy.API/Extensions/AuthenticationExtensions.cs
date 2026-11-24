@@ -177,6 +177,19 @@ namespace Fluxy.API.Extensions
             "Permission.ViewTranscodingProfileOptions";
 
         /// <summary>
+        /// Policy that accepts an operator who may read the server picker: either of the two
+        /// content-view grants, because the picker is a field of a subscription or stream form
+        /// rather than a screen of its own.
+        /// </summary>
+        /// <remarks>
+        /// Choosing a server while editing a subscription or a stream is part of editing it, so an
+        /// operator who may run either surface must be able to read the names to choose from
+        /// without being granted the servers table. Browsing, changing and deleting servers stay
+        /// behind the dedicated pair - those are a different job, and a different screen.
+        /// </remarks>
+        public const string ViewServerOptionsPolicy = "Permission.ViewServerOptions";
+
+        /// <summary>
         /// Policy that accepts an operator who may read the user audit log.
         /// </summary>
         /// <remarks>
@@ -506,6 +519,19 @@ namespace Fluxy.API.Extensions
                             Fluxy.Core.Users.Enums.UserPermission.ViewAudioStreams,
                             Fluxy.Core.Users.Enums.UserPermission.ViewVideoOnDemand,
                             Fluxy.Core.Users.Enums.UserPermission.ViewSeries)))
+
+                // The server picker is the same shape of policy for the same reason: the two forms
+                // that draw it are the subscription and the stream, so either read grant fills it
+                // and the server pair itself is not required - and `viewServers` deliberately does
+                // not appear here, because reading a server's name to choose it is not browsing
+                // the table.
+                .AddPolicy(ViewServerOptionsPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionAnyRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewSubscriptions,
+                            Fluxy.Core.Users.Enums.UserPermission.ViewStreams)))
 
                 // The user audit log has one grant: reading it. The role requirement stays on top
                 // of the permission for the reason every other policy here carries it - a grant

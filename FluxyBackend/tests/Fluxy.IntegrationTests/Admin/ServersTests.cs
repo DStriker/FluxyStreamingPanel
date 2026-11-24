@@ -515,6 +515,129 @@ namespace Fluxy.IntegrationTests.Admin
             await AssertCodeAsync(refusedDelete, HttpStatusCode.Forbidden, "permission_denied");
         }
 
+        [Fact]
+        public async Task AServerStillNamedByAStreamOrSubscriptionCanNotBeDeleted()
+        {
+            await CreateAdminAndSignInAsync();
+
+            using var created = await PostServerAsync(new { name = "Referenced" });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "server_created");
+            var serverId = IdFromLocation(created);
+
+            // A video stream names it as its transcoding server, through the stream surface.
+            var categoryId = await CreateCategoryAsync();
+            using var stream = await PostJsonAsync(
+                "/admin/video-streams",
+                new
+                {
+                    name = "Bound",
+                    type = "permanent",
+                    categoryId,
+                    sources = new[] { "https://example.test/bound" },
+                    transcodingServerId = serverId
+                },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(stream, HttpStatusCode.Created, "video_stream_created");
+
+            using var refused = await DeleteAsync(
+                $"/admin/servers/{serverId}",
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(refused, HttpStatusCode.Conflict, "server_in_use");
+
+            // The row survived the refusal.
+            using var stillThere = await Client.GetAsync(
+                $"/admin/servers/{serverId}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
+        }
+
+        [Fact]
+        public async Task TheOptionsEndpointIsTheAnyOfTheTwoFormGrants()
+        {
+            await CreateAdminAndSignInAsync();
+
+            using var created = await PostServerAsync(new { name = "Zeta", timeshiftOnly = true });
+            await AssertCodeAsync(created, HttpStatusCode.Created, "server_created");
+
+            using var main = await Client.GetAsync(
+                "/admin/servers",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, main.StatusCode);
+
+            // Every row, ordered by name, each carrying the three picker facts. The seeded main
+            // row sorts before "Zeta" and is included.
+            using var options = await Client.GetAsync(
+                "/admin/servers/options",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, options.StatusCode);
+
+            using var body = await ReadJsonAsync(options);
+            var items = body.RootElement.EnumerateArray().ToList();
+            Assert.Equal(2, items.Count);
+
+            Assert.Equal(
+                new[] { MainServer.DefaultName, "Zeta" },
+                items.Select(item => item.GetProperty("name").GetString()).ToArray());
+            Assert.Equal(MainServer.Id.ToString(), items[0].GetProperty("id").GetString());
+            Assert.False(items[0].GetProperty("timeshiftOnly").GetBoolean());
+            Assert.True(items[1].GetProperty("timeshiftOnly").GetBoolean());
+
+            // A subscriptions-only operator may fill the subscription form's picker.
+            var subscriptions = await CreateGroupAsync(
+                "Subscription readers",
+                UserRole.Admin,
+                UserStatus.Registered,
+                UserPermission.ViewSubscriptions);
+            using var subscriptionsClient = Fixture.CreateClient();
+            await CreateUserAsync(UserRole.Admin, "subreader", groupId: subscriptions);
+            await SignInAsync(UserRole.Admin, "subreader", "Password1", subscriptionsClient);
+            using var allowedBySubscriptions = await subscriptionsClient.GetAsync(
+                "/admin/servers/options",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, allowedBySubscriptions.StatusCode);
+
+            // As may a streams-only operator, for the stream form.
+            var streams = await CreateGroupAsync(
+                "Stream readers",
+                UserRole.Admin,
+                UserStatus.Registered,
+                UserPermission.ViewStreams);
+            using var streamsClient = Fixture.CreateClient();
+            await CreateUserAsync(UserRole.Admin, "streamreader", groupId: streams);
+            await SignInAsync(UserRole.Admin, "streamreader", "Password1", streamsClient);
+            using var allowedByStreams = await streamsClient.GetAsync(
+                "/admin/servers/options",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, allowedByStreams.StatusCode);
+
+            // An operator who may browse the servers but neither form is refused: `viewServers`
+            // deliberately does not admit the picker.
+            var serversOnly = await CreateGroupAsync(
+                "Server readers",
+                UserRole.Admin,
+                UserStatus.Registered,
+                UserPermission.ViewServers);
+            using var serversOnlyClient = Fixture.CreateClient();
+            await CreateUserAsync(UserRole.Admin, "serversreader", groupId: serversOnly);
+            await SignInAsync(UserRole.Admin, "serversreader", "Password1", serversOnlyClient);
+            using var refused = await serversOnlyClient.GetAsync(
+                "/admin/servers/options",
+                TestContext.Current.CancellationToken);
+            await AssertCodeAsync(refused, HttpStatusCode.Forbidden, "permission_denied");
+        }
+
+        /// <summary>Creates a category of video streams through its own surface.</summary>
+        private async Task<string> CreateCategoryAsync()
+        {
+            using var response = await PostJsonAsync(
+                "/admin/content-categories",
+                new { name = "Referenced " + Guid.NewGuid().ToString("N")[..8], type = "VideoStream" },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "content_category_created");
+
+            return IdFromLocation(response);
+        }
+
         /// <summary>A valid create with only the name the caller cares about.</summary>
         private static object Full(params (string Key, object? Value)[] overrides)
         {

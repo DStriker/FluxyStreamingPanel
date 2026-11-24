@@ -1480,6 +1480,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("playlist_id");
 
+                    b.Property<Guid?>("PreferredServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("preferred_server_id");
+
                     b.Property<Guid?>("ResellerId")
                         .HasColumnType("uuid")
                         .HasColumnName("reseller_id");
@@ -1506,6 +1510,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("ExpireAt");
+
+                    b.HasIndex("PreferredServerId");
 
                     b.HasIndex("ResellerId");
 
@@ -2157,6 +2163,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("archive_days");
 
+                    b.Property<Guid?>("ArchiveServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("archive_server_id");
+
                     b.Property<Guid>("CategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("category_id");
@@ -2224,6 +2234,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("transcoding_profile_id");
 
+                    b.Property<Guid?>("TranscodingServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transcoding_server_id");
+
                     b.Property<short>("Type")
                         .HasColumnType("smallint")
                         .HasColumnName("stream_type");
@@ -2234,11 +2248,15 @@ namespace Fluxy.DataAccess.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ArchiveServerId");
+
                     b.HasIndex("EpgSourceId");
 
                     b.HasIndex("Status");
 
                     b.HasIndex("TranscodingProfileId");
+
+                    b.HasIndex("TranscodingServerId");
 
                     b.HasIndex("Type");
 
@@ -2681,6 +2699,11 @@ namespace Fluxy.DataAccess.Migrations
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.SubscriptionEntity", b =>
                 {
+                    b.HasOne("Fluxy.DataAccess.Entities.ServerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("PreferredServerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Fluxy.DataAccess.Entities.UserEntity", null)
                         .WithMany()
                         .HasForeignKey("ResellerId")
@@ -2798,6 +2821,11 @@ namespace Fluxy.DataAccess.Migrations
 
             modelBuilder.Entity("Fluxy.DataAccess.Entities.VideoStreamEntity", b =>
                 {
+                    b.HasOne("Fluxy.DataAccess.Entities.ServerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ArchiveServerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Fluxy.DataAccess.Entities.ContentCategoryEntity", "Category")
                         .WithMany()
                         .HasForeignKey("CategoryId")
@@ -2812,6 +2840,11 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasOne("Fluxy.DataAccess.Entities.TranscodingProfileEntity", null)
                         .WithMany()
                         .HasForeignKey("TranscodingProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Fluxy.DataAccess.Entities.ServerEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TranscodingServerId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");

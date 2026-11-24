@@ -83,6 +83,24 @@ namespace Fluxy.Application.Streams.Utils
                 + " characters or fewer."
         ];
 
+        /// <summary>The sentence a server identifier that names no server gets.</summary>
+        /// <remarks>
+        /// Shared by the single-stream writes and the playlist import, and by both server fields:
+        /// a create, a patch and a batch setting all name the same table, so they answer with the
+        /// same sentence - only the field key differs.
+        /// </remarks>
+        public static readonly string[] UnknownServerRule =
+        [
+            "There is no server with that identifier."
+        ];
+
+        /// <summary>The sentence a permanent stream bound to a timeshift-only transcoder gets.</summary>
+        public static readonly string[] TimeshiftOnlyTranscoderRule =
+        [
+            "A permanent stream cannot be transcoded by a server that only serves timeshifted " +
+                "content."
+        ];
+
         /// <summary>The sentence a proxy address longer than its column gets.</summary>
         public static readonly string[] RestreamProxyRule =
         [

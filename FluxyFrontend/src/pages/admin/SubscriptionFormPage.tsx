@@ -42,6 +42,7 @@ import SubscriptionExpiryField from '../../features/subscriptions/components/Sub
 import { useAllUsers } from '../../features/users/hooks/queries'
 import { useBouquets } from '../../features/bouquets/hooks/queries'
 import { useTariffPlans } from '../../features/tariff-plans/hooks/queries'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import { useProfile } from '../../features/profile/hooks/queries'
 import { useSettings } from '../../features/settings/hooks/queries'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
@@ -62,6 +63,7 @@ const CREATE_VALUES: SubscriptionValues = {
   playlistId: null,
   expireAt: null,
   tariffPlanId: null,
+  preferredServerId: null,
   // One, not empty: the domain's floor is one connection, and a form that opened on "unlimited"
   // would store a subscription with no ceiling unless the operator noticed. "Unlimited" is what
   // the *picker's clear* means once the field is editable.
@@ -85,6 +87,7 @@ const FIELD_NAMES: readonly (keyof SubscriptionValues)[] = [
   'playlistId',
   'expireAt',
   'tariffPlanId',
+  'preferredServerId',
   'maxConnections',
   'isRestreamer',
   'ipWhitelist',
@@ -151,6 +154,22 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
     sortOrder: 'asc',
   })
   const bouquetsQuery = useBouquets()
+
+  /**
+   * The servers the preferred-server picker offers.
+   *
+   * A read of another feature, from a page - allowed by the layering - and gated by an "any of"
+   * policy over the subscription and stream view grants, so an operator who may open this form
+   * can fill the picker without holding `viewServers`. A failed read disables the control and
+   * shows the server's sentence (the transcoding-profile precedent): an operator must not read
+   * "no servers" into a lookup that did not answer.
+   */
+  const serversQuery = useAllServers()
+  const serverOptions = useMemo(
+    () => (serversQuery.data ?? []).map((server) => ({ value: server.id, label: server.name })),
+    [serversQuery.data],
+  )
+  const serversError = serversQuery.isError ? messageForError(serversQuery.error) : null
 
   /**
    * The installation's trial switch, which decides whether the trial checkbox exists at all.
@@ -260,6 +279,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       ...held,
       expireAt: expireAtWire(expireAtValue, neverExpires),
       tariffPlanId: held.tariffPlanId ?? null,
+      preferredServerId: held.preferredServerId ?? null,
       maxConnections: held.maxConnections ?? null,
     }
   }
@@ -298,6 +318,7 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
       playlistId: detail.playlistId,
       expireAt: detail.expireAt,
       tariffPlanId: detail.tariffPlanId,
+      preferredServerId: detail.preferredServerId,
       maxConnections: detail.maxConnections,
       isRestreamer: detail.isRestreamer,
       ipWhitelist: [...detail.ipWhitelist],
@@ -565,6 +586,26 @@ export default function SubscriptionFormPage(_props: SubscriptionFormPageProps) 
             options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
             placeholder={t('subscriptionsForm.planNone')}
             optionFilterProp="label"
+          />
+        </Form.Item>
+
+        {/* The server the subscription is pinned to. Unset is a real answer rather than an empty
+            control: the main server picks a server later, which is the one thing the field cannot
+            say for itself, so it is stated in `extra`. A failed read disables the picker rather
+            than leaving it empty and silent. */}
+        <Form.Item
+          name="preferredServerId"
+          label={t('subscriptionsForm.preferredServerLabel')}
+          extra={serversError ?? t('subscriptionsForm.preferredServerHint')}
+          validateStatus={serversError ? 'warning' : undefined}
+        >
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={serverOptions}
+            placeholder={t('subscriptionsForm.preferredServerNone')}
+            disabled={serversError !== null}
           />
         </Form.Item>
 

@@ -350,6 +350,109 @@ namespace Fluxy.UnitTests.Subscriptions
             Assert.Equal(SubscriptionAction.Deleted, outcome.Items[0].Action);
         }
 
+        [Fact]
+        public async Task AChangeServerIsTheSingleRowUpdateWithTheNamedServer()
+        {
+            var id = Guid.NewGuid();
+            var server = Guid.NewGuid();
+            var subscriptions = new FakeSubscriptions();
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                new BulkSubscriptionOperation
+                {
+                    Action = BulkSubscriptionAction.ChangeServer,
+                    SubscriptionIds = [id],
+                    ServerId = server
+                },
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Items[0].Action);
+            var patch = Assert.Single(subscriptions.Patches);
+            Assert.Equal(server, patch.PreferredServerId);
+            Assert.False(patch.ClearPreferredServer);
+        }
+
+        [Fact]
+        public async Task AClearServerIsTheSingleRowUpdateWithTheClearFlag()
+        {
+            var id = Guid.NewGuid();
+            var subscriptions = new FakeSubscriptions();
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                Operation(BulkSubscriptionAction.ClearServer, [id]),
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Items[0].Action);
+            var patch = Assert.Single(subscriptions.Patches);
+            Assert.Null(patch.PreferredServerId);
+            Assert.True(patch.ClearPreferredServer);
+        }
+
+        [Fact]
+        public async Task AChangeServerWithoutAServerIsRefusedForEveryRow()
+        {
+            var subscriptions = new FakeSubscriptions();
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                Operation(BulkSubscriptionAction.ChangeServer, [Guid.NewGuid(), Guid.NewGuid()]),
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, outcome.Items.Count);
+            Assert.All(outcome.Items, item =>
+            {
+                Assert.Equal(SubscriptionAction.Invalid, item.Action);
+                Assert.True(item.Errors!.ContainsKey(nameof(BulkSubscriptionOperation.ServerId)));
+            });
+            Assert.Empty(subscriptions.Updated);
+        }
+
+        [Fact]
+        public async Task AChangeServerReportsAnUnknownServerPerRowAndTheRestContinue()
+        {
+            var accepted = Guid.NewGuid();
+            var refused = Guid.NewGuid();
+            var subscriptions = new FakeSubscriptions
+            {
+                UpdateOutcomes =
+                {
+                    [refused] = new SubscriptionOutcome
+                    {
+                        Action = SubscriptionAction.Invalid,
+                        SubscriptionId = refused,
+                        Errors = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                        {
+                            ["PreferredServerId"] = ["There is no server with that identifier."]
+                        }
+                    }
+                }
+            };
+            var service = NewService(subscriptions, new FakeUsers());
+
+            var outcome = await service.BulkAsync(
+                new BulkSubscriptionOperation
+                {
+                    Action = BulkSubscriptionAction.ChangeServer,
+                    SubscriptionIds = [accepted, refused],
+                    ServerId = Guid.NewGuid()
+                },
+                Actor,
+                Grants(),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(SubscriptionAction.Updated, outcome.Items[0].Action);
+            Assert.Equal(SubscriptionAction.Invalid, outcome.Items[1].Action);
+            Assert.True(outcome.Items[1].Errors!.ContainsKey("PreferredServerId"));
+        }
+
         private static SubscriptionBulkService NewService(
             FakeSubscriptions subscriptions,
             FakeUsers users)
@@ -420,6 +523,9 @@ namespace Fluxy.UnitTests.Subscriptions
 
             public List<Guid> Updated { get; } = [];
 
+            /// <summary>The patches the single-row service was handed, in order.</summary>
+            public List<SubscriptionPatch> Patches { get; } = [];
+
             public List<Guid> Deleted { get; } = [];
 
             public List<Guid> Prolonged { get; } = [];
@@ -477,6 +583,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 CancellationToken cancellationToken = default)
             {
                 _inner.Updated.Add(id);
+                _inner.Patches.Add(patch);
 
                 if (_inner.UpdateOutcomes.TryGetValue(id, out var outcome))
                 {

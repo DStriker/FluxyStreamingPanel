@@ -11,6 +11,7 @@ using Fluxy.Core.Subscriptions.ReadModels;
 using Fluxy.Core.Subscriptions.Repositories;
 using Fluxy.Core.Subscriptions.Rows;
 using Fluxy.Core.Subscriptions.Utils;
+using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Settings.Interfaces;
 using Fluxy.Core.Users.Enums;
 
@@ -46,6 +47,7 @@ namespace Fluxy.Application.Subscriptions.Services
         private const int PlaylistIdAttempts = 10;
 
         private readonly ISubscriptionRepository _subscriptions;
+        private readonly IServerRepository _servers;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ISettingsSnapshotProvider _settings;
         private readonly TimeProvider _time;
@@ -54,16 +56,19 @@ namespace Fluxy.Application.Subscriptions.Services
         /// Initializes a new instance of the <see cref="SubscriptionService"/> class.
         /// </summary>
         /// <param name="subscriptions">Repository holding the subscriptions.</param>
+        /// <param name="servers">Repository that answers whether a named server exists.</param>
         /// <param name="unitOfWork">Commits the changes one operation stages.</param>
         /// <param name="settings">Stored settings the trial switch is read from.</param>
         /// <param name="time">Clock the expiry arithmetic is measured from.</param>
         public SubscriptionService(
             ISubscriptionRepository subscriptions,
+            IServerRepository servers,
             IUnitOfWork unitOfWork,
             ISettingsSnapshotProvider settings,
             TimeProvider time)
         {
             _subscriptions = subscriptions;
+            _servers = servers;
             _unitOfWork = unitOfWork;
             _settings = settings;
             _time = time;
@@ -129,6 +134,15 @@ namespace Fluxy.Application.Subscriptions.Services
             }
 
             var plan = await ResolvePlanAsync(input.TariffPlanId, owner, errors, cancellationToken);
+
+            // A preferred server is a row of this installation, and a create has nothing to keep:
+            // an identifier either names a server or is the one refusal this field has.
+            if (input.PreferredServerId is { } preferredServerId
+                && await _servers.GetReferenceAsync(preferredServerId, cancellationToken) is null)
+            {
+                errors[nameof(NewSubscription.PreferredServerId)] =
+                    SubscriptionRules.PreferredServerNotFoundRule;
+            }
 
             // One instant for the whole create, read once.
             //
@@ -213,6 +227,7 @@ namespace Fluxy.Application.Subscriptions.Services
                 PlaylistId = playlistId,
                 ExpireAt = derived?.ExpireAt ?? input.ExpireAt,
                 TariffPlanId = plan?.Id,
+                PreferredServerId = input.PreferredServerId,
                 MaxConnections = derived is null ? input.MaxConnections : derived.MaxConnections,
                 IsRestreamer = derived?.IsRestreamer ?? input.IsRestreamer,
                 IpWhitelist = ipWhitelist,
@@ -281,6 +296,7 @@ namespace Fluxy.Application.Subscriptions.Services
                     PlaylistId = services!.PlaylistId,
                     ExpireAt = services.ExpireAt,
                     TariffPlanId = plan?.Id,
+                    PreferredServerId = services.PreferredServerId,
                     MaxConnections = services.MaxConnections,
                     IsRestreamer = services.IsRestreamer,
                     IpWhitelist = services.IpWhitelist,
@@ -355,6 +371,16 @@ namespace Fluxy.Application.Subscriptions.Services
             // The plan the row will carry after this save: the named one, none when it is being
             // cleared, and the current one when the patch says nothing about it.
             var plan = await ResolvePlanForUpdateAsync(patch, current, owner, errors, cancellationToken);
+
+            // The preferred server the row leaves with: the named one, none when it is being
+            // cleared, and the current one when the patch says nothing about it. Naming wins over
+            // the clear flag for the reason the plan pair gives - an identifier is a decision
+            // about this save while the clear flag is the absence of one.
+            var preferredServerId = await ResolvePreferredServerAsync(
+                patch,
+                current,
+                errors,
+                cancellationToken);
 
             // Derived before the dependent checks, for the reason the create gives: a value the
             // plan owns is not written, so validating it would refuse a save the operator cannot
@@ -449,6 +475,7 @@ namespace Fluxy.Application.Subscriptions.Services
                         ? current.ExpireAt
                         : ParseExpiry(patch.ExpireAt)),
                 TariffPlanId = plan?.Id,
+                PreferredServerId = preferredServerId,
                 MaxConnections = derived is null ? maxConnections : derived.MaxConnections,
                 IsRestreamer = derived?.IsRestreamer ?? patch.IsRestreamer ?? current.IsRestreamer,
                 IpWhitelist = ipWhitelist,
@@ -697,6 +724,41 @@ namespace Fluxy.Application.Subscriptions.Services
             }
 
             return await _subscriptions.GetPlanContextAsync(existing, cancellationToken);
+        }
+
+        /// <summary>
+        /// Resolves the preferred server the row leaves with, recording an identifier that names
+        /// no server.
+        /// </summary>
+        /// <remarks>
+        /// Only a server the request <i>names</i> is probed: one the row already carries was
+        /// accepted when it was attached, and a server cannot be deleted while a row still points
+        /// at it. Clearing and keeping therefore answer without a query, and only an attach pays
+        /// for one.
+        /// </remarks>
+        private async Task<Guid?> ResolvePreferredServerAsync(
+            SubscriptionPatch patch,
+            Subscription current,
+            Dictionary<string, string[]> errors,
+            CancellationToken cancellationToken)
+        {
+            if (patch.PreferredServerId is { } wanted)
+            {
+                if (await _servers.GetReferenceAsync(wanted, cancellationToken) is null)
+                {
+                    errors[nameof(SubscriptionPatch.PreferredServerId)] =
+                        SubscriptionRules.PreferredServerNotFoundRule;
+                }
+
+                return wanted;
+            }
+
+            if (patch.ClearPreferredServer)
+            {
+                return null;
+            }
+
+            return current.PreferredServerId;
         }
 
         /// <summary>

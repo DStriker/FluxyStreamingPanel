@@ -2076,6 +2076,12 @@ const en = {
       restreamProxy: 'Proxy',
       restreamCookies: 'Cookies',
       restreamHeaders: 'Extra headers',
+      // The two server references, one dialog for both: a blank field clears its reference on
+      // every selected stream, which is why the sentence says it once rather than twice.
+      servers: 'Change servers',
+      serversTitle: 'Change the servers of these streams',
+      serversHint:
+        'Both values replace the current ones on every selected stream. Leave a field empty to clear that reference.',
       // Shown instead of a toast the moment at least one row was refused. Every line is
       // the server's own sentence for that row's code, already translated here, so the
       // reason is read rather than guessed at from a count.
@@ -2196,6 +2202,20 @@ const en = {
     // The same treatment for the archive: the field stays visible, the reason takes the
     // hint's place, and `toBody` sends zero for a kind that cannot keep one.
     archivePermanentOnly: 'Only a permanent stream keeps an archive.',
+    // The two server references, beside the transcoding profile. The transcoding server is
+    // required by this form only for a permanent stream, and the "timeshift only" filter and
+    // the archive-server condition live in `capabilities.ts` so the rule has one home.
+    transcodingServerLabel: 'Transcoding server',
+    transcodingServerNone: 'No server',
+    transcodingServerRequired: 'Choose the server that transcodes this stream.',
+    transcodingServerHint:
+      'A permanent stream must be transcoded by a server that is not timeshift only.',
+    transcodingServerTimeshiftOnly:
+      'This server is timeshift only, so it cannot transcode a permanent stream.',
+    archiveServerLabel: 'Archive server',
+    archiveServerNone: 'No server',
+    archiveServerNeedsArchive:
+      'A server can keep the archive only for a permanent stream with an archive length above zero.',
     nonNegative: 'Enter zero or more.',
     // Why the four restreaming controls are greyed together - one sentence above the group
     // rather than the same reason four times under each field.
@@ -2248,6 +2268,11 @@ const en = {
     overwriteSettingsLabel: 'Overwrite existing stream settings',
     overwriteSettingsHint:
       'When a name is already taken in the category, replace that streamвЂ™s status, type, delay, archive length and restream settings.',
+    // The two server references are batch settings, and the one fact an operator cannot infer
+    // is which rows they reach. The overwrite checkbox below does not write them (I3), so one
+    // sentence above the pair says "the streams this import creates".
+    serverBatchHint:
+      'Applied to the streams this import creates. Existing streams that are skipped or overwritten keep their own servers.',
     columns: {
       line: 'Line',
       name: 'Name',
@@ -2778,7 +2803,7 @@ const en = {
     pauseRefresh: 'Pause auto refresh',
     resumeRefresh: 'Resume auto refresh',
     autoRefreshHint: 'Refreshes every {{seconds}} seconds',
-    // The bulk menu's entry names and the dialogs behind the two that ask for a value.
+    // The bulk menu's entry names and the dialogs behind the ones that ask for a value.
     // The single-row wording a subrow action uses. Deliberately not the bulk summary: a click on
     // one row is not a "selection", and telling an operator about "selected rows" after clearing
     // one service described a run that did not happen (design decision 16). One sentence only -
@@ -2813,6 +2838,16 @@ const en = {
       changeTariffPlaceholder: 'Choose a tariff plan',
       changeTariffHint:
         'Services the new plan does not deliver are cleared, and each clearance is reported.',
+      changeServer: 'Set preferred server',
+      changeServerTitle: 'Set the preferred server',
+      changeServerPlaceholder: 'Choose a server',
+      changeServerHint:
+        'Every selected subscription is pinned to this server. A subscription already pinned is moved to it.',
+      clearServer: 'Clear preferred server',
+      clearServerTitle: 'Clear the preferred server of {{count}} subscriptions?',
+      clearServerBody:
+        'Each selected subscription goes back to "any server": the main server chooses one when the subscriber connects.',
+      clearServerOk: 'Clear',
       changeCreatorTitle: 'Change the issuer',
       changeCreatorPlaceholder: 'Choose an administrator or a reseller',
       deleteTitle: 'Delete {{count}} subscriptions?',
@@ -3279,6 +3314,10 @@ const en = {
     planLabel: 'Tariff plan',
     planNone: 'No tariff plan',
     planUnavailable: 'The plans could not be read, so this picker offers nothing to pick.',
+    preferredServerLabel: 'Preferred server',
+    preferredServerNone: 'Any server',
+    preferredServerHint:
+      'Unset means any server: the main server chooses one later, when the subscriber connects.',
     expiryLabel: 'Expires',
     neverExpiresLabel: 'Never expires',
     expiryHint: "With a plan the expiry is its creation date plus the plan's length.",
@@ -3696,6 +3735,8 @@ const en = {
       server_not_found: 'There is no server with that identifier.',
       server_already_exists: 'Another server already has that name.',
       server_immutable: 'The main server cannot be deleted.',
+      server_in_use:
+        'A subscription or a stream still uses this server. Clear that reference on those rows first.',
       // The backup surface: three successes and the four refusals its endpoints can produce.
       // `backup_busy` is the single-flight gate answering "try again in a moment", and the two
       // 500s name where the fault is - the tool is missing, or the tool ran and failed.

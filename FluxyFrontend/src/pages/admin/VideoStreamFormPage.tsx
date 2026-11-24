@@ -33,10 +33,13 @@ import {
 } from '../../features/video-streams/hooks/mutations'
 import { useVideoStreamDetail } from '../../features/video-streams/hooks/queries'
 import { useAllTranscodingProfiles } from '../../features/transcoding-profiles/hooks/queries'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import {
   acceptsArchive,
   acceptsDelay,
   acceptsRestream,
+  offersArchiveServer,
+  requiresTranscodingServer,
 } from '../../features/video-streams/capabilities'
 import { useUnsavedChangesWarning } from '../../hooks/useUnsavedChangesWarning'
 import type { VideoStreamStatus, VideoStreamType } from '../../features/video-streams/types'
@@ -120,6 +123,8 @@ const CREATE_VALUES: VideoStreamValues = {
   files: [''],
   bouquetIds: [],
   transcodingProfileId: '',
+  transcodingServerId: '',
+  archiveServerId: '',
 }
 
 /**
@@ -153,6 +158,8 @@ const FIELD_NAMES: readonly (keyof VideoStreamValues)[] = [
   'files',
   'bouquetIds',
   'transcodingProfileId',
+  'transcodingServerId',
+  'archiveServerId',
 ]
 
 /** One list of one thing a stream relays: trims what is there and drops what nobody typed. */
@@ -205,6 +212,12 @@ const toBody = (values: VideoStreamValues): VideoStreamValues => {
     // Always sent, like the bouquet set: a create has nothing to keep and the edit form holds
     // the whole answer, so an empty string is "clear" rather than "leave it alone".
     transcodingProfileId: values.transcodingProfileId ?? '',
+    // The same shape for the two server references. They are never neutralized by the kind:
+    // owner decision O4 keeps a binding through a type change, and the archive binding through an
+    // archive length of zero, so the body carries what the row holds even while the control is
+    // not drawn. A blank is the clear, which is why `?? ''` is the whole mapping.
+    transcodingServerId: values.transcodingServerId ?? '',
+    archiveServerId: values.archiveServerId ?? '',
   }
 }
 
@@ -230,6 +243,8 @@ const detailToFormValues = (detail: {
   files: string[]
   bouquetIds: string[]
   transcodingProfileId: string | null
+  transcodingServerId: string | null
+  archiveServerId: string | null
 }): VideoStreamValues => {
   const restream = acceptsRestream(detail.type)
 
@@ -262,6 +277,10 @@ const detailToFormValues = (detail: {
     files: detail.files.length > 0 ? detail.files : [''],
     bouquetIds: [...detail.bouquetIds],
     transcodingProfileId: detail.transcodingProfileId ?? '',
+    // Kept whatever the kind says, for the reason `toBody` states: a binding survives a type
+    // change, so dropping it here would make the form clear a reference it never touched.
+    transcodingServerId: detail.transcodingServerId ?? '',
+    archiveServerId: detail.archiveServerId ?? '',
   }
 }
 
@@ -417,6 +436,18 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const profilesError = profilesQuery.isError ? messageForError(profilesQuery.error) : null
 
   /**
+   * The servers both pickers offer.
+   *
+   * The same shape as the profiles read above: one query behind the form's own view grant, and a
+   * failed read disables the controls with the server's sentence rather than leaving them empty
+   * and silent. The transcoding picker filters this list by the timeshift flag when the kind is
+   * permanent - see `offersArchiveServer`/`requiresTranscodingServer` for the two conditions.
+   */
+  const serversQuery = useAllServers()
+  const servers = useMemo(() => serversQuery.data ?? [], [serversQuery.data])
+  const serversError = serversQuery.isError ? messageForError(serversQuery.error) : null
+
+  /**
    * The guide sources the picker offers. A source is a row of this installation now, so the
    * field chooses one instead of accepting a uuid nobody can look up - the server refuses a
    * source that does not exist, and a list of names is how an operator picks one it will
@@ -501,6 +532,49 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
   const delayAllowed = acceptsDelay(chosenType)
   const archiveAllowed = acceptsArchive(chosenType)
   const restreamAllowed = acceptsRestream(chosenType)
+
+  /**
+   * The archive length as it currently stands, watched rather than read at submit time because
+   * the archive-server field exists only in relation to it. A form with nothing in it yet falls
+   * back to the create default, the same way `chosenType` does.
+   */
+  const chosenArchiveDays: number =
+    Form.useWatch('archiveDays', form) ?? detail?.archiveDays ?? CREATE_VALUES.archiveDays
+
+  /** Whether the archive-server picker is offered at all. */
+  const archiveServerOffered = offersArchiveServer(chosenType, chosenArchiveDays)
+
+  /** The transcoding server as the form currently holds it, or nothing. */
+  const chosenTranscodingServerId: string | undefined = Form.useWatch('transcodingServerId', form)
+
+  /**
+   * The transcoding-server picker's options: every server for a non-permanent kind, only the full
+   * ones while the stream is permanent. The filter is a fact about the endpoint's rule, so the
+   * condition comes from `capabilities.ts` and is read here rather than inverted inline.
+   *
+   * **A binding that the filter now hides is still drawn.** Owner decision O4 keeps the value
+   * through a type change, so a stream moved to permanent may still name a timeshift-only server -
+   * dropping it from the options would leave a raw uuid in the control. It is kept, and the
+   * field's own rule says why that pairing cannot be saved.
+   */
+  const transcodingServerOptions = useMemo(() => {
+    const usable = requiresTranscodingServer(chosenType)
+      ? servers.filter((server) => !server.timeshiftOnly)
+      : servers
+
+    const held = servers.find((server) => server.id === chosenTranscodingServerId)
+
+    return (held && !usable.some((server) => server.id === held.id)
+      ? [held, ...usable]
+      : usable
+    ).map((server) => ({ value: server.id, label: server.name }))
+  }, [chosenTranscodingServerId, chosenType, servers])
+
+  /** The archive picker's options: any server, because the endpoint allows any of them there. */
+  const archiveServerOptions = useMemo(
+    () => servers.map((server) => ({ value: server.id, label: server.name })),
+    [servers],
+  )
 
   /**
    * The *raw* watch, for the effect that neutralizes the settings a newly chosen kind cannot
@@ -792,6 +866,94 @@ export default function VideoStreamFormPage(_props: VideoStreamFormPageProps) {
 
           {profilesError && (
             <Alert type="error" showIcon style={{ marginBottom: 16 }} message={profilesError} />
+          )}
+
+          {/* The two server references, beside the transcoding profile and before the first
+              divider: they describe the row itself rather than its payload, and both travel in
+              every kind of stream.
+
+              `transcodingServerId` is required by this form only while the kind is permanent, and
+              only a full server is offered then - the endpoint refuses a permanent stream over a
+              timeshift-only transcoder, so a picker that offered one would be offering a request
+              it is about to refuse. For every other kind the field is optional and unfiltered,
+              which is exactly what the endpoint allows.
+
+              A binding is never cleared by a change of kind (owner decision O4): switching away
+              from permanent leaves both values alone, and `toBody` sends whatever the row holds. */}
+          <Form.Item
+            name="transcodingServerId"
+            label={t('videoStreamsForm.transcodingServerLabel')}
+            dependencies={['type']}
+            rules={[
+              {
+                validator: (_: unknown, value: string | null | undefined) => {
+                  const text = value ?? ''
+
+                  if (!requiresTranscodingServer(chosenType)) return Promise.resolve()
+
+                  if (text === '') {
+                    return Promise.reject(
+                      new Error(t('videoStreamsForm.transcodingServerRequired')),
+                    )
+                  }
+
+                  // A binding that survived a change to permanent may name a timeshift-only
+                  // server the picker no longer offers - the endpoint would refuse it, so the
+                  // form refuses first with the same fact.
+                  const chosen = servers.find((server) => server.id === text)
+
+                  return chosen?.timeshiftOnly
+                    ? Promise.reject(
+                        new Error(t('videoStreamsForm.transcodingServerTimeshiftOnly')),
+                      )
+                    : Promise.resolve()
+                },
+              },
+            ]}
+            extra={
+              serversError ??
+              (requiresTranscodingServer(chosenType)
+                ? t('videoStreamsForm.transcodingServerHint')
+                : undefined)
+            }
+            validateStatus={serversError ? 'warning' : undefined}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={transcodingServerOptions}
+              placeholder={t('videoStreamsForm.transcodingServerNone')}
+              disabled={serversError !== null}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="archiveServerId"
+            label={t('videoStreamsForm.archiveServerLabel')}
+            extra={
+              serversError ??
+              (archiveServerOffered
+                ? undefined
+                : t('videoStreamsForm.archiveServerNeedsArchive'))
+            }
+            validateStatus={serversError ? 'warning' : undefined}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={archiveServerOptions}
+              placeholder={t('videoStreamsForm.archiveServerNone')}
+              // Drawn rather than removed while it does not apply, for the reason the archive
+              // length above is: a field that vanishes teaches nothing, and the sentence beside
+              // it says which two facts bring it back.
+              disabled={serversError !== null || !archiveServerOffered}
+            />
+          </Form.Item>
+
+          {serversError && (
+            <Alert type="error" showIcon style={{ marginBottom: 16 }} message={serversError} />
           )}
 
           <Divider titlePlacement="start">{t('videoStreamsForm.payloadDivider')}</Divider>

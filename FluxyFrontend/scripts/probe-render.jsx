@@ -2158,6 +2158,11 @@ async function main() {
       streamFormHtml.includes('Delay and archive') &&
       streamFormHtml.includes('Programme guide') &&
       streamFormHtml.includes('Restreaming') &&
+      // The two server references sit beside the transcoding profile, before the first divider:
+      // they describe the row itself rather than its payload, and every kind carries them.
+      streamFormHtml.includes('Transcoding profile') &&
+      streamFormHtml.includes('Transcoding server') &&
+      streamFormHtml.includes('Archive server') &&
       !streamFormHtml.includes('Edit stream') &&
       // No id field: the identifier does not exist until the row does, and the copy
       // affordance is the one thing on this form that would give it away.
@@ -2192,6 +2197,26 @@ async function main() {
     `status label at ${statusLabelAt}, type label at ${typeLabelAt}`,
   )
 
+  // The server references belong to the row rather than to any one payload, so both sit after the
+  // type and beside the transcoding profile - before the first divider that opens the payload
+  // section. The archive server is drawn disabled while the add form's archive length is zero,
+  // which is why this checks the label rather than an enabled control.
+  const typeLabelAfter = streamFormHtml.indexOf('title="Type"')
+  const transcodingServerLabelAt = streamFormHtml.indexOf('title="Transcoding server"')
+  const archiveServerLabelAt = streamFormHtml.indexOf('title="Archive server"')
+  const payloadDividerAt = streamFormHtml.indexOf('What it plays')
+  check(
+    'the stream add form draws both server pickers after the type and before the payload divider',
+    typeLabelAfter !== -1 &&
+      transcodingServerLabelAt !== -1 &&
+      archiveServerLabelAt !== -1 &&
+      payloadDividerAt !== -1 &&
+      typeLabelAfter < transcodingServerLabelAt &&
+      transcodingServerLabelAt < archiveServerLabelAt &&
+      archiveServerLabelAt < payloadDividerAt,
+    `type ${typeLabelAfter}, transcoding ${transcodingServerLabelAt}, archive ${archiveServerLabelAt}, payload ${payloadDividerAt}`,
+  )
+
   // The import form. The playlist is the first field on it, because it is the one thing the
   // page cannot work without and everything below describes what to do with the streams it
   // names. The create form's payload half must not be here: the name and the source list are
@@ -2221,6 +2246,27 @@ async function main() {
       !streamImportHtml.includes('Add a source') &&
       !streamImportHtml.includes('What it plays'),
     `playlist label at ${playlistLabelAt}, category label at ${importCategoryAt}, rendered ${streamImportHtml.length} bytes`,
+  )
+
+  // The two server references are batch settings, so they sit where the single form puts them:
+  // after the kind and before the existing-streams divider. The archive picker is drawn disabled
+  // while the batch keeps no archive, and the submit button is disabled while a permanent batch
+  // names no transcoder - which is why this checks the labels and their order rather than an
+  // enabled control.
+  const importTypeAt = streamImportHtml.indexOf('title="Type"')
+  const importTranscodingServerAt = streamImportHtml.indexOf('title="Transcoding server"')
+  const importArchiveServerAt = streamImportHtml.indexOf('title="Archive server"')
+  const importExistingDividerAt = streamImportHtml.indexOf('>Existing streams<')
+  check(
+    'the stream import form draws both server pickers between the kind and the existing-streams divider',
+    importTypeAt !== -1 &&
+      importTranscodingServerAt !== -1 &&
+      importArchiveServerAt !== -1 &&
+      importExistingDividerAt !== -1 &&
+      importTypeAt < importTranscodingServerAt &&
+      importTranscodingServerAt < importArchiveServerAt &&
+      importArchiveServerAt < importExistingDividerAt,
+    `type ${importTypeAt}, transcoding ${importTranscodingServerAt}, archive ${importArchiveServerAt}, divider ${importExistingDividerAt}`,
   )
 
   // The edit address, which waits. `useParams` needs a real route match, so the router is
@@ -3732,6 +3778,9 @@ async function main() {
       subscriptionFormHtml.includes('Owner') &&
       subscriptionFormHtml.includes('Tariff plan') &&
       subscriptionFormHtml.includes('No tariff plan') &&
+      subscriptionFormHtml.includes('Preferred server') &&
+      subscriptionFormHtml.includes('Any server') &&
+      /the main server chooses one later/.test(subscriptionFormHtml) &&
       subscriptionFormHtml.includes('Services') &&
       subscriptionFormHtml.includes('Output formats') &&
       subscriptionFormHtml.includes('Limits') &&

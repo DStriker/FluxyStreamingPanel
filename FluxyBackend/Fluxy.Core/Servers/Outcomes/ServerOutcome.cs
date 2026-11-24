@@ -19,6 +19,9 @@ namespace Fluxy.Core.Servers.Outcomes
         /// <summary>The server the operation was about.</summary>
         public required Guid ServerId { get; init; }
 
+        /// <summary>How many rows point at the server, when it is still in use.</summary>
+        public int ReferenceCount { get; init; }
+
         /// <summary>Rejected fields, when the input was the problem.</summary>
         public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
     }

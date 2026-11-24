@@ -35,7 +35,8 @@ namespace Fluxy.API.Controllers.Content
         /// <summary>Names the operations a bulk body may ask for.</summary>
         private const string ActionHint =
             "The action must be 'start', 'stop', 'restart', 'delete', 'move-category', " +
-            "'change-type', 'change-delay', 'change-archive' or 'change-restream'.";
+            "'change-type', 'change-delay', 'change-archive', 'change-restream' or " +
+            "'change-servers'.";
 
         /// <summary>Sentence a category that is not an identifier gets.</summary>
         private const string CategoryHint =
@@ -184,7 +185,9 @@ namespace Fluxy.API.Controllers.Content
                     RestreamUserAgent = request.RestreamUserAgent,
                     RestreamProxy = request.RestreamProxy,
                     RestreamCookies = request.RestreamCookies,
-                    RestreamHeaders = request.RestreamHeaders
+                    RestreamHeaders = request.RestreamHeaders,
+                    TranscodingServerId = request.TranscodingServerId,
+                    ArchiveServerId = request.ArchiveServerId
                 },
                 cancellationToken)));
         }
@@ -210,6 +213,7 @@ namespace Fluxy.API.Controllers.Content
                 "change-delay" => BulkVideoStreamAction.ChangeDelay,
                 "change-archive" => BulkVideoStreamAction.ChangeArchive,
                 "change-restream" => BulkVideoStreamAction.ChangeRestream,
+                "change-servers" => BulkVideoStreamAction.ChangeServers,
                 _ => null
             };
 

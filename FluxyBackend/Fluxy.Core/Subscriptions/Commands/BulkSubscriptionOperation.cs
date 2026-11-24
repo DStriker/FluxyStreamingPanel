@@ -31,5 +31,8 @@ namespace Fluxy.Core.Subscriptions.Commands
 
         /// <summary>Destination issuer of a <c>change-creator</c>.</summary>
         public Guid? ResellerId { get; init; }
+
+        /// <summary>Destination server of a <c>change-server</c>.</summary>
+        public Guid? ServerId { get; init; }
     }
 }

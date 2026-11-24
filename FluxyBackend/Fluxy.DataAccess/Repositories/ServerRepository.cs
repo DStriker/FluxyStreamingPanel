@@ -100,6 +100,54 @@ namespace Fluxy.DataAccess.Repositories
                 .FirstOrDefaultAsync(cancellationToken);
 
         /// <inheritdoc />
+        public Task<ServerReference?> GetReferenceAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+            => _context.Servers
+                .AsNoTracking()
+                .Where(server => server.Id == id)
+                .Select(server => new ServerReference
+                {
+                    Id = server.Id,
+                    Name = server.Name,
+                    TimeshiftOnly = server.TimeshiftOnly
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+            CancellationToken cancellationToken = default)
+            => await _context.Servers
+                .AsNoTracking()
+                .OrderBy(server => server.Name)
+                .ThenBy(server => server.Id)
+                .Select(server => new ServerOption
+                {
+                    Id = server.Id,
+                    Name = server.Name,
+                    TimeshiftOnly = server.TimeshiftOnly
+                })
+                .ToListAsync(cancellationToken);
+
+        /// <inheritdoc />
+        public async Task<int> CountReferencesAsync(
+            Guid id,
+            CancellationToken cancellationToken = default)
+        {
+            var subscriptions = await _context.Subscriptions
+                .AsNoTracking()
+                .CountAsync(row => row.PreferredServerId == id, cancellationToken);
+
+            var streams = await _context.VideoStreams
+                .AsNoTracking()
+                .CountAsync(
+                    row => row.TranscodingServerId == id || row.ArchiveServerId == id,
+                    cancellationToken);
+
+            return subscriptions + streams;
+        }
+
+        /// <inheritdoc />
         public Task<bool> ExistsMainAsync(CancellationToken cancellationToken = default)
             => _context.Servers
                 .AsNoTracking()

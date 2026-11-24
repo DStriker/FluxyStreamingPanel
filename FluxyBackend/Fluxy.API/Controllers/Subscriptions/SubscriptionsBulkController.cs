@@ -36,7 +36,8 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <summary>Names the operations a bulk body may ask for.</summary>
         private const string ActionHint =
             "The action must be 'change-tariff', 'change-creator', 'delete', 'delete-playlist', " +
-            "'delete-mag', 'delete-enigma2', 'prolong' or 'block-owner'.";
+            "'delete-mag', 'delete-enigma2', 'prolong', 'block-owner', 'change-server' or " +
+            "'clear-server'.";
 
         /// <summary>Sentence a plan that is not an identifier gets.</summary>
         private const string PlanHint =
@@ -45,6 +46,10 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <summary>Sentence an account that is not an identifier gets.</summary>
         private const string ResellerHint =
             "The issuer must be the identifier of an account, as a uuid.";
+
+        /// <summary>Sentence a server that is not an identifier gets.</summary>
+        private const string ServerHint =
+            "The server must be the identifier of a server, as a uuid.";
 
         /// <summary>Sentence a set of identifiers that is not all uuids gets.</summary>
         private const string IdsHint = "Every identifier must be the uuid of a subscription.";
@@ -155,6 +160,16 @@ namespace Fluxy.API.Controllers.Subscriptions
                     errors);
             }
 
+            Guid? server = null;
+            if (action is BulkSubscriptionAction.ChangeServer)
+            {
+                server = ParseIdentifier(
+                    request.ServerId,
+                    nameof(BulkSubscriptionsRequest.ServerId),
+                    ServerHint,
+                    errors);
+            }
+
             if (errors.Count > 0)
             {
                 return ApiResults.ValidationFailed(errors);
@@ -168,7 +183,8 @@ namespace Fluxy.API.Controllers.Subscriptions
                     Action = action!.Value,
                     SubscriptionIds = ids!,
                     TariffPlanId = plan,
-                    ResellerId = reseller
+                    ResellerId = reseller,
+                    ServerId = server
                 },
                 actingUserId,
                 granted,
@@ -195,6 +211,8 @@ namespace Fluxy.API.Controllers.Subscriptions
                 "delete-enigma2" => BulkSubscriptionAction.DeleteEnigma2,
                 "prolong" => BulkSubscriptionAction.Prolong,
                 "block-owner" => BulkSubscriptionAction.BlockOwner,
+                "change-server" => BulkSubscriptionAction.ChangeServer,
+                "clear-server" => BulkSubscriptionAction.ClearServer,
                 _ => null
             };
 

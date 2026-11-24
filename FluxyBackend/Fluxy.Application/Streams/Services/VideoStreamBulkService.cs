@@ -117,6 +117,9 @@ namespace Fluxy.Application.Streams.Services
                     BulkVideoStreamAction.ChangeRestream =>
                         await ChangeRestreamAsync(streamId, operation, cancellationToken),
 
+                    BulkVideoStreamAction.ChangeServers =>
+                        await ChangeServersAsync(streamId, operation, cancellationToken),
+
                     // Unreachable: the enum holds no other member and the transport refuses a
                     // name that maps to none. Thrown rather than skipped, because an entry
                     // missing from the answer is a stream the client believes it acted on and
@@ -323,6 +326,29 @@ namespace Fluxy.Application.Streams.Services
                     cancellationToken),
                 null);
         }
+
+        /// <summary>Replaces both server references of one stream.</summary>
+        /// <remarks>
+        /// One operation carrying both fields, written as a whole-value replacement: a null or
+        /// blank value clears its field, anything else replaces it. The single-row <c>UpdateAsync</c>
+        /// does the existence checks and the permanence rule, so a row that ends up permanent over
+        /// a timeshift-only transcoder is refused exactly as the addressed endpoint refuses it.
+        /// </remarks>
+        private async Task<(VideoStreamOutcome Outcome, IReadOnlyList<VideoStreamBulkWarning>? Warnings)>
+            ChangeServersAsync(
+                Guid streamId,
+                BulkVideoStreamOperation operation,
+                CancellationToken cancellationToken)
+            => (
+                await _streams.UpdateAsync(
+                    streamId,
+                    new VideoStreamPatch
+                    {
+                        TranscodingServerId = operation.TranscodingServerId ?? string.Empty,
+                        ArchiveServerId = operation.ArchiveServerId ?? string.Empty
+                    },
+                    cancellationToken),
+                null);
 
         /// <summary>
         /// The payload this operation cannot run without, or null when it has one.

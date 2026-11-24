@@ -120,6 +120,12 @@ namespace Fluxy.Application.Subscriptions.Utils
             "There is no tariff plan with that identifier."
         ];
 
+        /// <summary>The sentence a preferred-server identifier that names no server gets.</summary>
+        public static readonly string[] PreferredServerNotFoundRule =
+        [
+            "There is no server with that identifier."
+        ];
+
         /// <summary>The sentence an owner that names no account gets.</summary>
         public static readonly string[] OwnerNotFoundRule =
         [

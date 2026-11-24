@@ -50,6 +50,12 @@ namespace Fluxy.Core.Streams.Commands
         /// <summary>Transcoding profile the relay converts it with, or null for none.</summary>
         public Guid? TranscodingProfileId { get; init; }
 
+        /// <summary>Server that transcodes the stream, or null for none.</summary>
+        public Guid? TranscodingServerId { get; init; }
+
+        /// <summary>Server that keeps the stream's archive, or null for none.</summary>
+        public Guid? ArchiveServerId { get; init; }
+
         /// <summary>
         /// On-demand items the stream plays, in order, or empty when its type does not use any.
         /// </summary>

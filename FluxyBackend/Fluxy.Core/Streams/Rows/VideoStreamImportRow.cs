@@ -19,5 +19,15 @@ namespace Fluxy.Core.Streams.Rows
 
         /// <summary>Kind the stream already is - decides whether a source may be appended.</summary>
         public required VideoStreamType Type { get; init; }
+
+        /// <summary>
+        /// Server the stream is already bound to for transcoding, or null for none.
+        /// </summary>
+        /// <remarks>
+        /// The <b>stored</b> binding, read only to decide whether an overwrite would leave a
+        /// permanent stream on a timeshift-only transcoder. The import never writes it: the two
+        /// server references are batch settings for the rows the batch creates.
+        /// </remarks>
+        public Guid? TranscodingServerId { get; init; }
     }
 }

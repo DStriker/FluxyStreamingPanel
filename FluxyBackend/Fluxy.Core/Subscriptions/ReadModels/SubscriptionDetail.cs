@@ -48,6 +48,12 @@ namespace Fluxy.Core.Subscriptions.ReadModels
         /// <summary>Name of the tariff plan, or null.</summary>
         public string? TariffPlanName { get; init; }
 
+        /// <summary>Identifier of the preferred server, or null for "any server".</summary>
+        public Guid? PreferredServerId { get; init; }
+
+        /// <summary>Name of the preferred server, or null when no server is named.</summary>
+        public string? PreferredServerName { get; init; }
+
         /// <summary>The computed state.</summary>
         public required SubscriptionStatus Status { get; init; }
 

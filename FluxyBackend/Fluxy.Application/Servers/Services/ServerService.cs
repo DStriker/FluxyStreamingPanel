@@ -81,6 +81,11 @@ namespace Fluxy.Application.Servers.Services
         }
 
         /// <inheritdoc />
+        public Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+            CancellationToken cancellationToken = default)
+            => _servers.GetOptionsAsync(cancellationToken);
+
+        /// <inheritdoc />
         public async Task<ServerOutcome> CreateAsync(
             NewServer input,
             CancellationToken cancellationToken = default)
@@ -204,9 +209,12 @@ namespace Fluxy.Application.Servers.Services
 
         /// <inheritdoc />
         /// <remarks>
-        /// The existence check comes first and the main-row refusal second, deliberately: a
-        /// missing identifier is answered as the absence it is, and only a row that exists can be
-        /// refused for being the one the installation cannot operate without.
+        /// The existence check comes first, the main-row refusal second and the reference count
+        /// third, deliberately: a missing identifier is answered as the absence it is, only a row
+        /// that exists can be refused for being the one the installation cannot operate without,
+        /// and only a row that may otherwise go is refused for being named by a subscription or a
+        /// stream. The count is the guard the three <c>RESTRICT</c> foreign keys need: without it
+        /// the delete would surface a provider error as a 500 instead of a code.
         /// </remarks>
         public async Task<ServerOutcome> DeleteAsync(
             Guid id,
@@ -223,6 +231,18 @@ namespace Fluxy.Application.Servers.Services
                 {
                     Action = ServerAction.ImmutableMain,
                     ServerId = id
+                };
+            }
+
+            var references = await _servers.CountReferencesAsync(id, cancellationToken);
+
+            if (references > 0)
+            {
+                return new ServerOutcome
+                {
+                    Action = ServerAction.InUse,
+                    ServerId = id,
+                    ReferenceCount = references
                 };
             }
 

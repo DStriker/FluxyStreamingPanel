@@ -348,6 +348,9 @@ namespace Fluxy.API.Contracts.Common
                 BulkVideoStreamAction.ChangeRestream =>
                     $"{Landed(items)} of {items.Count} streams had their restream settings updated.",
 
+                BulkVideoStreamAction.ChangeServers =>
+                    $"{Landed(items)} of {items.Count} streams had their servers updated.",
+
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} streams changed."
             };
@@ -465,6 +468,13 @@ namespace Fluxy.API.Contracts.Common
 
                 BulkSubscriptionAction.BlockOwner =>
                     $"{Landed(items)} of {items.Count} owners blocked.",
+
+                BulkSubscriptionAction.ChangeServer =>
+                    $"{Landed(items)} of {items.Count} subscriptions moved to that server.",
+
+                BulkSubscriptionAction.ClearServer =>
+                    $"{Landed(items)} of {items.Count} subscriptions had their preferred server " +
+                    "cleared.",
 
                 // Unreachable: the enum holds no other member.
                 _ => $"{Landed(items)} of {items.Count} subscriptions changed."

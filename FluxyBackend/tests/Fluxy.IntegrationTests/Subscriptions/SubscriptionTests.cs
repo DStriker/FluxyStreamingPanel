@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Fluxy.Core.Users.Enums;
 using Fluxy.IntegrationTests.Infrastructure;
@@ -930,6 +930,132 @@ namespace Fluxy.IntegrationTests.Subscriptions
             Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
         }
 
+        [Fact]
+        public async Task APreferredServerIsSetKeptAndCleared()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var server = await CreateServerAsync("Preferred one");
+
+            using var created = await PostSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist(),
+                bouquetIds: [bouquet],
+                preferredServerId: server));
+            await AssertCodeAsync(created, HttpStatusCode.Created, "subscription_created");
+            var id = IdFromLocation(created);
+
+            var initial = await ReadSubscriptionAsync(id);
+            Assert.Equal(server, initial.GetProperty("preferredServerId").GetString());
+            Assert.StartsWith("Preferred one", initial.GetProperty("preferredServerName").GetString());
+
+            // The list item is deliberately unchanged: no server field rides on it.
+            using var list = await Client.GetAsync(
+                "/admin/subscriptions",
+                TestContext.Current.CancellationToken);
+            using var listBody = await ReadJsonAsync(list);
+            var row = listBody.RootElement.GetProperty("items")[0];
+            Assert.False(row.TryGetProperty("preferredServerId", out _));
+
+            // A patch that says nothing about the server keeps it.
+            using var kept = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { maxConnections = 9 },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(kept, HttpStatusCode.OK, "subscription_updated");
+            var afterKeep = await ReadSubscriptionAsync(id);
+            Assert.Equal(server, afterKeep.GetProperty("preferredServerId").GetString());
+
+            // The flag clears it, and both fields answer null.
+            using var cleared = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { clearPreferredServer = true },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(cleared, HttpStatusCode.OK, "subscription_updated");
+            var afterClear = await ReadSubscriptionAsync(id);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("preferredServerId").ValueKind);
+            Assert.Equal(JsonValueKind.Null, afterClear.GetProperty("preferredServerName").ValueKind);
+        }
+
+        [Fact]
+        public async Task AnUnknownPreferredServerIsRefusedUnderItsOwnKey()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var unknown = Guid.NewGuid().ToString();
+
+            using var created = await PostSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist(),
+                bouquetIds: [bouquet],
+                preferredServerId: unknown));
+            Assert.Equal(HttpStatusCode.BadRequest, created.StatusCode);
+            using var createBody = await ReadJsonAsync(created);
+            Assert.Equal("validation_failed", CodeOf(createBody));
+            Assert.True(
+                createBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("preferredServerId", out _));
+
+            var id = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist(),
+                bouquetIds: [bouquet]));
+
+            using var patched = await PatchJsonAsync(
+                $"/admin/subscriptions/{id}",
+                new { preferredServerId = unknown },
+                await GetCsrfTokenAsync());
+            Assert.Equal(HttpStatusCode.BadRequest, patched.StatusCode);
+            using var patchBody = await ReadJsonAsync(patched);
+            Assert.True(
+                patchBody.RootElement.GetProperty("errors")
+                    .TryGetProperty("preferredServerId", out _));
+        }
+
+        [Fact]
+        public async Task DeletingAServerASubscriptionPrefersIsRefused()
+        {
+            await CreateAdminAndSignInAsync();
+
+            var owner = await CreateUserAsync(UserRole.Client, "subscriber");
+            var bouquet = await CreateBouquetAsync("Cinema");
+            var server = await CreateServerAsync("Preferred two");
+
+            _ = await CreateSubscriptionAsync(Body(
+                owner,
+                playlistId: Playlist(),
+                bouquetIds: [bouquet],
+                preferredServerId: server));
+
+            using var refused = await DeleteAsync(
+                $"/admin/servers/{server}",
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(refused, HttpStatusCode.Conflict, "server_in_use");
+        }
+
+        /// <summary>Creates a server through its own surface and answers its identifier.</summary>
+        private async Task<string> CreateServerAsync(string name)
+        {
+            using var response = await PostJsonAsync(
+                "/admin/servers",
+                new
+                {
+                    name = name + " " + Guid.NewGuid().ToString("N")[..8],
+                    ip = "203.0.113.7",
+                    port = 6200,
+                    osName = "Debian 12",
+                    networkInterface = "eth0"
+                },
+                await GetCsrfTokenAsync());
+            await AssertCodeAsync(response, HttpStatusCode.Created, "server_created");
+
+            return IdFromLocation(response);
+        }
+
         /// <summary>
         /// A subscription body a test would post, with the values it overrides.
         /// </summary>
@@ -950,7 +1076,8 @@ namespace Fluxy.IntegrationTests.Subscriptions
             string? expireAt = null,
             bool isTrial = false,
             IReadOnlyList<string>? bouquetIds = null,
-            object? ownerOverride = null)
+            object? ownerOverride = null,
+            string? preferredServerId = null)
             => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 // The override is what lets a test send a blank, absent or malformed owner; the
@@ -965,6 +1092,7 @@ namespace Fluxy.IntegrationTests.Subscriptions
                 ["magMac"] = magMac,
                 ["enigma2Mac"] = enigma2Mac,
                 ["tariffPlanId"] = planId,
+                ["preferredServerId"] = preferredServerId,
                 ["maxConnections"] = maxConnections,
                 ["isRestreamer"] = isRestreamer,
                 ["ipWhitelist"] = Array.Empty<string>(),

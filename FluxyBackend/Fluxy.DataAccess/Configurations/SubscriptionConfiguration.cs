@@ -82,6 +82,9 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(subscription => subscription.TariffPlanId)
                 .HasColumnName("tariff_plan_id");
 
+            builder.Property(subscription => subscription.PreferredServerId)
+                .HasColumnName("preferred_server_id");
+
             builder.Property(subscription => subscription.MaxConnections)
                 .HasColumnName("max_connections");
 
@@ -164,6 +167,15 @@ namespace Fluxy.DataAccess.Configurations
                 .HasForeignKey(subscription => subscription.TariffPlanId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // A subscription may name the server it prefers, and a server a subscription names
+            // must not vanish under it: the same shape of fact the tariff plan above is, with the
+            // same answer. The server's own service counts the references first so the operator
+            // reads a code instead of a database failure.
+            builder.HasOne<ServerEntity>()
+                .WithMany()
+                .HasForeignKey(subscription => subscription.PreferredServerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // The partial unique indexes cannot be declared here: EF Core's model index has no
             // filter, so a plain unique index would occupy the name and refuse every second null
             // the model never even reaches. They are created by the migration under these exact
@@ -171,6 +183,7 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasIndex(subscription => subscription.UserId);
             builder.HasIndex(subscription => subscription.ResellerId);
             builder.HasIndex(subscription => subscription.TariffPlanId);
+            builder.HasIndex(subscription => subscription.PreferredServerId);
 
             // The two orders the table offers. Creation time is the default and the expire date
             // is the other; both are read with the row, so neither is a computed value.

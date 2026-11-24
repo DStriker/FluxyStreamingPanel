@@ -1,6 +1,6 @@
 import { apiFetch, apiGet } from '../../utils/http'
 import type { MessageResponse } from '../../types'
-import type { Server, ServerList, ServerStatus } from './types'
+import type { Server, ServerList, ServerOption, ServerStatus } from './types'
 import { mbpsToKbps } from './serverFields'
 
 /**
@@ -164,6 +164,17 @@ export const getServers = ({
 /** One server in full, for the edit form: `GET /admin/servers/{id}`. */
 export const getServer = (id: string, signal?: AbortSignal): Promise<Server> =>
   apiGet<Server>(`/admin/servers/${encodeURIComponent(id)}`, signal)
+
+/**
+ * Every server as a picker entry: `GET /admin/servers/options`.
+ *
+ * Gated by an "any of" policy over the subscription and stream read grants rather than by the
+ * server pair, because the two forms that draw this picker are the only callers - choosing a
+ * server while editing either of them is part of editing it, and reading a name to choose it is
+ * not browsing the servers table.
+ */
+export const getServerOptions = (signal?: AbortSignal): Promise<ServerOption[]> =>
+  apiGet<ServerOption[]>('/admin/servers/options', signal)
 
 /**
  * Creates a server: `POST /admin/servers`, answered with `201` and a `Location`.

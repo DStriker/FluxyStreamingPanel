@@ -107,12 +107,32 @@ namespace Fluxy.DataAccess.Repositories
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            var stream = await _context.VideoStreams
+            // The two server names are correlated subqueries rather than joins: the references are
+            // independent of each other, and joining either would multiply the row. The same shape
+            // the subscription detail uses for its plan and server names.
+            var row = await _context.VideoStreams
                 .AsNoTracking()
-                .Include(entry => entry.Category)
-                .FirstOrDefaultAsync(entry => entry.Id == id, cancellationToken);
+                .Where(entry => entry.Id == id)
+                .Select(entry => new
+                {
+                    Stream = entry,
+                    CategoryName = entry.Category!.Name,
+                    TranscodingServerName = entry.TranscodingServerId == null
+                        ? null
+                        : _context.Servers
+                            .Where(server => server.Id == entry.TranscodingServerId)
+                            .Select(server => server.Name)
+                            .FirstOrDefault(),
+                    ArchiveServerName = entry.ArchiveServerId == null
+                        ? null
+                        : _context.Servers
+                            .Where(server => server.Id == entry.ArchiveServerId)
+                            .Select(server => server.Name)
+                            .FirstOrDefault()
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (stream is null)
+            if (row is null)
             {
                 return null;
             }
@@ -121,7 +141,11 @@ namespace Fluxy.DataAccess.Repositories
             var files = await ReadFilesAsync(id, cancellationToken);
             var vodItems = await ReadVodItemsAsync(id, cancellationToken);
 
-            return stream.ToModel(sources, files, vodItems);
+            return row.Stream.ToModel(sources, files, vodItems, row.CategoryName) with
+            {
+                TranscodingServerName = row.TranscodingServerName,
+                ArchiveServerName = row.ArchiveServerName
+            };
         }
 
         /// <inheritdoc />
@@ -204,6 +228,7 @@ namespace Fluxy.DataAccess.Repositories
                     Id = entry.Id,
                     Name = entry.Name,
                     Type = entry.Type,
+                    TranscodingServerId = entry.TranscodingServerId,
                 })
                 .ToListAsync(cancellationToken);
         }
@@ -254,6 +279,8 @@ namespace Fluxy.DataAccess.Repositories
                 EpgSourceId = stream.EpgSourceId,
                 EpgChannelKey = stream.EpgChannelKey,
                 TranscodingProfileId = stream.TranscodingProfileId,
+                TranscodingServerId = stream.TranscodingServerId,
+                ArchiveServerId = stream.ArchiveServerId,
                 ArchiveDays = stream.ArchiveDays,
                 RestreamUserAgent = stream.RestreamUserAgent,
                 RestreamProxy = stream.RestreamProxy,
@@ -292,6 +319,8 @@ namespace Fluxy.DataAccess.Repositories
             entity.EpgSourceId = stream.EpgSourceId;
             entity.EpgChannelKey = stream.EpgChannelKey;
             entity.TranscodingProfileId = stream.TranscodingProfileId;
+            entity.TranscodingServerId = stream.TranscodingServerId;
+            entity.ArchiveServerId = stream.ArchiveServerId;
             entity.ArchiveDays = stream.ArchiveDays;
             entity.RestreamUserAgent = stream.RestreamUserAgent;
             entity.RestreamProxy = stream.RestreamProxy;

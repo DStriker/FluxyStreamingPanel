@@ -180,6 +180,22 @@ export interface VideoStreamValues {
    * whole answer, so an empty string is "clear" rather than "leave it alone".
    */
   transcodingProfileId: string
+
+  /**
+   * Server that transcodes the stream, or an empty string for none.
+   *
+   * The `transcodingProfileId` shape on the wire - always sent, `""` clears - and required by this
+   * form only while the kind is permanent, which is a form rule rather than an endpoint one.
+   */
+  transcodingServerId: string
+
+  /**
+   * Server that keeps the stream's archive, or an empty string for none.
+   *
+   * Also always sent, and offered by the form only while the kind is permanent and the archive
+   * length is above zero.
+   */
+  archiveServerId: string
 }
 
 /**
@@ -312,6 +328,7 @@ export type BulkVideoStreamAction =
   | 'change-delay'
   | 'change-archive'
   | 'change-restream'
+  | 'change-servers'
 
 /**
  * The only kinds a bulk type change may choose.
@@ -336,6 +353,10 @@ export type BulkVideoStreamType = Extract<
  *
  * `restream*` is a whole-list replacement, not a diff: a blank string clears its setting, so
  * "the restream settings are these now" and "clear them" are the same request shape.
+ *
+ * `transcodingServerId`/`archiveServerId` are the same shape for the two server references: a
+ * whole-value replacement where a blank string clears its field, sent together as one
+ * `change-servers` operation.
  */
 export interface BulkVideoStreamsPayload {
   action: BulkVideoStreamAction
@@ -348,6 +369,10 @@ export interface BulkVideoStreamsPayload {
   restreamProxy?: string
   restreamCookies?: string
   restreamHeaders?: string
+  /** Transcoding server a `change-servers` writes; blank clears it. */
+  transcodingServerId?: string
+  /** Archive server a `change-servers` writes; blank clears it. */
+  archiveServerId?: string
 }
 
 /**
@@ -425,6 +450,17 @@ export interface VideoStreamImportValues {
   delayMinutes: number
   /** Archive length in days, refused above zero on anything but `Permanent`. */
   archiveDays: number
+  /**
+   * Server that transcodes every stream this import creates, or an empty string for none.
+   *
+   * A batch setting: it is written on the rows the import creates and on no others. The
+   * form requires it while the kind is `Permanent`, which is a UI rule the endpoint does not
+   * enforce; the endpoint refuses only a server that does not exist or a timeshift-only one
+   * chosen for a permanent stream.
+   */
+  transcodingServerId: string
+  /** Server that keeps the archive of every created stream, or an empty string for none. */
+  archiveServerId: string
   /** User agent the relayed requests carry. */
   restreamUserAgent: string
   /** Proxy the relay goes out through. */
@@ -479,6 +515,12 @@ export const importVideoStreams = ({
   }
   body.set('delayMinutes', String(values.delayMinutes))
   body.set('archiveDays', String(values.archiveDays))
+
+  // Once per import, and applied to the rows it creates only. An empty string is sent as an
+  // empty part rather than omitted, which the endpoint reads as "none" - the same answer an
+  // absent part gets, and the one the form's own blank field holds.
+  body.set('transcodingServerId', values.transcodingServerId ?? '')
+  body.set('archiveServerId', values.archiveServerId ?? '')
   body.set('restreamUserAgent', values.restreamUserAgent)
   body.set('restreamProxy', values.restreamProxy)
   body.set('restreamCookies', values.restreamCookies)

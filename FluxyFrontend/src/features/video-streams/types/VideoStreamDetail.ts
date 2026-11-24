@@ -57,4 +57,14 @@ export interface VideoStreamDetail extends VideoStream {
 
   /** Transcoding profile the row is converted with, as text, or null. */
   transcodingProfileId: string | null
+
+  /** Server that transcodes the row, as text, or null. */
+  transcodingServerId: string | null
+  /** Name of that server, or null. */
+  transcodingServerName: string | null
+
+  /** Server that keeps the row's archive, as text, or null. */
+  archiveServerId: string | null
+  /** Name of that server, or null. */
+  archiveServerName: string | null
 }

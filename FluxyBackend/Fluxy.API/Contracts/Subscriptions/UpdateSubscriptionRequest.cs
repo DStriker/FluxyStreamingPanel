@@ -41,6 +41,12 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>True to null the plan reference and re-activate the own parameters.</summary>
         public bool ClearTariffPlan { get; init; }
 
+        /// <summary>The preferred server to attach, as a uuid, or null to leave it alone.</summary>
+        public string? PreferredServerId { get; init; }
+
+        /// <summary>True to null the preferred-server reference.</summary>
+        public bool ClearPreferredServer { get; init; }
+
         /// <summary>New connection ceiling, or null to keep the current one.</summary>
         public int? MaxConnections { get; init; }
 

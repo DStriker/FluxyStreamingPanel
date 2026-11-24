@@ -52,6 +52,12 @@ namespace Fluxy.Core.Subscriptions.Models
         public Guid? TariffPlanId { get; init; }
 
         /// <summary>
+        /// The preferred server the subscription is pinned to, or null for "any server, chosen
+        /// later by the main server".
+        /// </summary>
+        public Guid? PreferredServerId { get; init; }
+
+        /// <summary>
         /// How many devices may watch at once, or null for unlimited. Only ever written while
         /// no plan is attached.
         /// </summary>

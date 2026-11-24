@@ -95,6 +95,29 @@ namespace Fluxy.Core.Streams.Models
         public Guid? TranscodingProfileId { get; init; }
 
         /// <summary>
+        /// Server that transcodes this stream, or null when none is chosen. Metadata this pass:
+        /// nothing relays through it yet.
+        /// </summary>
+        public Guid? TranscodingServerId { get; init; }
+
+        /// <summary>Display name of that server, resolved by a read rather than stored.</summary>
+        /// <remarks>
+        /// The same kind of fact <see cref="CategoryName"/> is: a name the row owns indirectly and
+        /// a read resolves once, so a form does not have to hold a second list to draw the
+        /// currently chosen server. Null when no server is named.
+        /// </remarks>
+        public string? TranscodingServerName { get; init; }
+
+        /// <summary>
+        /// Server that keeps this stream's archive, or null when none is chosen. Metadata this
+        /// pass: nothing records through it yet.
+        /// </summary>
+        public Guid? ArchiveServerId { get; init; }
+
+        /// <summary>Display name of the archive server, resolved by a read rather than stored.</summary>
+        public string? ArchiveServerName { get; init; }
+
+        /// <summary>
         /// On-demand items this stream plays, in the order it plays them, for
         /// <see cref="VideoStreamType.VodPlaylist"/> and nothing else. Empty for every other
         /// kind.
