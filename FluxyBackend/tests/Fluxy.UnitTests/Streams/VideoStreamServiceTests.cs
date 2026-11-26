@@ -299,6 +299,10 @@ namespace Fluxy.UnitTests.Streams
                 CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();
 
+            public Task<IReadOnlyList<Server>> GetAllAsync(
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
             public Task<int> CountReferencesAsync(
                 Guid id,
                 CancellationToken cancellationToken = default)
@@ -420,6 +424,10 @@ namespace Fluxy.UnitTests.Streams
             public Task<VideoStreamStatus?> SetStatusAsync(
                 Guid id,
                 VideoStreamStatus status,
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<IReadOnlyList<VideoStreamStatusCountRow>> ReadStatusCountsAsync(
                 CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();
         }

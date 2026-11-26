@@ -170,5 +170,17 @@ namespace Fluxy.Core.Streams.Repositories
             Guid id,
             VideoStreamStatus status,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Counts the video streams by stored status, one group per status that any stream holds.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// The dashboard turns the groups into its two figures - running and stopped - and reads a
+        /// missing group as zero. One grouped query, because the alternative is two counted reads
+        /// that could observe different table states between them.
+        /// </remarks>
+        Task<IReadOnlyList<VideoStreamStatusCountRow>> ReadStatusCountsAsync(
+            CancellationToken cancellationToken = default);
     }
 }

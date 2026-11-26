@@ -63,6 +63,15 @@ namespace Fluxy.Core.Servers.Repositories
         Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
             CancellationToken cancellationToken = default);
 
+        /// <summary>Reads every server row, ordered by name ascending.</summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// The dashboard's one read of the table: it draws a row per server, disabled rows
+        /// included, so it cannot use the paged read and must not filter. The order is the
+        /// table's own default order rather than the request's, because the request has no
+        /// ordering to express - the dashboard is one screen of every server.
+        /// </remarks>
+        Task<IReadOnlyList<Server>> GetAllAsync(CancellationToken cancellationToken = default);
         /// <summary>
         /// How many rows point at the server: subscriptions through their preferred server, and
         /// video streams through their transcoding or archive server.

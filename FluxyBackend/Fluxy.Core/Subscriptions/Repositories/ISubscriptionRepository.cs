@@ -177,5 +177,28 @@ namespace Fluxy.Core.Subscriptions.Repositories
         /// instead of a provider error.
         /// </remarks>
         Task<int> CountForPlanAsync(Guid planId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Counts the distinct accounts whose subscription names each server as its preferred one.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// One row per <c>preferred_server_id</c> that is named, with no null group: a subscription
+        /// that names no server is not a fact about any server. A server no subscription names is
+        /// absent rather than present with zero.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>Distinct owners, not distinct subscriptions.</b> An account holding two subscriptions
+        /// placed on one server is one viewer, which is what the dashboard's per-server figure
+        /// means.
+        /// </para>
+        /// <para>
+        /// One grouped query over the whole table, not a probe per server: the dashboard names
+        /// every server it holds, and a count per row would be an N+1 over the servers.
+        /// </para>
+        /// </remarks>
+        Task<IReadOnlyList<PreferredServerUserCountRow>> ReadPreferredServerUserCountsAsync(
+            CancellationToken cancellationToken = default);
     }
 }

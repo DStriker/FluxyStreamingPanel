@@ -448,6 +448,29 @@ namespace Fluxy.DataAccess.Repositories
             return previous;
         }
 
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<VideoStreamStatusCountRow>> ReadStatusCountsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var rows = await _context.VideoStreams
+                .AsNoTracking()
+                .GroupBy(stream => stream.Status)
+                .Select(group => new
+                {
+                    Status = group.Key,
+                    Count = group.Count()
+                })
+                .ToListAsync(cancellationToken);
+
+            return rows
+                .Select(row => new VideoStreamStatusCountRow
+                {
+                    Status = row.Status,
+                    Count = row.Count
+                })
+                .ToList();
+        }
+
         /// <summary>Reads the stored source list, in the order the relay uses it.</summary>
         private async Task<IReadOnlyList<string>> ReadSourcesAsync(
             Guid id,

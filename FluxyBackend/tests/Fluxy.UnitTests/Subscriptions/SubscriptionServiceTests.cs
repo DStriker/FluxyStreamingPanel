@@ -1073,6 +1073,10 @@ namespace Fluxy.UnitTests.Subscriptions
             public Task<int> CountForPlanAsync(Guid planId, CancellationToken cancellationToken = default)
                 => Task.FromResult(0);
 
+            public Task<IReadOnlyList<PreferredServerUserCountRow>> ReadPreferredServerUserCountsAsync(
+                CancellationToken cancellationToken = default)
+                => Task.FromResult<IReadOnlyList<PreferredServerUserCountRow>>([]);
+
             private static readonly Guid OwnerUserId =
                 Guid.Parse("00000000-0000-0000-0000-00000000c001");
 
@@ -1108,6 +1112,10 @@ namespace Fluxy.UnitTests.Subscriptions
             public Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
                 CancellationToken cancellationToken = default)
                 => Task.FromResult<IReadOnlyList<ServerOption>>([]);
+
+            public Task<IReadOnlyList<Server>> GetAllAsync(
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
 
             public Task<int> CountReferencesAsync(
                 Guid id,

@@ -434,6 +434,11 @@ namespace Fluxy.UnitTests.Servers
                             }
                         ]);
 
+            public Task<IReadOnlyList<Server>> GetAllAsync(
+                CancellationToken cancellationToken = default)
+                => Task.FromResult<IReadOnlyList<Server>>(
+                    Existing is null ? [] : [Existing]);
+
             public Task<int> CountReferencesAsync(
                 Guid id,
                 CancellationToken cancellationToken = default)

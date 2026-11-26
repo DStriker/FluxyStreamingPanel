@@ -602,6 +602,10 @@ namespace Fluxy.DataAccess.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("isp");
 
+                    b.Property<Guid?>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -636,6 +640,8 @@ namespace Fluxy.DataAccess.Migrations
                     b.HasIndex("Isp");
 
                     b.HasIndex("UserAgent");
+
+                    b.HasIndex("ServerId", "EndedAt");
 
                     b.HasIndex("StartedAt", "Id")
                         .IsDescending();

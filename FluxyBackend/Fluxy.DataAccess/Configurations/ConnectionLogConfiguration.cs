@@ -24,6 +24,13 @@ namespace Fluxy.DataAccess.Configurations
     /// subject is what the operator asked for. The table is never orphaned.
     /// </para>
     /// <para>
+    /// <b>The server identifier is opaque, like the stream identifier.</b> No foreign key points
+    /// at <c>servers</c>: the relaying process may report a server row this installation has no
+    /// record of. <c>RESTRICT</c> would make every server that ever served a connection
+    /// undeletable, and <c>CASCADE</c> would destroy the evidence the log exists for. The read path
+    /// resolves the name from <c>servers</c> and answers null when the row is gone.
+    /// </para>
+    /// <para>
     /// <b>Six indexes plus one hand-written partial index.</b> Five answer the filters the screen
     /// offers and one answers the default order; the partial index over
     /// <c>(started_at DESC, id DESC) WHERE ended_at IS NULL</c> exists because "live" is a small
@@ -67,6 +74,13 @@ namespace Fluxy.DataAccess.Configurations
             builder.Property(connection => connection.StreamId)
                 .HasColumnName("stream_id")
                 .IsRequired();
+
+            // Opaque on purpose, like `stream_id`: no foreign key. The relaying process may name a
+            // server row this installation has no record of. RESTRICT would make every server that
+            // ever served a connection undeletable; CASCADE would destroy the evidence the log
+            // exists for. The read path resolves the name and answers null when the row is gone.
+            builder.Property(connection => connection.ServerId)
+                .HasColumnName("server_id");
 
             // 45 characters is the longest textual IPv6 form, so the column can hold every
             // address the socket layer can hand over.
@@ -134,6 +148,11 @@ namespace Fluxy.DataAccess.Configurations
             builder.HasIndex(connection => connection.CountryCode);
             builder.HasIndex(connection => connection.Isp);
             builder.HasIndex(connection => connection.UserAgent);
+
+            // One server's connections, and the group the dashboard reads: every live row grouped
+            // by the server that served it. `server_id` is nullable, and PostgreSQL's b-tree
+            // indexes nulls like any other value, so the unattributed group is indexed too.
+            builder.HasIndex(connection => new { connection.ServerId, connection.EndedAt });
         }
     }
 }

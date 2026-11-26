@@ -1,4 +1,5 @@
 using Fluxy.Core.Persistence.Interfaces;
+using Fluxy.Core.Servers.Utils;
 using Fluxy.Core.Streams.Enums;
 using Fluxy.Core.Streams.ReadModels;
 using Fluxy.Core.Streams.Repositories;
@@ -200,12 +201,15 @@ namespace Fluxy.Application.Subscriptions.Services
             {
                 var video = videos[index];
                 var subscription = subscriptions[index % subscriptions.Count];
+                var serverId = subscription.PreferredServerId ?? MainServer.Id;
                 var facts = Networks[network++ % Networks.Length];
 
                 // Each video stream gets one finished session, so the activity screen has an end
-                // time and a duration to draw.
+                // time and a duration to draw. The row is attributed to the server the
+                // subscription is placed on, or to the installation's own row when it names none.
                 rows.Add(Build(
                     subscription.Id,
+                    serverId,
                     ConnectionStreamKind.VideoStream,
                     video.Id,
                     facts,
@@ -219,6 +223,7 @@ namespace Fluxy.Application.Subscriptions.Services
                 {
                     rows.Add(Build(
                         subscription.Id,
+                        serverId,
                         ConnectionStreamKind.VideoStream,
                         video.Id,
                         facts,
@@ -236,6 +241,7 @@ namespace Fluxy.Application.Subscriptions.Services
 
                 rows.Add(Build(
                     subscription.Id,
+                    subscription.PreferredServerId ?? MainServer.Id,
                     ConnectionStreamKind.AudioStream,
                     audio.Id,
                     facts,
@@ -249,6 +255,7 @@ namespace Fluxy.Application.Subscriptions.Services
             {
                 rows.Add(Build(
                     subscriptions[0].Id,
+                    subscriptions[0].PreferredServerId ?? MainServer.Id,
                     ConnectionStreamKind.AudioStream,
                     audios[0].Id,
                     Networks[network % Networks.Length],
@@ -263,6 +270,7 @@ namespace Fluxy.Application.Subscriptions.Services
         /// <summary>Builds one row, deriving its end from its start when it is a finished session.</summary>
         private static NewConnectionLog Build(
             Guid subscriptionId,
+            Guid serverId,
             ConnectionStreamKind kind,
             Guid streamId,
             (string Ip, string Country, string Isp, string Agent) facts,
@@ -271,6 +279,7 @@ namespace Fluxy.Application.Subscriptions.Services
             int? broadcastPid) => new()
             {
                 SubscriptionId = subscriptionId,
+                ServerId = serverId,
                 StreamKind = kind,
                 StreamId = streamId,
                 Ip = facts.Ip,

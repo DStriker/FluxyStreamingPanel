@@ -32,6 +32,12 @@ namespace Fluxy.DataAccess.Entities
     /// The read path resolves the title when a row exists and answers null when it does not.
     /// </para>
     /// <para>
+    /// <b>The server identifier is opaque too.</b> <see cref="ServerId"/> carries no foreign key
+    /// for the same reason: the relaying process may name a server row this installation has no
+    /// record of. A <c>RESTRICT</c> key would make every server that ever served a connection
+    /// undeletable, and a <c>CASCADE</c> key would destroy the evidence the log exists for.
+    /// </para>
+    /// <para>
     /// <b>There is no duration.</b> <see cref="StartedAt"/> and <see cref="EndedAt"/> are the
     /// facts; subtracting one from the other is the reader's job.
     /// </para>
@@ -55,6 +61,16 @@ namespace Fluxy.DataAccess.Entities
 
         /// <summary>Opaque identifier of the stream it delivered; deliberately not a foreign key.</summary>
         public Guid StreamId { get; set; }
+
+        /// <summary>
+        /// Identifier of the server that served the connection, or null when unattributed.
+        /// </summary>
+        /// <remarks>
+        /// Opaque on purpose: no foreign key points at <c>servers</c>, because the relaying process
+        /// may name a server row this installation has no record of. The read path resolves the
+        /// name when a row exists and answers null when it does not.
+        /// </remarks>
+        public Guid? ServerId { get; set; }
 
         /// <summary>Address the session came from, up to 45 characters.</summary>
         public string Ip { get; set; } = string.Empty;
@@ -93,6 +109,7 @@ namespace Fluxy.DataAccess.Entities
             SubscriptionId = SubscriptionId,
             StreamKind = StreamKind,
             StreamId = StreamId,
+            ServerId = ServerId,
             Ip = Ip,
             UserAgent = UserAgent,
             CountryCode = CountryCode,
@@ -120,6 +137,7 @@ namespace Fluxy.DataAccess.Entities
             SubscriptionId = model.SubscriptionId;
             StreamKind = model.StreamKind;
             StreamId = model.StreamId;
+            ServerId = model.ServerId;
             Ip = model.Ip;
             UserAgent = model.UserAgent;
             CountryCode = model.CountryCode;

@@ -46,6 +46,21 @@ namespace Fluxy.Core.Subscriptions.Models
         /// </summary>
         public required Guid StreamId { get; init; }
 
+        /// <summary>
+        /// Identifier of the server that served the connection, or null when the capture path
+        /// could not attribute it.
+        /// </summary>
+        /// <remarks>
+        /// Opaque, exactly like <see cref="StreamId"/> and for the same reason: the relaying
+        /// process may name a server row this installation has no record of. A foreign key would
+        /// therefore be wrong twice over - <c>RESTRICT</c> would make every server that ever
+        /// served a connection undeletable, and <c>CASCADE</c> would destroy the evidence the log
+        /// exists for. The read path resolves the name from <c>servers</c> when a row exists and
+        /// answers null when it does not. Null means unattributed: the connection counts in the
+        /// installation total and contributes to no server row.
+        /// </remarks>
+        public Guid? ServerId { get; init; }
+
         /// <summary>Address the session came from, up to 45 characters (the longest IPv6 form).</summary>
         public required string Ip { get; init; }
 

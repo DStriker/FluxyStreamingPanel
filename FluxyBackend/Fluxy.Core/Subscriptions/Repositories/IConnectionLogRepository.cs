@@ -1,6 +1,7 @@
 using Fluxy.Core.Subscriptions.Commands;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.ReadModels;
+using Fluxy.Core.Subscriptions.Rows;
 
 namespace Fluxy.Core.Subscriptions.Repositories
 {
@@ -16,6 +17,11 @@ namespace Fluxy.Core.Subscriptions.Repositories
     /// fabricated identifier, so the seeder cannot plant rows through raw SQL the way a test
     /// fixture can. It is storage plumbing, not capture logic: it applies no rule about which
     /// allowance was spent or which moment a row opens, and no production endpoint reaches it.
+    /// </para>
+    /// <para>
+    /// <b>The dashboard adds two grouped reads.</b> <see cref="ReadLiveServerCountsAsync"/> and
+    /// <see cref="CountLiveUsersAsync"/> answer the installation and per-server figures the admin
+    /// dashboard draws; both are one grouped query and neither leaves this layer.
     /// </para>
     /// <para>
     /// The repository owns the query shape: the predicate every filter contributes, the count
@@ -37,6 +43,7 @@ namespace Fluxy.Core.Subscriptions.Repositories
         /// <param name="subscriptionId">Subscription to keep, or null for every subscription.</param>
         /// <param name="ownerId">Owner of the subscription to keep, or null for every owner.</param>
         /// <param name="streamId">Opaque stream identifier to keep, or null for every stream.</param>
+        /// <param name="serverId">Server to keep, or null for every server including unattributed rows.</param>
         /// <param name="ip">Address to keep, compared exactly, or null.</param>
         /// <param name="countryCode">Upper-case ISO alpha-2 country to keep, or null.</param>
         /// <param name="isp">Provider to keep, compared exactly, or null.</param>
@@ -55,6 +62,7 @@ namespace Fluxy.Core.Subscriptions.Repositories
             Guid? subscriptionId,
             Guid? ownerId,
             Guid? streamId,
+            Guid? serverId,
             string? ip,
             string? countryCode,
             string? isp,
@@ -122,5 +130,44 @@ namespace Fluxy.Core.Subscriptions.Repositories
         /// a real log.
         /// </remarks>
         Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Counts the live connections of every server, grouped by the server that served them.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>
+        /// One row per <c>server_id</c> that has a live connection - plus the unattributed group,
+        /// whose <see cref="ConnectionLogServerCountRow.ServerId"/> is null. A server with no live
+        /// connections is absent from the answer rather than present with zero.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <b>One grouped query, not a count per row.</b> The dashboard asks about every server the
+        /// installation holds; a correlated subquery in its projection would be an N+1 over the
+        /// servers, and a join over the log would multiply the group by its own rows. Grouping in
+        /// the database is the same shape <c>SubscriptionRepository</c>'s
+        /// <c>ReadActiveConnectionCountsAsync</c> uses for one page.
+        /// </para>
+        /// <para>
+        /// <b>The null group is kept.</b> A connection whose capture path could not name a server
+        /// still happened; it counts in the installation total and contributes to no server row.
+        /// Dropping the group here would make the installation total disagree with the log.
+        /// </para>
+        /// </remarks>
+        Task<IReadOnlyList<ConnectionLogServerCountRow>> ReadLiveServerCountsAsync(
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Counts the distinct accounts with at least one live connection, across every server.
+        /// </summary>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <remarks>
+        /// <b>Distinct owners, not distinct connections.</b> One viewer watching two streams is one
+        /// user, which is why the dashboard's installation figure is not the sum of the per-server
+        /// user counts: a viewer whose connections land on two servers is one person in this answer
+        /// and two rows in the grouped one. The unattributed rows count here, because they are real
+        /// connections by a real account.
+        /// </remarks>
+        Task<int> CountLiveUsersAsync(CancellationToken cancellationToken = default);
     }
 }

@@ -225,6 +225,50 @@ namespace Fluxy.IntegrationTests.Infrastructure
         }
 
         /// <summary>
+        /// Creates a server row through the Core repository, so a test that needs a second server
+        /// does not have to walk the servers surface first.
+        /// </summary>
+        /// <param name="services">Provider of one request scope.</param>
+        /// <param name="name">Display name, unique across the installation.</param>
+        /// <param name="ip">Address the row carries.</param>
+        /// <param name="port">Port the row carries.</param>
+        /// <param name="status">State the row is written in.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>Identifier the row carries.</returns>
+        public static async Task<Guid> CreateServerAsync(
+            IServiceProvider services,
+            string name,
+            string ip = "203.0.113.7",
+            int port = 6200,
+            Fluxy.Core.Servers.Enums.ServerStatus status = Fluxy.Core.Servers.Enums.ServerStatus.Active,
+            CancellationToken cancellationToken = default)
+        {
+            var servers = services.GetRequiredService<Fluxy.Core.Servers.Repositories.IServerRepository>();
+            var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+
+            var id = await servers.AddAsync(
+                new Fluxy.Core.Servers.Commands.ServerWrite
+                {
+                    Name = name,
+                    Ip = ip,
+                    Port = port,
+                    ClientCount = 0,
+                    OsName = "Debian 12",
+                    NetworkInterface = "eth0",
+                    Latency = 0,
+                    Status = status,
+                    GuaranteedSpeedKbps = 0,
+                    TimeshiftOnly = false,
+                    CountryCodes = []
+                },
+                cancellationToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return id;
+        }
+
+        /// <summary>
         /// Creates a subscription owned by <paramref name="ownerId"/> and issued by
         /// <paramref name="issuerId"/>, carrying a playlist and no bouquets.
         /// </summary>
@@ -242,12 +286,18 @@ namespace Fluxy.IntegrationTests.Infrastructure
         /// Canonical MAG address to store, or null. The MAG event tests need a subscription that
         /// has a device to send to; everything that does not care passes nothing.
         /// </param>
+        /// <param name="preferredServerId">
+        /// Server the subscription is placed on, or null. The dashboard's preferred-server groups
+        /// are read from this column, so a test that needs a group plants it here.
+        /// </param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
         public static async Task<Guid> CreateSubscriptionAsync(
             IServiceProvider services,
             Guid ownerId,
             Guid issuerId,
             CancellationToken cancellationToken = default,
-            string? magMac = null)
+            string? magMac = null,
+            Guid? preferredServerId = null)
         {
             var subscriptions = services.GetRequiredService<ISubscriptionRepository>();
             var unitOfWork = services.GetRequiredService<IUnitOfWork>();
@@ -259,6 +309,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
                     ResellerId = issuerId,
                     PlaylistId = Convert.ToHexStringLower(Guid.NewGuid().ToByteArray()),
                     MagMac = magMac,
+                    PreferredServerId = preferredServerId,
                     BouquetIds = []
                 },
                 [],
@@ -280,7 +331,8 @@ namespace Fluxy.IntegrationTests.Infrastructure
         public static async Task<Guid> CreateVideoStreamAsync(
             IServiceProvider services,
             string name,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            VideoStreamStatus status = VideoStreamStatus.Running)
         {
             var categories = services.GetRequiredService<IContentCategoryRepository>();
             var streams = services.GetRequiredService<IVideoStreamRepository>();
@@ -300,7 +352,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
                 {
                     Name = name,
                     Type = VideoStreamType.Permanent,
-                    Status = VideoStreamStatus.Running,
+                    Status = status,
                     CategoryId = categoryId,
                     DelayMinutes = 0,
                     ArchiveDays = 0,
@@ -798,6 +850,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
         /// <param name="countryCode">Stored upper-case country, or null.</param>
         /// <param name="isp">Stored provider, or null.</param>
         /// <param name="broadcastPid">Reported process identifier, or null.</param>
+        /// <param name="serverId">Server that served the connection, or null for unattributed.</param>
         /// <param name="cancellationToken">Token to cancel the operation.</param>
         /// <remarks>
         /// <para>
@@ -833,15 +886,16 @@ namespace Fluxy.IntegrationTests.Infrastructure
             string? countryCode = "DE",
             string? isp = "Example ISP",
             int? broadcastPid = null,
+            Guid? serverId = null,
             CancellationToken cancellationToken = default)
         {
             var id = Guid.NewGuid();
 
             await using var command = new NpgsqlCommand(
                 "insert into connection_logs " +
-                "(id, subscription_id, stream_kind, stream_id, ip, user_agent, country_code, " +
+                "(id, subscription_id, stream_kind, stream_id, server_id, ip, user_agent, country_code, " +
                 "isp, started_at, ended_at, broadcast_pid, created_at, updated_at) " +
-                "values (@id, @subscription_id, @stream_kind, @stream_id, @ip, @user_agent, " +
+                "values (@id, @subscription_id, @stream_kind, @stream_id, @server_id, @ip, @user_agent, " +
                 "@country_code, @isp, @started_at, @ended_at, @broadcast_pid, @now, @now)",
                 connection);
 
@@ -851,6 +905,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
             command.Parameters.AddWithValue("subscription_id", subscriptionId);
             command.Parameters.AddWithValue("stream_kind", (short)streamKind);
             command.Parameters.AddWithValue("stream_id", streamId);
+            command.Parameters.AddWithValue("server_id", (object?)serverId ?? DBNull.Value);
             command.Parameters.AddWithValue("ip", ip);
             command.Parameters.AddWithValue("user_agent", (object?)userAgent ?? DBNull.Value);
             command.Parameters.AddWithValue("country_code", (object?)countryCode ?? DBNull.Value);

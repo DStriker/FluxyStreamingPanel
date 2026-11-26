@@ -6,9 +6,9 @@ ASP.NET Core **10** (`net10.0`) backend of the `Refluxy` monorepo. Git root is *
 
 ```bash
 dotnet build FluxyBackend.slnx                                 # 6 projects, ~5s, 0 warnings
-dotnet test --project tests\Fluxy.UnitTests                     # 1007 tests, no Docker
-dotnet test --project tests\Fluxy.IntegrationTests              # 357 tests, Docker required
-dotnet test --solution FluxyBackend.slnx                        # both projects, 1364 tests
+dotnet test --project tests\Fluxy.UnitTests                     # 1413 tests, no Docker
+dotnet test --project tests\Fluxy.IntegrationTests              # 459 tests, Docker required
+dotnet test --solution FluxyBackend.slnx                        # both projects, 1872 tests
 dotnet run --project Fluxy.API --launch-profile http          # http://localhost:5159
 dotnet run --project Fluxy.API --launch-profile https         # https://localhost:7221 + http://localhost:5159, opens /swagger
 dotnet run --project Fluxy.API --launch-profile lan           # http://0.0.0.0:5159, reachable from other machines
@@ -154,7 +154,7 @@ Fluxy.Application/
   Subscriptions/   Services 6 · Utils 5
   Tickets/         Services 1
   Transcoding/     Services 1 · Utils 1
-  Servers/         Services 3 · Utils 1
+  Servers/         Services 6 · Utils 6 · Options 1
   Users/           Services 11 · Utils 8 · Options 1
   Vod/             Services 4 · Utils 1
   Backups/         Services 2 · Utils 2
@@ -308,5 +308,6 @@ Do not read these speculatively. Open exactly the file(s) whose trigger matches 
 | [docs/tickets.md](docs/tickets.md) | the support tickets: `tickets`/`ticket_replies` shape (cascades, `SET NULL` author), the derived status matrix (closed > viewer's flag > read), `read_at` receipts, the reused account grants and the rejected dedicated pair, the query contract, the full code list, the computed `lastReplyAt`, the `POST {id}/…` departure, the `405` fences and the frontend's polling note |
 | [docs/admin-transcoding-profiles.md](docs/admin-transcoding-profiles.md) | `admin/transcoding-profiles`: the ffmpeg option table and its wire names, the create defaults, the guarded seed, the query contract, the four `transcoding_profile_id` references with the three-state PATCH, the in-use refusal, the permission pair that widened `UserPermission` to `long`, and the options endpoint's four-grant gate |
 | [docs/admin-servers.md](docs/admin-servers.md) | `admin/servers`: the field and sentinel table, the full-write PATCH, the query contract, the seeded main row and its editable-but-not-deletable rule, the identity chain (`Servers:MainIp`, `Servers:MainPort`, `Urls`), the codes, and the `viewServers`/`editServers` pair |
+| [docs/admin-dashboard.md](docs/admin-dashboard.md) | `admin/dashboard`: the D1 stats contract assumption (A1, plain HTTP, one adapter), D2 attribution by the real `server_id` and the unattributed tail, D3 the all-three-grants gate on one policy, D4 stream definitions, D8 `serversUnavailable`, D9 every row including disabled ones, D10 no new dependency, D11–D13 the main row measured in-process (process uptime, process-vs-budget RAM, reachable-volume disk, whole-interface network, the bounded 250 ms–60 s window, the answering cold start and the one-wait memo), D14 Disabled+Available, and the 10-second fail-open redis snapshot cache |
 | [docs/admin-settings.md](docs/admin-settings.md) | `admin/settings`, `admin/mag-settings` and `auth/public-settings`: the two one-row tables and their defaults, the full-write PATCH and the write-only reCAPTCHA secret, the `viewSettings`/`editSettings` pair, the three settings enforced in this pass (reCAPTCHA, trials, email service name) and the deferred list, the bootstrap-copy-once rule and the snapshot cache |
 | [docs/admin-backups.md](docs/admin-backups.md) | `admin/backups`: the directory of archives and the no-metadata-on-disk rule, the naming/rotation rules, the Docker-exec `pg_dump`/`pg_restore` mechanism and its version constraint, the six excluded log tables, the restore sequence and its accepted outage, the scheduler's period buckets, the reused settings grants, the 405 fences and the thin `scripts/backup-db.ps1` caller |

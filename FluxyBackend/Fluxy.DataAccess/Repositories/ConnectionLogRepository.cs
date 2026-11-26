@@ -2,6 +2,7 @@ using Fluxy.Core.Subscriptions.Commands;
 using Fluxy.Core.Subscriptions.Enums;
 using Fluxy.Core.Subscriptions.ReadModels;
 using Fluxy.Core.Subscriptions.Repositories;
+using Fluxy.Core.Subscriptions.Rows;
 using Fluxy.DataAccess.Context;
 using Fluxy.DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,12 @@ namespace Fluxy.DataAccess.Repositories
     /// when the session opened, and reading a fresh lookup on this path would answer a different
     /// value from the one the filter just ran against.
     /// </para>
+    /// <para>
+    /// <b>The server is resolved with a left join, not another page read.</b>
+    /// <c>server_id</c> is opaque, so the page joins <c>servers</c> with a left join and answers
+    /// null for the name when the row is gone - the same degradation the title has. The two
+    /// grouped methods at the bottom serve the dashboard and never leave this layer as a query.
+    /// </para>
     /// </remarks>
     internal sealed class ConnectionLogRepository : IConnectionLogRepository
     {
@@ -56,6 +63,7 @@ namespace Fluxy.DataAccess.Repositories
             Guid? subscriptionId,
             Guid? ownerId,
             Guid? streamId,
+            Guid? serverId,
             string? ip,
             string? countryCode,
             string? isp,
@@ -104,6 +112,13 @@ namespace Fluxy.DataAccess.Repositories
             if (streamId is { } stream)
             {
                 query = query.Where(log => log.StreamId == stream);
+            }
+
+            if (serverId is { } server)
+            {
+                // The real column only. A row with no server is unattributed and matches no
+                // server filter, which is exactly what a filter naming a server means.
+                query = query.Where(log => log.ServerId == server);
             }
 
             if (!string.IsNullOrEmpty(ip))
@@ -163,6 +178,9 @@ namespace Fluxy.DataAccess.Repositories
                         on log.SubscriptionId equals ownerRow.Id
                     join user in _context.Users.AsNoTracking()
                         on ownerRow.UserId equals user.Id
+                    join serverRow in _context.Servers.AsNoTracking()
+                        on log.ServerId equals (Guid?)serverRow.Id into serverRows
+                    from serverRow in serverRows.DefaultIfEmpty()
                     select new
                     {
                         log.Id,
@@ -171,6 +189,8 @@ namespace Fluxy.DataAccess.Repositories
                         Username = user.Username,
                         log.StreamKind,
                         log.StreamId,
+                        ServerId = log.ServerId,
+                        ServerName = serverRow == null ? null : serverRow.Name,
                         log.Ip,
                         log.UserAgent,
                         log.CountryCode,
@@ -196,6 +216,8 @@ namespace Fluxy.DataAccess.Repositories
                     StreamKind = row.StreamKind,
                     StreamId = row.StreamId,
                     StreamTitle = titles.TryGetValue(row.StreamId, out var title) ? title : null,
+                    ServerId = row.ServerId,
+                    ServerName = row.ServerName,
                     Ip = row.Ip,
                     UserAgent = row.UserAgent,
                     CountryCode = row.CountryCode,
@@ -245,6 +267,7 @@ namespace Fluxy.DataAccess.Repositories
                 SubscriptionId = log.SubscriptionId,
                 StreamKind = log.StreamKind,
                 StreamId = log.StreamId,
+                ServerId = log.ServerId,
                 Ip = log.Ip,
                 UserAgent = log.UserAgent,
                 CountryCode = log.CountryCode,
@@ -264,6 +287,57 @@ namespace Fluxy.DataAccess.Repositories
             // Unfiltered by design: the seeder asks "has anything ever been captured here", not
             // "does this screen have rows".
             => _context.ConnectionLogs.CountAsync(cancellationToken);
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<ConnectionLogServerCountRow>> ReadLiveServerCountsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            // One grouped query over the live tail, joined to the subscription only for the owner
+            // - the same shape ReadActiveConnectionCountsAsync uses for one page, widened from a
+            // set of identifiers to the whole table. `COUNT(DISTINCT ...)` is the database's own
+            // aggregate, so a viewer with two connections on one server counts once.
+            var rows = await _context.ConnectionLogs
+                .AsNoTracking()
+                .Where(log => log.EndedAt == null)
+                .Join(
+                    _context.Subscriptions.AsNoTracking(),
+                    log => log.SubscriptionId,
+                    subscription => subscription.Id,
+                    (log, subscription) => new { log.ServerId, subscription.UserId })
+                .GroupBy(row => row.ServerId)
+                .Select(group => new
+                {
+                    ServerId = group.Key,
+                    ConnectionCount = group.Count(),
+                    UserCount = group.Select(row => row.UserId).Distinct().Count()
+                })
+                .ToListAsync(cancellationToken);
+
+            return rows
+                .Select(row => new ConnectionLogServerCountRow
+                {
+                    ServerId = row.ServerId,
+                    ConnectionCount = row.ConnectionCount,
+                    UserCount = row.UserCount
+                })
+                .ToList();
+        }
+
+        /// <inheritdoc />
+        public Task<int> CountLiveUsersAsync(CancellationToken cancellationToken = default)
+            // Distinct owners, not connections: one viewer watching two streams is one person.
+            // The join is the same one the grouped read uses, so both answers agree about what
+            // "a live connection" is.
+            => _context.ConnectionLogs
+                .AsNoTracking()
+                .Where(log => log.EndedAt == null)
+                .Join(
+                    _context.Subscriptions.AsNoTracking(),
+                    log => log.SubscriptionId,
+                    subscription => subscription.Id,
+                    (log, subscription) => subscription.UserId)
+                .Distinct()
+                .CountAsync(cancellationToken);
 
         /// <summary>
         /// Reads the titles of one page's streams from the table the kind names, in one query.

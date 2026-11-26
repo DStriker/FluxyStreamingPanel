@@ -29,6 +29,7 @@ namespace Fluxy.Core.Subscriptions.Interfaces
         /// <param name="subscriptionId">Subscription to keep, or null for every subscription.</param>
         /// <param name="ownerId">Owner of the subscription to keep, or null for every owner.</param>
         /// <param name="streamId">Opaque stream identifier to keep, or null for every stream.</param>
+        /// <param name="serverId">Server to keep, or null for every server including unattributed rows.</param>
         /// <param name="ip">Address to keep, compared exactly, or null.</param>
         /// <param name="countryCode">Upper-case ISO alpha-2 country to keep, or null.</param>
         /// <param name="isp">Provider to keep, compared exactly, or null.</param>
@@ -47,6 +48,7 @@ namespace Fluxy.Core.Subscriptions.Interfaces
             Guid? subscriptionId,
             Guid? ownerId,
             Guid? streamId,
+            Guid? serverId,
             string? ip,
             string? countryCode,
             string? isp,

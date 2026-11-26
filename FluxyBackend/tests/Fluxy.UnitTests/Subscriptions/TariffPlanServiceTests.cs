@@ -599,6 +599,10 @@ namespace Fluxy.UnitTests.Subscriptions
             public Task<int> CountForPlanAsync(Guid planId, CancellationToken cancellationToken = default)
                 => Task.FromResult(SubscriptionsForPlan);
 
+            public Task<IReadOnlyList<PreferredServerUserCountRow>> ReadPreferredServerUserCountsAsync(
+                CancellationToken cancellationToken = default)
+                => Task.FromResult<IReadOnlyList<PreferredServerUserCountRow>>([]);
+
             public Task<SubscriptionPage> GetPageAsync(
                 int page,
                 int pageSize,

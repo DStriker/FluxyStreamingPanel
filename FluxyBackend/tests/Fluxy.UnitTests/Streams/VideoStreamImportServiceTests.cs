@@ -331,6 +331,10 @@ namespace Fluxy.UnitTests.Streams
                 VideoStreamStatus status,
                 CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();
+
+            public Task<IReadOnlyList<VideoStreamStatusCountRow>> ReadStatusCountsAsync(
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
         }
 
         /// <summary>The bouquet repository: these imports name no bouquet.</summary>
@@ -456,6 +460,10 @@ namespace Fluxy.UnitTests.Streams
                 => throw new NotSupportedException();
 
             public Task<IReadOnlyList<ServerOption>> GetOptionsAsync(
+                CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
+
+            public Task<IReadOnlyList<Server>> GetAllAsync(
                 CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();
 

@@ -9,7 +9,9 @@ using Fluxy.Application.Email.Services;
 using Fluxy.Application.Requests.Services;
 using Fluxy.Application.Security.Options;
 using Fluxy.Application.Security.Services;
+using Fluxy.Application.Servers.Options;
 using Fluxy.Application.Servers.Services;
+using Fluxy.Application.Servers.Utils;
 using Fluxy.Application.Series.Services;
 using Fluxy.Application.Settings.Services;
 using Fluxy.Application.Streams.Services;
@@ -276,6 +278,38 @@ namespace Fluxy.Application
             // repository and unit of work.
             services.AddScoped<IServerSeeder, ServerSeeder>();
 
+            // The dashboard reads the installation's aggregates and probes every server's
+            // machine. Scoped because it reads through the request-scoped repositories; the
+            // snapshot it builds is published through the cache, which is the singleton.
+            services.AddScoped<IDashboardService, DashboardService>();
+
+            // The statistics probe leaves the process, so it is a singleton with a named client
+            // whose handler is where the two-second timeout lives. The contract names no
+            // transport: a real agent protocol later replaces this class alone.
+            //
+            // It is registered under a key rather than under IServerStatsProbe because the
+            // decorator below implements that contract too: an unkeyed registration of both would
+            // leave the last one winning and the remote unreachable, and injecting
+            // IServerStatsProbe into the decorator would ask the container to build it from
+            // itself. The key is also the seam a test replaces to answer the non-main rows.
+            services.AddKeyedSingleton<IServerStatsProbe, HttpServerStatsProbe>(
+                SelfServerStatsProbe.RemoteKey);
+            services.AddHttpClient(nameof(HttpServerStatsProbe), client =>
+                client.Timeout = TimeSpan.FromSeconds(2));
+
+            // This process's own statistics: processor time, working set, the volume under the
+            // working directory and the network counters, all read locally. Singleton because the
+            // processor and the network figures are deltas and the previous reading has to
+            // survive between requests; it holds no DbContext, so a scope would buy nothing.
+            services.AddSingleton<SelfServerStatsSampler>();
+
+            // The main server is answered from the sampler above and every other server from the
+            // remote probe, which is why the decorator is the IServerStatsProbe the dashboard
+            // sees. The rule inside it is MainServer.IsMain(id), never the stored flag: the same
+            // identifier the seeder and the delete refusal use, so a row edited by hand cannot
+            // change which machine is described locally.
+            services.AddSingleton<IServerStatsProbe, SelfServerStatsProbe>();
+
             // The installation-wide settings: one cached reading shared by every scope (the
             // reCAPTCHA check runs outside a request's own scope and needs it), and the two
             // services that read and write the rows behind an operator's grants.
@@ -358,6 +392,8 @@ namespace Fluxy.Application
                     configuration.GetSection(RegistrationOptions.SectionName));
                 services.Configure<AuthenticationOptions>(
                     configuration.GetSection(AuthenticationOptions.SectionName));
+                services.Configure<ServerStatsOptions>(
+                    configuration.GetSection(ServerStatsOptions.SectionName));
             }
 
             return services;

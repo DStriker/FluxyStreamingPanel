@@ -50,8 +50,21 @@ namespace Fluxy.Core.Subscriptions.ReadModels
         /// <summary>Opaque identifier of the stream it delivered.</summary>
         public required Guid StreamId { get; init; }
 
-        /// <summary>Name of that stream, or null when the row it named is gone.</summary>
+        /// <summary>
+        /// Name of that stream, or null when the row it named is gone.
+        /// </summary>
         public string? StreamTitle { get; init; }
+
+        /// <summary>
+        /// Identifier of the server that served the connection, or null when unattributed.
+        /// </summary>
+        public Guid? ServerId { get; init; }
+
+        /// <summary>
+        /// Name of that server, or null when the connection is unattributed or the row it named
+        /// is gone.
+        /// </summary>
+        public string? ServerName { get; init; }
 
         /// <summary>Address the session came from.</summary>
         public required string Ip { get; init; }

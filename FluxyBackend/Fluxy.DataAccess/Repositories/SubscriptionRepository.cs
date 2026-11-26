@@ -190,6 +190,7 @@ namespace Fluxy.DataAccess.Repositories
                                 .Where(plan => plan.Id == subscription.TariffPlanId)
                                 .Select(plan => plan.Name)
                                 .FirstOrDefault(),
+                        PreferredServerId = subscription.PreferredServerId,
                         // The plan's length is left unset here and filled from the anonymous pair
                         // above in the `with` below: it is one fact with one source, and doing it
                         // in both places was four correlated reads for two numbers.
@@ -714,6 +715,36 @@ namespace Fluxy.DataAccess.Repositories
             => _context.Subscriptions
                 .AsNoTracking()
                 .CountAsync(subscription => subscription.TariffPlanId == planId, cancellationToken);
+
+        /// <inheritdoc />
+        public async Task<IReadOnlyList<PreferredServerUserCountRow>> ReadPreferredServerUserCountsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            // One grouped query over the configured side of a server's load. The null
+            // preferred_server_id is excluded rather than grouped: a subscription that names no
+            // server is not a fact about any server. Distinct owners, because an account with two
+            // subscriptions on one server is one viewer.
+            var rows = await _context.Subscriptions
+                .AsNoTracking()
+                .Where(subscription => subscription.PreferredServerId != null)
+                .GroupBy(subscription => subscription.PreferredServerId)
+                .Select(group => new
+                {
+                    ServerId = group.Key,
+                    UserCount = group.Select(subscription => subscription.UserId).Distinct().Count()
+                })
+                .ToListAsync(cancellationToken);
+
+            return rows
+                .Select(row => new PreferredServerUserCountRow
+                {
+                    // The predicate above guarantees the key is not null; the property is typed
+                    // nullable on the entity, so the value read back is what is used.
+                    ServerId = row.ServerId!.Value,
+                    UserCount = row.UserCount
+                })
+                .ToList();
+        }
 
         /// <summary>
         /// Narrows a page to one computed state, with the same three facts the projection composes.

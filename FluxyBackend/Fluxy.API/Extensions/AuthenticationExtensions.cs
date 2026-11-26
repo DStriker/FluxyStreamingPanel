@@ -156,6 +156,21 @@ namespace Fluxy.API.Extensions
         /// <summary>Policy that accepts an operator who may change the servers.</summary>
         public const string EditServersPolicy = "Permission.EditServers";
 
+        /// <summary>
+        /// Policy that accepts an operator who may read the dashboard: the three view grants the
+        /// screen draws from, <b>all</b> of them.
+        /// </summary>
+        /// <remarks>
+        /// A policy name, not a permission: no <c>UserPermission</c> member, no catalog entry and no
+        /// migration accompany it. <c>PermissionRequirement</c> is an "any of" requirement, so
+        /// "all three" is expressed as three separate single-permission requirements stacked on one
+        /// policy - every requirement of a policy must pass for the policy to pass, which is the
+        /// opposite combinator from the one the requirement's own name suggests. The alternative
+        /// (one <c>PermissionRequirement</c> naming all three) would admit an operator holding just
+        /// one of them, which is exactly the wrong answer here.
+        /// </remarks>
+        public const string ViewDashboardPolicy = "Permission.ViewDashboard";
+
         /// <summary>Policy that accepts an operator who may read the installation settings.</summary>
         public const string ViewSettingsPolicy = "Permission.ViewSettings";
 
@@ -505,6 +520,23 @@ namespace Fluxy.API.Extensions
                         new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
                         new PermissionRequirement(
                             Fluxy.Core.Users.Enums.UserPermission.EditSettings)))
+
+                // The dashboard is the one policy here that demands *all three* view grants
+                // rather than any one of them. `PermissionRequirement` succeeds when any of the
+                // permissions it names is held, so "all of" is spelled as three single-permission
+                // requirements stacked on one policy: ASP.NET Core requires *every* requirement of
+                // a policy to succeed, which is the opposite combinator from the requirement's own
+                // name. One requirement naming all three would admit a caller holding just one.
+                .AddPolicy(ViewDashboardPolicy, policy => policy
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(
+                        new RoleRequirement(Fluxy.Core.Users.Enums.UserRole.Admin),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewSubscriptions),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewStreams),
+                        new PermissionRequirement(
+                            Fluxy.Core.Users.Enums.UserPermission.ViewServers)))
 
                 // The profile picker is an "any of" policy: the four content-view grants, in the
                 // order the catalog names them. A content form is the only caller, so the grant

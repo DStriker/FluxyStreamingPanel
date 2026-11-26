@@ -29,6 +29,12 @@ namespace Fluxy.Core.Subscriptions.Commands
         /// <summary>Opaque identifier of the stream it delivered.</summary>
         public required Guid StreamId { get; init; }
 
+        /// <summary>
+        /// Identifier of the server that served the connection, or null when it could not be
+        /// attributed. Opaque, like the stream identifier.
+        /// </summary>
+        public Guid? ServerId { get; init; }
+
         /// <summary>Address the session came from.</summary>
         public required string Ip { get; init; }
 

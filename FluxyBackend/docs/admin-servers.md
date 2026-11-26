@@ -122,6 +122,20 @@ exactly as the operator left it, name included. It **never throws** — a failed
 refused write is logged and the boot continues, because an installation without its main row is
 still an installation and the operator can add the row by hand.
 
+**The main row is measured in-process on the dashboard, so it is available from the first request
+even though its address does not answer.** Its `ip` and `port` are an address clients are handed,
+not a socket the statistics live behind, so the dashboard does not dial them for this row:
+`SelfServerStatsProbe` answers it from a local sampler (processor time, working set, the volume
+under the working directory, whole-interface network counters and process uptime) and delegates
+every other row to the HTTP probe. The figures therefore describe **this process**, not the machine
+and not the relayed media; the field-by-field statement of what each one means, and the window
+bounds that keep the rates describing the last minute rather than an idle hour, are in
+[admin-dashboard.md](admin-dashboard.md) (D11–D13). A `Disabled` main row is still measured and may
+show `available: true` — the status says whether the installation should relay through it, the
+availability says whether the probe answered, and those are two different facts. `admin/servers`
+itself is unchanged: the row remains editable, and the delete refusal is still the only special
+case.
+
 **Ordering matters in `DeleteAsync`:** the existence check runs first, then `MainServer.IsMain(id)`.
 A missing identifier therefore answers `404 server_not_found`, never `409 server_immutable` — only
 a row that exists can be refused for being the main one. The integration suite pins that order.

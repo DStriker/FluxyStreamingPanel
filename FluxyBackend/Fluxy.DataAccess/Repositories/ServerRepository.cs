@@ -130,6 +130,16 @@ namespace Fluxy.DataAccess.Repositories
                 .ToListAsync(cancellationToken);
 
         /// <inheritdoc />
+        public async Task<IReadOnlyList<Server>> GetAllAsync(
+            CancellationToken cancellationToken = default)
+            => await _context.Servers
+                .AsNoTracking()
+                .OrderBy(server => server.Name)
+                .ThenBy(server => server.Id)
+                .Select(server => server.ToModel())
+                .ToListAsync(cancellationToken);
+
+        /// <inheritdoc />
         public async Task<int> CountReferencesAsync(
             Guid id,
             CancellationToken cancellationToken = default)

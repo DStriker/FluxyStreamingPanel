@@ -30,7 +30,8 @@ namespace Fluxy.UnitTests.Subscriptions
             string? startedFrom = null,
             string? startedTo = null,
             string? sortBy = null,
-            string? sortOrder = null)
+            string? sortOrder = null,
+            string? serverId = null)
         {
             var query = ConnectionLogQuery.TryParse(
                 kind,
@@ -38,6 +39,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 subscriptionId,
                 ownerId,
                 streamId,
+                serverId,
                 ip,
                 country,
                 isp,
@@ -149,6 +151,7 @@ namespace Fluxy.UnitTests.Subscriptions
         [InlineData("subscriptionId", "not-a-uuid")]
         [InlineData("ownerId", "1234")]
         [InlineData("streamId", "not-a-uuid")]
+        [InlineData("serverId", "banana")]
         [InlineData("country", "XX")]
         [InlineData("country", "Germany")]
         [InlineData("startedFrom", "not-a-date")]
@@ -166,6 +169,7 @@ namespace Fluxy.UnitTests.Subscriptions
                 parameter == "subscriptionId" ? value : null,
                 parameter == "ownerId" ? value : null,
                 parameter == "streamId" ? value : null,
+                parameter == "serverId" ? value : null,
                 null,
                 parameter == "country" ? value : null,
                 null,
@@ -190,6 +194,7 @@ namespace Fluxy.UnitTests.Subscriptions
             var query = ConnectionLogQuery.TryParse(
                 "streamkind",
                 "finished",
+                null,
                 null,
                 null,
                 null,
@@ -272,6 +277,7 @@ namespace Fluxy.UnitTests.Subscriptions
             // The range is sent as one control but parsed as two parameters, and a caller wrong
             // about both must be told both - the rule every other parameter here follows.
             var query = ConnectionLogQuery.TryParse(
+                null,
                 null,
                 null,
                 null,

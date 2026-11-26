@@ -1,4 +1,6 @@
 using Fluxy.API;
+using Fluxy.Application.Servers.Services;
+using Fluxy.Application.Servers.Utils;
 using Fluxy.Application.Users.Utils;
 using Fluxy.Core.Email.Interfaces;
 using Fluxy.Core.GeoIp.Interfaces;
@@ -31,10 +33,13 @@ namespace Fluxy.IntegrationTests.Infrastructure
         private readonly RecordingEmailSender _email;
         private readonly FakeRecaptchaValidator _recaptcha;
         private readonly FakeGeoIpResolver _geoIp;
+        private readonly FakeServerStatsProbe _statsProbe;
         private readonly FakeTimeProvider _clock;
         private readonly FakeDatabaseBackupTool _backupTool;
         private readonly string _backupDirectory;
         private readonly IReadOnlyDictionary<string, string?> _extraSettings;
+        private readonly bool _keepLocalMainProbe;
+        private int _localReadings;
         private readonly Dictionary<string, string?> _previousEnvironment = new(StringComparer.Ordinal);
         private bool _environmentRestored;
 
@@ -47,17 +52,20 @@ namespace Fluxy.IntegrationTests.Infrastructure
             FakeTimeProvider clock,
             IReadOnlyDictionary<string, string?>? extraSettings = null,
             FakeDatabaseBackupTool? backupTool = null,
-            string? backupDirectory = null)
+            string? backupDirectory = null,
+            bool keepLocalMainProbe = false)
         {
             _postgresConnectionString = postgresConnectionString;
             _redisConnectionString = redisConnectionString;
             _email = email;
             _recaptcha = recaptcha;
             _geoIp = geoIp;
+            _statsProbe = new FakeServerStatsProbe();
             _clock = clock;
             _backupTool = backupTool ?? new FakeDatabaseBackupTool();
             _backupDirectory = backupDirectory ?? NewBackupDirectory();
             _extraSettings = extraSettings ?? new Dictionary<string, string?>();
+            _keepLocalMainProbe = keepLocalMainProbe;
 
             // Minimal hosting reads its configuration while Program.Main is still running, before
             // WebApplicationFactory's deferred ConfigureAppConfiguration callback is applied. The
@@ -102,6 +110,37 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
                 services.RemoveAll<IGeoIpResolver>();
                 services.AddSingleton<IGeoIpResolver>(_geoIp);
+
+                // The dashboard probes every server's machine; a real probe would dial a
+                // Testcontainers-internal address. The fake is exposed as a property so a test can
+                // decide which servers answer and prove the cache performed no extra probes.
+                //
+                // RemoveAll only removes the *unkeyed* IServerStatsProbe - the decorator. The
+                // remote HTTP probe is registered under SelfServerStatsProbe.RemoteKey and stays,
+                // unused, because the fake below becomes the only IServerStatsProbe the dashboard
+                // resolves. Every default-factory dashboard test therefore exercises the fake for
+                // every row including the main one; the local sampler and the decorator are only
+                // exercised by a factory built with keepLocalMainProbe.
+                if (_keepLocalMainProbe)
+                {
+                    services.RemoveAllKeyed<IServerStatsProbe>(SelfServerStatsProbe.RemoteKey);
+                    services.AddKeyedSingleton<IServerStatsProbe>(
+                        SelfServerStatsProbe.RemoteKey,
+                        _statsProbe);
+
+                    // The decorator answers the main row from this sampler. The reader is
+                    // deterministic, so the test does not depend on the machine it runs on; the
+                    // first pair of readings is the cold start's own short window, which answers
+                    // immediately (after the documented 250 ms wait).
+                    services.RemoveAll<SelfServerStatsSampler>();
+                    services.AddSingleton<SelfServerStatsSampler>(
+                        _ => new SelfServerStatsSampler(_clock, () => LocalReading()));
+                }
+                else
+                {
+                    services.RemoveAll<IServerStatsProbe>();
+                    services.AddSingleton<IServerStatsProbe>(_statsProbe);
+                }
 
                 services.RemoveAll<TimeProvider>();
                 services.AddSingleton<TimeProvider>(_clock);
@@ -213,6 +252,38 @@ namespace Fluxy.IntegrationTests.Infrastructure
 
         // Kept for readability at call sites that are about a role rather than a group.
         public static Guid BaseGroup(UserRole role) => Core.Users.Utils.BaseUserGroups.ForRole(role);
+
+        /// <summary>The statistics probe every dashboard test observes.</summary>
+        public FakeServerStatsProbe StatsProbe => _statsProbe;
+
+        /// <summary>
+        /// One deterministic reading of "this process", for a factory built with
+        /// <c>keepLocalMainProbe</c>.
+        /// </summary>
+        /// <remarks>
+        /// Each reading advances by <see cref="SelfServerStatsSampler.MinimumWindow"/> on top of the
+        /// fake clock, so a window measured between two readings is always inside the sampler's
+        /// bounds and the arithmetic is the same on every reading. The first dashboard build is a
+        /// cold start and takes the pair itself, which is what the main row now answers from.
+        /// </remarks>
+        private SelfStatsReading LocalReading()
+        {
+            var index = Interlocked.Increment(ref _localReadings);
+            var captured = _clock.GetUtcNow() + (SelfServerStatsSampler.MinimumWindow * index);
+
+            return new SelfStatsReading
+            {
+                CapturedAt = captured,
+                ProcessorTime = TimeSpan.FromSeconds(index) / 4,
+                WorkingSetBytes = 100,
+                AvailableMemoryBytes = 1_000,
+                DiskUsedBytes = 100,
+                DiskTotalBytes = 200,
+                StartedAt = captured.AddSeconds(-900),
+                BytesReceived = index * 125_000,
+                BytesSent = index * 125_000
+            };
+        }
 
         /// <summary>A fresh directory under the temp path for a factory that was not given one.</summary>
         private static string NewBackupDirectory()

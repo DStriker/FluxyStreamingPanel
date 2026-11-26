@@ -54,6 +54,7 @@ namespace Fluxy.Core.Subscriptions.Utils
             Guid? subscriptionId,
             Guid? ownerId,
             Guid? streamId,
+            Guid? serverId,
             string? ip,
             string? countryCode,
             string? isp,
@@ -68,6 +69,7 @@ namespace Fluxy.Core.Subscriptions.Utils
             SubscriptionId = subscriptionId;
             OwnerId = ownerId;
             StreamId = streamId;
+            ServerId = serverId;
             Ip = ip;
             CountryCode = countryCode;
             Isp = isp;
@@ -92,6 +94,9 @@ namespace Fluxy.Core.Subscriptions.Utils
 
         /// <summary>Opaque stream identifier to keep, or null for every stream.</summary>
         public Guid? StreamId { get; }
+
+        /// <summary>Server identifier to keep, or null for every server, including unattributed rows.</summary>
+        public Guid? ServerId { get; }
 
         /// <summary>Address to keep, compared exactly, or null.</summary>
         public string? Ip { get; }
@@ -126,6 +131,7 @@ namespace Fluxy.Core.Subscriptions.Utils
         /// <param name="subscriptionId">Subscription to keep, as typed, or null.</param>
         /// <param name="ownerId">Owner to keep, as typed, or null.</param>
         /// <param name="streamId">Stream to keep, as typed, or null.</param>
+        /// <param name="serverId">Server to keep, as typed, or null.</param>
         /// <param name="ip">Address to keep exactly, or null.</param>
         /// <param name="country">Country as typed, any case, or null.</param>
         /// <param name="isp">Provider to keep exactly, or null.</param>
@@ -147,6 +153,7 @@ namespace Fluxy.Core.Subscriptions.Utils
             string? subscriptionId,
             string? ownerId,
             string? streamId,
+            string? serverId,
             string? ip,
             string? country,
             string? isp,
@@ -198,6 +205,7 @@ namespace Fluxy.Core.Subscriptions.Utils
             var subscription = ParseIdentifier(subscriptionId, "subscriptionId", errors);
             var owner = ParseIdentifier(ownerId, "ownerId", errors);
             var stream = ParseIdentifier(streamId, "streamId", errors);
+            var server = ParseIdentifier(serverId, "serverId", errors);
 
             var wantedCountry = ParseCountry(country, errors);
             var from = ParseInstant(startedFrom, "startedFrom", errors);
@@ -214,6 +222,7 @@ namespace Fluxy.Core.Subscriptions.Utils
                 subscription,
                 owner,
                 stream,
+                server,
                 Trimmed(ip),
                 wantedCountry,
                 Trimmed(isp),

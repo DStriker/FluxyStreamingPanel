@@ -112,6 +112,7 @@ namespace Fluxy.IntegrationTests.Infrastructure
             Email.Clear();
             GeoIp.Clear();
             Recaptcha.Outcome = Fluxy.Core.Security.Enums.RecaptchaValidationOutcome.Passed;
+            Factory.StatsProbe.Reset();
 
             // Move the shared clock up to the wall clock when it has fallen behind. Tests advance
             // it deliberately, and without this the process-wide provider drifts behind real time

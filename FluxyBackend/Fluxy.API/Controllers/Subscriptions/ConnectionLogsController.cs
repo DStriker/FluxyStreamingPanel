@@ -99,6 +99,7 @@ namespace Fluxy.API.Controllers.Subscriptions
         /// <param name="subscriptionId">Subscription to keep, as a uuid, or null.</param>
         /// <param name="ownerId">Owner of the subscription to keep, as a uuid, or null.</param>
         /// <param name="streamId">Opaque stream identifier to keep, as a uuid, or null.</param>
+        /// <param name="serverId">Server identifier to keep, as a uuid, or null.</param>
         /// <param name="ip">Address to keep, compared exactly, or null.</param>
         /// <param name="country">Country to keep, any case, or null.</param>
         /// <param name="isp">Provider to keep, compared exactly, or null.</param>
@@ -156,6 +157,7 @@ namespace Fluxy.API.Controllers.Subscriptions
             [FromQuery] string? subscriptionId = null,
             [FromQuery] string? ownerId = null,
             [FromQuery] string? streamId = null,
+            [FromQuery] string? serverId = null,
             [FromQuery] string? ip = null,
             [FromQuery] string? country = null,
             [FromQuery] string? isp = null,
@@ -185,6 +187,7 @@ namespace Fluxy.API.Controllers.Subscriptions
                 subscriptionId,
                 ownerId,
                 streamId,
+                serverId,
                 ip,
                 country,
                 isp,
@@ -211,6 +214,7 @@ namespace Fluxy.API.Controllers.Subscriptions
                 query.SubscriptionId,
                 query.OwnerId,
                 query.StreamId,
+                query.ServerId,
                 query.Ip,
                 query.CountryCode,
                 query.Isp,
@@ -307,6 +311,8 @@ namespace Fluxy.API.Controllers.Subscriptions
             StreamKind = ConnectionLogTextParser.NameOf(item.StreamKind),
             StreamId = item.StreamId.ToString(),
             StreamTitle = item.StreamTitle,
+            ServerId = item.ServerId?.ToString(),
+            ServerName = item.ServerName,
             Ip = item.Ip,
             UserAgent = item.UserAgent,
             CountryCode = item.CountryCode,

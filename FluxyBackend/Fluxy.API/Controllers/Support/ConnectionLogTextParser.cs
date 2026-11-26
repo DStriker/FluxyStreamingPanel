@@ -33,6 +33,7 @@ namespace Fluxy.API.Controllers.Support
         /// <param name="subscriptionId">Subscription to keep, as typed, or null.</param>
         /// <param name="ownerId">Owner to keep, as typed, or null.</param>
         /// <param name="streamId">Stream to keep, as typed, or null.</param>
+        /// <param name="serverId">Server to keep, as typed, or null.</param>
         /// <param name="ip">Address to keep exactly, or null.</param>
         /// <param name="country">Country as typed, any case, or null.</param>
         /// <param name="isp">Provider to keep exactly, or null.</param>
@@ -48,6 +49,7 @@ namespace Fluxy.API.Controllers.Support
             string? subscriptionId,
             string? ownerId,
             string? streamId,
+            string? serverId,
             string? ip,
             string? country,
             string? isp,
@@ -63,6 +65,7 @@ namespace Fluxy.API.Controllers.Support
                 subscriptionId,
                 ownerId,
                 streamId,
+                serverId,
                 ip,
                 country,
                 isp,

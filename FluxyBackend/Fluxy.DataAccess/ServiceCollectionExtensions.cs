@@ -9,6 +9,7 @@ using Fluxy.Core.Persistence.Interfaces;
 using Fluxy.Core.Requests.Repositories;
 using Fluxy.Core.Security.Interfaces;
 using Fluxy.Core.Series.Repositories;
+using Fluxy.Core.Servers.Interfaces;
 using Fluxy.Core.Servers.Repositories;
 using Fluxy.Core.Settings.Repositories;
 using Fluxy.Core.Streams.Repositories;
@@ -217,6 +218,11 @@ namespace Fluxy.DataAccess
 
             services.AddSingleton<IAttemptThrottle, RedisAttemptThrottle>();
             services.AddSingleton<ITokenRevocationStore, RedisTokenRevocationStore>();
+
+            // The dashboard's short-lived snapshot cache, beside the other two stores. Singleton
+            // because the single-flight gate and the key it guards must be one instance for every
+            // request - a scoped cache would be a cache per request and would never hit.
+            services.AddSingleton<IServerStatsCache, RedisServerStatsCache>();
 
             return services;
         }

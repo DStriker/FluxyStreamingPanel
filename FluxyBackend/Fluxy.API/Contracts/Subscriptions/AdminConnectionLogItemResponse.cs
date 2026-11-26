@@ -39,6 +39,12 @@ namespace Fluxy.API.Contracts.Subscriptions
         /// <summary>Name of that stream, or null when the row it named is gone.</summary>
         public string? StreamTitle { get; init; }
 
+        /// <summary>Identifier of the server that served the connection, as text, or null.</summary>
+        public string? ServerId { get; init; }
+
+        /// <summary>Name of that server, or null when unattributed or the row is gone.</summary>
+        public string? ServerName { get; init; }
+
         /// <summary>Address the session came from.</summary>
         public required string Ip { get; init; }
 

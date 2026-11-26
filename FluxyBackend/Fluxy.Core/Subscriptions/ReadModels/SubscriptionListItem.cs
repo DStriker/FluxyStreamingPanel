@@ -45,6 +45,13 @@ namespace Fluxy.Core.Subscriptions.ReadModels
         public string? TariffPlanName { get; init; }
 
         /// <summary>
+        /// Server the subscription is placed on, or null when it names none. Carried for the
+        /// Development connection-log seeder, which attributes its trial rows to the server the
+        /// subscription was placed on.
+        /// </summary>
+        public Guid? PreferredServerId { get; init; }
+
+        /// <summary>
         /// How many <see cref="TariffPlanDurationUnit"/> the attached plan lasts for, or null when
         /// there is no plan.
         /// </summary>
