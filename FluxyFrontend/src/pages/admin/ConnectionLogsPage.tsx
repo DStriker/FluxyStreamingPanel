@@ -28,6 +28,7 @@ import ConnectionNetworkCell from '../../features/connection-logs/components/Con
 import UserAgentCell from '../../components/table/UserAgentCell'
 import { useClearConnectionLogs } from '../../features/connection-logs/hooks/mutations'
 import { useConnectionLogs } from '../../features/connection-logs/hooks/queries'
+import { useAllServers } from '../../features/servers/hooks/queries'
 import { useAudioStreams } from '../../features/audio-streams/hooks/queries'
 import { useVideoStreams } from '../../features/video-streams/hooks/queries'
 import { useAllUsers } from '../../features/users/hooks/queries'
@@ -136,6 +137,7 @@ const FILTER_KEYS = [
   'subscriptionId',
   'ownerId',
   'streamId',
+  'serverId',
 ] as const
 
 type FilterKey = (typeof FILTER_KEYS)[number]
@@ -257,6 +259,7 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     subscriptionId: filters.subscriptionId,
     ownerId: filters.ownerId,
     streamId: filters.streamId,
+    serverId: filters.serverId,
     ip: filters.ip,
     country: filters.country,
     isp: filters.isp,
@@ -278,6 +281,16 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
   const userOptions: Option[] = (usersQuery.data?.items ?? []).map((user) => ({
     value: user.id,
     label: user.username,
+  }))
+
+  // The server picker's own list, read from the existing options endpoint rather than a new
+  // one: the filter tag only needs a name for an identifier the address already carries. A
+  // failed read leaves every tag with its short-id fallback, which is the same wording the
+  // subscription tag uses.
+  const serversQuery = useAllServers()
+  const serverOptions: Option[] = (serversQuery.data ?? []).map((server) => ({
+    value: server.id,
+    label: server.name,
   }))
 
   const videosQuery = useVideoStreams({
@@ -579,6 +592,17 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     userOptions.find((option) => option.value === filters.ownerId)?.label ?? filters.ownerId
   const streamFilterLabel =
     streamOptions.find((option) => option.value === filters.streamId)?.label ?? filters.streamId
+  /**
+   * The server's name for its tag, or the short id when the options list has no such row.
+   *
+   * The fallback is the same `{first eight}…` the subscription tag prints for an identifier
+   * it cannot resolve: a server row deleted after the connection was logged still leaves a
+   * filter the visitor must be able to see and clear.
+   */
+  const serverFilterLabel = filters.serverId
+    ? (serverOptions.find((option) => option.value === filters.serverId)?.label ??
+      `${filters.serverId.slice(0, 8)}…`)
+    : null
 
   /**
    * Every active filter as a closable tag, in a fixed order rather than the order they were
@@ -654,6 +678,12 @@ function ConnectionLogScreen({ mode }: { mode: ConnectionLogMode }) {
     activeFilters.push({
       key: 'streamId',
       label: t('connectionLogs.filters.stream', { value: streamFilterLabel }),
+    })
+  }
+  if (serverFilterLabel) {
+    activeFilters.push({
+      key: 'serverId',
+      label: t('connectionLogs.filters.server', { value: serverFilterLabel }),
     })
   }
 

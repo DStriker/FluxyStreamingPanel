@@ -297,8 +297,10 @@ const contentGroups = (): NavGroup[] =>
  * which is one page inside the prefix rather than the prefix itself.
  *
  * An item without a `page` renders `SectionPage`, the placeholder with its own heading;
- * only the dashboard is a real page for now. That keeps the placeholder honest (it says
- * which section is unfinished) without writing one near-identical file per menu entry.
+ * the dashboard is a real page for every role now - `pages/admin/DashboardPage` for the
+ * administrator and `pages/account/DashboardPage` for the client and the reseller. That
+ * keeps the placeholder honest (it says which section is unfinished) without writing one
+ * near-identical file per menu entry.
  *
  * Keyed by the role name exactly as the backend reports it in `me`, so this and
  * `homeForRole` read the same strings.
@@ -460,7 +462,11 @@ export const NAVIGATION: Record<Role, NavGroup[]> = {
           path: '',
           labelKey: 'nav.items.dashboard',
           icon: DashboardOutlined,
-          page: () => import('../pages/account/DashboardPage'),
+          // The administrator's dashboard is a real screen of its own, unlike the client and
+          // reseller placeholder: it reads `GET /admin/dashboard` and is drawn from the
+          // admin-only page. Only this loader moves; the two account-area menus above keep
+          // `pages/account/DashboardPage`.
+          page: () => import('../pages/admin/DashboardPage'),
         },
         {
           // The installation's own two screens, immediately after the dashboard: they are not

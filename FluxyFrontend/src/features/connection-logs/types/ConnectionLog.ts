@@ -31,6 +31,23 @@ export interface ConnectionLog {
   streamId: string
   /** Name of that stream, or null when the row it named is gone. */
   streamTitle: string | null
+  /**
+   * Identifier of the server that relayed the session, or null.
+   *
+   * The column is opaque and nullable by design: the relaying process may name a server
+   * this installation has no row for, and a row written without one is the unattributed
+   * tail the dashboard's installation totals include but no server row does. The filter and
+   * the table's tag both match on the real column, never on the name.
+   */
+  serverId: string | null
+  /**
+   * Name of that server, resolved for the row from the servers table, or null.
+   *
+   * Null covers both "no server was attributed" and "the server row is gone" - the screen
+   * has nothing different to say about the two, and a name is not the filter's key either
+   * way.
+   */
+  serverName: string | null
   /** Address the session came from. */
   ip: string
   /** User agent the session presented, or null. */

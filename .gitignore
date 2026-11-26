@@ -371,6 +371,8 @@ opencode.json
 /ARCHITECTURE.md
 /docs/ai
 /.tmp-runtime
+# Playwright MCP accessibility snapshots from manual UI checks - scratch output, never committed.
+/.playwright-mcp/
 /FluxyFrontend/run.bat
 # The database archives the API writes, and the source folders that share the word "Backups".
 #

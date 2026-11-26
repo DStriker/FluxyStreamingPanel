@@ -6,19 +6,21 @@ These are owner rules, not suggestions. They apply to a new page exactly as they
 one it was copied from, and a screenshot is what proves them. The verification recipe lives in
 [probes.md](probes.md); this file is the rule and the reason.
 
-### 1. The page title is always visible in the page card
+### 1. The page title is always visible
 
 Every routed page draws a `Card` (or `AuthCard` for the five guest screens) and that card's
-`title` is the page's heading. The loading state, the failed-read alert and the empty state keep
-the same title, because the address still names the page even when its data does not arrive —
-`UserFormPage` is the reference: its edit address keeps `users.editTitle` above an alert that
-says the account is not there.
+`title` is the page's heading — with **one** deliberate exception, the admin dashboard, which
+the owner ordered as a card-less heading row (see below). The loading state, the failed-read
+alert and the empty state keep the same title, because the address still names the page even
+when its data does not arrive — `UserFormPage` is the reference: its edit address keeps
+`users.editTitle` above an alert that says the account is not there.
 
-- The title is **never** moved into the body as a `Typography.Title`, never replaced by a
-  breadcrumb or by the menu item, and never omitted because the menu already says something.
-  The menu says how the visitor arrived; the card says what they are looking at. The two may
-  legitimately differ in wording — `UsersPage` is headed `users.listTitle` while its menu item
-  is `nav.items.usersManage` — but the card always has a title of its own.
+- The title is **never** replaced by a breadcrumb or by the menu item, and never omitted
+  because the menu already says something. The menu says how the visitor arrived; the title
+  says what they are looking at. The two may legitimately differ in wording — `UsersPage` is
+  headed `users.listTitle` while its menu item is `nav.items.usersManage` — and a page that
+  draws a card puts that title in the card's head rather than the body. The admin dashboard's
+  heading row below is the one ordered exception to the card, not to the title.
 - The title must stay **visible**, not merely present in the markup. It shares the head with the
   toolbar, so the `page-card` class (see [shell-and-layout.md](shell-and-layout.md)) and the
   pinned `styles={{ title: { whiteSpace: 'nowrap' } }}` are what stop antd from shrinking it to
@@ -28,13 +30,18 @@ says the account is not there.
   the profile cards) follows the same rule for its own heading, but the routed page's outer card
   is the one this rule is about.
 
-**Pages that predate this rule:** `DashboardPage` draws its heading as a body-level
-`Typography.Title` in a title-less card, and `ProfilePage` is a stack of individually titled
-cards (`profile.currentTitle`, `profile.timezoneTitle`, `profile.guardTitle`,
-`profile.changeTitle`) with no page-level card at all. Both are the shapes already in the tree,
-not precedents: a new page starts from a titled page card, and either page is brought in line if
-and when it is reworked. Anything else found without a card title is a defect — add the title
-rather than another exception here.
+**Pages that predate this rule:** `ProfilePage` is a stack of individually titled cards
+(`profile.currentTitle`, `profile.timezoneTitle`, `profile.guardTitle`,
+`profile.changeTitle`) with no page-level card at all. It is the shape already in the tree,
+not a precedent: a new page starts from a titled page card, and it is brought in line if and
+when it is reworked. The account `DashboardPage` draws its heading as a body-level
+`Typography.Title` in a title-less card, and that placeholder is still the client/reseller
+page. The **admin** dashboard is a deliberate second shape, ordered by the owner: its own
+`pages/admin/DashboardPage` draws a `Typography.Title level={4}` heading with the toolbar
+beside it and no outer page card, and keeps that title above the state switch so it stays
+visible in loading, failed and empty states too (see
+[pages-admin-dashboard.md](pages-admin-dashboard.md)). Anything else found without a page
+title is a defect — add the title rather than another exception here.
 
 ### 2. A long filter control gets its own row above the table, outside the card head
 

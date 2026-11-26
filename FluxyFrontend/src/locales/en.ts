@@ -318,6 +318,46 @@ const en = {
       week: 'This week',
       month: 'This month',
     },
+    // The admin dashboard only. The client and reseller still render `greeting` and `stats`
+    // above from `pages/account/DashboardPage`; nothing here replaces those.
+    admin: {
+      updatedAt: 'Updated at {{time}}',
+      pauseRefresh: 'Pause auto refresh',
+      resumeRefresh: 'Resume auto refresh',
+      autoRefreshHint: 'Refreshes every {{seconds}} seconds',
+      kpis: {
+        activeConnections: 'Active connections',
+        usersWithActiveConnections: 'Users online',
+        streamsRunning: 'Active streams',
+        streamsStopped: 'Disabled streams',
+        networkIn: 'Incoming',
+        networkOut: 'Outgoing',
+      },
+      partialTotal:
+        'The totals cover reachable servers only: {{count}} could not be reached.',
+      server: {
+        activeConnections: 'Active connections',
+        preferredServerUsers: 'Preferred-server users',
+        usersWithActiveConnections: 'Users online',
+        networkIn: 'Network in',
+        networkOut: 'Network out',
+        uptime: 'Uptime',
+      },
+      rings: {
+        cpu: 'CPU',
+        ram: 'RAM',
+        disk: 'Disk',
+      },
+      unavailable: 'Server unreachable',
+      statuses: {
+        Active: 'Active',
+        Disabled: 'Disabled',
+      },
+      readFailed: 'The dashboard could not be read.',
+      retry: 'Retry',
+      stale: 'Showing the values from {{time}}: the latest refresh failed.',
+      empty: 'No servers are configured yet.',
+    },
   },
   // The profile page. Everything on it is a sentence the server does not send: the server
   // answers in codes and the codes live under `messages.api`, so what is here is only the
@@ -2921,6 +2961,9 @@ const en = {
       subscription: 'Subscription: {{value}}',
       owner: 'Owner: {{value}}',
       stream: 'Stream: {{value}}',
+      // The server a session was relayed by. No picker draws it: the dashboard's server card
+      // is the way in, and this tag is how the visitor sees and clears what it wrote.
+      server: 'Server: {{value}}',
       // The start-time range is one control over two parameters, so its tag names both ends in
       // one label; a single-sided range names only the side that is set.
       startedRange: 'Started: {{from}} – {{to}}',

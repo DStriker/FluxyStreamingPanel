@@ -23,6 +23,8 @@ import ResellerLoginPage from '../src/pages/auth/ResellerLoginPage'
 import AdminLoginPage from '../src/pages/auth/AdminLoginPage'
 import ForgotPasswordPage from '../src/pages/auth/ForgotPasswordPage'
 import ProfilePage from '../src/pages/account/ProfilePage'
+import AccountDashboardPage from '../src/pages/account/DashboardPage'
+import AdminDashboardPage from '../src/pages/admin/DashboardPage'
 import SessionsPage from '../src/pages/account/SessionsPage'
 import ActiveSessionsPage from '../src/pages/account/ActiveSessionsPage'
 import UsersPage from '../src/pages/admin/UsersPage'
@@ -4076,6 +4078,208 @@ async function main() {
     `rendered ${subscriptionEditFormHtml.length} bytes with the spinner up`,
   )
 
+  // --- The admin dashboard ----------------------------------------------------
+  //
+  // The administrator's dashboard is a page of its own now, behind the Admin menu's
+  // `dashboard` item, while the client and the reseller still open the account placeholder.
+  // The split is silent if it regresses: a loader pointing at the wrong module compiles and
+  // the menu looks identical. Both halves are asserted below, plus the page's own title.
+  //
+  // The render lands before the first answer arrives, so it is the first-load state: the
+  // page heading (a `Typography.Title`, drawn above the state switch so it survives every
+  // state), the four `Statistic` skeletons and three card skeletons - and no greeting,
+  // which belongs to the account page and not here.
+  const dashboardHtml = renderToStaticMarkup(
+    withRouter('/admin/dashboard', withQuery(
+      <AntApp>
+        <AdminDashboardPage sectionKey="nav.items.dashboard" />
+      </AntApp>,
+    )),
+  )
+  check(
+    'the admin dashboard draws its page heading, its KPI skeletons and no client greeting',
+    /<h4[^>]*class="[^"]*ant-typography[^"]*"[^>]*>Dashboard<\/h4>/.test(dashboardHtml) &&
+      dashboardHtml.includes('ant-statistic') &&
+      dashboardHtml.includes('ant-skeleton') &&
+      !dashboardHtml.includes('Welcome back') &&
+      !dashboardHtml.includes('nav.items.dashboard'),
+    `rendered ${dashboardHtml.length} bytes with the snapshot still being fetched`,
+  )
+
+  // The heading is guarded in *position*, not only in shape. The old `page-card` assertion
+  // got this property for free - antd draws a card's head above its body - so without the
+  // card a refactor could move the title into one state branch and every check above would
+  // stay green. None of the renders above lands in the failed read (an effect never runs, so
+  // the query cannot fail on its own), so this one is built: the cache is seeded with the
+  // rejected state. `retryOnMount: false` is what keeps it - otherwise the observer's first
+  // subscribe starts a fetch, and an error with no data becomes `pending` again before the
+  // markup is produced.
+  const dashboardFailedClient = createQueryClient()
+  dashboardFailedClient.setDefaultOptions({
+    queries: { ...dashboardFailedClient.getDefaultOptions().queries, retryOnMount: false },
+  })
+  dashboardFailedClient.getQueryCache().build(
+    dashboardFailedClient,
+    { queryKey: ['dashboard'] },
+    { status: 'error', error: new Error('Snapshot unavailable'), fetchStatus: 'idle' },
+  )
+  const dashboardFailedHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/dashboard',
+      <QueryClientProvider client={dashboardFailedClient}>
+        <AntApp>
+          <AdminDashboardPage sectionKey="nav.items.dashboard" />
+        </AntApp>
+      </QueryClientProvider>,
+    ),
+  )
+  const failedHeadingAt = dashboardFailedHtml.indexOf('<h4')
+  const failedAlertAt = dashboardFailedHtml.indexOf('ant-alert')
+  check(
+    'the admin dashboard keeps the page heading above the state content',
+    failedHeadingAt !== -1 && failedAlertAt !== -1 && failedHeadingAt < failedAlertAt,
+    `failed read: heading at ${failedHeadingAt}, alert at ${failedAlertAt} - the page heading precedes the state content`,
+  )
+
+  // The three menu items, asked after their loaders resolve - the only way to see which
+  // module each one opens. Admin must be the real screen; Client and Reseller must still be
+  // the account placeholder.
+  const dashboardModules = await Promise.all(
+    ROLES.map(async (role) => {
+      const item = flatItems(role).find((candidate) => candidate.key === 'dashboard')
+      return item?.page ? await item.page() : null
+    }),
+  )
+  const [clientDashboard, resellerDashboard, adminDashboard] = dashboardModules
+  check(
+    'the Admin dashboard menu opens the admin page while Client and Reseller keep the account one',
+    clientDashboard?.default === AccountDashboardPage &&
+      resellerDashboard?.default === AccountDashboardPage &&
+      adminDashboard?.default === AdminDashboardPage,
+    `client ${clientDashboard?.default?.name ?? 'nothing'}, reseller ${
+      resellerDashboard?.default?.name ?? 'nothing'
+    }, admin ${adminDashboard?.default?.name ?? 'nothing'}`,
+  )
+
+  // D5 drawn from a real row: an unavailable server prints zeros and a badge rather than a
+  // dash, and the badge - not the number - is what says the machine was unreachable. The
+  // seeded answer is the only way a static render can reach a card at all.
+  const dashboardSeededHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/dashboard',
+      withSeededQuery(
+        ['dashboard'],
+        {
+          kpis: {
+            activeConnections: 0,
+            usersWithActiveConnections: 0,
+            streamsRunning: 0,
+            streamsStopped: 0,
+            networkInMbps: 0,
+            networkOutMbps: 0,
+          },
+          servers: [
+            {
+              id: '11111111-1111-1111-1111-111111111111',
+              name: 'probe-node',
+              status: 'Active',
+              available: false,
+              activeConnections: 0,
+              preferredServerUsers: 0,
+              usersWithActiveConnections: 0,
+              uptimeSeconds: 0,
+              cpuPercent: 0,
+              ramPercent: 0,
+              diskPercent: 0,
+              networkInMbps: 0,
+              networkOutMbps: 0,
+            },
+            {
+              id: '22222222-2222-2222-2222-222222222222',
+              name: 'retired-node',
+              status: 'Disabled',
+              available: true,
+              activeConnections: 3,
+              preferredServerUsers: 2,
+              usersWithActiveConnections: 2,
+              uptimeSeconds: 90061,
+              cpuPercent: 75,
+              ramPercent: 90,
+              diskPercent: 69.9,
+              networkInMbps: 12.34,
+              networkOutMbps: 0,
+            },
+          ],
+          serversUnavailable: 1,
+          generatedAt: '2026-11-25T12:00:00+00:00',
+        },
+        <AntApp>
+          <AdminDashboardPage sectionKey="nav.items.dashboard" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'an unavailable server draws zeros and an unavailable badge, and the total is labelled partial',
+    dashboardSeededHtml.includes('probe-node') &&
+      dashboardSeededHtml.includes('Server unreachable') &&
+      dashboardSeededHtml.includes('0.0') &&
+      dashboardSeededHtml.includes('Mbit/s') &&
+      /could not be reached/.test(dashboardSeededHtml) &&
+      !dashboardSeededHtml.includes('—'),
+    `rendered ${dashboardSeededHtml.length} bytes from a seeded snapshot`,
+  )
+
+  // The other half of the same card, from a row that *is* reachable: the disabled tag, the
+  // three ring tiers at their exact boundaries (75 warn, 90 critical, 69.9 normal), the
+  // one-decimal throughput and the compact uptime. A ring drawn with the wrong tier is
+  // valid markup and a perfectly green build, which is why the colours are asserted here.
+  check(
+    'a reachable server draws its disabled tag, the three ring tiers and the formatted values',
+    dashboardSeededHtml.includes('retired-node') &&
+      dashboardSeededHtml.includes('Disabled') &&
+      dashboardSeededHtml.includes('12.3') &&
+      dashboardSeededHtml.includes('1d 1h 1m') &&
+      dashboardSeededHtml.includes('ant-progress-status-exception') &&
+      /stroke:#faad14/.test(dashboardSeededHtml) &&
+      /stroke:#1677ff|stroke:#0958d9/.test(dashboardSeededHtml),
+    `rendered ${dashboardSeededHtml.length} bytes from a two-server snapshot`,
+  )
+
+  // The sixth state: a snapshot that arrived and holds no servers is an empty list, not a
+  // grid of nothing and not the first-load skeletons.
+  const dashboardEmptyHtml = renderToStaticMarkup(
+    withRouter(
+      '/admin/dashboard',
+      withSeededQuery(
+        ['dashboard'],
+        {
+          kpis: {
+            activeConnections: 0,
+            usersWithActiveConnections: 0,
+            streamsRunning: 0,
+            streamsStopped: 0,
+            networkInMbps: 0,
+            networkOutMbps: 0,
+          },
+          servers: [],
+          serversUnavailable: 0,
+          generatedAt: '2026-11-25T12:00:00+00:00',
+        },
+        <AntApp>
+          <AdminDashboardPage sectionKey="nav.items.dashboard" />
+        </AntApp>,
+      ),
+    ),
+  )
+  check(
+    'an answered snapshot with no servers draws the empty state rather than skeletons',
+    dashboardEmptyHtml.includes('ant-empty') &&
+      dashboardEmptyHtml.includes('No servers are configured yet.') &&
+      !dashboardEmptyHtml.includes('ant-skeleton'),
+    `rendered ${dashboardEmptyHtml.length} bytes from an empty snapshot`,
+  )
+
   // --- The connection log: one component behind two menu entries --------------
   //
   // The two addresses differ in the slice of the log they read and in the columns they draw,
@@ -6925,6 +7129,8 @@ async function main() {
           streamKind: 'video',
           streamId: '44444444-4444-4444-4444-444444444444',
           streamTitle: 'News',
+          serverId: null,
+          serverName: null,
           ip: '203.0.113.9',
           userAgent: null,
           countryCode: 'DE',
@@ -7300,6 +7506,36 @@ async function main() {
     'dashboard.stats.today',
     'dashboard.stats.week',
     'dashboard.stats.month',
+    // The admin dashboard's own copy. `greeting` and `stats.*` above stay because the client
+    // and reseller still render them; these are the keys the admin page and its server cards
+    // draw, and a missing one would put a raw key on the busiest screen in the panel.
+    'dashboard.admin.updatedAt',
+    'dashboard.admin.pauseRefresh',
+    'dashboard.admin.resumeRefresh',
+    'dashboard.admin.autoRefreshHint',
+    'dashboard.admin.kpis.activeConnections',
+    'dashboard.admin.kpis.usersWithActiveConnections',
+    'dashboard.admin.kpis.streamsRunning',
+    'dashboard.admin.kpis.streamsStopped',
+    'dashboard.admin.kpis.networkIn',
+    'dashboard.admin.kpis.networkOut',
+    'dashboard.admin.partialTotal',
+    'dashboard.admin.server.activeConnections',
+    'dashboard.admin.server.preferredServerUsers',
+    'dashboard.admin.server.usersWithActiveConnections',
+    'dashboard.admin.server.networkIn',
+    'dashboard.admin.server.networkOut',
+    'dashboard.admin.server.uptime',
+    'dashboard.admin.rings.cpu',
+    'dashboard.admin.rings.ram',
+    'dashboard.admin.rings.disk',
+    'dashboard.admin.unavailable',
+    'dashboard.admin.statuses.Active',
+    'dashboard.admin.statuses.Disabled',
+    'dashboard.admin.readFailed',
+    'dashboard.admin.retry',
+    'dashboard.admin.stale',
+    'dashboard.admin.empty',
   ])
   for (const role of ROLES) {
     for (const group of NAVIGATION[role] ?? []) {

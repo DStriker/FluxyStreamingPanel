@@ -47,6 +47,14 @@ export interface ConnectionLogFilters {
   ownerId?: string | null
   /** Opaque stream identifier, or null/absent for every stream. */
   streamId?: string | null
+  /**
+   * Server that relayed the session, or null/absent for every server.
+   *
+   * Matched against the real `server_id` column only: the unattributed tail (`server_id IS
+   * NULL`) cannot be selected by any value here, which is exactly the dashboard's D2 rule.
+   * The endpoint refuses a non-uuid with `400 validation_failed` keyed `serverId`.
+   */
+  serverId?: string | null
   /** Address, compared exactly. */
   ip?: string | null
   /** Upper-case ISO alpha-2 country. */
@@ -107,6 +115,7 @@ export const getConnectionLogs = ({
   subscriptionId,
   ownerId,
   streamId,
+  serverId,
   ip,
   country,
   isp,
@@ -130,6 +139,7 @@ export const getConnectionLogs = ({
   if (subscriptionId) query.set('subscriptionId', subscriptionId)
   if (ownerId) query.set('ownerId', ownerId)
   if (streamId) query.set('streamId', streamId)
+  if (serverId) query.set('serverId', serverId)
   if (ip) query.set('ip', ip)
   if (country) query.set('country', country)
   if (isp) query.set('isp', isp)
